@@ -18,7 +18,11 @@
   <header class="sticky top-0 z-40 backdrop-blur bg-white/80 border-b border-slate-200">
     <div class="container mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-content-center font-black">PC</div>
+        <svg class="w-9 h-9" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="36" height="36" rx="8" fill="#0f172a"/>
+          <path d="M10 12h5c2.2 0 4 1.8 4 4s-1.8 4-4 4h-3v4h-2V12zm5 6c1.1 0 2-.9 2-2s-.9-2-2-2h-3v4h3z" fill="white"/>
+          <path d="M26 16c0-2.2-1.8-4-4-4s-4 1.8-4 4v4c0 2.2 1.8 4 4 4s4-1.8 4-4h-2c0 1.1-.9 2-2 2s-2-.9-2-2v-4c0-1.1.9-2 2-2s2 .9 2 2h2z" fill="white"/>
+        </svg>
         <p class="font-semibold">PC Estimating Ltd</p>
       </div>
       <nav class="hidden md:flex items-center gap-6 text-sm">
@@ -188,12 +192,14 @@
           <li><strong>Registered:</strong> PC Estimating Ltd (England & Wales)</li>
         </ul>
       </div>
-      <form class="bg-white text-slate-900 rounded-2xl p-6 border border-slate-200 shadow-sm" onsubmit="event.preventDefault(); alert('Thanks — I\'ll be in touch.');">
+      <form class="bg-white text-slate-900 rounded-2xl p-6 border border-slate-200 shadow-sm" action="https://formspree.io/f/xeoqrpng" method="POST" id="contactForm">
         <div class="grid gap-4">
-          <input required class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Your name" />
-          <input required type="email" class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Email" />
-          <textarea class="w-full border border-slate-300 rounded-xl px-4 py-3" rows="4" placeholder="Project, scope, and return date"></textarea>
-          <button class="px-5 py-3 rounded-xl bg-slate-900 text-white font-semibold">Request a quote</button>
+          <input name="name" required class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Your name" />
+          <input name="email" required type="email" class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Email" />
+          <textarea name="message" class="w-full border border-slate-300 rounded-xl px-4 py-3" rows="4" placeholder="Project, scope, and return date"></textarea>
+          <input type="hidden" name="_subject" value="Quote Request from PC Estimating Website" />
+          <input type="hidden" name="_next" value="#contact" />
+          <button type="submit" id="submitBtn" class="px-5 py-3 rounded-xl bg-slate-900 text-white font-semibold">Request a quote</button>
         </div>
       </form>
     </div>
@@ -205,6 +211,13 @@
 
   <script>
     document.getElementById('y').textContent = new Date().getFullYear();
+    
+    // Contact form handling
+    document.getElementById('contactForm').addEventListener('submit', function(e) {
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.textContent = 'Sending...';
+      submitBtn.disabled = true;
+    });
   </script>
 </body>
 </html>
