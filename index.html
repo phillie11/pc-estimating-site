@@ -18,7 +18,18 @@
   <header class="sticky top-0 z-40 backdrop-blur bg-white/80 border-b border-slate-200">
     <div class="container mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-content-center font-black">PC</div>
+        <div class="w-10 h-10">
+          <svg viewBox="0 0 40 40" class="w-full h-full">
+            <!-- Background circle -->
+            <circle cx="20" cy="20" r="18" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+            
+            <!-- P letter -->
+            <path d="M12 12 h6 c2 0 3.5 0.5 4.5 1.5 c1 1 1.5 2.5 1.5 4.5 c0 2 -0.5 3.5 -1.5 4.5 c-1 1 -2.5 1.5 -4.5 1.5 h-3 v4 h-3 Z M15 15 v6 h3 c1 0 1.5 -0.25 2 -0.75 c0.5 -0.5 0.75 -1.25 0.75 -2.25 c0 -1 -0.25 -1.75 -0.75 -2.25 c-0.5 -0.5 -1 -0.75 -2 -0.75 Z" fill="white"/>
+            
+            <!-- C letter -->
+            <path d="M26 18 c0 -1.5 0.5 -2.75 1.5 -3.75 c1 -1 2.25 -1.5 3.75 -1.5 c1 0 1.75 0.25 2.5 0.75 l-1 2 c-0.5 -0.25 -1 -0.375 -1.5 -0.375 c-0.75 0 -1.25 0.25 -1.625 0.75 c-0.375 0.5 -0.625 1.125 -0.625 1.875 v2.5 c0 0.75 0.25 1.375 0.625 1.875 c0.375 0.5 0.875 0.75 1.625 0.75 c0.5 0 1 -0.125 1.5 -0.375 l1 2 c-0.75 0.5 -1.5 0.75 -2.5 0.75 c-1.5 0 -2.75 -0.5 -3.75 -1.5 c-1 -1 -1.5 -2.25 -1.5 -3.75 Z" fill="white"/>
+          </svg>
+        </div>
         <p class="font-semibold">PC Estimating Ltd</p>
       </div>
       <nav class="hidden md:flex items-center gap-6 text-sm">
@@ -188,12 +199,18 @@
           <li><strong>Registered:</strong> PC Estimating Ltd (England & Wales)</li>
         </ul>
       </div>
-      <form class="bg-white text-slate-900 rounded-2xl p-6 border border-slate-200 shadow-sm" onsubmit="event.preventDefault(); alert('Thanks — I\'ll be in touch.');">
+      <form class="bg-white text-slate-900 rounded-2xl p-6 border border-slate-200 shadow-sm" 
+            action="https://formspree.io/f/xdkkbnqv" 
+            method="POST"
+            onsubmit="handleFormSubmit(event)">
         <div class="grid gap-4">
-          <input required class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Your name" />
-          <input required type="email" class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Email" />
-          <textarea class="w-full border border-slate-300 rounded-xl px-4 py-3" rows="4" placeholder="Project, scope, and return date"></textarea>
-          <button class="px-5 py-3 rounded-xl bg-slate-900 text-white font-semibold">Request a quote</button>
+          <input required name="name" class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Your name" />
+          <input required type="email" name="email" class="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="Email" />
+          <textarea name="message" class="w-full border border-slate-300 rounded-xl px-4 py-3" rows="4" placeholder="Project, scope, and return date"></textarea>
+          <input type="hidden" name="_subject" value="New quote request from PC Estimating website" />
+          <input type="hidden" name="_next" value="https://phillie11.github.io/pc-estimating-site/#contact" />
+          <button type="submit" id="submit-btn" class="px-5 py-3 rounded-xl bg-slate-900 text-white font-semibold">Request a quote</button>
+          <div id="form-status" class="text-sm text-center hidden"></div>
         </div>
       </form>
     </div>
@@ -205,6 +222,21 @@
 
   <script>
     document.getElementById('y').textContent = new Date().getFullYear();
+    
+    function handleFormSubmit(event) {
+      const submitBtn = document.getElementById('submit-btn');
+      const statusDiv = document.getElementById('form-status');
+      
+      // Show loading state
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+      statusDiv.className = 'text-sm text-center text-blue-600';
+      statusDiv.textContent = 'Sending your message...';
+      statusDiv.classList.remove('hidden');
+      
+      // Let the form submit normally to Formspree
+      // Formspree will handle the redirect via the _next field
+    }
   </script>
 </body>
 </html>
