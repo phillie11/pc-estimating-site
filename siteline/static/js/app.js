@@ -77,4 +77,13 @@
       setTimeout(function () { el.remove(); }, 5000);
     }
   }
+
+  // Gantt: when the chart is wider than the screen, open it with today in view
+  document.querySelectorAll('.gantt-wrap').forEach(function (wrap) {
+    var today = wrap.querySelector('.g-lines .today');
+    if (!today || wrap.scrollWidth <= wrap.clientWidth) return;
+    var label = wrap.querySelector('.g-label');
+    var visible = wrap.clientWidth - (label ? label.offsetWidth : 0);
+    wrap.scrollLeft = Math.max(0, today.offsetLeft - visible / 3);
+  });
 })();

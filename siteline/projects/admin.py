@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Project, ProjectInvite, ProjectMember
+from .models import Activity, Project, ProjectInvite, ProjectMember
 
 
 @admin.register(Project)
@@ -12,3 +12,10 @@ class ProjectAdmin(admin.ModelAdmin):
 
 admin.site.register(ProjectMember)
 admin.site.register(ProjectInvite)
+
+
+@admin.register(Activity)
+class ActivityAdmin(admin.ModelAdmin):
+    list_display = ['name', 'project', 'start', 'finish', 'progress', 'organization']
+    list_filter = ['organization']
+    search_fields = ['name', 'project__name']

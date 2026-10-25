@@ -21,7 +21,7 @@ from django.utils import timezone
 from accounts.models import User
 from accounts.views import create_organization
 from directory.models import Package, Subcontractor, Trade
-from projects.models import Document, DocumentRevision, Issue, Project, ProjectMember, Task
+from projects.models import Activity, Document, DocumentRevision, Issue, Project, ProjectMember, Task
 from rfis.models import RFI
 from tenancy.context import org_context
 from tenancy.models import Membership, Organization, log_activity
@@ -128,6 +128,27 @@ class Command(BaseCommand):
             p = project('Sports bar, Elveden', Project.STAGE_LOST, '700000', client_name='Holiday Parks UK')
             p.decided_at = today - timedelta(days=120)
             p.save()
+            # A year of results so tender analytics has something to show
+            for n, stage, v, sector, client_name, source, days, notes in [
+                ('Café chain rollout, phase 2', 'COMPLETE', '185000', 'HOSPITALITY', 'Kettle & Crumb', 'Repeat client', 200, ''),
+                ('Dental practice, Chester', 'LOST', '96000', 'HEALTHCARE', 'Bright Smile Group', 'Website', 150,
+                 'Client went with a local contractor.'),
+                ('Flagship store, King Street', 'COMPLETE', '1450000', 'RETAIL', 'Kumo Retail', 'Framework', 290, ''),
+                ('Office refurb, Spinningfields', 'LOST', '2300000', 'OFFICE', 'Arden Property', 'Framework', 95,
+                 'Programme 6 weeks longer than the winning bid.'),
+                ('Hotel bedrooms, Harrogate', 'LOST', '1100000', 'HOSPITALITY', 'Thackeray Living', 'Referral', 210, ''),
+                ('Primary school toilets, Wirral', 'DECLINED', '140000', 'EDUCATION', 'Wirral Council', 'Portal', 75, ''),
+                ('Barbers, Northern Quarter', 'COMPLETE', '42000', 'RETAIL', 'Fade Co', 'Website', 330, ''),
+                ('Car showroom, Preston', 'LOST', '880000', 'AUTOMOTIVE', 'Westway Motor Group', 'Repeat client', 255,
+                 'Lost on price, 2.3% higher.'),
+            ]:
+                p = project(n, stage, v, client_name=client_name, sector=sector, lead_source=source,
+                            owner_u=pm if sector == 'RETAIL' else est, outcome_notes=notes)
+                p.decided_at = today - timedelta(days=days)
+                p.save()
+            # Bids were logged weeks before they were decided; created_at is auto-set, so backdate it directly
+            for i, p in enumerate(Project.objects.filter(decided_at__isnull=False)):
+                Project.objects.filter(pk=p.pk).update(created_at=now - timedelta(days=(today - p.decided_at).days + 28 + i % 4 * 9))
 
             # Leeds live project detail
             ProjectMember.objects.create(project=leeds, user=pm, role=ProjectMember.ROLE_PM, added_by=owner)
@@ -174,6 +195,27 @@ class Command(BaseCommand):
             Variation.objects.create(project=leeds, title='Bar back veneer change (if eucalyptus)', cause='SPEC_CHANGE', rfi=r1,
                                      description='Price difference if smoked eucalyptus is confirmed.', value=Decimal('7300'),
                                      raised_by=pm, proceed_at_risk=False)
+
+            # Leeds programme: started four weeks ago, 73 days on site
+            def act(name, start, days, progress=0, after=None, who='', milestone=False, shared=True):
+                s = today + timedelta(days=start)
+                return Activity.objects.create(project=leeds, name=name, start=s, finish=s if milestone else s + timedelta(days=days - 1),
+                                               progress=progress, after=after, responsible=who, is_milestone=milestone,
+                                               is_shared=shared, created_by=pm)
+            a0 = act('Site possession', -28, 0, 100, milestone=True)
+            a1 = act('Strip out & soft demolition', -28, 10, 100, a0, 'Northbank labour')
+            a2 = act('First fix M&E', -17, 16, 85, a1, 'Brightside Electrical')
+            a3 = act('Drylining & ceilings', -12, 24, 55, a1, 'Pennine Drylining')
+            act('Building control first fix inspection', 3, 0, 0, a2, milestone=True)
+            act('Kitchen extract & ductwork', -6, 12, 30, a1, 'Apex Mechanical')
+            a5 = act('Bar joinery manufacture', -10, 28, 40, None, 'Lund Joinery')
+            act('Bar joinery install', 19, 12, 0, a5, 'Lund Joinery')
+            act('Second fix M&E', 12, 16, 0, a3, 'Brightside Electrical')
+            a8 = act('Flooring', 22, 10, 0, a3, 'Mersey Flooring')
+            a9 = act('Decoration', 32, 6, 0, a8, 'Crest Decorators')
+            act('Snagging & clean', 38, 6, 0, a9, 'Northbank labour')
+            act('Contingency (internal)', 38, 7, 0, a9, shared=False)
+            act('Practical completion', 45, 0, 0, a9, milestone=True)
 
             Task.objects.create(project=leeds, title='Issue joinery shop drawings for approval', assignee=subu,
                                 due_date=today + timedelta(days=3), priority='HIGH', created_by=pm)

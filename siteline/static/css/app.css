@@ -281,3 +281,56 @@ textarea { resize: vertical; }
 .mk-shot .kpis { grid-template-columns: repeat(3, 1fr); }
 .mk-shot .kpi .value { font-size: 1.3rem; }
 @media (max-width: 520px) { .mk-shot .board { grid-template-columns: 1fr 1fr !important; } .mk-shot .board .col:last-child { display: none; } }
+
+/* ---------- Chart legends ---------- */
+.legend { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.legend .key { display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-left: 8px; vertical-align: middle; }
+.legend .key:first-child { margin-left: 0; }
+.legend .key.bar { background: color-mix(in srgb, var(--accent) 28%, white); }
+.legend .key.fill { background: var(--accent); }
+.legend .key.ms { width: 9px; height: 9px; background: var(--ink); transform: rotate(45deg); }
+.legend .key.today { width: 2px; height: 12px; background: var(--accent); border-radius: 0; }
+.legend .key.won { background: var(--ink); }
+.legend .key.lost { background: var(--line-2); }
+
+/* ---------- Gantt ---------- */
+.gantt-wrap { overflow-x: auto; }
+.gantt { --g-label: 280px; position: relative; font-size: 13px; }
+.g-body { position: relative; }
+.g-row { display: grid; grid-template-columns: var(--g-label) minmax(0, 1fr); border-bottom: 1px solid var(--line); min-height: 44px; }
+.g-body .g-row:last-child { border-bottom: 0; }
+.g-label { padding: 7px 12px; position: sticky; left: 0; z-index: 4; background: var(--card); border-right: 1px solid var(--line); min-width: 0; }
+.g-label .t1 { display: block; font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-label .sub { display: block; font-size: 12px; color: var(--ink-3); margin-bottom: 2px; }
+.g-label .badge { margin-top: 2px; }
+.g-track { position: relative; }
+.g-head .g-track { overflow: hidden; }
+.g-head { min-height: 32px; background: #FCFBF8; border-bottom-color: var(--line-2); font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+.g-head .g-label { background: #FCFBF8; display: flex; align-items: center; }
+.g-tick { position: absolute; top: 0; bottom: 0; padding: 8px 0 0 5px; white-space: nowrap; border-left: 1px solid var(--line); text-transform: none; letter-spacing: 0; font-weight: 500; }
+.g-lines { position: absolute; top: 0; bottom: 0; left: var(--g-label); right: 0; pointer-events: none; z-index: 1; }
+.g-lines span { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+.g-lines .today { border-left: 2px solid var(--accent); z-index: 1; }
+.g-bar { position: absolute; top: 50%; height: 14px; margin-top: -7px; min-width: 4px; border-radius: 4px; overflow: hidden; z-index: 2;
+  background: color-mix(in srgb, var(--accent) 28%, white); box-shadow: 0 0 0 2px var(--card); }
+.g-bar > span { display: block; height: 100%; background: var(--accent); }
+.g-bar.late { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--bad); }
+.g-bar.closed { background: var(--line-2); }
+.g-bar.closed > span { background: var(--ink-3); }
+.g-ms { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--ink); transform: rotate(45deg); border-radius: 2px; z-index: 2; box-shadow: 0 0 0 2px var(--card); }
+@media (max-width: 700px) { .gantt { --g-label: 150px; } .g-label .sub { display: none; } }
+
+/* ---------- Analytics ---------- */
+.mchart { display: flex; gap: 6px; align-items: stretch; height: 190px; }
+.mcol { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mstack { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; border-bottom: 1px solid var(--line-2); }
+.mstack span { display: block; width: 100%; max-width: 34px; margin: 0 auto; }
+.mstack span:first-child { border-radius: 4px 4px 0 0; }
+.mstack .won { background: var(--ink); }
+.mstack .lost { background: var(--line-2); }
+.mlabel { font-size: 11px; color: var(--ink-3); text-align: center; padding-top: 4px; line-height: 1.25; height: 32px; }
+.grid.halves { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
+.rate { display: flex; align-items: center; gap: 8px; }
+.rate .meter { flex: 1; margin: 0; height: 6px; border-radius: 3px; }
+.rate .mono { width: 3.2em; text-align: right; color: var(--ink-2); }
+@media (max-width: 520px) { .mchart { gap: 3px; } .mlabel { font-size: 10px; } }

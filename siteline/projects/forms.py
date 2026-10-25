@@ -3,7 +3,7 @@ from django.conf import settings
 
 from .access import assignable_users, staff_users
 from .files import validate_upload
-from .models import Comment, Document, DocumentRevision, Issue, Project, ProjectInvite, ProjectMember, Task
+from .models import Activity, Comment, Document, DocumentRevision, Issue, Project, ProjectInvite, ProjectMember, Task
 
 
 def style_widgets(form):
@@ -51,6 +51,36 @@ class TaskForm(StyledModelForm):
     def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['assignee'].queryset = assignable_users(project)
+
+
+class ActivityForm(StyledModelForm):
+    class Meta:
+        model = Activity
+        fields = ['name', 'responsible', 'start', 'finish', 'progress', 'after', 'is_milestone', 'is_shared']
+
+    def __init__(self, *args, project=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        others = Activity.objects.filter(project=project)
+        if self.instance.pk:
+            others = others.exclude(pk=self.instance.pk)
+        self.fields['after'].queryset = others
+        self.fields['finish'].required = False
+        self.fields['progress'].widget.attrs.update({'min': 0, 'max': 100, 'step': 5})
+
+    def clean_progress(self):
+        p = self.cleaned_data.get('progress')
+        if p is not None and not 0 <= p <= 100:
+            raise forms.ValidationError('Between 0 and 100.')
+        return p
+
+    def clean(self):
+        data = super().clean()
+        start, finish = data.get('start'), data.get('finish')
+        if start and (data.get('is_milestone') or not finish):
+            data['finish'] = start
+        elif start and finish and finish < start:
+            self.add_error('finish', 'Finish cannot be before the start.')
+        return data
 
 
 class IssueForm(StyledModelForm):

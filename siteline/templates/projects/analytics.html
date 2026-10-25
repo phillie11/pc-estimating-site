@@ -1,0 +1,61 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Tender analytics{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><div class="eyebrow">Bids won and lost</div><h1>Tender analytics</h1></div>
+  <div class="filters" style="margin:0">{% for code, label in periods %}<a class="chip {% if code == period %}on{% endif %}" href="?period={{ code }}">{{ label }}</a>{% endfor %}</div>
+</div>
+
+<div class="kpis">
+  <div class="kpi hero"><div class="label">Win rate</div><div class="value">{% if total.win_rate is not None %}{{ total.win_rate }}%{% else %}—{% endif %}</div><div class="note">{{ total.won }} won · {{ total.lost }} lost</div></div>
+  <div class="kpi"><div class="label">Win rate by value</div><div class="value">{% if total.value_win_rate is not None %}{{ total.value_win_rate }}%{% else %}—{% endif %}</div><div class="note">of {{ tendered_value|money_short:currency }} tendered</div></div>
+  <div class="kpi"><div class="label">Value won</div><div class="value">{{ total.won_value|money_short:currency }}</div><div class="note">average {{ avg_won_value|money_short:currency }} per job</div></div>
+  <div class="kpi"><div class="label">Bids decided</div><div class="value">{{ total.bids }}</div><div class="note">{{ declined }} declined to bid</div></div>
+  <div class="kpi"><div class="label">Days to decision</div><div class="value">{{ avg_days_to_decision|default_if_none:"—" }}</div><div class="note">average, from first logged</div></div>
+  <div class="kpi"><div class="label">Open pipeline</div><div class="value">{{ pipeline_value|money_short:currency }}</div><div class="note">weighted {{ pipeline_weighted|money_short:currency }}</div></div>
+</div>
+
+{% if not total.bids %}
+<div class="card" style="margin-bottom:1.25rem"><div class="empty"><h3>No results in this period yet</h3><p>Figures appear as bids are marked Won or Lost on the <a href="{% url 'pipeline' org.slug %}">pipeline board</a> or the project page. Add sector, value and lead source to each bid to get the breakdowns.</p></div></div>
+{% endif %}
+
+<div class="card" style="margin-bottom:1.25rem">
+  <div class="card-head"><h2>Results by month</h2><span class="legend small dim"><span class="key won"></span>Won <span class="key lost"></span>Lost</span></div>
+  <div class="card-body">
+    {% if monthly_has_data %}
+    <div class="mchart" role="img" aria-label="Bids won and lost per month">
+      {% for m in monthly %}<div class="mcol" title="{{ m.month|date:'F Y' }}: {{ m.won }} won, {{ m.lost }} lost">
+        <div class="mstack">{% if m.lost %}<span class="lost" style="height:{{ m.lost_h }}%"></span>{% endif %}{% if m.won %}<span class="won" style="height:{{ m.won_h }}%"></span>{% endif %}</div>
+        <div class="mlabel">{{ m.month|date:"M" }}{% if m.month.month == 1 or forloop.first %}<br><span class="dim">{{ m.month|date:"y" }}</span>{% endif %}</div>
+      </div>{% endfor %}
+    </div>
+    <details class="small" style="margin-top:12px"><summary class="dim" style="cursor:pointer">Show as a table</summary>
+      <div class="table-wrap"><table class="t" style="margin-top:8px"><thead><tr><th>Month</th><th class="num">Won</th><th class="num">Lost</th></tr></thead><tbody>
+      {% for m in monthly %}<tr><td>{{ m.month|date:"F Y" }}</td><td class="num">{{ m.won }}</td><td class="num">{{ m.lost }}</td></tr>{% endfor %}</tbody></table></div>
+    </details>
+    {% else %}<div class="empty left">No bids decided in these months.</div>{% endif %}
+  </div>
+</div>
+
+<div class="grid halves">
+  {% include "projects/_breakdown.html" with title="By sector" rows=by_sector %}
+  {% include "projects/_breakdown.html" with title="By size" rows=by_band %}
+  {% include "projects/_breakdown.html" with title="By client" rows=by_client note="top 10" %}
+  {% include "projects/_breakdown.html" with title="By lead source" rows=by_source %}
+  {% include "projects/_breakdown.html" with title="By project lead" rows=by_owner %}
+  <div class="card">
+    <div class="card-head"><h2>Open pipeline by stage</h2><a class="small" href="{% url 'pipeline' org.slug %}">Board →</a></div>
+    <div class="table-wrap"><table class="t"><thead><tr><th>Stage</th><th class="num">Bids</th><th class="num">Value</th><th class="num">Weighted</th></tr></thead><tbody>
+      {% for s in stages %}<tr><td>{{ s.label }}</td><td class="num">{{ s.count }}</td><td class="num">{{ s.value|money_short:currency }}</td><td class="num">{{ s.weighted|money_short:currency }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <div class="card-head"><h2>Recent losses</h2><span class="small dim">feedback recorded on each project</span></div>
+  {% if recent_losses %}<div class="table-wrap"><table class="t"><thead><tr><th>Bid</th><th>Decided</th><th class="num">Value</th><th>Feedback</th></tr></thead><tbody>
+    {% for p in recent_losses %}<tr><td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}</span></td><td class="small nowrap">{{ p.decided_at|date:"j M Y" }}</td><td class="num">{{ p.value|money_short:currency }}</td><td class="small">{{ p.outcome_notes|default:"—"|truncatechars:160 }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty left">No losses in this period.</div>{% endif %}
+</div>
+{% endblock %}

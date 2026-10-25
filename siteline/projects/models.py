@@ -276,6 +276,50 @@ class Task(TenantModel):
         return self.status != self.STATUS_DONE and self.due_date and self.due_date < timezone.localdate()
 
 
+class Activity(TenantModel):
+    """One line on a project programme (Gantt chart)."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='activities')
+    name = models.CharField(max_length=200)
+    start = models.DateField()
+    finish = models.DateField(help_text='For a milestone this is the same as the start.')
+    is_milestone = models.BooleanField('Milestone', default=False)
+    progress = models.PositiveSmallIntegerField('Progress %', default=0)
+    after = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='successors',
+                              verbose_name='Follows', help_text='Activity that must finish before this one starts.')
+    responsible = models.CharField('Who', max_length=120, blank=True, help_text='Trade, subcontractor or person.')
+    is_shared = models.BooleanField('Visible to project collaborators', default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['start', 'finish', 'pk']
+        verbose_name_plural = 'activities'
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def duration_days(self):
+        return (self.finish - self.start).days + 1
+
+    @property
+    def is_complete(self):
+        return self.progress >= 100
+
+    @property
+    def is_late(self):
+        return not self.is_complete and self.finish < timezone.localdate()
+
+    @property
+    def is_out_of_sequence(self):
+        """Starts before the activity it follows has finished (a milestone can be followed the same day)."""
+        if self.after is None:
+            return False
+        if self.after.is_milestone:
+            return self.start < self.after.finish
+        return self.start <= self.after.finish
+
+
 class Issue(TenantModel):
     """Snags, defects and site observations."""
     TYPE_CHOICES = [

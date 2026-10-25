@@ -17,11 +17,12 @@ from tenancy import notify
 from tenancy.models import log_activity
 from tenancy.permissions import admin_required, internal_required
 
+from . import analytics, gantt
 from .access import can_see_variations, get_project, is_internal, require_internal, visible_projects
 from .files import serve
-from .forms import (AddStaffForm, CommentForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
+from .forms import (ActivityForm, AddStaffForm, CommentForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
                     RevisionForm, TaskForm)
-from .models import Comment, Document, DocumentRevision, Issue, Project, ProjectInvite, ProjectMember, Task
+from .models import Activity, Comment, Document, DocumentRevision, Issue, Project, ProjectInvite, ProjectMember, Task
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +42,7 @@ def project_context(request, project, tab, **extra):
         task_qs = task_qs.filter(assignee=request.user)
         issue_qs = issue_qs.filter(assignee=request.user)
     tabs += [
+        ('programme', 'Programme', reverse('programme', args=[request.org.slug, project.pk]), None),
         ('tasks', 'Tasks', reverse('task_list', args=[request.org.slug, project.pk]), task_qs.count()),
         ('issues', 'Snags & issues', reverse('issue_list', args=[request.org.slug, project.pk]), issue_qs.count()),
         ('documents', 'Documents', reverse('document_list', args=[request.org.slug, project.pk]), None),
@@ -242,6 +244,90 @@ def project_stage(request, org_slug, pk):
     if request.content_type == 'application/json':
         return JsonResponse({'ok': True, 'stage': stage})
     return redirect(project)
+
+
+@internal_required
+def tender_analytics(request, org_slug):
+    data = analytics.tender_analytics(visible_projects(request), request.GET.get('period', '12'),
+                                      today=timezone.localdate())
+    return render(request, 'projects/analytics.html', {**data, 'periods': analytics.PERIODS})
+
+
+# ---------------------------------------------------------------------------
+# Programmes (Gantt)
+# ---------------------------------------------------------------------------
+
+@internal_required
+def programme_overview(request, org_slug):
+    """Every won and live job on one chart, from start on site to completion."""
+    show = request.GET.get('show', 'live')
+    stages = Project.DELIVERY_STAGES + ((Project.STAGE_COMPLETE,) if show == 'all' else ())
+    projects = visible_projects(request).filter(stage__in=stages)
+    undated = [p for p in projects if not (p.start_date and p.completion_date)]
+    chart = gantt.build(projects, start=lambda p: p.start_date, finish=lambda p: p.completion_date,
+                        today=timezone.localdate())
+    if chart:
+        today = timezone.localdate()
+        chart['rows'].sort(key=lambda r: (r['item'].start_date, r['item'].completion_date))
+        for r in chart['rows']:
+            p = r['item']
+            length = (p.completion_date - p.start_date).days + 1
+            elapsed = min(max((today - p.start_date).days + 1, 0), length)
+            r['elapsed'] = f'{elapsed / length * 100:.1f}' if length > 0 else '0'
+    return render(request, 'projects/programme_overview.html', {'chart': chart, 'undated': undated, 'show': show})
+
+
+def _visible_activities(request, project):
+    qs = Activity.objects.filter(project=project).select_related('after')
+    return qs if is_internal(request) else qs.filter(is_shared=True)
+
+
+def programme(request, org_slug, pk):
+    project = get_project(request, pk)
+    internal = is_internal(request)
+    form = ActivityForm(project=project, initial={'start': timezone.localdate()}) if internal else None
+    if request.method == 'POST':
+        require_internal(request)
+        form = ActivityForm(request.POST, project=project)
+        if form.is_valid():
+            a = form.save(commit=False)
+            a.project, a.created_by = project, request.user
+            a.save()
+            log_activity(request, 'added to the programme', a.name, project=project,
+                         url=reverse('programme', args=[org_slug, pk]), internal_only=not a.is_shared)
+            messages.success(request, f'Added {a.name}.')
+            return redirect('programme', org_slug=org_slug, pk=pk)
+    activities = list(_visible_activities(request, project))
+    chart = gantt.build(activities, today=timezone.localdate())
+    summary = None
+    if activities:
+        summary = {
+            'start': min(a.start for a in activities),
+            'finish': max(a.finish for a in activities),
+            'late': sum(1 for a in activities if a.is_late),
+            'done': sum(1 for a in activities if a.is_complete),
+            'count': len(activities),
+        }
+        if project.completion_date:
+            summary['slip_days'] = (summary['finish'] - project.completion_date).days
+    return render(request, 'projects/programme.html', project_context(
+        request, project, 'programme', chart=chart, form=form, activities=activities, summary=summary))
+
+
+def activity_edit(request, org_slug, pk, activity_id):
+    project = get_project(request, pk)
+    require_internal(request)
+    activity = get_object_or_404(Activity, project=project, pk=activity_id)
+    if request.method == 'POST' and request.POST.get('delete'):
+        activity.delete()
+        messages.success(request, f'Removed {activity.name}.')
+        return redirect('programme', org_slug=org_slug, pk=pk)
+    form = ActivityForm(request.POST or None, instance=activity, project=project)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        return redirect('programme', org_slug=org_slug, pk=pk)
+    return render(request, 'projects/activity_form.html', project_context(
+        request, project, 'programme', form=form, activity=activity))
 
 
 # ---------------------------------------------------------------------------

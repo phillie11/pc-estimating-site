@@ -1,0 +1,44 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% if summary %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Programme</div><div class="value">{{ summary.start|date:"j M" }} – {{ summary.finish|date:"j M y" }}</div><div class="note">{{ summary.count }} activit{{ summary.count|pluralize:"y,ies" }}</div></div>
+  <div class="kpi"><div class="label">Against completion</div><div class="value">{% if summary.slip_days is None %}—{% elif summary.slip_days > 0 %}<span class="bad">+{{ summary.slip_days }}d</span>{% elif summary.slip_days < 0 %}{{ summary.slip_days }}d{% else %}On date{% endif %}</div><div class="note">{% if project.completion_date %}contract completion {{ project.completion_date|date:"j M Y" }}{% else %}no completion date set{% endif %}</div></div>
+  <div class="kpi"><div class="label">Complete</div><div class="value">{{ summary.done }} / {{ summary.count }}</div><div class="note">activities at 100%</div></div>
+  <div class="kpi"><div class="label">Behind</div><div class="value">{% if summary.late %}<span class="bad">{{ summary.late }}</span>{% else %}0{% endif %}</div><div class="note">past finish, not complete</div></div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:1.25rem">
+  <div class="card-head"><h2>Programme</h2>{% if chart %}<span class="legend small dim"><span class="key bar"></span>Planned <span class="key fill"></span>Done <span class="key ms"></span>Milestone <span class="key today"></span>Today</span>{% endif %}</div>
+  {% if chart %}
+  <div class="gantt-wrap"><div class="gantt" style="min-width:calc(var(--g-label) + {{ chart.min_width }}px)">
+    <div class="g-row g-head"><div class="g-label">Activity</div><div class="g-track">{% for t in chart.ticks %}<span class="g-tick" style="left:{{ t.left }}%">{{ t.label }}</span>{% endfor %}</div></div>
+    <div class="g-body">
+      <div class="g-lines" aria-hidden="true">{% for t in chart.ticks %}<span style="left:{{ t.left }}%"></span>{% endfor %}{% if chart.today %}<span class="today" style="left:{{ chart.today }}%"></span>{% endif %}</div>
+      {% for r in chart.rows %}{% with a=r.item %}
+      <div class="g-row">
+        <div class="g-label">
+          {% if is_internal %}<a class="t1" href="{% url 'activity_edit' org.slug project.pk a.pk %}">{{ a.name }}</a>{% else %}<span class="t1">{{ a.name }}</span>{% endif %}
+          <span class="sub">{% if a.is_milestone %}{{ a.start|date:"j M" }}{% else %}{{ a.start|date:"j M" }} – {{ a.finish|date:"j M" }} · {{ a.duration_days }}d{% endif %}{% if a.responsible %} · {{ a.responsible }}{% endif %}</span>
+          {% if a.is_late %}{% badge 'Behind' 'bad' %}{% elif a.is_complete %}{% badge 'Complete' 'good' %}{% endif %}{% if a.is_out_of_sequence and is_internal %} {% badge 'Starts before '|add:a.after.name|truncatechars:34 'warn' %}{% endif %}{% if is_internal and not a.is_shared %} {% badge 'Internal' 'muted' %}{% endif %}
+        </div>
+        <div class="g-track">
+          {% if a.is_milestone %}<span class="g-ms" style="left:{{ r.left }}%" title="{{ a.name }} · {{ a.start|date:'j M Y' }}"></span>
+          {% else %}<span class="g-bar{% if a.is_late %} late{% endif %}" style="left:{{ r.left }}%;width:{{ r.width }}%" title="{{ a.name }} · {{ a.start|date:'j M' }} – {{ a.finish|date:'j M Y' }} · {{ a.progress }}% done"><span style="width:{{ a.progress }}%"></span></span>{% endif %}
+        </div>
+      </div>
+      {% endwith %}{% endfor %}
+    </div>
+  </div></div>
+  {% else %}
+  <div class="empty"><h3>No programme yet</h3><p>{% if is_internal %}Add activities below. Each one becomes a bar on the chart, and milestones show as diamonds.{% else %}The contractor hasn't shared a programme for this project yet.{% endif %}</p></div>
+  {% endif %}
+</div>
+
+{% if form %}
+<div class="card" style="max-width:900px"><div class="card-head"><h2>Add activity</h2></div><div class="card-body">
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">{% icon 'plus' %} Add to programme</button></div></form>
+</div></div>
+{% endif %}
+{% endblock %}

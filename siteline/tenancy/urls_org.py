@@ -26,6 +26,8 @@ urlpatterns = [
     path('billing/success/', billing.success, name='billing_success'),
 
     path('pipeline/', projects.pipeline, name='pipeline'),
+    path('analytics/', projects.tender_analytics, name='tender_analytics'),
+    path('programme/', projects.programme_overview, name='programme_overview'),
     path('rfis/', rfis.rfi_register, name='rfi_register'),
 
     path('projects/', projects.project_list, name='project_list'),
@@ -35,6 +37,9 @@ urlpatterns = [
     path(P + 'delete/', projects.project_delete, name='project_delete'),
     path(P + 'stage/', projects.project_stage, name='project_stage'),
     path(P + 'team/', projects.project_team, name='project_team'),
+
+    path(P + 'programme/', projects.programme, name='programme'),
+    path(P + 'programme/<int:activity_id>/', projects.activity_edit, name='activity_edit'),
 
     path(P + 'tasks/', projects.task_list, name='task_list'),
     path(P + 'tasks/<int:task_id>/update/', projects.task_update, name='task_update'),

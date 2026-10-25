@@ -1,0 +1,9 @@
+{% load ui %}<div class="card">
+  <div class="card-head"><h2>{{ title }}</h2>{% if note %}<span class="small dim">{{ note }}</span>{% endif %}</div>
+  {% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th></th><th class="num">Bids</th><th class="num">Won</th><th>Win rate</th><th class="num">Value won</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td>{{ r.label }}</td><td class="num">{{ r.bids }}</td><td class="num">{{ r.won }}</td>
+      <td style="min-width:120px"><div class="rate"><span class="meter"><span style="width:{{ r.win_rate|default:0 }}%"></span></span><span class="mono">{{ r.win_rate|default:0 }}%</span></div></td>
+      <td class="num">{{ r.won_value|money_short:currency }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty left">No bids decided in this period.</div>{% endif %}
+</div>
