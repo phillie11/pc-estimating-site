@@ -1,0 +1,17 @@
+Hi,
+
+{{ inviter.full_name }} at {{ org.name }} has given you access to the project portal for:
+
+  {{ project.name }}{% if project.site_address %}
+  {{ project.site_address }}{% endif %}
+{% if invite.message %}
+Their note:
+{{ invite.message }}
+{% endif %}
+Accept and set up your free account:
+{{ link }}
+
+You'll see the drawings, RFIs and items {{ org.name }} shares with you on this project.
+The link expires in 21 days.
+
+— {{ PRODUCT_NAME }}

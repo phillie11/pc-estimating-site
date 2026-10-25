@@ -1,0 +1,17 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="grid split">
+  <div>
+    <div class="filters"><a class="chip {% if show == 'open' %}on{% endif %}" href="?show=open">Open</a><a class="chip {% if show == 'all' %}on{% endif %}" href="?show=all">All</a></div>
+    <div class="card">{% if tasks %}<div class="table-wrap"><table class="t"><thead><tr><th>Task</th><th>Assignee</th><th>Due</th><th>Status</th></tr></thead><tbody>
+      {% for t in tasks %}<tr>
+        <td>{% if is_internal %}<a class="rowlink" href="{% url 'task_edit' org.slug project.pk t.pk %}">{{ t.title }}</a>{% else %}<strong>{{ t.title }}</strong>{% endif %}{% if t.priority == 'HIGH' or t.priority == 'URGENT' %} {% badge t.get_priority_display 'bad' %}{% endif %}{% if t.description %}<span class="sub">{{ t.description|truncatechars:120 }}</span>{% endif %}</td>
+        <td class="small">{{ t.assignee|default:"—" }}</td>
+        <td class="small nowrap {% if t.is_overdue %}overdue{% endif %}">{{ t.due_date|date:"j M"|default:"—" }}</td>
+        <td><form method="post" action="{% url 'task_update' org.slug project.pk t.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <select name="status" data-autosubmit style="width:auto">{% for v, l in t.STATUS_CHOICES %}<option value="{{ v }}" {% if v == t.status %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form></td>
+      </tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty">No tasks{% if show == 'open' %} open{% endif %}.</div>{% endif %}</div>
+  </div>
+  {% if form %}<div class="card"><div class="card-head"><h2>Add task</h2></div><div class="card-body"><form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Add task</button></div></form></div></div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% if is_internal %}<a class="btn primary" href="{% url 'variation_create' org.slug project.pk %}">{% icon 'plus' %} New variation</a>{% endif %}{% endblock %}
+{% block project_content %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Approved</div><div class="value">{{ totals.approved|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Awaiting decision</div><div class="value">{{ totals.submitted|money:currency }}</div></div>
+  {% if is_internal %}<div class="kpi"><div class="label">Draft</div><div class="value">{{ totals.draft|money:currency }}</div></div>{% endif %}
+  <div class="kpi"><div class="label">Rejected</div><div class="value">{{ totals.rejected|money:currency }}</div></div>
+</div>
+<div class="card">{% if variations %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Variation</th><th>Status</th><th class="num">Quoted</th><th class="num">Approved</th><th>Submitted</th></tr></thead><tbody>
+{% for v in variations %}<tr><td class="ref">{{ v.reference }}</td>
+  <td><a class="rowlink" href="{{ v.get_absolute_url }}">{{ v.title }}</a><span class="sub">{{ v.get_cause_display }}{% if v.client_reference %} · {{ v.client_reference }}{% endif %}{% if v.proceed_at_risk and v.status != 'APPROVED' %} · <span class="overdue">at risk</span>{% endif %}</span></td>
+  <td>{% badge v.get_status_display v.status_tone %}</td><td class="num">{{ v.value|money:currency }}</td><td class="num">{{ v.approved_value|money:currency }}</td>
+  <td class="small nowrap">{{ v.submitted_at|date:"j M Y"|default:"—" }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty"><h3>No variations</h3>{% if is_internal %}<p>Draft one, then submit it. Clients on the project can approve it from their portal.</p>{% endif %}</div>{% endif %}</div>
+{% endblock %}

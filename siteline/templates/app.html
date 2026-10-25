@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% load ui %}
+{% block body %}
+<div class="topbar"><button data-nav-toggle aria-label="Menu">{% icon 'menu' %}</button>
+  <span class="mark" style="width:26px;height:26px;border-radius:4px;background:var(--accent);display:grid;place-items:center;font-weight:800">{{ org.name|first|upper }}</span>
+  <strong>{{ org.name }}</strong></div>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="{% url 'dashboard' org.slug %}">
+      {% if org.logo %}<img src="{% url 'org_logo' org.slug %}" alt="">{% else %}<span class="mark">{{ org.name|first|upper }}</span>{% endif %}
+      <span><span class="name">{{ org.name }}</span><br><span class="sub">{% if is_internal %}Workspace{% else %}Project portal{% endif %}</span></span>
+    </a>
+    {% with u=request.resolver_match.url_name %}
+    <nav class="nav">
+      <a href="{% url 'dashboard' org.slug %}" class="{% if u == 'dashboard' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
+      {% if is_internal %}<a href="{% url 'pipeline' org.slug %}" class="{% if u == 'pipeline' %}on{% endif %}">{% icon 'pipeline' %} Bid pipeline</a>{% endif %}
+      <a href="{% url 'project_list' org.slug %}" class="{% if project or u == 'project_list' or u == 'project_create' %}on{% endif %}">{% icon 'projects' %} Projects</a>
+      <a href="{% url 'rfi_register' org.slug %}" class="{% if u == 'rfi_register' %}on{% endif %}">{% icon 'rfi' %} RFI register</a>
+      {% if is_internal %}
+      <a href="{% url 'sub_list' org.slug %}" class="{% if u == 'sub_list' or u == 'sub_detail' or u == 'sub_create' or u == 'sub_edit' or u == 'trades' %}on{% endif %}">{% icon 'directory' %} Supply chain</a>
+      <div class="nav-label">Company</div>
+      <a href="{% url 'team' org.slug %}" class="{% if u == 'team' %}on{% endif %}">{% icon 'team' %} Team</a>
+      <a href="{% url 'activity' org.slug %}" class="{% if u == 'activity' %}on{% endif %}">{% icon 'activity' %} Activity</a>
+      {% if is_org_admin %}
+      <a href="{% url 'org_settings' org.slug %}" class="{% if u == 'org_settings' %}on{% endif %}">{% icon 'settings' %} Settings</a>
+      <a href="{% url 'billing' org.slug %}" class="{% if u == 'billing' %}on{% endif %}">{% icon 'billing' %} Billing</a>
+      {% endif %}{% endif %}
+    </nav>
+    {% endwith %}
+    {% if is_org_admin and org.is_on_internal_trial %}<a class="trial-pill" href="{% url 'billing' org.slug %}"><strong>{{ org.trial_days_left }} day{{ org.trial_days_left|pluralize }}</strong> left in your trial. Choose a plan →</a>{% endif %}
+    <div class="side-foot">
+      <details>
+        <summary><div class="who"><span class="avatar">{{ request.user.initials }}</span><span><span style="color:#fff">{{ request.user.full_name }}</span><br><span class="small" style="color:var(--side-dim)">{{ membership.get_role_display }}</span></span></div></summary>
+        <div class="menu">
+          <a href="{% url 'profile' %}">Your account</a>
+          {% for o in other_orgs %}<a href="{% url 'dashboard' o.slug %}">Switch to {{ o.name }}</a>{% endfor %}
+          <a href="{% url 'org_picker' %}">All workspaces</a>
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>Log out</button></form>
+        </div>
+      </details>
+    </div>
+  </aside>
+  <main class="main">
+    {% if org.access_state == 'ok' and org.subscription_status == 'past_due' and is_org_admin %}<div class="banner">Your last payment failed. Update your card to keep the workspace open. <a href="{% url 'billing_portal' org.slug %}">Update billing</a></div>{% endif %}
+    {% include "partials/messages.html" %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

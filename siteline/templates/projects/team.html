@@ -1,0 +1,26 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Project team</h2></div>
+      {% if members %}<div class="table-wrap"><table class="t"><tbody>{% for m in members %}<tr>
+        <td><strong>{{ m.user.full_name }}</strong><span class="sub">{% if is_internal %}{{ m.user.email }}{% endif %}{% if m.user.phone and is_internal %} · {{ m.user.phone }}{% endif %}</span></td>
+        <td>{% badge m.get_role_display m.is_external|yesno:'info,muted' %}{% if m.company_name %}<span class="sub">{{ m.company_name }}</span>{% endif %}</td>
+        <td class="num">{% if is_internal %}<form method="post" class="inline" data-confirm="Remove {{ m.user.full_name }} from this project?">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="member" value="{{ m.pk }}"><button class="linkbtn">Remove</button></form>{% endif %}</td>
+      </tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty left">Nobody on this project yet.</div>{% endif %}</div>
+    {% if invites %}<div class="card"><div class="card-head"><h2>Pending portal invites</h2></div><ul class="list">{% for i in invites %}
+      <li><span class="grow">{{ i.email }} <span class="small dim">· {{ i.get_role_display }}{% if i.company_name %}, {{ i.company_name }}{% endif %} · expires {{ i.expires_at|date:"j M" }}</span></span>
+        <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="resend"><input type="hidden" name="invite" value="{{ i.pk }}"><button class="linkbtn">Resend</button></form>
+        <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="revoke"><input type="hidden" name="invite" value="{{ i.pk }}"><button class="linkbtn">Revoke</button></form></li>{% endfor %}</ul></div>{% endif %}
+  </div>
+  {% if is_internal %}<div class="stack">
+    <div class="card"><div class="card-head"><h2>Invite to the portal</h2></div><div class="card-body">
+      <p class="small dim">Clients, designers and subcontractors get free access to this project only.</p>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="invite">{% with form=invite_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Send invite</button></div></form>
+    </div></div>
+    {% if staff_form.fields.user.queryset.exists %}<div class="card"><div class="card-head"><h2>Add a colleague</h2></div><div class="card-body">
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_staff">{% with form=staff_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Add</button></div></form>
+    </div></div>{% endif %}
+  </div>{% endif %}
+</div>
+{% endblock %}

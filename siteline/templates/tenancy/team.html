@@ -1,0 +1,24 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Team{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Team</h1><p class="dim" style="margin:4px 0 0">{{ seats_used }} of {{ seat_limit }} staff seats used on {{ org.plan_config.name }}. External collaborators are free.</p></div></div>
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Staff</h2></div><div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Role</th><th></th></tr></thead><tbody>
+      {% for m in staff %}<tr><td><strong>{{ m.user.full_name }}</strong><span class="sub">{{ m.user.email }}{% if m.user.job_title %} · {{ m.user.job_title }}{% endif %}</span></td>
+        <td>{% if is_org_admin and m.user != request.user %}<form method="post" action="{% url 'member_update' org.slug m.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="action" value="role">
+          <select name="role" data-autosubmit style="width:auto">{% for v, l in role_form.fields.role.choices %}<option value="{{ v }}" {% if v == m.role %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form>
+          {% else %}{{ m.get_role_display }}{% endif %}</td>
+        <td class="num">{% if is_org_admin and m.user != request.user %}<form method="post" action="{% url 'member_update' org.slug m.pk %}" class="inline" data-confirm="Remove {{ m.user.full_name }} from {{ org.name }}?">{% csrf_token %}<input type="hidden" name="action" value="remove"><button class="linkbtn">Remove</button></form>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div></div>
+    {% if invites %}<div class="card"><div class="card-head"><h2>Pending invites</h2></div><ul class="list">{% for i in invites %}<li><span class="grow">{{ i.email }} <span class="dim small">· {{ i.get_role_display }} · sent {{ i.created_at|timesince }} ago</span></span>{% if is_org_admin %}<form method="post" action="{% url 'invite_revoke' org.slug i.pk %}" class="inline">{% csrf_token %}<button class="linkbtn">Revoke</button></form>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+    <div class="card"><div class="card-head"><h2>External collaborators</h2><span class="small dim">Invite them from a project's Team tab</span></div>
+      {% if externals %}<ul class="list">{% for m in externals %}<li><span class="grow"><strong>{{ m.user.full_name }}</strong> <span class="dim small">· {{ m.user.email }}</span></span><span class="small dim">{{ m.n_projects }} project{{ m.n_projects|pluralize }}</span>{% if is_org_admin %}<form method="post" action="{% url 'member_update' org.slug m.pk %}" class="inline" data-confirm="Remove all portal access for {{ m.user.full_name }}?">{% csrf_token %}<input type="hidden" name="action" value="remove"><button class="linkbtn">Remove</button></form>{% endif %}</li>{% endfor %}</ul>
+      {% else %}<div class="empty left">No clients or subcontractors in the portal yet.</div>{% endif %}</div>
+  </div>
+  {% if is_org_admin %}<div class="card"><div class="card-head"><h2>Invite staff</h2></div><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Send invite</button></div></form>
+    <p class="small dim" style="margin-top:12px">Admins can manage billing, settings and the team. Staff see every project and the supply chain.</p>
+  </div></div>{% endif %}
+</div>
+{% endblock %}

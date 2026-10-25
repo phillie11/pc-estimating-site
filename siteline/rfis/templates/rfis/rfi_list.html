@@ -1,0 +1,19 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Register CSV</a><a class="btn primary" href="{% url 'rfi_create' org.slug project.pk %}">{% icon 'plus' %} Raise RFI</a>{% endblock %}
+{% block project_content %}
+<div class="filters">
+  <a class="chip {% if status == 'live' %}on{% endif %}" href="?status=live">Live</a>
+  <a class="chip {% if status == 'mine' %}on{% endif %}" href="?status=mine">Waiting on me</a>
+  <a class="chip {% if status == 'OPEN' %}on{% endif %}" href="?status=OPEN">Open</a>
+  <a class="chip {% if status == 'RESPONDED' %}on{% endif %}" href="?status=RESPONDED">Responded</a>
+  <a class="chip {% if status == 'CLOSED' %}on{% endif %}" href="?status=CLOSED">Closed</a>
+  <a class="chip {% if status == 'all' %}on{% endif %}" href="?status=all">All</a>
+</div>
+<div class="card">{% if rfis %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Subject</th><th>Ball in court</th><th>Required</th><th>Status</th><th class="num">Days</th></tr></thead><tbody>
+{% for r in rfis %}<tr><td class="ref">{{ r.reference }}</td>
+  <td><a class="rowlink" href="{{ r.get_absolute_url }}">{{ r.subject }}</a><span class="sub">{{ r.get_category_display }} · raised by {{ r.raised_by|default:"—" }}{% if is_internal and not r.is_shared %} · internal{% endif %}</span></td>
+  <td class="small">{{ r.assigned_to|default:"—" }}</td>
+  <td class="small nowrap {% if r.is_overdue %}overdue{% endif %}">{{ r.due_date|date:"j M"|default:"—" }}</td>
+  <td>{% badge r.get_status_display r.status_tone %}</td><td class="num mono">{{ r.days_open }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty"><h3>No RFIs here</h3><p>Raise one and set who has the ball. They'll be emailed and see it in their portal.</p></div>{% endif %}</div>
+{% endblock %}

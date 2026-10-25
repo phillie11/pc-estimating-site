@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ PRODUCT_NAME }} · Project portal for fit-out & build contractors{% endblock %}
+{% block body %}
+<header class="mk-nav">
+  <a class="logo-word" href="/"><span class="mark">{{ PRODUCT_NAME|first }}</span>{{ PRODUCT_NAME }}</a>
+  <nav class="row"><a href="#pricing" class="btn ghost">Pricing</a><a href="{% url 'login' %}" class="btn ghost">Log in</a><a href="{% url 'signup' %}" class="btn primary">Start free trial</a></nav>
+</header>
+<section class="mk-hero">
+  <div>
+    <h1>Run the job, <em>not the spreadsheets.</em></h1>
+    <p class="lede">Bids, live projects, RFIs, variations and your supply chain in one place, with a portal your clients and subcontractors log in to for free.</p>
+    <div class="row" style="margin-top:1.5rem"><a href="{% url 'signup' %}" class="btn primary" style="padding:12px 20px;font-size:15px">Start your {{ trial_days }}-day trial</a><span class="dim small">No card needed to start.</span></div>
+  </div>
+  <div class="mk-shot" aria-hidden="true">
+    <div class="kpis" style="margin:0 0 12px">
+      <div class="kpi hero"><div class="label">Pipeline</div><div class="value">£4.2m</div><div class="note">11 live bids</div></div>
+      <div class="kpi"><div class="label">Win rate</div><div class="value">31%</div><div class="note">last 12 months</div></div>
+      <div class="kpi"><div class="label">Open RFIs</div><div class="value">14</div><div class="note"><span class="bad">3 overdue</span></div></div>
+    </div>
+    <div class="board" style="grid-template-columns:repeat(3,1fr)">
+      <div class="col" style="min-height:0"><div class="col-head"><h3>Tendering</h3></div><div class="bcard"><div class="t1">Retail refit, Unit 4</div><div class="t2">Due Fri 12:00</div><div class="t3"><span class="badge accent">60%</span><span class="val">£840k</span></div></div></div>
+      <div class="col" style="min-height:0"><div class="col-head"><h3>Submitted</h3></div><div class="bcard"><div class="t1">Bar &amp; kitchen fit-out</div><div class="t2">Decision 14 Nov</div><div class="t3"><span class="badge info">40%</span><span class="val">£1.3m</span></div></div></div>
+      <div class="col" style="min-height:0"><div class="col-head"><h3>Won</h3></div><div class="bcard"><div class="t1">Showroom refurb</div><div class="t2">Start 6 Jan</div><div class="t3"><span class="badge good">Won</span><span class="val">£2.1m</span></div></div></div>
+    </div>
+  </div>
+</section>
+<section class="mk-section">
+  <div class="mk-feats">
+    <div class="mk-feat"><div class="k">01 / BIDS</div><h3>Pipeline board</h3><p class="dim">Drag tenders from lead to won. Weighted pipeline, return deadlines and win rate on one screen.</p></div>
+    <div class="mk-feat"><div class="k">02 / PORTAL</div><h3>Free external users</h3><p class="dim">Invite clients, designers and subcontractors to a project. They see only what you share.</p></div>
+    <div class="mk-feat"><div class="k">03 / RFIs</div><h3>Ball-in-court RFIs</h3><p class="dim">Numbered register per job, due dates, responses and reminders. Export to CSV for the client.</p></div>
+    <div class="mk-feat"><div class="k">04 / VARIATIONS</div><h3>Client sign-off online</h3><p class="dim">Submit a variation, the client approves or rejects it in the portal, and your forecast updates.</p></div>
+    <div class="mk-feat"><div class="k">05 / SUPPLY CHAIN</div><h3>Subcontractor directory</h3><p class="dim">Trades, ratings, accreditations and insurance expiry with reminders before cover lapses.</p></div>
+    <div class="mk-feat"><div class="k">06 / SITE</div><h3>Snags, tasks, documents</h3><p class="dim">Revision-controlled drawings, photo snags assigned to the trade, and a phone-friendly layout.</p></div>
+  </div>
+</section>
+<section class="mk-section" id="pricing">
+  <h2 style="font-size:1.6rem">Pricing</h2>
+  <p class="dim">Monthly, cancel any time. Clients, consultants and subcontractors never count as seats.</p>
+  <div class="prices">{% for code, p in plans.items %}
+    <div class="price{% if code == 'team' %} featured{% endif %}">
+      <h3>{{ p.name }}</h3><div class="amt">{{ p.price_label }}<span class="dim" style="font-size:1rem;font-weight:500">/{{ p.interval }} + VAT</span></div>
+      <p class="dim">{{ p.blurb }}</p>
+      <ul><li>{{ p.max_staff }} staff seats</li><li>{% if p.max_active_projects %}{{ p.max_active_projects }} active projects{% else %}Unlimited projects{% endif %}</li><li>Unlimited external collaborators</li></ul>
+      <a href="{% url 'signup' %}" class="btn {% if code == 'team' %}primary{% endif %} block">Start free trial</a>
+    </div>{% endfor %}</div>
+</section>
+<footer class="mk-foot row between"><span>© {% now "Y" %} {{ PRODUCT_NAME }}</span><a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a></footer>
+{% endblock %}

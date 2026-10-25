@@ -1,0 +1,16 @@
+<div class="card">
+  <div class="card-head"><h3>Discussion</h3><span class="dim small">{{ comments|length }} comment{{ comments|length|pluralize }}</span></div>
+  <div class="card-body">
+    {% if comments %}<ul class="thread">
+      {% for c in comments %}<li class="{% if c.internal_only %}internal{% endif %}">
+        <span class="avatar">{{ c.author.initials|default:"?" }}</span>
+        <div><div class="meta"><strong style="color:var(--ink)">{{ c.author|default:"Deleted user" }}</strong> · {{ c.created_at|date:"j M Y, H:i" }}{% if c.internal_only %} · <span class="badge warn plain">Internal</span>{% endif %}</div>
+        <div class="body">{{ c.body }}</div></div>
+      </li>{% endfor %}
+    </ul>{% else %}<p class="dim">No comments yet.</p>{% endif %}
+    <form method="post" style="margin-top:12px">{% csrf_token %}<input type="hidden" name="action" value="comment">
+      {% for field in comment_form %}{% include "partials/field.html" %}{% endfor %}
+      <div class="form-actions"><button class="btn">Post comment</button></div>
+    </form>
+  </div>
+</div>

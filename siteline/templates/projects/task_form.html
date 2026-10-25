@@ -1,0 +1,7 @@
+{% extends "project_base.html" %}
+{% block project_content %}
+<div class="card" style="max-width:800px"><div class="card-head"><h2>Edit task</h2></div><div class="card-body">
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'task_list' org.slug project.pk %}">Cancel</a></div></form>
+<form method="post" action="{% url 'task_update' org.slug project.pk task.pk %}" data-confirm="Delete this task?" style="margin-top:14px">{% csrf_token %}<input type="hidden" name="delete" value="1"><button class="btn danger sm">Delete task</button></form>
+</div></div>
+{% endblock %}

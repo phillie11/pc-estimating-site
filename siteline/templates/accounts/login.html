@@ -1,0 +1,12 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Log in{% endblock %}
+{% block auth %}
+<h1>Log in</h1><p class="dim">Welcome back.</p>
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="flash error">Email and password didn't match. After several failed attempts the account is locked for an hour.</div>{% endif %}
+  {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+  <input type="hidden" name="next" value="{{ next }}">
+  <button class="btn primary block">Log in</button>
+</form>
+<p class="small" style="margin-top:14px"><a href="{% url 'password_reset' %}">Forgotten password?</a> · New here? <a href="{% url 'signup' %}">Start a free trial</a></p>
+{% endblock %}

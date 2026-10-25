@@ -1,0 +1,34 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if is_internal %}
+  {% if vo.status == 'DRAFT' %}<form method="post" data-confirm="Submit {{ vo.reference }} to the client for approval?">{% csrf_token %}<input type="hidden" name="action" value="submit"><button class="btn primary">Submit to client</button></form>{% endif %}
+  {% if vo.status == 'DRAFT' or vo.status == 'SUBMITTED' %}<a class="btn" href="{% url 'variation_edit' org.slug project.pk vo.pk %}">Edit</a>
+  <form method="post" data-confirm="Withdraw {{ vo.reference }}?">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn ghost">Withdraw</button></form>{% endif %}{% endif %}{% endblock %}
+{% block project_content %}
+<p class="small"><a href="{% url 'variation_list' org.slug project.pk %}">← Variations</a></p>
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-body">
+      <div class="row"><span class="ref">{{ vo.reference }}</span>{% badge vo.get_status_display vo.status_tone %}{% if vo.proceed_at_risk and vo.status != 'APPROVED' %}{% badge 'Proceeding at risk' 'warn' %}{% endif %}</div>
+      <h2 style="margin:8px 0 12px">{{ vo.title }}</h2>
+      <div class="quote">{{ vo.description }}</div>
+      {% if vo.attachment %}<p style="margin-top:10px"><a class="btn sm" href="{% url 'variation_attachment' org.slug project.pk vo.pk %}">{% icon 'download' %} Quotation / attachment</a></p>{% endif %}
+      {% if vo.decided_at %}<hr><h3>Decision</h3><p><strong>{{ vo.get_status_display }}</strong> by {{ vo.decided_by }} on {{ vo.decided_at|date:"j M Y" }}{% if vo.approved_value is not None %} at <span class="mono">{{ vo.approved_value|money:currency }}</span>{% endif %}.</p>{% if vo.decision_notes %}<div class="quote">{{ vo.decision_notes }}</div>{% endif %}{% endif %}
+    </div></div>
+    {% if can_decide or is_org_admin and vo.status == 'SUBMITTED' %}<div class="card" style="border:2px solid var(--accent)"><div class="card-head"><h2>{% if can_decide %}Your decision{% else %}Record client decision{% endif %}</h2></div><div class="card-body">
+      {% if not can_decide %}<p class="small dim">Admins only. Use this when the client decided by email or verbally, and record how in the notes. It's logged under your name.</p>{% endif %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="decide">{% with form=decision_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Confirm decision</button></div></form>
+    </div></div>{% endif %}
+    {% include "partials/comments.html" %}
+  </div>
+  <div class="card"><div class="card-body"><dl class="dl">
+    <dt>Quoted value</dt><dd class="mono"><strong>{{ vo.value|money:currency }}</strong></dd>
+    {% if vo.approved_value is not None %}<dt>Approved value</dt><dd class="mono">{{ vo.approved_value|money:currency }}</dd>{% endif %}
+    <dt>Time impact</dt><dd>{% if vo.time_impact_days %}{{ vo.time_impact_days }} day{{ vo.time_impact_days|pluralize }}{% else %}None stated{% endif %}</dd>
+    <dt>Cause</dt><dd>{{ vo.get_cause_display }}</dd>
+    {% if vo.client_reference %}<dt>Client ref</dt><dd class="mono">{{ vo.client_reference }}</dd>{% endif %}
+    {% if vo.rfi and is_internal or vo.rfi and vo.rfi.is_shared %}<dt>From RFI</dt><dd><a href="{{ vo.rfi.get_absolute_url }}">{{ vo.rfi.reference }}</a></dd>{% endif %}
+    <dt>Raised</dt><dd>{{ vo.created_at|date:"j M Y" }} by {{ vo.raised_by|default:"—" }}</dd>
+    {% if vo.submitted_at %}<dt>Submitted</dt><dd>{{ vo.submitted_at|date:"j M Y" }}</dd>{% endif %}
+  </dl></div></div>
+</div>
+{% endblock %}

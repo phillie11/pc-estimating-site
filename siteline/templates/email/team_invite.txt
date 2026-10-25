@@ -1,0 +1,10 @@
+Hi,
+
+{{ inviter.full_name }} has invited you to join {{ org.name }} on {{ PRODUCT_NAME }}.
+
+Accept the invitation:
+{{ link }}
+
+The link expires in 14 days.
+
+— {{ PRODUCT_NAME }}

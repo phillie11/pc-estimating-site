@@ -1,0 +1,2 @@
+{% extends "accounts/auth_base.html" %}
+{% block auth %}<h1>Invitation unavailable</h1><p class="dim">This invite has expired, been used, or been withdrawn. Ask the person who sent it for a new one.</p><a href="{% url 'login' %}" class="btn">Log in</a>{% endblock %}

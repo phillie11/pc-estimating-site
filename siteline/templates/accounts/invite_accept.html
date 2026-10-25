@@ -1,0 +1,15 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Accept invitation{% endblock %}
+{% block side_title %}{{ org_name }} has invited you.{% endblock %}
+{% block side_text %}Access is free for collaborators. You'll only see what {{ org_name }} shares with you.{% endblock %}
+{% block auth %}
+<div class="eyebrow dim small" style="text-transform:uppercase;letter-spacing:.1em">Invitation</div>
+<h1>{{ org_name }}</h1>
+<p>You've been invited to {{ what }}.</p>
+{% if invite.message %}<div class="quote" style="margin-bottom:14px">{{ invite.message }}</div>{% endif %}
+<form method="post">{% csrf_token %}
+  {% if form %}<p class="small dim">Create your account for <strong>{{ invite_email }}</strong>.</p>{% for field in form %}{% include "partials/field.html" %}{% endfor %}{% endif %}
+  <button class="btn primary block">Accept and continue</button>
+</form>
+{% if form %}<p class="small" style="margin-top:12px">Already have an account? <a href="{% url 'login' %}?next={{ request.path }}">Log in first</a></p>{% endif %}
+{% endblock %}

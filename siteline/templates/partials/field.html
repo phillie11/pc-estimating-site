@@ -1,0 +1,14 @@
+{% load ui %}<div class="field{% if field.errors %} has-error{% endif %}{% if full or field|field_type == 'Textarea' or field|field_type == 'CheckboxSelectMultiple' %} full{% endif %}">
+  {% if field|field_type == 'CheckboxInput' %}
+    <div class="check">{{ field }} <label for="{{ field.id_for_label }}" style="margin:0;font-weight:500">{{ field.label }}</label></div>
+  {% elif field|field_type == 'CheckboxSelectMultiple' %}
+    <label>{{ field.label }}</label><div class="checks">{% for c in field %}<label>{{ c.tag }} {{ c.choice_label }}</label>{% endfor %}</div>
+  {% elif field|field_type == 'RadioSelect' %}
+    <label>{{ field.label }}</label><div class="row">{% for c in field %}<label style="font-weight:500;display:flex;gap:6px;align-items:center;margin:0">{{ c.tag }} {{ c.choice_label }}</label>{% endfor %}</div>
+  {% else %}
+    {% if field.label %}<label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="dim">*</span>{% endif %}</label>{% endif %}
+    {{ field }}
+  {% endif %}
+  {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+  {% for e in field.errors %}<div class="err">{{ e }}</div>{% endfor %}
+</div>

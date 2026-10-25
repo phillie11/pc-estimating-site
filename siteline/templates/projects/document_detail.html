@@ -1,0 +1,16 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if is_internal %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="visibility"><button class="btn">{% if doc.visibility == 'SHARED' %}Make internal only{% else %}Share with collaborators{% endif %}</button></form>
+  <form method="post" data-confirm="Delete this document and every revision?">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn danger">Delete</button></form>{% endif %}{% endblock %}
+{% block project_content %}
+<p class="small"><a href="{% url 'document_list' org.slug project.pk %}">← All documents</a></p>
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>{% if doc.reference %}<span class="mono">{{ doc.reference }}</span> · {% endif %}{{ doc.title }}</h2>{% if doc.visibility == 'SHARED' %}{% badge 'Shared' 'info' %}{% else %}{% badge 'Internal' 'muted' %}{% endif %}</div>
+    <div class="table-wrap"><table class="t"><thead><tr><th>Rev</th><th>File</th><th>Notes</th><th>Uploaded</th><th></th></tr></thead><tbody>
+    {% for r in revisions %}<tr><td class="mono">{{ r.revision }}{% if forloop.first %} <span class="badge good plain">Current</span>{% endif %}</td><td class="small">{{ r.original_name }}<span class="sub">{{ r.size|filesize }}</span></td><td class="small">{{ r.notes|default:"—" }}</td><td class="small nowrap">{{ r.uploaded_at|date:"j M Y H:i" }}<span class="sub">{{ r.uploaded_by|default:"" }}</span></td>
+      <td class="num"><a class="btn sm" href="{% url 'document_download' org.slug project.pk doc.pk r.pk %}">{% icon 'download' %}</a></td></tr>{% endfor %}
+    </tbody></table></div></div>
+  {% if can_revise %}<div class="card"><div class="card-head"><h2>Upload new revision</h2></div><div class="card-body">
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Upload revision</button></div></form></div></div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Your workspaces{% endblock %}
+{% block auth %}
+<h1>Your workspaces</h1>
+{% if memberships %}<div class="card" style="margin:14px 0"><ul class="list">{% for m in memberships %}
+  <li><span class="grow"><a href="{% url 'dashboard' m.organization.slug %}"><strong>{{ m.organization.name }}</strong></a><br><span class="small dim">{{ m.get_role_display }}</span></span><a class="btn sm" href="{% url 'dashboard' m.organization.slug %}">Open</a></li>
+{% endfor %}</ul></div>{% else %}<p class="dim">You're not in any workspace yet. If someone invited you, use the link in their email.</p>{% endif %}
+<details style="margin-top:18px"><summary class="btn">Create a new company workspace</summary>
+<form method="post" style="margin-top:12px">{% csrf_token %}{% for field in form %}{% include "partials/field.html" %}{% endfor %}<button class="btn primary">Create</button></form></details>
+<form method="post" action="{% url 'logout' %}" style="margin-top:18px">{% csrf_token %}<button class="linkbtn">Log out</button></form>
+{% endblock %}

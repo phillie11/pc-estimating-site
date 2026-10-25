@@ -1,0 +1,18 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}{{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="{% url 'project_list' org.slug %}">Projects</a> / <span class="mono">{{ project.reference }}</span></div>
+    <h1>{{ project.name }}</h1>
+    <div class="row small dim" style="margin-top:4px">
+      {% badge project.get_stage_display project.stage_tone %}
+      {% if project.client_name %}<span>{{ project.client_name }}</span>{% endif %}
+      {% if project.site_address %}<span>{{ project.site_address }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="row">{% block project_actions %}{% endblock %}</div>
+</div>
+<nav class="tabs">{% for code, label, url, n in tabs %}<a href="{{ url }}" class="{% if code == tab %}on{% endif %}">{{ label }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>
+{% block project_content %}{% endblock %}
+{% endblock %}

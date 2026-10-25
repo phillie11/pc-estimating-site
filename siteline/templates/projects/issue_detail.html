@@ -1,0 +1,25 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}
+  {% if issue.status == 'OPEN' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="ready"><button class="btn">Mark ready for inspection</button></form>{% endif %}
+  {% if is_internal %}{% if issue.status != 'CLOSED' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="close"><button class="btn primary">Close</button></form>{% else %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn">Reopen</button></form>{% endif %}
+  <a class="btn" href="{% url 'issue_edit' org.slug project.pk issue.pk %}">Edit</a>{% endif %}
+{% endblock %}
+{% block project_content %}
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-body">
+      <div class="row"><span class="ref">{{ issue.reference }}</span>{% badge issue.get_status_display 'accent' %}{% badge issue.get_issue_type_display 'muted' %}</div>
+      <h2 style="margin-top:8px">{{ issue.title }}</h2>
+      {% if issue.description %}<div style="white-space:pre-wrap">{{ issue.description }}</div>{% endif %}
+      {% if issue.photo %}<a href="{% url 'issue_photo' org.slug project.pk issue.pk %}" target="_blank" rel="noopener"><img src="{% url 'issue_photo' org.slug project.pk issue.pk %}" alt="Snag photo" style="max-width:100%;border-radius:5px;margin-top:12px;border:1px solid var(--line)"></a>{% endif %}
+    </div></div>
+    {% include "partials/comments.html" %}
+  </div>
+  <div class="card"><div class="card-body"><dl class="dl">
+    <dt>Location</dt><dd>{{ issue.location|default:"—" }}</dd><dt>Assigned to</dt><dd>{{ issue.assignee|default:"—" }}</dd>
+    <dt>Priority</dt><dd>{{ issue.get_priority_display }}</dd><dt>Due</dt><dd>{{ issue.due_date|date:"j M Y"|default:"—" }}</dd>
+    <dt>Raised</dt><dd>{{ issue.created_at|date:"j M Y" }} by {{ issue.created_by|default:"—" }}</dd>
+    {% if issue.closed_at %}<dt>Closed</dt><dd>{{ issue.closed_at|date:"j M Y" }}</dd>{% endif %}
+  </dl></div></div>
+</div>
+{% endblock %}

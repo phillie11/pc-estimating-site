@@ -1,0 +1,3 @@
+{% extends "accounts/auth_base.html" %}
+{% block auth %}<h1>Different account</h1><p class="dim">This invitation is for <strong>{{ invite_email }}</strong>, but you're logged in as {{ request.user.email }}.</p>
+<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn primary">Log out and switch</button></form>{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if is_internal %}
+  {% if rfi.status == 'RESPONDED' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="close"><button class="btn primary">Accept &amp; close</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn">Reopen</button></form>{% endif %}
+  {% if rfi.status == 'CLOSED' or rfi.status == 'VOID' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn">Reopen</button></form>{% endif %}
+  {% if rfi.status != 'CLOSED' and rfi.status != 'VOID' %}<a class="btn" href="{% url 'rfi_edit' org.slug project.pk rfi.pk %}">Edit</a>{% endif %}
+  <a class="btn" href="{% url 'variation_create' org.slug project.pk %}?rfi={{ rfi.pk }}">Raise variation</a>{% endif %}{% endblock %}
+{% block project_content %}
+<p class="small"><a href="{% url 'rfi_list' org.slug project.pk %}">← RFI register</a></p>
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-body">
+      <div class="row"><span class="ref">{{ rfi.reference }}</span>{% badge rfi.get_status_display rfi.status_tone %}{% if rfi.is_overdue %}{% badge 'Overdue' 'bad' %}{% endif %}{% if rfi.priority == 'HIGH' or rfi.priority == 'URGENT' %}{% badge rfi.get_priority_display 'warn' %}{% endif %}</div>
+      <h2 style="margin:8px 0 12px">{{ rfi.subject }}</h2>
+      <div class="quote">{{ rfi.question }}</div>
+      {% if rfi.attachment %}<p style="margin-top:10px"><a class="btn sm" href="{% url 'rfi_attachment' org.slug project.pk rfi.pk %}">{% icon 'download' %} Attachment</a></p>{% endif %}
+      {% if rfi.response %}<h3 style="margin-top:18px">Response</h3><div class="quote answer">{{ rfi.response }}</div><p class="small dim" style="margin-top:6px">{{ rfi.responded_by }} · {{ rfi.responded_at|date:"j M Y, H:i" }}</p>{% endif %}
+      {% if can_respond %}<hr><h3>{% if rfi.response %}Update response{% else %}Respond{% endif %}</h3>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="respond">{% with form=response_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Send response</button></div></form>{% endif %}
+    </div></div>
+    {% include "partials/comments.html" %}
+  </div>
+  <div class="stack">
+    <div class="card"><div class="card-body"><dl class="dl">
+      <dt>Ball in court</dt><dd><strong>{{ rfi.assigned_to|default:"Unassigned" }}</strong></dd>
+      <dt>Required by</dt><dd class="{% if rfi.is_overdue %}overdue{% endif %}">{{ rfi.due_date|date:"j M Y"|default:"—" }}</dd>
+      <dt>Raised</dt><dd>{{ rfi.created_at|date:"j M Y" }} by {{ rfi.raised_by|default:"—" }}</dd>
+      <dt>Category</dt><dd>{{ rfi.get_category_display }}</dd>
+      {% if rfi.document_reference %}<dt>Drawing / spec</dt><dd class="mono">{{ rfi.document_reference }}</dd>{% endif %}
+      {% if is_internal %}<dt>Cost impact</dt><dd>{{ rfi.get_cost_impact_display }}</dd>
+      <dt>Programme</dt><dd>{% if rfi.programme_impact_days %}{{ rfi.programme_impact_days }} days{% else %}—{% endif %}</dd>
+      <dt>Visibility</dt><dd>{% if rfi.is_shared %}Shared with collaborators{% else %}Internal only{% endif %}</dd>{% endif %}
+      <dt>Days open</dt><dd class="mono">{{ rfi.days_open }}</dd>
+    </dl></div>
+    {% if is_internal and rfi.status == 'OPEN' %}<div class="card-foot"><form method="post" class="row">{% csrf_token %}<input type="hidden" name="action" value="reassign"><select name="assigned_to" style="flex:1">{% for u in reassign_form.fields.assigned_to.queryset %}<option value="{{ u.pk }}" {% if u.pk == rfi.assigned_to_id %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select><button class="btn sm">Pass ball</button></form></div>{% endif %}
+    </div>
+    {% if variations %}<div class="card"><div class="card-head"><h3>Linked variations</h3></div><ul class="list">{% for v in variations %}<li><span class="ref">{{ v.reference }}</span><a class="grow" href="{{ v.get_absolute_url }}">{{ v.title }}</a>{% badge v.get_status_display v.status_tone %}</li>{% endfor %}</ul></div>{% endif %}
+    {% if is_internal and rfi.status == 'OPEN' %}<form method="post" data-confirm="Void this RFI?">{% csrf_token %}<input type="hidden" name="action" value="void"><button class="linkbtn small">Void this RFI</button></form>{% endif %}
+  </div>
+</div>
+{% endblock %}

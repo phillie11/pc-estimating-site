@@ -1,0 +1,19 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Your projects{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">{{ org.name }} project portal</div><h1>Hello, {{ request.user.get_short_name }}</h1></div></div>
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Your projects</h2></div>
+      {% if projects %}<ul class="list">{% for p in projects %}<li><span class="ref">{{ p.reference }}</span><span class="grow"><a href="{{ p.get_absolute_url }}"><strong>{{ p.name }}</strong></a><br><span class="small dim">{{ p.site_address }}</span></span>{% badge p.get_stage_display p.stage_tone %}</li>{% endfor %}</ul>
+      {% else %}<div class="empty left">No active projects shared with you right now.</div>{% endif %}</div>
+    <div class="card"><div class="card-head"><h2>Waiting on you</h2></div>
+      {% if my_rfis or my_tasks or my_issues %}<ul class="list">
+        {% for r in my_rfis %}<li><span class="ref">{{ r.reference }}</span><span class="grow"><a href="{{ r.get_absolute_url }}">{{ r.subject }}</a> <span class="dim small">· {{ r.project.name }}</span></span><span class="small {% if r.is_overdue %}overdue{% else %}dim{% endif %}">{{ r.due_date|date:"j M"|default:"" }}</span></li>{% endfor %}
+        {% for t in my_tasks %}<li><span class="ref">TASK</span><span class="grow"><a href="{% url 'task_list' org.slug t.project_id %}">{{ t.title }}</a> <span class="dim small">· {{ t.project.name }}</span></span></li>{% endfor %}
+        {% for i in my_issues %}<li><span class="ref">{{ i.reference }}</span><span class="grow"><a href="{% url 'issue_detail' org.slug i.project_id i.pk %}">{{ i.title }}</a> <span class="dim small">· {{ i.project.name }}</span></span></li>{% endfor %}
+      </ul>{% else %}<div class="empty left">Nothing waiting on you.</div>{% endif %}</div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Latest updates</h2></div>{% include "partials/feed.html" with show_project=True %}</div>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+Hi,
+
+{{ actor.full_name }} at {{ org.name }} has submitted a variation for your approval on {{ project.name }}.
+
+  {{ vo.reference }}  {{ vo.title }}
+  Quoted value: {{ org.currency_symbol }}{{ vo.value|floatformat:2 }}{% if vo.time_impact_days %}
+  Time impact: {{ vo.time_impact_days }} days{% endif %}
+
+Review and approve or reject it online:
+{{ link }}
+
+— {{ PRODUCT_NAME }}

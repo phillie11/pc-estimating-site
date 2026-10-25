@@ -1,0 +1,8 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Your account{% endblock %}
+{% block auth %}
+<p class="small"><a href="{% url 'home' %}">← Back to workspace</a></p>
+<h1>Your account</h1><p class="dim">{{ request.user.email }}</p>
+<form method="post">{% csrf_token %}{% for field in form %}{% include "partials/field.html" %}{% endfor %}<button class="btn primary">Save</button></form>
+<hr><a class="btn" href="{% url 'password_change' %}">Change password</a>
+{% endblock %}

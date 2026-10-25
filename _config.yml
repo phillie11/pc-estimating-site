@@ -1,0 +1,3 @@
+# Keep the Siteline CRM source out of the published GitHub Pages site
+exclude:
+  - siteline

@@ -1,0 +1,6 @@
+{% extends "app.html" %}
+{% block title %}Activity{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Activity</h1></div>
+<div class="card">{% include "partials/feed.html" with show_project=True %}</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "project_base.html" %}
+{% block project_content %}
+<div class="card" style="max-width:900px"><div class="card-head"><h2>{% if rfi %}Edit {{ rfi.reference }}{% else %}Raise an RFI{% endif %}</h2></div><div class="card-body">
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">{% if rfi %}Save{% else %}Raise RFI{% endif %}</button><a class="btn ghost" href="{% url 'rfi_list' org.slug project.pk %}">Cancel</a></div></form>
+</div></div>
+{% endblock %}

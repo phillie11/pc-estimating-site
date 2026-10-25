@@ -1,0 +1,15 @@
+{% extends "app.html" %}
+{% block title %}{% if project %}Edit {{ project.name }}{% else %}New project{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head"><div>{% if project %}<div class="crumbs"><a href="{{ project.get_absolute_url }}">{{ project.reference }}</a></div><h1>Edit project</h1>{% else %}<h1>New project or bid</h1><p class="dim" style="margin:4px 0 0">Start as a lead or tender and move it through the pipeline, or add a live job directly.</p>{% endif %}</div></div>
+<div class="card" style="max-width:900px"><div class="card-body">
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+    <div class="form-actions"><button class="btn primary">{% if project %}Save{% else %}Create project{% endif %}</button><a class="btn ghost" href="{% if project %}{{ project.get_absolute_url }}{% else %}{% url 'project_list' org.slug %}{% endif %}">Cancel</a></div>
+  </form>
+</div></div>
+{% if project and is_org_admin %}
+<div class="card" style="max-width:900px;margin-top:1.25rem;border-color:#EDBDB7"><div class="card-body">
+  <h3>Delete project</h3><p class="dim small">Removes the project with all its RFIs, variations, documents and portal access. This can't be undone.</p>
+  <form method="post" action="{% url 'project_delete' org.slug project.pk %}" class="row">{% csrf_token %}<input type="text" name="confirm" placeholder="Type {{ project.reference }}" style="max-width:200px"><button class="btn danger">Delete permanently</button></form>
+</div></div>{% endif %}
+{% endblock %}

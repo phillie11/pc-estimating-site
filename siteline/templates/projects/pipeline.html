@@ -1,0 +1,24 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Bid pipeline{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Bid pipeline</h1><p class="dim" style="margin:4px 0 0">Drag a card to move it. Mark lost or declined from the project page.</p></div>
+  <a href="{% url 'project_create' org.slug %}" class="btn primary">{% icon 'plus' %} New lead</a></div>
+<div class="board" data-board data-currency="{{ currency }}">
+  {% for col in columns %}<section class="col" data-stage="{{ col.code }}">
+    <div class="col-head"><h3>{{ col.label }} <span class="dim mono" data-count>{{ col.items|length }}</span></h3><span class="total" data-total>{{ col.total|money:currency }}</span></div>
+    <div class="col-items" style="flex:1">
+    {% for p in col.items %}<a class="bcard" draggable="true" href="{{ p.get_absolute_url }}" data-id="{{ p.pk }}" data-value="{{ p.value|default:0|stringformat:'s' }}" data-stage-url="{% url 'project_stage' org.slug p.pk %}">
+      <div class="t1">{{ p.name }}</div>
+      <div class="t2">{{ p.client_name|default:"No client set" }}</div>
+      {% if p.tender_due and col.code != 'WON' %}<div class="t2 {% if p.tender_overdue %}overdue{% endif %}">Return {{ p.tender_due|date:"D j M, H:i" }}</div>{% endif %}
+      {% if col.code == 'WON' and p.start_date %}<div class="t2">Start {{ p.start_date|date:"j M Y" }}</div>{% endif %}
+      <div class="t3"><span>{% if p.probability is not None and col.code != 'WON' %}<span class="badge accent plain">{{ p.probability }}%</span>{% endif %} <span class="dim">{{ p.owner.initials|default:"" }}</span></span><span class="val">{{ p.value|money_short:currency }}</span></div>
+      {% if p.probability is not None and col.code != 'WON' %}<div class="meter"><span style="width:{{ p.probability }}%"></span></div>{% endif %}
+    </a>{% empty %}<p class="small dim" style="padding:4px">Nothing here.</p>{% endfor %}
+    </div>
+  </section>{% endfor %}
+</div>
+{% if recent_closed %}<div class="card" style="margin-top:1.25rem"><div class="card-head"><h2>Recently lost or declined</h2></div><div class="table-wrap"><table class="t"><tbody>
+{% for p in recent_closed %}<tr><td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}</span></td><td>{% badge p.get_stage_display p.stage_tone %}</td><td class="small dim">{{ p.outcome_notes|truncatechars:80 }}</td><td class="num">{{ p.value|money:currency }}</td></tr>{% endfor %}
+</tbody></table></div></div>{% endif %}
+{% endblock %}

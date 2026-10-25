@@ -1,0 +1,11 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Start your free trial{% endblock %}
+{% block side_title %}Set up your company in under a minute.{% endblock %}
+{% block auth %}
+<h1>Create your workspace</h1><p class="dim">Free trial, no card needed. You can invite your team straight after.</p>
+<form method="post">{% csrf_token %}
+  {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+  <button class="btn primary block">Create workspace</button>
+</form>
+<p class="small" style="margin-top:14px">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+{% endblock %}

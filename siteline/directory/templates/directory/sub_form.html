@@ -1,0 +1,8 @@
+{% extends "app.html" %}
+{% block title %}{% if sub %}Edit {{ sub.company_name }}{% else %}Add subcontractor{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'sub_list' org.slug %}">Supply chain</a></div><h1>{% if sub %}Edit {{ sub.company_name }}{% else %}Add subcontractor{% endif %}</h1></div></div>
+<div class="card" style="max-width:900px"><div class="card-body">
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% if sub %}{{ sub.get_absolute_url }}{% else %}{% url 'sub_list' org.slug %}{% endif %}">Cancel</a></div></form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if is_internal %}
+  <form method="post" action="{% url 'project_stage' org.slug project.pk %}" class="row">{% csrf_token %}
+    <select name="stage" data-autosubmit style="width:auto" aria-label="Stage">{% for v, l in stage_choices %}<option value="{{ v }}" {% if v == project.stage %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form>
+  <a class="btn" href="{% url 'project_edit' org.slug project.pk %}">Edit</a>{% endif %}{% endblock %}
+{% block project_content %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Open RFIs</div><div class="value">{{ stats.rfis_open }}</div><div class="note">{% if stats.rfis_overdue %}<span class="bad">{{ stats.rfis_overdue }} overdue</span>{% else %}none overdue{% endif %}</div></div>
+  <div class="kpi"><div class="label">Open snags</div><div class="value">{{ stats.issues_open }}</div></div>
+  <div class="kpi"><div class="label">Open tasks</div><div class="value">{{ stats.tasks_open }}</div></div>
+  <div class="kpi"><div class="label">Documents</div><div class="value">{{ stats.docs }}</div></div>
+</div>
+<div class="grid split">
+  <div class="stack">
+    {% if commercial %}<div class="card"><div class="card-head"><h2>Commercial</h2><a class="small" href="{% url 'variation_list' org.slug project.pk %}">Variations →</a></div><div class="card-body">
+      <dl class="dl">
+        <dt>{% if project.is_pipeline %}Tender value{% else %}Contract sum{% endif %}</dt><dd class="mono">{{ commercial.contract|money:currency }}</dd>
+        <dt>Approved variations</dt><dd class="mono">{{ commercial.approved|money:currency }}</dd>
+        <dt>With client</dt><dd class="mono">{{ commercial.pending|money:currency }}</dd>
+        <dt><strong>Forecast final account</strong></dt><dd class="mono"><strong>{{ commercial.forecast|money:currency }}</strong></dd>
+        {% if commercial.at_risk %}<dt>At risk</dt><dd><span class="badge warn">{{ commercial.at_risk }} variation{{ commercial.at_risk|pluralize }} proceeding before approval</span></dd>{% endif %}
+        {% if project.is_pipeline %}<dt>Win probability</dt><dd>{{ project.probability|default_if_none:"—" }}{% if project.probability is not None %}%{% endif %}</dd>{% endif %}
+      </dl></div></div>{% endif %}
+    <div class="card"><div class="card-head"><h2>Details</h2></div><div class="card-body">
+      <dl class="dl">
+        <dt>Client</dt><dd>{{ project.client_name|default:"—" }}</dd>
+        <dt>Site</dt><dd>{{ project.site_address|default:"—" }}</dd>
+        {% if project.sector %}<dt>Sector</dt><dd>{{ project.get_sector_display }}</dd>{% endif %}
+        <dt>Project lead</dt><dd>{{ project.owner|default:"—" }}</dd>
+        {% if project.tender_due %}<dt>Tender return</dt><dd class="{% if project.tender_overdue %}overdue{% endif %}">{{ project.tender_due|date:"l j F Y, H:i" }}</dd>{% endif %}
+        <dt>Start on site</dt><dd>{{ project.start_date|date:"j F Y"|default:"—" }}</dd>
+        <dt>Completion</dt><dd>{{ project.completion_date|date:"j F Y"|default:"—" }}</dd>
+        {% if is_internal and project.lead_source %}<dt>Source</dt><dd>{{ project.lead_source }}</dd>{% endif %}
+      </dl>
+      {% if project.description %}<hr><div style="white-space:pre-wrap">{{ project.description }}</div>{% endif %}
+      {% if is_internal and project.outcome_notes %}<hr><h3>Outcome / feedback</h3><div style="white-space:pre-wrap">{{ project.outcome_notes }}</div>{% endif %}
+    </div></div>
+  </div>
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>People</h2><a class="small" href="{% url 'project_team' org.slug project.pk %}">{% if is_internal %}Manage →{% else %}All →{% endif %}</a></div>
+      {% if members %}<ul class="list">{% for m in members %}<li><span class="avatar">{{ m.user.initials }}</span><span class="grow">{{ m.user.full_name }}<br><span class="small dim">{{ m.get_role_display }}{% if m.company_name %} · {{ m.company_name }}{% endif %}</span></span></li>{% endfor %}</ul>
+      {% else %}<div class="empty left">{% if is_internal %}No one added yet. <a href="{% url 'project_team' org.slug project.pk %}">Invite the client or a subcontractor</a> to give them portal access.{% else %}—{% endif %}</div>{% endif %}</div>
+    <div class="card"><div class="card-head"><h2>Activity</h2></div>{% include "partials/feed.html" %}</div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Workspace unavailable{% endblock %}
+{% block auth %}
+<h1>{{ org.name }} is paused</h1>
+{% if state == 'suspended' %}<p class="dim">This workspace has been suspended. Contact <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>.</p>
+{% elif is_org_admin %}<p class="dim">The trial or subscription has ended. Choose a plan to reopen it. Nothing has been deleted.</p><a class="btn primary" href="{% url 'billing' org.slug %}">Choose a plan</a>
+{% else %}<p class="dim">The workspace subscription needs renewing. Your data is safe; ask an administrator at {{ org.name }} to update billing.</p>{% endif %}
+<p style="margin-top:18px"><a href="{% url 'org_picker' %}">Other workspaces</a></p>
+{% endblock %}

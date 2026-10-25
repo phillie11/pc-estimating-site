@@ -1,0 +1,9 @@
+{% extends "app.html" %}
+{% block title %}Trades{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'sub_list' org.slug %}">Supply chain</a></div><h1>Trades</h1></div></div>
+<div class="grid split">
+  <div class="card"><ul class="list">{% for t in trades %}<li><span class="grow">{{ t.name }}</span><span class="small dim">{{ t.n }}</span>{% if not t.n %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="trade" value="{{ t.pk }}"><button class="linkbtn">Delete</button></form>{% endif %}</li>{% endfor %}</ul></div>
+  <div class="card"><div class="card-head"><h2>Add trade</h2></div><div class="card-body"><form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Add</button></div></form></div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Billing{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Billing</h1>
+  <p class="dim" style="margin:4px 0 0">
+  {% if org.subscription_status == 'trial' %}{% if state == 'ok' %}Free trial: <strong>{{ org.trial_days_left }} day{{ org.trial_days_left|pluralize }} left</strong>. Pick a plan any time; unused trial days carry over.{% else %}Your trial has ended. Choose a plan to reopen the workspace.{% endif %}
+  {% else %}{{ org.plan_config.name }} plan · {{ org.get_subscription_status_display }}{% if org.current_period_end %} · {% if org.cancel_at_period_end %}ends{% else %}renews{% endif %} {{ org.current_period_end|date:"j M Y" }}{% endif %}{% endif %}
+  </p></div>
+  {% if org.stripe_customer_id %}<a class="btn" href="{% url 'billing_portal' org.slug %}">Invoices, card &amp; cancellation</a>{% endif %}
+</div>
+{% if not stripe_ready %}<div class="flash info">Stripe isn't configured yet. Add <span class="mono">STRIPE_SECRET_KEY</span>, <span class="mono">STRIPE_WEBHOOK_SECRET</span> and the price IDs to <span class="mono">.env</span> (see README).</div>{% endif %}
+<div class="kpis" style="max-width:640px"><div class="kpi"><div class="label">Staff seats</div><div class="value">{{ staff_count }}<span class="dim" style="font-size:1rem"> / {{ org.plan_config.max_staff }}</span></div></div>
+<div class="kpi"><div class="label">Active projects</div><div class="value">{{ project_count }}<span class="dim" style="font-size:1rem"> / {{ org.plan_config.max_active_projects|default:"∞" }}</span></div></div></div>
+<div class="prices">{% for p in plans %}
+  <div class="price{% if p.code == org.plan and org.subscription_status != 'trial' %} current{% endif %}">
+    <h3>{{ p.name }}</h3><div class="amt">{{ p.price_label }}<span class="dim" style="font-size:1rem;font-weight:500">/{{ p.interval }} + VAT</span></div>
+    <p class="dim">{{ p.blurb }}</p>
+    <ul><li>{{ p.max_staff }} staff seats</li><li>{% if p.max_active_projects %}{{ p.max_active_projects }} active projects{% else %}Unlimited projects{% endif %}</li><li>Unlimited clients &amp; subcontractors</li></ul>
+    {% if p.code == org.plan and subscribed %}<span class="btn block" aria-disabled="true">Current plan</span>
+    {% elif org.stripe_subscription_id and subscribed %}<a class="btn block" href="{% url 'billing_portal' org.slug %}">Switch in billing portal</a>
+    {% else %}<form method="post" action="{% url 'billing_checkout' org.slug %}">{% csrf_token %}<input type="hidden" name="plan" value="{{ p.code }}"><button class="btn {% if p.code == 'team' %}primary{% endif %} block">Choose {{ p.name }}</button></form>{% endif %}
+  </div>{% endfor %}</div>
+<p class="small dim" style="margin-top:14px">Payments are handled by Stripe. We never see or store card details.</p>
+{% endblock %}

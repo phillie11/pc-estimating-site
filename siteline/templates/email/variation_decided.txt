@@ -1,0 +1,13 @@
+Hi,
+
+{{ actor.full_name }} has {{ vo.get_status_display|lower }} {{ vo.reference }} {{ vo.title }} on {{ project.name }}.
+{% if vo.approved_value is not None %}
+Approved value: {{ org.currency_symbol }}{{ vo.approved_value|floatformat:2 }}{% endif %}{% if vo.client_reference %}
+Client reference: {{ vo.client_reference }}{% endif %}{% if vo.decision_notes %}
+
+Notes:
+{{ vo.decision_notes }}{% endif %}
+
+{{ link }}
+
+— {{ PRODUCT_NAME }}

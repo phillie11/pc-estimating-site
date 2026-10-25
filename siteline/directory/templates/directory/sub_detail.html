@@ -1,0 +1,33 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}{{ sub.company_name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'sub_list' org.slug %}">Supply chain</a></div><h1>{{ sub.company_name }}</h1>
+  <div class="row" style="margin-top:6px">{% badge sub.get_status_display sub.status_tone %}{% for t in sub.trades.all %}<span class="tag">{{ t.name }}</span>{% endfor %}</div></div>
+  <a class="btn" href="{% url 'sub_edit' org.slug sub.pk %}">Edit</a></div>
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Packages</h2></div>
+      {% if packages %}<div class="table-wrap"><table class="t"><tbody>{% for p in packages %}<tr><td><a class="rowlink" href="{% url 'package_list' org.slug p.project_id %}">{{ p.project.name }}</a><span class="sub">{{ p.trade|default:"" }}</span></td><td>{% badge p.get_status_display p.status_tone %}</td><td class="num">{{ p.quote_value|money:currency }}</td></tr>{% endfor %}</tbody></table></div>
+      {% else %}<div class="empty left">Not on any packages yet. Add them from a project's Packages tab.</div>{% endif %}</div>
+    <div class="card"><div class="card-head"><h2>Contacts</h2></div>
+      {% if contacts %}<ul class="list">{% for c in contacts %}<li><span class="grow"><strong>{{ c.name }}</strong>{% if c.role %} <span class="dim small">· {{ c.role }}</span>{% endif %}<br><span class="small">{{ c.email }} {{ c.phone }}</span></span><form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="delete_contact"><input type="hidden" name="contact" value="{{ c.pk }}"><button class="linkbtn">Remove</button></form></li>{% endfor %}</ul>{% endif %}
+      <div class="card-body"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="contact">{% with form=contact_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn sm">Add contact</button></div></form></div></div>
+    {% if sub.notes %}<div class="card"><div class="card-head"><h2>Notes</h2></div><div class="card-body" style="white-space:pre-wrap">{{ sub.notes }}</div></div>{% endif %}
+  </div>
+  <div class="stack">
+    <div class="card"><div class="card-body"><dl class="dl">
+      <dt>Contact</dt><dd>{{ sub.contact_name|default:"—" }}</dd>
+      <dt>Email</dt><dd>{% if sub.email %}<a href="mailto:{{ sub.email }}">{{ sub.email }}</a>{% else %}—{% endif %}</dd>
+      <dt>Phone</dt><dd>{{ sub.phone|default:"—" }}</dd>
+      <dt>Regions</dt><dd>{{ sub.regions|default:"—" }}</dd>
+      {% if sub.website %}<dt>Website</dt><dd><a href="{{ sub.website }}" rel="noopener" target="_blank">{{ sub.website|cut:"https://"|cut:"http://" }}</a></dd>{% endif %}
+      <dt>Rating</dt><dd>{% if sub.rating %}{{ sub.rating }} / 5{% else %}—{% endif %}</dd>
+      <dt>Accreditations</dt><dd>{{ sub.accreditations|default:"—" }}</dd>
+    </dl></div></div>
+    <div class="card"><div class="card-head"><h2>Insurance</h2>{% badge sub.insurance_label sub.insurance_tone %}</div><div class="card-body"><dl class="dl">
+      <dt>Public liability</dt><dd>{{ sub.public_liability_expiry|date:"j M Y"|default:"Not recorded" }}</dd>
+      <dt>Employer's liability</dt><dd>{{ sub.employers_liability_expiry|date:"j M Y"|default:"Not recorded" }}</dd></dl></div></div>
+    {% if portal_members %}<div class="card"><div class="card-head"><h2>Portal access</h2></div><ul class="list">{% for m in portal_members %}<li><span class="grow">{{ m.user.full_name }}<br><span class="small dim">{{ m.project.name }}</span></span></li>{% endfor %}</ul></div>{% endif %}
+  </div>
+</div>
+{% endblock %}

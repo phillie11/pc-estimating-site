@@ -1,0 +1,18 @@
+Hi {{ user.get_short_name }},
+
+Your {{ org.name }} round-up for {% now "l j F" %}:
+{% if rfis %}
+RFIs overdue and waiting on you
+{% for r in rfis %}  - {{ r.reference }} {{ r.subject }} ({{ r.project.name }}), due {{ r.due_date|date:"j M" }}
+{% endfor %}{% endif %}{% if tenders %}
+Tender returns in the next 3 days
+{% for p in tenders %}  - {{ p.name }}: {{ p.tender_due|date:"D j M H:i" }}
+{% endfor %}{% endif %}{% if insurance %}
+Subcontractor insurance expiring within 14 days
+{% for s in insurance %}  - {{ s.company_name }}: {{ s.next_insurance_expiry|date:"j M Y" }}
+{% endfor %}{% endif %}{% if trial_days is not None %}
+Your free trial ends in {{ trial_days }} day{{ trial_days|pluralize }}. Choose a plan: {{ SITE_URL }}/{{ org.slug }}/billing/
+{% endif %}
+{{ SITE_URL }}/{{ org.slug }}/
+
+— {{ PRODUCT_NAME }}

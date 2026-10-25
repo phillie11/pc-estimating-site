@@ -1,0 +1,17 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if is_internal %}<a class="btn primary" href="{% url 'issue_create' org.slug project.pk %}">{% icon 'plus' %} Raise snag</a>{% endif %}{% endblock %}
+{% block project_content %}
+<div class="filters">
+  <a class="chip {% if status == 'open' %}on{% endif %}" href="?status=open">Open</a>
+  <a class="chip {% if status == 'READY' %}on{% endif %}" href="?status=READY">Ready for inspection</a>
+  <a class="chip {% if status == 'CLOSED' %}on{% endif %}" href="?status=CLOSED">Closed</a>
+  <a class="chip {% if status == 'all' %}on{% endif %}" href="?status=all">All</a>
+</div>
+<div class="card">{% if issues %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Snag / issue</th><th>Location</th><th>Assigned</th><th>Due</th><th>Status</th></tr></thead><tbody>
+{% for i in issues %}<tr><td class="ref">{{ i.reference }}</td>
+  <td><a class="rowlink" href="{% url 'issue_detail' org.slug project.pk i.pk %}">{{ i.title }}</a><span class="sub">{{ i.get_issue_type_display }}{% if i.photo %} · photo{% endif %}</span></td>
+  <td class="small">{{ i.location|default:"—" }}</td><td class="small">{{ i.assignee|default:"—" }}</td>
+  <td class="small nowrap">{{ i.due_date|date:"j M"|default:"—" }}</td>
+  <td>{% if i.status == 'OPEN' %}{% badge i.get_status_display 'accent' %}{% elif i.status == 'READY' %}{% badge i.get_status_display 'info' %}{% else %}{% badge i.get_status_display 'good' %}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty"><h3>No snags</h3>{% if is_internal %}<p>Raise one and assign it to the trade responsible. They'll see it in their portal.</p>{% endif %}</div>{% endif %}</div>
+{% endblock %}

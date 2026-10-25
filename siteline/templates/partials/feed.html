@@ -1,0 +1,5 @@
+{% if activity %}<ul class="feed">{% for a in activity %}
+  <li><span class="avatar">{{ a.actor.initials|default:"·" }}</span>
+    <span><strong>{{ a.actor|default:"System" }}</strong> {{ a.verb }} {% if a.url %}<a href="{{ a.url }}">{{ a.target }}</a>{% else %}{{ a.target }}{% endif %}{% if show_project and a.project %} <span class="dim">· {{ a.project.name }}</span>{% endif %}</span>
+    <time datetime="{{ a.created_at|date:'c' }}">{{ a.created_at|timesince }} ago</time></li>
+{% endfor %}</ul>{% else %}<div class="empty left">Nothing yet.</div>{% endif %}

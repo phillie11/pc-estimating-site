@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="auth">
+  <div class="auth-side">
+    <a class="logo-word" href="/"><span class="mark">{{ PRODUCT_NAME|first }}</span>{{ PRODUCT_NAME }}</a>
+    <div><h2>{% block side_title %}Every job, every trade, one login.{% endblock %}</h2><p>{% block side_text %}Bids, RFIs, variations and documents shared with the people who need them, and nobody else.{% endblock %}</p></div>
+    <span class="small" style="color:#7D848F">© {% now "Y" %} {{ PRODUCT_NAME }}</span>
+  </div>
+  <div class="auth-main"><div class="auth-box">{% include "partials/messages.html" %}{% block auth %}{% endblock %}</div></div>
+</div>
+{% endblock %}
