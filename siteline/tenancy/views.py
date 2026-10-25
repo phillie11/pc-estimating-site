@@ -10,14 +10,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from directory.models import Subcontractor
-from projects.access import is_internal, visible_projects
+from projects.access import is_internal, portal_projects, visible_projects
 from projects.models import Issue, Project, Task
 from rfis.models import RFI
 from variations.models import Variation
 
 from . import notify
 from .forms import MemberRoleForm, OrganizationForm, TeamInviteForm
-from .models import ActivityEvent, Membership, TeamInvite, log_activity
+from .models import ActivityEvent, Membership, Notification, TeamInvite, log_activity
 from .permissions import admin_required, internal_required
 
 
@@ -34,11 +34,18 @@ def dashboard(request, org_slug):
         .select_related('project')[:8]
 
     if not is_internal(request):
-        my_rfis = RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=projects, is_shared=True) \
+        from directory.models import Package
+        portal = portal_projects(request)
+        my_rfis = RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=portal, is_shared=True) \
             .select_related('project')[:8]
-        activity = ActivityEvent.objects.filter(project__in=projects, internal_only=False).select_related('actor', 'project')[:15]
+        activity = ActivityEvent.objects.filter(project__in=portal, internal_only=False).select_related('actor', 'project')[:15]
+        subs = user.project_memberships.filter(organization=request.org, subcontractor__isnull=False) \
+            .values_list('subcontractor_id', flat=True)
+        tenders = Package.objects.filter(subcontractor_id__in=subs, status__in=Package.OPEN_STATUSES,
+                                         project__members__user=user).distinct().select_related('project', 'trade')
         return render(request, 'tenancy/dashboard_external.html', {
-            'projects': projects.exclude(stage__in=Project.CLOSED_STAGES),
+            'tenders': tenders,
+            'projects': portal.exclude(stage__in=Project.CLOSED_STAGES),
             'my_tasks': my_tasks, 'my_rfis': my_rfis, 'my_issues': my_issues, 'activity': activity,
         })
 
@@ -194,5 +201,31 @@ def org_locked(request, org_slug):
 def activity(request, org_slug):
     qs = ActivityEvent.objects.select_related('actor', 'project')
     if not is_internal(request):
-        qs = qs.filter(project__in=visible_projects(request), internal_only=False)
+        qs = qs.filter(project__in=portal_projects(request), internal_only=False)
     return render(request, 'tenancy/activity.html', {'activity': qs[:200]})
+
+
+# ---------------------------------------------------------------------------
+# Notifications (the bell)
+# ---------------------------------------------------------------------------
+
+def notifications(request, org_slug):
+    items = Notification.objects.filter(user=request.user).select_related('actor', 'project')
+    if request.method == 'POST' and request.POST.get('action') == 'read_all':
+        items.filter(read_at__isnull=True).update(read_at=timezone.now())
+        return redirect('notifications', org_slug=org_slug)
+    show = request.GET.get('show', 'all')
+    if show == 'unread':
+        items = items.filter(read_at__isnull=True)
+    return render(request, 'tenancy/notifications.html', {'items': items[:100], 'show': show})
+
+
+def notification_open(request, org_slug, pk):
+    n = get_object_or_404(Notification, user=request.user, pk=pk)
+    if n.read_at is None:
+        n.read_at = timezone.now()
+        n.save(update_fields=['read_at'])
+    # Stored URLs are always site paths; refuse anything else rather than redirect off-site
+    if not n.url.startswith('/') or n.url.startswith('//'):
+        return redirect('notifications', org_slug=org_slug)
+    return redirect(n.url)

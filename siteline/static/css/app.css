@@ -351,3 +351,13 @@ textarea { resize: vertical; }
 .legend .key.m-queries { transform: rotate(45deg); }
 .legend .key.m-quotes { background: transparent; box-shadow: inset 0 0 0 2px var(--ink); }
 @media (max-width: 700px) { .card-head:has(.legend) { flex-wrap: wrap; } .card-head .legend { width: 100%; } }
+
+/* ---------- Notifications ---------- */
+.nav .count.unread { background: var(--accent); color: var(--accent-ink); border-radius: 9px; padding: 0 6px; font-weight: 600; }
+.topbar .bell { margin-left: auto; color: #fff; position: relative; display: flex; }
+.topbar .bell span { position: absolute; top: -4px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font: 600 10px/16px var(--mono); text-align: center; }
+.list.notes li { align-items: center; }
+.list.notes .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.list.notes li.unread .dot { background: var(--accent); }
+.list.notes li.unread a { font-weight: 600; }
+.list.notes .grow .small { display: block; }

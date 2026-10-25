@@ -119,13 +119,14 @@ class DocumentForm(StyledModelForm):
 
     class Meta:
         model = Document
-        fields = ['title', 'reference', 'category', 'visibility']
+        fields = ['title', 'reference', 'category', 'visibility', 'tender_issue']
 
     def __init__(self, *args, external=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['file'].help_text = f'Max {settings.MAX_UPLOAD_MB} MB.'
         if external:
             del self.fields['visibility']
+            del self.fields['tender_issue']
 
     def clean_file(self):
         f = self.cleaned_data['file']
@@ -153,6 +154,8 @@ class ProjectInviteForm(StyledModelForm):
     def __init__(self, *args, project=None, **kwargs):
         self.project = project
         super().__init__(*args, **kwargs)
+        # Tendering subcontractors are invited from the packages page, against a package
+        self.fields['role'].choices = ProjectMember.EXTERNAL_ROLE_CHOICES
 
     def clean_email(self):
         email = self.cleaned_data['email'].lower()

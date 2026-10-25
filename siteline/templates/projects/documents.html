@@ -12,7 +12,7 @@
         <td class="ref">{{ d.reference|default:"—" }}</td>
         <td><a class="rowlink" href="{% url 'document_detail' org.slug project.pk d.pk %}">{{ d.title }}</a><span class="sub">{{ d.get_category_display }}</span></td>
         <td class="mono">{{ cur.revision }}</td><td class="small nowrap">{{ cur.uploaded_at|date:"j M Y" }}</td>
-        {% if is_internal %}<td>{% if d.visibility == 'SHARED' %}{% badge 'Shared' 'info' %}{% else %}<span class="dim small">Internal</span>{% endif %}</td>{% endif %}
+        {% if is_internal %}<td>{% if d.visibility == 'SHARED' %}{% badge 'Shared' 'info' %}{% else %}<span class="dim small">Internal</span>{% endif %}{% if d.tender_issue %} {% badge 'Tender' 'accent' %}{% endif %}</td>{% endif %}
         <td class="num">{% if cur %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk d.pk cur.pk %}">{% icon 'download' %}</a>{% endif %}</td>
       </tr>{% endwith %}{% endfor %}</tbody></table></div>{% else %}<div class="empty"><h3>No documents</h3><p>Upload drawings, specs, RAMS or reports.</p></div>{% endif %}</div>
   </div>

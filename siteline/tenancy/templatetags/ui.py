@@ -77,6 +77,8 @@ ICONS = {
     'activity': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
     'chart': '<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>',
     'programme': '<path d="M3 5h8M7 10h10M5 15h6M13 20h8"/>',
+    'bell': '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+    'tender': '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
     'plus': '<path d="M12 5v14M5 12h14"/>',
     'menu': '<path d="M3 6h18M3 12h18M3 18h18"/>',
     'download': '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 21h16"/>',

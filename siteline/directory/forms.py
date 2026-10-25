@@ -2,7 +2,7 @@ from django import forms
 
 from projects.forms import StyledModelForm
 
-from .models import Package, Subcontractor, SubcontractorContact, Trade
+from .models import Subcontractor, SubcontractorContact, Trade
 
 
 class SubcontractorForm(StyledModelForm):
@@ -29,12 +29,3 @@ class TradeForm(forms.ModelForm):
         fields = ['name']
 
 
-class PackageForm(StyledModelForm):
-    class Meta:
-        model = Package
-        fields = ['trade', 'subcontractor', 'status', 'quote_value', 'notes']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['subcontractor'].queryset = Subcontractor.objects.exclude(status=Subcontractor.STATUS_STRUCK_OFF)
-        self.fields['trade'].queryset = Trade.objects.all()

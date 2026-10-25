@@ -194,6 +194,7 @@ class ProjectMember(TenantModel):
     ROLE_SUBCONTRACTOR = 'SUBCONTRACTOR'
     ROLE_CLIENT = 'CLIENT'
     ROLE_CONSULTANT = 'CONSULTANT'
+    ROLE_BIDDER = 'BIDDER'
     INTERNAL_ROLE_CHOICES = [
         (ROLE_PM, 'Project manager'),
         (ROLE_SITE, 'Site manager'),
@@ -205,8 +206,10 @@ class ProjectMember(TenantModel):
         (ROLE_CONSULTANT, 'Consultant / designer'),
         (ROLE_SUBCONTRACTOR, 'Subcontractor'),
     ]
-    ROLE_CHOICES = INTERNAL_ROLE_CHOICES + EXTERNAL_ROLE_CHOICES
-    EXTERNAL_ROLES = (ROLE_CLIENT, ROLE_CONSULTANT, ROLE_SUBCONTRACTOR)
+    # A subcontractor pricing a package: sees only their tender until appointed
+    BIDDER_CHOICE = (ROLE_BIDDER, 'Tendering subcontractor')
+    ROLE_CHOICES = INTERNAL_ROLE_CHOICES + EXTERNAL_ROLE_CHOICES + [BIDDER_CHOICE]
+    EXTERNAL_ROLES = (ROLE_CLIENT, ROLE_CONSULTANT, ROLE_SUBCONTRACTOR, ROLE_BIDDER)
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='members')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='project_memberships')
@@ -232,6 +235,10 @@ class ProjectMember(TenantModel):
     def is_client(self):
         return self.role == self.ROLE_CLIENT
 
+    @property
+    def is_bidder(self):
+        return self.role == self.ROLE_BIDDER
+
 
 def _token():
     return secrets.token_urlsafe(32)
@@ -250,7 +257,7 @@ class ProjectInvite(TenantModel):
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='invites')
     email = models.EmailField()
-    role = models.CharField(max_length=16, choices=ProjectMember.EXTERNAL_ROLE_CHOICES)
+    role = models.CharField(max_length=16, choices=ProjectMember.EXTERNAL_ROLE_CHOICES + [ProjectMember.BIDDER_CHOICE])
     company_name = models.CharField(max_length=200, blank=True)
     subcontractor = models.ForeignKey('directory.Subcontractor', null=True, blank=True, on_delete=models.SET_NULL)
     message = models.TextField(blank=True)
@@ -400,6 +407,8 @@ class Document(TenantModel):
     reference = models.CharField('Doc / drawing no.', max_length=80, blank=True)
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, default='DRAWING')
     visibility = models.CharField(max_length=8, choices=VISIBILITY_CHOICES, default=VIS_INTERNAL)
+    tender_issue = models.BooleanField('Issued to tenderers', default=False,
+                                       help_text='Subcontractors pricing a package can see and download it.')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

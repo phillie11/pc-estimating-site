@@ -1,0 +1,16 @@
+Hi,
+
+{{ inviter.full_name }} at {{ org.name }} has invited you to tender for:
+
+  {{ package.trade|default:"A subcontract package" }}
+  {{ project.name }}{% if project.site_address %}, {{ project.site_address }}{% endif %}{% if package.quote_due %}
+
+Quotes due: {{ package.quote_due|date:"l j F Y" }}{% endif %}
+
+The scope, tender documents and any addenda are in the {{ org.name }} portal,
+and you submit your quote there too. Set up your free account to open it:
+{{ link }}
+
+The link expires in 21 days.
+
+— {{ PRODUCT_NAME }}

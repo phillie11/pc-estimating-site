@@ -9,12 +9,12 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from projects.access import get_project
-from projects.models import ProjectInvite, ProjectMember
-from projects.views import project_context, send_project_invite
+from projects.models import ProjectMember
+from projects.views import project_context
 from tenancy.models import log_activity
 from tenancy.permissions import internal_required
 
-from .forms import ContactForm, PackageForm, SubcontractorForm, TradeForm
+from .forms import ContactForm, SubcontractorForm, TradeForm
 from .models import Package, Subcontractor, SubcontractorContact, Trade
 
 
@@ -121,51 +121,64 @@ def trades(request, org_slug):
 
 @internal_required
 def package_list(request, org_slug, pk):
+    """Who is pricing each trade, their quotes side by side, and who gets appointed."""
+    from tenders import services
+    from tenders.forms import TenderInviteForm
     project = get_project(request, pk)
-    form = PackageForm()
+    form = TenderInviteForm(project=project)
+    back = redirect('package_list', org_slug=org_slug, pk=pk)
     if request.method == 'POST':
         action = request.POST.get('action')
-        if action == 'add':
-            form = PackageForm(request.POST)
+        if action == 'invite':
+            form = TenderInviteForm(request.POST, project=project)
             if form.is_valid():
-                p = form.save(commit=False)
-                p.project = project
-                p.save()
-                return redirect('package_list', org_slug=org_slug, pk=pk)
-        elif action == 'status':
-            pkg = get_object_or_404(Package, project=project, pk=request.POST.get('package'))
-            if request.POST.get('status') in dict(Package.STATUS_CHOICES):
-                pkg.status = request.POST['status']
-            val = request.POST.get('quote_value', '').replace(',', '').strip()
-            if val:
-                try:
-                    pkg.quote_value = val
-                    pkg.full_clean(exclude=['project', 'subcontractor', 'trade'])
-                except Exception:  # noqa: BLE001
-                    messages.error(request, 'Quote value must be a number.')
-                    return redirect('package_list', org_slug=org_slug, pk=pk)
-            pkg.save()
-            if pkg.status == 'APPOINTED':
-                log_activity(request, f'appointed {pkg.subcontractor}', pkg.trade or '', project=project)
-            return redirect('package_list', org_slug=org_slug, pk=pk)
-        elif action == 'delete':
-            Package.objects.filter(project=project, pk=request.POST.get('package')).delete()
-            return redirect('package_list', org_slug=org_slug, pk=pk)
-        elif action == 'portal':
-            pkg = get_object_or_404(Package.objects.select_related('subcontractor'), project=project,
-                                    pk=request.POST.get('package'))
-            sub = pkg.subcontractor
-            if not sub.email:
-                messages.error(request, f'{sub.company_name} has no email address in the directory.')
-            elif ProjectMember.objects.filter(project=project, user__email__iexact=sub.email).exists():
-                messages.info(request, f'{sub.company_name} already has portal access.')
-            else:
-                inv = ProjectInvite.objects.create(project=project, email=sub.email.lower(),
-                                                   role=ProjectMember.ROLE_SUBCONTRACTOR, company_name=sub.company_name,
-                                                   subcontractor=sub, invited_by=request.user)
-                send_project_invite(request, inv)
-                messages.success(request, f'Portal invite sent to {sub.email}.')
-            return redirect('package_list', org_slug=org_slug, pk=pk)
-    packages = project.packages.select_related('subcontractor', 'trade')
+                d = form.cleaned_data
+                sent = [s for s in d['subcontractors']
+                        if services.invite(request, project, s, d['trade'], d['scope'], d['quote_due'])]
+                skipped = len(d['subcontractors']) - len(sent)
+                messages.success(request, f'Invited {len(sent)} to price {d["trade"]}.'
+                                 + (f' {skipped} already invited for this trade.' if skipped else ''))
+                return back
+        else:
+            pkg = get_object_or_404(Package.objects.select_related('subcontractor', 'trade', 'project'),
+                                    project=project, pk=request.POST.get('package'))
+            if action == 'appoint' and pkg.status in (Package.ENQUIRY, Package.QUOTED):
+                services.appoint(request, pkg)
+                messages.success(request, f'{pkg.subcontractor} appointed for {pkg.trade or "the package"}. '
+                                          'They now have the project portal; other bidders were told.')
+            elif action == 'unsuccessful' and pkg.is_open:
+                services.mark_unsuccessful(request, pkg)
+                messages.success(request, f'{pkg.subcontractor} told they were unsuccessful.')
+            elif action == 'remind' and pkg.status == Package.ENQUIRY:
+                from tenancy import notify
+                notify.alert(services.sub_members(project, [pkg.subcontractor_id]),
+                             f'Reminder: your quote for {pkg.trade or "the package"} on {project.name} is due '
+                             f'{pkg.quote_due:%a} {pkg.quote_due.day} {pkg.quote_due:%b}' if pkg.quote_due
+                             else f'Reminder: your quote for {pkg.trade or "the package"} on {project.name} is awaited',
+                             services.tender_url(project), project=project, actor=request.user, org=request.org)
+                messages.success(request, f'Reminder sent to {pkg.subcontractor}.')
+            elif action == 'remove':
+                sub = pkg.subcontractor
+                pkg.delete()
+                services.revoke_if_finished(project, sub)
+                messages.success(request, f'{sub} removed from this package.')
+            elif action == 'note':
+                pkg.notes = request.POST.get('notes', '')[:300]
+                pkg.save(update_fields=['notes'])
+            return back
+
+    packages = Package.objects.filter(project=project).select_related('subcontractor', 'trade')
+    groups = {}
+    for p in packages:
+        groups.setdefault(p.trade_id, {'trade': p.trade, 'rows': []})['rows'].append(p)
+    for g in groups.values():
+        quoted = [p.quote_value for p in g['rows'] if p.quote_value and p.status != Package.DECLINED]
+        g['lowest'] = min(quoted) if quoted else None
+        g['appointed'] = next((p for p in g['rows'] if p.status == Package.APPOINTED), None)
+        g['rows'].sort(key=lambda p: (p.quote_value is None, p.quote_value or 0, p.subcontractor.company_name))
+        for p in g['rows']:
+            p.over_lowest = round((p.quote_value - g['lowest']) / g['lowest'] * 100, 1) \
+                if g['lowest'] and p.quote_value and p.quote_value != g['lowest'] else None
+    ordered = sorted(groups.values(), key=lambda g: g['trade'].name if g['trade'] else '')
     return render(request, 'directory/packages.html', project_context(
-        request, project, 'packages', packages=packages, form=form, status_choices=Package.STATUS_CHOICES))
+        request, project, 'packages', groups=ordered, form=form, today=timezone.localdate()))

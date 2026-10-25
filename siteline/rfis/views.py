@@ -6,7 +6,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from projects.access import get_project, is_internal, visible_projects
+from projects.access import get_project, is_internal, portal_projects
 from projects.files import serve
 from projects.forms import CommentForm
 from projects.views import comments_for, handle_comment, notify_assignee, project_context
@@ -140,7 +140,7 @@ def rfi_attachment(request, org_slug, pk, rfi_id):
 
 def rfi_register(request, org_slug):
     """Every live RFI across the projects this user can see."""
-    rfis = RFI.objects.filter(project__in=visible_projects(request), status__in=RFI.LIVE_STATUSES) \
+    rfis = RFI.objects.filter(project__in=portal_projects(request), status__in=RFI.LIVE_STATUSES) \
         .select_related('project', 'assigned_to')
     if not is_internal(request):
         rfis = rfis.filter(is_shared=True)

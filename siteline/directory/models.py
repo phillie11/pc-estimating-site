@@ -106,22 +106,62 @@ class SubcontractorContact(TenantModel):
         return self.name
 
 
+def upload_quote(instance, filename):
+    from projects.models import _private_path
+    return _private_path(instance, filename, 'quotes')
+
+
 class Package(TenantModel):
-    """A trade package on a project: who was asked to price, who was appointed."""
+    """One subcontractor invited to price one trade on a project, and how it ended."""
+    ENQUIRY, QUOTED, APPOINTED, DECLINED, UNSUCCESSFUL = 'ENQUIRY', 'QUOTED', 'APPOINTED', 'DECLINED', 'UNSUCCESSFUL'
     STATUS_CHOICES = [
-        ('ENQUIRY', 'Enquiry sent'), ('QUOTED', 'Quote received'), ('APPOINTED', 'Appointed'),
-        ('DECLINED', 'Declined'), ('UNSUCCESSFUL', 'Unsuccessful'),
+        (ENQUIRY, 'Invited'), (QUOTED, 'Quote received'), (APPOINTED, 'Appointed'),
+        (DECLINED, 'Declined'), (UNSUCCESSFUL, 'Unsuccessful'),
     ]
+    OPEN_STATUSES = (ENQUIRY, QUOTED)
+    CLOSED_STATUSES = (DECLINED, UNSUCCESSFUL)
+
     project = models.ForeignKey('projects.Project', on_delete=models.CASCADE, related_name='packages')
     subcontractor = models.ForeignKey(Subcontractor, on_delete=models.CASCADE, related_name='packages')
     trade = models.ForeignKey(Trade, null=True, blank=True, on_delete=models.SET_NULL)
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='ENQUIRY')
+    scope = models.TextField('Scope of works', blank=True)
+    quote_due = models.DateField('Quote due', null=True, blank=True)
+    invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    sent_at = models.DateTimeField(null=True, blank=True)
+    viewed_at = models.DateTimeField(null=True, blank=True)
+
     quote_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    notes = models.CharField(max_length=300, blank=True)
+    quote_file = models.FileField(upload_to=upload_quote, blank=True)
+    exclusions = models.TextField('Exclusions & qualifications', blank=True)
+    valid_until = models.DateField('Quote valid until', null=True, blank=True)
+    programme_weeks = models.PositiveSmallIntegerField('Programme (weeks on site)', null=True, blank=True)
+    quote_notes = models.TextField('Notes', blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    decline_reason = models.CharField(max_length=300, blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    notes = models.CharField('Internal note', max_length=300, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['trade__name', 'quote_value']
+
+    def __str__(self):
+        return f'{self.trade or "Package"} · {self.subcontractor}'
+
+    @property
+    def is_open(self):
+        return self.status in self.OPEN_STATUSES
+
+    @property
+    def submitted_late(self):
+        return bool(self.submitted_at and self.quote_due and timezone.localdate(self.submitted_at) > self.quote_due)
+
+    @property
+    def is_overdue(self):
+        return self.status == self.ENQUIRY and self.quote_due and self.quote_due < timezone.localdate()
 
     @property
     def status_tone(self):

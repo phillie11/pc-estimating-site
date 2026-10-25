@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'rfis',
     'variations',
     'directory',
+    'tenders',
 ]
 
 MIDDLEWARE = [

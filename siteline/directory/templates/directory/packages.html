@@ -1,19 +1,34 @@
 {% extends "project_base.html" %}{% load ui %}
 {% block project_content %}
 <div class="grid split">
-  <div class="card">{% if packages %}<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th>Subcontractor</th><th>Status &amp; quote</th><th></th></tr></thead><tbody>
-  {% regroup packages by trade as by_trade %}
-  {% for group in by_trade %}{% for p in group.list %}<tr>
-    <td class="small">{% if forloop.first %}<strong>{{ group.grouper|default:"No trade" }}</strong>{% endif %}</td>
-    <td><a class="rowlink" href="{{ p.subcontractor.get_absolute_url }}">{{ p.subcontractor.company_name }}</a>{% if p.notes %}<span class="sub">{{ p.notes }}</span>{% endif %}<span class="sub">{% badge p.subcontractor.insurance_label p.subcontractor.insurance_tone %}</span></td>
-    <td><form method="post" class="row" style="gap:6px">{% csrf_token %}<input type="hidden" name="action" value="status"><input type="hidden" name="package" value="{{ p.pk }}">
-      <select name="status" style="width:auto">{% for v, l in status_choices %}<option value="{{ v }}" {% if v == p.status %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
-      <input type="text" inputmode="decimal" name="quote_value" value="{{ p.quote_value|default_if_none:'' }}" placeholder="Quote £" style="width:110px"><button class="btn sm">Save</button></form></td>
-    <td class="num nowrap"><form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="portal"><input type="hidden" name="package" value="{{ p.pk }}"><button class="btn sm" title="Invite to the project portal">Invite</button></form>
-      <form method="post" class="inline" data-confirm="Remove this package line?">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="package" value="{{ p.pk }}"><button class="linkbtn">×</button></form></td>
-  </tr>{% endfor %}{% endfor %}</tbody></table></div>
-  {% else %}<div class="empty"><h3>No packages yet</h3><p>Record who you've asked to price each trade, their quote, and who you appoint.</p></div>{% endif %}</div>
-  <div class="card"><div class="card-head"><h2>Add to package</h2></div><div class="card-body"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="add">{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Add</button></div></form>
-    <p class="small dim" style="margin-top:10px">Not in the list? <a href="{% url 'sub_create' org.slug %}">Add them to the supply chain</a>.</p></div></div>
+  <div class="stack">
+    {% for g in groups %}
+    <div class="card">
+      <div class="card-head"><h2>{{ g.trade|default:"No trade" }}</h2><span class="small dim">{% if g.appointed %}appointed {{ g.appointed.subcontractor }}{% elif g.lowest %}lowest {{ g.lowest|money:currency }}{% else %}awaiting quotes{% endif %}</span></div>
+      <div class="table-wrap"><table class="t"><thead><tr><th>Subcontractor</th><th>Status</th><th class="num">Quote</th><th>Terms</th><th></th></tr></thead><tbody>
+      {% for p in g.rows %}<tr>
+        <td><a class="rowlink" href="{{ p.subcontractor.get_absolute_url }}">{{ p.subcontractor.company_name }}</a>
+          <span class="sub">{% if p.viewed_at %}Opened {{ p.viewed_at|date:"j M" }}{% elif p.sent_at %}Invited {{ p.sent_at|date:"j M" }}, not opened yet{% endif %}{% if p.quote_due %} · due {{ p.quote_due|date:"j M" }}{% endif %}</span>
+          {% if p.subcontractor.insurance_status != 'OK' %}<span class="sub">{% badge p.subcontractor.insurance_label p.subcontractor.insurance_tone %}</span>{% endif %}</td>
+        <td>{% if p.status == 'ENQUIRY' and p.is_overdue %}{% badge 'Overdue' 'bad' %}{% else %}{% badge p.get_status_display p.status_tone %}{% endif %}{% if p.submitted_late %} {% badge 'Late' 'warn' %}{% endif %}{% if p.decline_reason %}<span class="sub">{{ p.decline_reason }}</span>{% endif %}</td>
+        <td class="num">{% if p.quote_value %}<strong>{{ p.quote_value|money:currency }}</strong>{% if p.quote_value == g.lowest %}<span class="sub">{% badge 'Lowest' 'good' %}</span>{% elif p.over_lowest %}<span class="sub">+{{ p.over_lowest }}%</span>{% endif %}{% else %}—{% endif %}</td>
+        <td class="small" style="min-width:160px">{% if p.submitted_at %}{% if p.valid_until %}Valid to {{ p.valid_until|date:"j M y" }}<br>{% endif %}{% if p.programme_weeks %}{{ p.programme_weeks }} weeks on site<br>{% endif %}{% if p.exclusions %}<span title="{{ p.exclusions }}">Excl: {{ p.exclusions|truncatechars:60 }}</span><br>{% endif %}{% if p.quote_file %}<a href="{% url 'quote_file' org.slug project.pk p.pk %}">Quote document</a>{% endif %}{% else %}<span class="dim">—</span>{% endif %}</td>
+        <td class="num nowrap">
+          {% if p.is_open %}
+            {% if p.submitted_at %}<form method="post" class="inline" data-confirm="Appoint {{ p.subcontractor.company_name }}? Everyone else pricing {{ g.trade|default:'this package' }} will be told they were unsuccessful and lose access.">{% csrf_token %}<input type="hidden" name="action" value="appoint"><input type="hidden" name="package" value="{{ p.pk }}"><button class="btn sm primary">Appoint</button></form>{% endif %}
+            {% if p.status == 'ENQUIRY' %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="remind"><input type="hidden" name="package" value="{{ p.pk }}"><button class="btn sm">Remind</button></form>{% endif %}
+            <form method="post" class="inline" data-confirm="Tell {{ p.subcontractor.company_name }} they were unsuccessful? They lose access to the tender.">{% csrf_token %}<input type="hidden" name="action" value="unsuccessful"><input type="hidden" name="package" value="{{ p.pk }}"><button class="linkbtn" title="Unsuccessful">✕</button></form>
+          {% elif p.status != 'APPOINTED' %}<form method="post" class="inline" data-confirm="Remove this line?">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="package" value="{{ p.pk }}"><button class="linkbtn">Remove</button></form>{% endif %}
+        </td>
+      </tr>{% endfor %}</tbody></table></div>
+    </div>
+    {% empty %}
+    <div class="card"><div class="empty"><h3>No packages out to tender</h3><p>Invite subcontractors to price a trade. Each gets a notification with a link to the tender in the portal: scope, documents, addenda, queries and quote submission all happen there.</p></div></div>
+    {% endfor %}
+  </div>
+  <div class="card"><div class="card-head"><h2>Invite to tender</h2></div><div class="card-body">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="invite">{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Send invitations</button></div></form>
+    <p class="small dim" style="margin-top:10px">Not listed? <a href="{% url 'sub_create' org.slug %}">Add them to your supply chain</a> with an email address. Issue documents to tenderers from the <a href="{% url 'tender' org.slug project.pk %}">Tender</a> tab.</p>
+  </div></div>
 </div>
 {% endblock %}

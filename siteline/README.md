@@ -9,6 +9,8 @@ A multi-tenant project portal for small fit-out and build contractors. Each comp
 | Area | What it does |
 |---|---|
 | **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won. Weighted pipeline, 12-month win rate, tender return deadlines. |
+| **Subcontract tenders (portal)** | Invite subcontractors to price a trade package. They get a notification with a link, never attachments: scope, tender documents, addenda (with acknowledgement tracking) and tender queries are all in the portal, and they submit quotes there. Compare quotes side by side, appoint one, and the rest are told and lose access. Losing the main tender closes every open package. |
+| **Notifications** | A bell for everyone, staff and external. Every alert (tender invitations, addenda, queries, quotes, RFI and task assignments, variation decisions) is an in-app notification plus a short email linking to the item. Reply in the portal, not by email. |
 | **Tender analytics** | Win rate by number and by value, results by month, and breakdowns by sector, size, client, lead source and project lead. Recent losses with feedback. 12 months, 24 months or all time. |
 | **Programmes** | A Gantt chart per project: activities with dates, progress, milestones and a "follows" link that flags anything out of sequence or behind. Lines can be internal or shared with the client and subcontractors. The Workload page has two company-wide Gantt charts: **Tenders** (every open bid from enquiry received to tender return, with site visit, queries close and subcontractor quotes due as milestones, filterable by estimator) and **Secured work** (every won and live job from start on site to completion). |
 | **Projects** | One record from first lead to completion. Overview with commercial position (contract sum + approved variations = forecast final account). |
@@ -34,6 +36,8 @@ A multi-tenant project portal for small fit-out and build contractors. Each comp
 | Tasks & snags | all | all | assigned to them | assigned to them |
 | Programme | all lines | all lines | shared lines, read only | shared lines, read only |
 | Tender analytics, workload charts | ✓ | ✓ | – | – |
+
+A **tendering subcontractor** (invited to price a package, not yet appointed) sees only their tender page: their own package and quote, documents issued to tenderers, addenda, and query answers issued to everyone. They can't see other bidders, the client's documents, RFIs, the programme or anything else on the project. Appointing them turns them into a normal subcontractor on the project.
 | Team, settings, billing | ✓ | team list only | – | – |
 
 ## How tenant separation works
@@ -46,7 +50,7 @@ This is the part to keep intact as you add features.
 4. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
 5. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
 
-`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 17 more for programmes, workload and analytics). Run them after every change:
+`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 17 more for programmes, workload and analytics, and `tenders/tests.py` 18 for the tender portal). Run them after every change:
 
 ```bash
 DEBUG=1 python manage.py test
@@ -67,7 +71,8 @@ Open http://localhost:8000/login/. Demo logins (password `DemoPass!2026`):
 - `owner@demo.test`: owner, sees everything
 - `pm@demo.test`: staff project manager
 - `client@demo.test`: client on the Leeds bar job (try approving VO-001)
-- `sub@demo.test`: joinery subcontractor (RFIs, a snag, a task)
+- `sub@demo.test`: joinery subcontractor (appointed on Leeds; invited to price joinery on Kingsway)
+- `bids@demo.test`: drylining subcontractor pricing the Kingsway tender (sees only their tender)
 
 Emails print to the console while `EMAIL_BACKEND` is unset.
 
@@ -173,12 +178,13 @@ Then reload on the Web tab.
 ```
 config/       settings, root URLs
 accounts/     User (email login), sign-up, invites, profile
-tenancy/      Organization, Membership, tenant middleware/manager, dashboard, team, settings, digest, demo seed, tests
+tenancy/      Organization, Membership, tenant middleware/manager, notifications, dashboard, team, settings, digest, demo seed, tests
 billing/      Stripe checkout, portal, webhook
 projects/     projects, pipeline, team & portal invites, tasks, snags, documents, comments, access rules
 rfis/         RFI register
 variations/   variations & client approval
-directory/    subcontractors, trades, trade packages
+directory/    subcontractors, trades, trade packages and quote comparison
+tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
 templates/    shared templates; app-specific ones live in each app
 static/       app.css (single stylesheet; --accent is set from each company's brand colour), app.js
 ```

@@ -8,7 +8,8 @@ Logins (password for all: DemoPass!2026):
     owner@demo.test        Owner
     pm@demo.test           Staff (project manager)
     client@demo.test       External: client on the Leeds bar project
-    sub@demo.test          External: joinery subcontractor
+    sub@demo.test          External: joinery subcontractor (appointed on Leeds, pricing Kingsway)
+    bids@demo.test         External: drylining subcontractor pricing Kingsway
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -24,7 +25,8 @@ from directory.models import Package, Subcontractor, Trade
 from projects.models import Activity, Document, DocumentRevision, Issue, Project, ProjectMember, Task
 from rfis.models import RFI
 from tenancy.context import org_context
-from tenancy.models import Membership, Organization, log_activity
+from tenancy.models import Membership, Notification, Organization, log_activity
+from tenders.models import Addendum, AddendumFile, AddendumReceipt, TenderQuery
 from variations.models import Variation
 
 PASSWORD = 'DemoPass!2026'
@@ -59,6 +61,7 @@ class Command(BaseCommand):
         est = user('estimator@demo.test', 'Tom Reilly', 'Senior Estimator')
         client = user('client@demo.test', 'Hannah Cole', 'Development Manager')
         subu = user('sub@demo.test', 'Gary Lund', 'Contracts Manager')
+        bidu = user('bids@demo.test', 'Mark Dyson', 'Estimator')
 
         org = create_organization('Northbank Interiors', owner)
         org.slug = SLUG
@@ -67,6 +70,7 @@ class Command(BaseCommand):
         Membership.objects.create(organization=org, user=est, role=Membership.ROLE_ADMIN)
         Membership.objects.create(organization=org, user=client, role=Membership.ROLE_EXTERNAL)
         Membership.objects.create(organization=org, user=subu, role=Membership.ROLE_EXTERNAL)
+        Membership.objects.create(organization=org, user=bidu, role=Membership.ROLE_EXTERNAL)
 
         now, today = timezone.now(), timezone.localdate()
         with org_context(org):
@@ -83,7 +87,7 @@ class Command(BaseCommand):
             s_join = sub('Lund Joinery Ltd', ['Joinery'], contact_name='Gary Lund', email='sub@demo.test',
                          phone='0161 555 0101', regions='North West, Yorkshire', accreditations='CHAS, FSC CoC')
             s_dry = sub('Pennine Drylining', ['Drylining & partitions', 'Suspended ceilings'], rating=5, pl_days=21,
-                        contact_name='Mark Dyson', email='mark@pennine.example', regions='North West')
+                        contact_name='Mark Dyson', email='bids@demo.test', regions='North West')
             s_elec = sub('Brightside Electrical', ['Electrical'], contact_name='Aisha Khan', email='aisha@brightside.example',
                          regions='National', accreditations='NICEIC', pl_days=-5)
             s_floor = sub('Mersey Flooring Co', ['Flooring'], rating=3, contact_name='Dave Price', regions='North West')
@@ -271,5 +275,63 @@ class Command(BaseCommand):
                                                   ('submitted for approval', 'VO-001 Additional acoustic ceiling', pm, True),
                                                   ('moved to Submitted', 'Aparthotel refurb, Hammersmith', est, True)]:
                 log_activity(actor, verb, target, project=None if 'Aparthotel' in target else leeds, internal_only=internal)
+
+            # Kingsway: a live subcontract tender run through the portal
+            kings = Project.objects.get(name='Office CAT B, Kingsway')
+            due = kings.quotes_due
+            for title, ref in [('Tender drawings – GA plans', 'KW-A-100'), ('Specification – fit-out', 'KW-SPEC-01'),
+                               ('Reflected ceiling plans', 'KW-A-300')]:
+                d = Document.objects.create(project=kings, title=title, reference=ref, category='TENDER',
+                                            tender_issue=True, created_by=est)
+                content = ContentFile(b'%PDF-1.4\n% demo file\n', name=f'{ref}.pdf')
+                DocumentRevision.objects.create(document=d, revision='T1', file=content, original_name=f'{ref}.pdf',
+                                                size=content.size, uploaded_by=est)
+            scopes = {
+                'Drylining & partitions': 'Metal stud partitions, linings and bulkheads to levels 2 and 3 as drawings KW-A-100 '
+                                          'and KW-A-300. Include fire-rated partitions to core and acoustic upgrade to meeting rooms.',
+                'Joinery': 'Reception desk, tea point joinery and meeting room storage walls as specification section J.',
+                'Electrical': 'Lighting, small power and data containment to CAT B layout. Lighting controls to spec section E4.',
+            }
+            bids = [
+                (s_dry, 'Drylining & partitions', bidu, 'QUOTED', '148500'),
+                (sub('Northern Partitions', ['Drylining & partitions'], contact_name='Sue Ward', email='sue@northern.example'),
+                 'Drylining & partitions', None, 'QUOTED', '162300'),
+                (sub('Ace Interiors', ['Drylining & partitions', 'Suspended ceilings'], email='tenders@ace.example'),
+                 'Drylining & partitions', None, 'DECLINED', None),
+                (s_join, 'Joinery', subu, 'ENQUIRY', None),
+                (s_elec, 'Electrical', None, 'QUOTED', '96400'),
+            ]
+            for s_, trade_name, member, status, value in bids:
+                pkg = Package.objects.create(
+                    project=kings, subcontractor=s_, trade=t[trade_name], scope=scopes[trade_name], quote_due=due,
+                    status=status, invited_by=est, sent_at=now - timedelta(days=12),
+                    viewed_at=now - timedelta(days=11) if status != 'ENQUIRY' or member else None,
+                    quote_value=Decimal(value) if value else None,
+                    submitted_at=now - timedelta(days=2) if value else None,
+                    valid_until=today + timedelta(days=60) if value else None,
+                    exclusions='Out-of-hours working. Builders work in connection with services.' if value else '',
+                    decline_reason='No capacity in November.' if status == 'DECLINED' else '')
+                if member:
+                    ProjectMember.objects.create(project=kings, user=member, role=ProjectMember.ROLE_BIDDER,
+                                                 company_name=s_.company_name, subcontractor=s_, added_by=est)
+            add1 = Addendum.objects.create(project=kings, title='Revised level 3 layout',
+                                           description='Meeting rooms 3.04–3.06 reconfigured. Partition lengths increase by '
+                                                       'about 18m. Revised GA attached.', issued_by=est)
+            AddendumFile.objects.create(addendum=add1, file=ContentFile(b'%PDF-1.4\n', name='KW-A-103-T2.pdf'),
+                                        original_name='KW-A-103-T2.pdf', size=10)
+            AddendumReceipt.objects.create(addendum=add1, subcontractor=s_dry, user=bidu)
+            q1 = TenderQuery.objects.create(project=kings, subcontractor=s_dry, asked_by=bidu,
+                                            question='Are the bulkheads to the reception included in drylining or ceilings?',
+                                            answer='Drylining. Ceilings package covers MF grid only.', answered_by=est,
+                                            answered_at=now - timedelta(days=4), published=True)
+            TenderQuery.objects.create(project=kings, subcontractor=s_join, asked_by=subu,
+                                       question='Can we offer an alternative laminate to the specified veneer?')
+            for u_, title in [(est, f'Quote received: {s_dry} for Drylining & partitions'),
+                              (est, f'Tender query {q1.reference} from {s_dry}'),
+                              (est, 'Declined to price: Ace Interiors for Drylining & partitions'),
+                              (subu, f'Invitation to tender: Joinery on {kings.name}'),
+                              (bidu, f'{add1.reference} issued: {add1.title}')]:
+                Notification.objects.create(user=u_, project=kings, title=title,
+                                            url=f'/{SLUG}/projects/{kings.pk}/tender/')
 
         self.stdout.write(self.style.SUCCESS(f'Demo workspace ready at /{SLUG}/  (password {PASSWORD})'))

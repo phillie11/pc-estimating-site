@@ -104,6 +104,8 @@ def variation_detail(request, org_slug, pk, vo_id):
                 notify.send(c.user.email, f'{vo.reference} submitted for approval', 'variation_submitted', {
                     'vo': vo, 'project': project, 'actor': request.user, 'link': notify.absolute(vo.get_absolute_url()),
                 }, org=request.org)
+            notify.alert([c.user for c in clients], f'{vo.reference} submitted for your approval', vo.get_absolute_url(),
+                         project=project, actor=request.user, org=request.org, email=False)
             log_activity(request, 'submitted for approval', f'{vo.reference} {vo.title}', project=project,
                          url=vo.get_absolute_url(), internal_only=True)
             messages.success(request, f'{vo.reference} submitted.' + ('' if clients else
@@ -129,6 +131,8 @@ def variation_detail(request, org_slug, pk, vo_id):
                     notify.send(vo.raised_by.email, f'{vo.reference} {vo.get_status_display().lower()}', 'variation_decided', {
                         'vo': vo, 'project': project, 'actor': request.user, 'link': notify.absolute(vo.get_absolute_url()),
                     }, org=request.org)
+                    notify.alert([vo.raised_by], f'{vo.reference} {vo.get_status_display().lower()}', vo.get_absolute_url(),
+                                 project=project, actor=request.user, org=request.org, email=False)
                 messages.success(request, f'{vo.reference} {vo.get_status_display().lower()}.')
             else:
                 return render(request, 'variations/variation_detail.html', _ctx(request, project, vo, decision_form, can_decide))

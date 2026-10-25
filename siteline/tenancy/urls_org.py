@@ -4,6 +4,7 @@ from billing import views as billing
 from directory import views as directory
 from projects import views as projects
 from rfis import views as rfis
+from tenders import views as tenders
 from variations import views as variations
 
 from . import views
@@ -13,6 +14,8 @@ P = 'projects/<int:pk>/'
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('activity/', views.activity, name='activity'),
+    path('notifications/', views.notifications, name='notifications'),
+    path('notifications/<int:pk>/', views.notification_open, name='notification_open'),
     path('team/', views.team, name='team'),
     path('team/<int:pk>/', views.member_update, name='member_update'),
     path('team/invites/<int:pk>/revoke/', views.invite_revoke, name='invite_revoke'),
@@ -68,6 +71,10 @@ urlpatterns = [
     path(P + 'variations/<int:vo_id>/file/', variations.variation_attachment, name='variation_attachment'),
 
     path(P + 'packages/', directory.package_list, name='package_list'),
+    path(P + 'tender/', tenders.tender, name='tender'),
+    path(P + 'tender/addenda/<int:file_id>/', tenders.addendum_file, name='addendum_file'),
+    path(P + 'tender/documents/<int:doc_id>/', tenders.tender_document, name='tender_document'),
+    path(P + 'tender/quotes/<int:package_id>/', tenders.quote_file, name='quote_file'),
 
     path('directory/', directory.sub_list, name='sub_list'),
     path('directory/new/', directory.sub_create, name='sub_create'),

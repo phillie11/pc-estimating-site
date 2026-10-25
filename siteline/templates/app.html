@@ -2,7 +2,7 @@
 {% block body %}
 <div class="topbar"><button data-nav-toggle aria-label="Menu">{% icon 'menu' %}</button>
   <span class="mark" style="width:26px;height:26px;border-radius:4px;background:var(--accent);display:grid;place-items:center;font-weight:800">{{ org.name|first|upper }}</span>
-  <strong>{{ org.name }}</strong></div>
+  <strong>{{ org.name }}</strong><a class="bell" href="{% url 'notifications' org.slug %}" aria-label="Notifications">{% icon 'bell' %}{% if unread_notifications %}<span>{{ unread_notifications }}</span>{% endif %}</a></div>
 <div class="shell">
   <aside class="side">
     <a class="brand" href="{% url 'dashboard' org.slug %}">
@@ -12,6 +12,7 @@
     {% with u=request.resolver_match.url_name %}
     <nav class="nav">
       <a href="{% url 'dashboard' org.slug %}" class="{% if u == 'dashboard' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
+      <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}">{% icon 'bell' %} Notifications{% if unread_notifications %}<span class="count unread">{{ unread_notifications }}</span>{% endif %}</a>
       {% if is_internal %}<a href="{% url 'pipeline' org.slug %}" class="{% if u == 'pipeline' %}on{% endif %}">{% icon 'pipeline' %} Bid pipeline</a>
       <a href="{% url 'tender_analytics' org.slug %}" class="{% if u == 'tender_analytics' %}on{% endif %}">{% icon 'chart' %} Tender analytics</a>{% endif %}
       <a href="{% url 'project_list' org.slug %}" class="{% if project or u == 'project_list' or u == 'project_create' %}on{% endif %}">{% icon 'projects' %} Projects</a>

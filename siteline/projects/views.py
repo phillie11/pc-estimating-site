@@ -18,7 +18,7 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required, internal_required
 
 from . import analytics, gantt
-from .access import can_see_variations, get_project, is_internal, require_internal, visible_projects
+from .access import can_see_variations, get_project, is_bidder, is_internal, require_internal, visible_projects
 from .files import serve
 from .forms import (ActivityForm, AddStaffForm, CommentForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
                     RevisionForm, TaskForm)
@@ -32,7 +32,12 @@ from .models import Activity, Comment, Document, DocumentRevision, Issue, Projec
 def project_context(request, project, tab, **extra):
     """Context every project tab needs: the project, tabs and badge counts."""
     internal = is_internal(request)
+    tender_tab = ('tender', 'Tender' if internal else 'Your tender', reverse('tender', args=[request.org.slug, project.pk]), None)
+    if is_bidder(request):
+        return {'project': project, 'tab': tab, 'tabs': [tender_tab], 'project_member': request.project_member, **extra}
     tabs = [('overview', 'Overview', reverse('project_detail', args=[request.org.slug, project.pk]), None)]
+    if internal:
+        tabs.append(tender_tab)
     from rfis.models import RFI
     rfi_qs = RFI.objects.filter(project=project, status=RFI.STATUS_OPEN)
     task_qs = Task.objects.filter(project=project).exclude(status=Task.STATUS_DONE)
@@ -53,7 +58,9 @@ def project_context(request, project, tab, **extra):
         vo_qs = Variation.objects.filter(project=project, status=Variation.STATUS_SUBMITTED)
         tabs.append(('variations', 'Variations', reverse('variation_list', args=[request.org.slug, project.pk]), vo_qs.count()))
     if internal:
-        tabs.append(('packages', 'Packages', reverse('package_list', args=[request.org.slug, project.pk]), None))
+        from directory.models import Package
+        quotes = Package.objects.filter(project=project, status=Package.QUOTED).count()
+        tabs.append(('packages', 'Packages & quotes', reverse('package_list', args=[request.org.slug, project.pk]), quotes))
     tabs.append(('team', 'Team', reverse('project_team', args=[request.org.slug, project.pk]), None))
     return {'project': project, 'tab': tab, 'tabs': tabs, 'project_member': getattr(request, 'project_member', None),
             **extra}
@@ -139,7 +146,9 @@ def project_create(request, org_slug):
 
 
 def project_detail(request, org_slug, pk):
-    project = get_project(request, pk)
+    project = get_project(request, pk, allow_bidder=True)
+    if is_bidder(request):
+        return redirect('tender', org_slug=org_slug, pk=pk)
     from rfis.models import RFI
     from variations.models import Variation
     internal = is_internal(request)
@@ -178,6 +187,12 @@ def project_detail(request, org_slug, pk):
     ))
 
 
+def _close_tenders_if_lost(request, project):
+    if project.stage in (Project.STAGE_LOST, Project.STAGE_DECLINED):
+        from tenders.services import close_all
+        close_all(request, project)
+
+
 @internal_required
 def project_edit(request, org_slug, pk):
     project = get_project(request, pk)
@@ -187,6 +202,7 @@ def project_edit(request, org_slug, pk):
         p = form.save()
         if p.stage != old_stage:
             log_activity(request, f'moved to {p.get_stage_display()}', p.name, project=p, url=p.get_absolute_url())
+            _close_tenders_if_lost(request, p)
         messages.success(request, 'Project saved.')
         return redirect(p)
     return render(request, 'projects/project_form.html', {'form': form, 'project': project})
@@ -241,6 +257,7 @@ def project_stage(request, org_slug, pk):
         project.save()
         log_activity(request, f'moved to {project.get_stage_display()}', project.name, project=project,
                      url=project.get_absolute_url())
+        _close_tenders_if_lost(request, project)
     if request.content_type == 'application/json':
         return JsonResponse({'ok': True, 'stage': stage})
     return redirect(project)
@@ -465,10 +482,7 @@ def task_edit(request, org_slug, pk, task_id):
 
 
 def notify_assignee(request, user, subject, project, path):
-    if user and user != request.user:
-        notify.send(user.email, subject, 'assigned', {
-            'actor': request.user, 'project': project, 'subject': subject, 'link': notify.absolute(path),
-        }, org=request.org)
+    notify.alert([user], subject, path, project=project, actor=request.user, org=request.org)
 
 
 # ---------------------------------------------------------------------------

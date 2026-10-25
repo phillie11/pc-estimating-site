@@ -10,7 +10,12 @@ def tenant(request):
             m.organization for m in request.user.memberships.filter(is_active=True).select_related('organization')
             if org is None or m.organization_id != org.pk
         ]
+    unread = 0
+    if org is not None and membership is not None:
+        from .models import Notification
+        unread = Notification.all_objects.filter(organization=org, user=request.user, read_at__isnull=True).count()
     return {
+        'unread_notifications': unread,
         'PRODUCT_NAME': settings.PRODUCT_NAME,
         'SUPPORT_EMAIL': settings.SUPPORT_EMAIL,
         'org': org,

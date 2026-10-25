@@ -13,6 +13,12 @@ those only what is shared with them:
   variations  | non-draft; client approves    | hidden
   tasks/issues| assigned to them              | assigned to them
   packages    | hidden                        | hidden
+
+A tendering subcontractor (ProjectMember.ROLE_BIDDER) is a subcontractor
+pricing a package. They see only the tender page: their package and quote,
+documents issued to tenderers, addenda and published query answers. Every
+other project view refuses them. Appointing them makes them an ordinary
+subcontractor; an unsuccessful or declined bidder loses access.
 """
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
@@ -35,13 +41,29 @@ def visible_projects(request):
     return qs.select_related('owner')
 
 
-def get_project(request, pk):
+def portal_projects(request):
+    """Projects whose shared content (RFIs, feed) this user may see: bidders' tenders excluded."""
+    qs = visible_projects(request)
+    if not is_internal(request):
+        qs = qs.exclude(members__user=request.user, members__role=ProjectMember.ROLE_BIDDER)
+    return qs
+
+
+def get_project(request, pk, allow_bidder=False):
     """Fetch a project the user may see; sets request.project_member."""
     project = get_object_or_404(visible_projects(request), pk=pk)
-    request.project_member = ProjectMember.objects.filter(project=project, user=request.user).first()
+    request.project_member = ProjectMember.objects.filter(project=project, user=request.user) \
+        .select_related('subcontractor').first()
     if not is_internal(request) and request.project_member is None:
         raise PermissionDenied
+    if is_bidder(request) and not allow_bidder:
+        raise PermissionDenied
     return project
+
+
+def is_bidder(request):
+    pm = getattr(request, 'project_member', None)
+    return not is_internal(request) and pm is not None and pm.is_bidder
 
 
 def external_role(request):

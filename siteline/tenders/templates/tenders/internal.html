@@ -1,0 +1,50 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn primary" href="{% url 'package_list' org.slug project.pk %}">{% icon 'plus' %} Invite subcontractors</a>{% endblock %}
+{% block project_content %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Invitations</div><div class="value">{{ stats.invited }}</div><div class="note">{{ stats.open_subs }} compan{{ stats.open_subs|pluralize:"y,ies" }} still pricing</div></div>
+  <div class="kpi"><div class="label">Opened</div><div class="value">{{ stats.viewed }}</div><div class="note">have looked at their tender</div></div>
+  <div class="kpi"><div class="label">Quotes in</div><div class="value">{{ stats.quoted }}</div><div class="note"><a href="{% url 'package_list' org.slug project.pk %}">compare →</a></div></div>
+  <div class="kpi"><div class="label">Declined</div><div class="value">{{ stats.declined }}</div></div>
+  <div class="kpi"><div class="label">Queries to answer</div><div class="value">{% if stats.unanswered %}<span class="bad">{{ stats.unanswered }}</span>{% else %}0{% endif %}</div></div>
+</div>
+{% if not has_packages %}<div class="card" style="margin-bottom:1.25rem"><div class="empty"><h3>No one is pricing yet</h3><p>Invite subcontractors from <a href="{% url 'package_list' org.slug project.pk %}">Packages &amp; quotes</a>. They get a notification with a link to this tender in the portal, where they find the scope, documents and addenda, ask questions and submit their quote.</p></div></div>{% endif %}
+
+<div class="grid split">
+  <div class="stack">
+    <div class="card" id="queries"><div class="card-head"><h2>Tender queries</h2></div>
+      {% if queries %}<ul class="list">{% for q in queries %}<li style="display:block">
+        <div class="row between"><span><span class="ref">{{ q.reference }}</span> <strong>{{ q.subcontractor|default:"—" }}</strong> <span class="small dim">· {{ q.asked_by.full_name }} · {{ q.created_at|date:"j M, H:i" }}</span></span>
+          {% if q.published %}{% badge 'Issued to all' 'info' %}{% elif q.answered_at %}{% badge 'Answered' 'good' %}{% else %}{% badge 'To answer' 'accent' %}{% endif %}</div>
+        <details {% if not q.answered_at %}open{% endif %} style="margin-top:6px"><summary class="small dim" style="cursor:pointer">{% if q.answered_at %}{{ q.question|truncatechars:90 }}{% else %}Answer{% endif %}</summary>
+          <form method="post" style="margin-top:8px">{% csrf_token %}<input type="hidden" name="action" value="answer"><input type="hidden" name="query" value="{{ q.pk }}">
+            {% with form=q.form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions" style="margin-top:8px"><button class="btn sm primary">{% if q.answered_at %}Update answer{% else %}Send answer{% endif %}</button></div></form></details>
+      </li>{% endfor %}</ul>{% else %}<div class="empty left">No questions from tenderers yet.</div>{% endif %}
+    </div>
+
+    <div class="card" id="addenda"><div class="card-head"><h2>Addenda issued</h2></div>
+      {% if addenda %}<ul class="list">{% for a in addenda %}<li style="display:block">
+        <div class="row between"><strong>{{ a.reference }} · {{ a.title }}</strong><span class="small dim">{{ a.issued_at|date:"j M Y" }}</span></div>
+        <div class="small" style="white-space:pre-wrap;margin:4px 0">{{ a.description }}</div>
+        {% for f in a.files.all %}<a class="tag" href="{% url 'addendum_file' org.slug project.pk f.pk %}">{{ f.original_name }}</a>{% endfor %}
+        <div class="small" style="margin-top:4px">{% if a.outstanding %}<span class="overdue">Not yet acknowledged:</span> {{ a.outstanding|join:", " }}{% else %}<span class="dim">Acknowledged by everyone pricing ({{ a.n_acks }}).</span>{% endif %}</div>
+      </li>{% endfor %}</ul>{% else %}<div class="empty left">No addenda yet.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Issue an addendum</h2></div><div class="card-body">
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="addendum">{% with form=addendum_form %}{% include "partials/form_fields.html" %}{% endwith %}
+        <div class="form-actions"><button class="btn primary">Issue to everyone pricing</button></div></form>
+      <p class="small dim" style="margin-top:8px">Each subcontractor still pricing gets a notification and must acknowledge it in the portal.</p>
+    </div></div>
+
+    <div class="card" id="documents"><div class="card-head"><h2>Documents issued to tenderers</h2><a class="small" href="{% url 'document_list' org.slug project.pk %}">Upload →</a></div>
+      {% if documents %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="issue_docs">
+        <ul class="list">{% for d in documents %}{% with cur=d.current %}<li><label class="row" style="gap:10px;flex:1;font-weight:400;margin:0;align-items:flex-start"><input type="checkbox" name="docs" value="{{ d.pk }}" {% if d.tender_issue %}checked{% endif %} style="margin-top:3px"><span class="grow">{{ d.title }}<br><span class="small dim">{{ d.reference|default:d.get_category_display }}{% if cur %} · rev {{ cur.revision }}{% endif %}</span></span></label></li>{% endwith %}{% endfor %}</ul>
+        <div class="card-foot"><button class="btn sm">Save &amp; notify bidders of new documents</button></div></form>
+      {% else %}<div class="empty left">Upload drawings and specs on the <a href="{% url 'document_list' org.slug project.pk %}">Documents</a> tab, then tick them here to issue them.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

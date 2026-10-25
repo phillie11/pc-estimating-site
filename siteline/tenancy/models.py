@@ -306,3 +306,21 @@ def log_activity(request_or_user, verb, target='', project=None, url='', interna
         actor=user if getattr(user, 'is_authenticated', False) else None,
         verb=verb, target=str(target)[:255], project=project, url=url, internal_only=internal_only,
     )
+
+
+class Notification(TenantModel):
+    """Something that needs a person's attention, shown under the bell and emailed as a link."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    project = models.ForeignKey('projects.Project', null=True, blank=True, on_delete=models.CASCADE, related_name='+')
+    title = models.CharField(max_length=255)
+    url = models.CharField(max_length=300)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', 'read_at'])]
+
+    def __str__(self):
+        return self.title
