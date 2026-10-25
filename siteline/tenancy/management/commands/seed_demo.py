@@ -127,19 +127,21 @@ class Command(BaseCommand):
                     'Spinningfields, Manchester', 16, sector='HOSPITALITY', owner_u=pm, lead_source='Referral')
             project('Clinic refurbishment, Altrincham', Project.STAGE_TENDERING, '310000', 50, 'Cedar Health',
                     'Altrincham', 27, sector='HEALTHCARE', lead_source='Website')
-            # Tender milestones, in days from today: received, site visit, queries close, sub quotes due
-            for name, (rec, visit, queries, quotes) in {
-                'Jewellery store, Argyle Arcade': (-18, -10, -4, 0),
-                'Office CAT B, Kingsway': (-12, -5, 2, 5),
-                'Gym fit-out, Ellesmere Port': (-2, 6, 14, 16),
-                'Aparthotel refurb, Hammersmith': (-40, -30, -16, -12),
-                'Store refit, Trafford Centre': (-35, -25, -20, -16),
-                'Restaurant fit-out, Spinningfields': (-5, 3, 9, 11),
-                'Clinic refurbishment, Altrincham': (0, 8, 18, 21),
+            # Tender milestones, in days from today:
+            # received, site visit, queries close, sub quotes, programme, quality, logistics
+            for name, days in {
+                'Jewellery store, Argyle Arcade': (-18, -10, -4, 0, -2, 1, 2),
+                'Office CAT B, Kingsway': (-12, -5, 2, 5, 4, 6, 7),
+                'Gym fit-out, Ellesmere Port': (-2, 6, 14, 16, 12, None, None),
+                'Aparthotel refurb, Hammersmith': (-40, -30, -16, -12, -14, -9, -8),
+                'Store refit, Trafford Centre': (-35, -25, -20, -16, -18, None, -14),
+                'Restaurant fit-out, Spinningfields': (-5, 3, 9, 11, 10, 13, 14),
+                'Clinic refurbishment, Altrincham': (0, 8, 18, 21, 19, 24, None),
             }.items():
-                Project.objects.filter(name=name).update(
-                    tender_received=today + timedelta(days=rec), site_visit=today + timedelta(days=visit),
-                    queries_close=today + timedelta(days=queries), quotes_due=today + timedelta(days=quotes))
+                fields = ['tender_received', 'site_visit', 'queries_close', 'quotes_due', 'programme_due',
+                          'quality_due', 'logistics_due']
+                Project.objects.filter(name=name).update(**{
+                    f: today + timedelta(days=d) for f, d in zip(fields, days) if d is not None})
             lost = project('College refurbishment, Pershore', Project.STAGE_LOST, '960000', 30, 'Vale Education', 'Pershore', -40,
                            sector='EDUCATION', outcome_notes='2nd of 5. 4.1% above preferred bidder.')
             lost.decided_at = today - timedelta(days=30)

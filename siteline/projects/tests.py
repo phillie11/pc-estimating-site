@@ -114,7 +114,8 @@ class ProgrammeTests(Base):
             bid = Project.objects.create(
                 name='Hotel tender', stage=Project.STAGE_TENDERING, owner=self.alice,
                 tender_received=self.today - timedelta(days=7), site_visit=self.today,
-                quotes_due=self.today + timedelta(days=5), tender_due=timezone.now() + timedelta(days=10))
+                quotes_due=self.today + timedelta(days=5), quality_due=self.today + timedelta(days=8),
+                tender_due=timezone.now() + timedelta(days=10))
             Project.objects.create(name='Undated lead', stage=Project.STAGE_LEAD)
         with org_context(self.org_b):
             Project.objects.create(name='Bravo tender', stage=Project.STAGE_TENDERING,
@@ -125,11 +126,13 @@ class ProgrammeTests(Base):
         self.assertNotContains(r, 'Bravo tender')
         self.assertContains(r, 'g-mark m-visit')
         self.assertContains(r, 'g-mark m-quotes')
+        self.assertContains(r, 'g-mark m-quality')
         self.assertNotContains(r, 'g-mark m-queries')
+        self.assertNotContains(r, 'g-mark m-programme')
         self.assertContains(r, 'Missing dates')
         self.assertContains(r, 'Undated lead')
         row = next(row for row in r.context['chart']['rows'] if row['item'] == bid)
-        self.assertEqual(len(row['marks']), 2)
+        self.assertEqual([m['kind'] for m in row['marks']], ['visit', 'quotes', 'quality'])
         r = self.client.get(self.url('workload', self.org_a) + f'?lead={self.bob.pk}')
         self.assertNotContains(r, 'Hotel tender')
 

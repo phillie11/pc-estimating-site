@@ -340,6 +340,12 @@ textarea { resize: vertical; }
 .g-mark.m-visit { border-radius: 50%; }
 .g-mark.m-queries { transform: rotate(45deg); border-radius: 2px; }
 .g-mark.m-quotes { border-radius: 2px; background: var(--card); box-shadow: inset 0 0 0 2.5px var(--ink), 0 0 0 2px var(--card); }
+.g-mark.m-programme { background: var(--ink); clip-path: polygon(50% 0, 100% 100%, 0 100%); box-shadow: none; width: 13px; height: 12px; margin: -6px 0 0 -6.5px; }
+.g-mark.m-quality { border-radius: 50%; background: var(--card); box-shadow: inset 0 0 0 2.5px var(--ink), 0 0 0 2px var(--card); }
+.g-mark.m-logistics { width: 4px; height: 16px; margin: -8px 0 0 -2px; border-radius: 2px; }
+.legend .key.m-programme { width: 10px; height: 9px; background: var(--ink); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.legend .key.m-quality { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--ink); }
+.legend .key.m-logistics { width: 3px; height: 11px; background: var(--ink); border-radius: 1px; }
 .legend .key.m-visit, .legend .key.m-queries, .legend .key.m-quotes { width: 9px; height: 9px; background: var(--ink); }
 .legend .key.m-visit { border-radius: 50%; }
 .legend .key.m-queries { transform: rotate(45deg); }

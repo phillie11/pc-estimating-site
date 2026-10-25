@@ -31,6 +31,7 @@ class ProjectForm(StyledModelForm):
         model = Project
         fields = ['name', 'client_name', 'site_address', 'sector', 'stage', 'owner', 'value', 'probability',
                   'tender_received', 'tender_due', 'site_visit', 'queries_close', 'quotes_due',
+                  'programme_due', 'quality_due', 'logistics_due',
                   'start_date', 'completion_date', 'lead_source', 'description', 'outcome_notes']
 
     def __init__(self, *args, org=None, **kwargs):

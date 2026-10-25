@@ -10,7 +10,7 @@
 {% if view == 'tenders' %}
 {% if leads|length > 1 %}<div class="filters"><a class="chip {% if not lead %}on{% endif %}" href="?view=tenders">Everyone</a>{% for u in leads %}<a class="chip {% if lead == u.pk|stringformat:'s' %}on{% endif %}" href="?view=tenders&amp;lead={{ u.pk }}">{{ u.full_name }}</a>{% endfor %}</div>{% endif %}
 <div class="card" style="margin-bottom:1.25rem">
-  <div class="card-head"><h2>Open tenders · enquiry to return</h2>{% if chart %}<span class="legend small dim"><span class="key bar"></span>Tender period <span class="key fill"></span>Time used <span class="key m-visit"></span>Site visit <span class="key m-queries"></span>Queries close <span class="key m-quotes"></span>Sub quotes <span class="key today"></span>Today</span>{% endif %}</div>
+  <div class="card-head"><h2>Open tenders · enquiry to return</h2>{% if chart %}<span class="legend small dim"><span class="key bar"></span>Tender period <span class="key fill"></span>Time used <span class="key m-visit"></span>Site visit <span class="key m-queries"></span>Queries close <span class="key m-quotes"></span>Sub quotes <span class="key m-programme"></span>Programme <span class="key m-quality"></span>Quality <span class="key m-logistics"></span>Logistics <span class="key today"></span>Today</span>{% endif %}</div>
   {% if chart %}
   <div class="gantt-wrap"><div class="gantt" style="min-width:calc(var(--g-label) + {{ chart.min_width }}px)">
     <div class="g-row g-head"><div class="g-label">Tender</div><div class="g-track">{% for t in chart.ticks %}<span class="g-tick" style="left:{{ t.left }}%">{{ t.label }}</span>{% endfor %}</div></div>
@@ -32,7 +32,7 @@
     </div>
   </div></div>
   {% else %}
-  <div class="empty"><h3>No open tenders with a return date</h3><p>Add a tender return date to each lead, tendering or submitted bid to see it here. Enquiry received, site visit, queries close and subcontractor quotes due go on the same chart.</p></div>
+  <div class="empty"><h3>No open tenders with a return date</h3><p>Add a tender return date to each lead, tendering or submitted bid to see it here. Enquiry received, site visit, queries close, subcontractor quotes, programme, quality and logistics dates go on the same chart.</p></div>
   {% endif %}
 </div>
 {% else %}

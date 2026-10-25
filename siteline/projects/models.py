@@ -109,6 +109,9 @@ class Project(TenantModel):
     site_visit = models.DateField('Site visit', null=True, blank=True)
     queries_close = models.DateField('Tender queries close', null=True, blank=True)
     quotes_due = models.DateField('Subcontractor quotes due', null=True, blank=True)
+    programme_due = models.DateField('Tender programme due', null=True, blank=True)
+    quality_due = models.DateField('Quality submission due', null=True, blank=True)
+    logistics_due = models.DateField('Logistics plan due', null=True, blank=True)
     start_date = models.DateField('Start on site', null=True, blank=True)
     completion_date = models.DateField('Completion', null=True, blank=True)
     lead_source = models.CharField(max_length=120, blank=True)
@@ -163,7 +166,8 @@ class Project(TenantModel):
         return self.value * self.probability / 100
 
     TENDER_MARKS = [('site_visit', 'Site visit', 'visit'), ('queries_close', 'Queries close', 'queries'),
-                    ('quotes_due', 'Sub quotes due', 'quotes')]
+                    ('quotes_due', 'Sub quotes due', 'quotes'), ('programme_due', 'Programme due', 'programme'),
+                    ('quality_due', 'Quality submission due', 'quality'), ('logistics_due', 'Logistics plan due', 'logistics')]
 
     @property
     def tender_start(self):
