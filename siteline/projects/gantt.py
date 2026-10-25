@@ -24,17 +24,20 @@ def _month_starts(lo, hi):
         d = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
 
 
-def build(items, start=lambda i: i.start, finish=lambda i: i.finish, today=None):
+def build(items, start=lambda i: i.start, finish=lambda i: i.finish, marks=None, today=None):
     """
     items: anything with a start and finish date (callables pick them out).
+    marks: optional callable giving (date, label, kind) milestones to pin on each row.
     Returns None when nothing has dates, else the chart's ticks and rows.
     """
     today = today or date.today()
     dated = [i for i in items if start(i) and finish(i)]
     if not dated:
         return None
-    lo = min(start(i) for i in dated)
-    hi = max(max(finish(i), start(i)) for i in dated)
+    marks = marks or (lambda i: [])
+    mark_dates = [d for i in dated for d, _, _ in marks(i)]
+    lo = min([start(i) for i in dated] + mark_dates)
+    hi = max([max(finish(i), start(i)) for i in dated] + mark_dates)
     lo -= timedelta(days=lo.weekday())                  # back to Monday
     hi += timedelta(days=6 - hi.weekday())              # on to Sunday
     days = (hi - lo).days + 1
@@ -54,6 +57,10 @@ def build(items, start=lambda i: i.start, finish=lambda i: i.finish, today=None)
             'item': i,
             'left': _pct((s - lo).days / days * 100),
             'width': _pct(max(((f - s).days + 1) / days * 100, 0.4)),
+            # Centre of the day, so a milestone sits in the middle of its date
+            'marks': [{'left': _pct(((d - lo).days + 0.5) / days * 100), 'label': label, 'kind': kind, 'date': d}
+                      for d, label, kind in marks(i)],
+            'elapsed': _pct(min(max(((today - s).days + 1) / ((f - s).days + 1), 0), 1) * 100),
         })
     return {
         'ticks': ticks,

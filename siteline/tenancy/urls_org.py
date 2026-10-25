@@ -27,7 +27,7 @@ urlpatterns = [
 
     path('pipeline/', projects.pipeline, name='pipeline'),
     path('analytics/', projects.tender_analytics, name='tender_analytics'),
-    path('programme/', projects.programme_overview, name='programme_overview'),
+    path('workload/', projects.workload, name='workload'),
     path('rfis/', rfis.rfi_register, name='rfi_register'),
 
     path('projects/', projects.project_list, name='project_list'),

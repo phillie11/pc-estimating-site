@@ -10,7 +10,7 @@ A multi-tenant project portal for small fit-out and build contractors. Each comp
 |---|---|
 | **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won. Weighted pipeline, 12-month win rate, tender return deadlines. |
 | **Tender analytics** | Win rate by number and by value, results by month, and breakdowns by sector, size, client, lead source and project lead. Recent losses with feedback. 12 months, 24 months or all time. |
-| **Programmes** | A Gantt chart per project: activities with dates, progress, milestones and a "follows" link that flags anything out of sequence or behind. Lines can be internal or shared with the client and subcontractors. A company-wide chart shows every won and live job from start on site to completion. |
+| **Programmes** | A Gantt chart per project: activities with dates, progress, milestones and a "follows" link that flags anything out of sequence or behind. Lines can be internal or shared with the client and subcontractors. The Workload page has two company-wide Gantt charts: **Tenders** (every open bid from enquiry received to tender return, with site visit, queries close and subcontractor quotes due as milestones, filterable by estimator) and **Secured work** (every won and live job from start on site to completion). |
 | **Projects** | One record from first lead to completion. Overview with commercial position (contract sum + approved variations = forecast final account). |
 | **Client & subcontractor portal** | Invite external people per project by email. They get free logins and only see what's shared with them. |
 | **RFIs** | Numbered per project (RFI-001), ball-in-court assignment, due dates, responses, threaded comments, internal notes, CSV register. Company-wide RFI register. |
@@ -33,7 +33,7 @@ A multi-tenant project portal for small fit-out and build contractors. Each comp
 | Variations | ✓ | ✓ | submitted ones; **client approves** | – |
 | Tasks & snags | all | all | assigned to them | assigned to them |
 | Programme | all lines | all lines | shared lines, read only | shared lines, read only |
-| Tender analytics, company programme | ✓ | ✓ | – | – |
+| Tender analytics, workload charts | ✓ | ✓ | – | – |
 | Team, settings, billing | ✓ | team list only | – | – |
 
 ## How tenant separation works
@@ -46,7 +46,7 @@ This is the part to keep intact as you add features.
 4. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
 5. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
 
-`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 14 more for programmes and analytics). Run them after every change:
+`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 17 more for programmes, workload and analytics). Run them after every change:
 
 ```bash
 DEBUG=1 python manage.py test

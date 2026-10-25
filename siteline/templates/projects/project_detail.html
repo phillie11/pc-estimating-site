@@ -27,6 +27,10 @@
         <dt>Site</dt><dd>{{ project.site_address|default:"—" }}</dd>
         {% if project.sector %}<dt>Sector</dt><dd>{{ project.get_sector_display }}</dd>{% endif %}
         <dt>Project lead</dt><dd>{{ project.owner|default:"—" }}</dd>
+        {% if project.tender_received %}<dt>Enquiry received</dt><dd>{{ project.tender_received|date:"j F Y" }}</dd>{% endif %}
+        {% if project.site_visit %}<dt>Site visit</dt><dd>{{ project.site_visit|date:"j F Y" }}</dd>{% endif %}
+        {% if project.queries_close %}<dt>Queries close</dt><dd>{{ project.queries_close|date:"j F Y" }}</dd>{% endif %}
+        {% if project.quotes_due %}<dt>Sub quotes due</dt><dd>{{ project.quotes_due|date:"j F Y" }}</dd>{% endif %}
         {% if project.tender_due %}<dt>Tender return</dt><dd class="{% if project.tender_overdue %}overdue{% endif %}">{{ project.tender_due|date:"l j F Y, H:i" }}</dd>{% endif %}
         <dt>Start on site</dt><dd>{{ project.start_date|date:"j F Y"|default:"—" }}</dd>
         <dt>Completion</dt><dd>{{ project.completion_date|date:"j F Y"|default:"—" }}</dd>

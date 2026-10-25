@@ -1,0 +1,70 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Workload{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><div class="eyebrow">All projects</div><h1>Workload</h1></div>
+  <div class="row"><a href="{% url 'project_create' org.slug %}?stage=TENDERING" class="btn">{% icon 'plus' %} New tender</a></div>
+</div>
+<nav class="tabs"><a href="?view=tenders" class="{% if view == 'tenders' %}on{% endif %}">Tenders</a><a href="?view=secured" class="{% if view == 'secured' %}on{% endif %}">Secured work</a></nav>
+
+{% if view == 'tenders' %}
+{% if leads|length > 1 %}<div class="filters"><a class="chip {% if not lead %}on{% endif %}" href="?view=tenders">Everyone</a>{% for u in leads %}<a class="chip {% if lead == u.pk|stringformat:'s' %}on{% endif %}" href="?view=tenders&amp;lead={{ u.pk }}">{{ u.full_name }}</a>{% endfor %}</div>{% endif %}
+<div class="card" style="margin-bottom:1.25rem">
+  <div class="card-head"><h2>Open tenders · enquiry to return</h2>{% if chart %}<span class="legend small dim"><span class="key bar"></span>Tender period <span class="key fill"></span>Time used <span class="key m-visit"></span>Site visit <span class="key m-queries"></span>Queries close <span class="key m-quotes"></span>Sub quotes <span class="key today"></span>Today</span>{% endif %}</div>
+  {% if chart %}
+  <div class="gantt-wrap"><div class="gantt" style="min-width:calc(var(--g-label) + {{ chart.min_width }}px)">
+    <div class="g-row g-head"><div class="g-label">Tender</div><div class="g-track">{% for t in chart.ticks %}<span class="g-tick" style="left:{{ t.left }}%">{{ t.label }}</span>{% endfor %}</div></div>
+    <div class="g-body">
+      <div class="g-lines" aria-hidden="true">{% for t in chart.ticks %}<span style="left:{{ t.left }}%"></span>{% endfor %}{% if chart.today %}<span class="today" style="left:{{ chart.today }}%"></span>{% endif %}</div>
+      {% for r in chart.rows %}{% with p=r.item %}
+      <div class="g-row">
+        <div class="g-label">
+          <a class="t1" href="{{ p.get_absolute_url }}">{{ p.name }}</a>
+          <span class="sub">Returns {{ p.tender_due|date:"D j M, H:i" }}{% if p.owner %} · {{ p.owner.full_name }}{% endif %}</span>
+          {% if p.tender_overdue %}{% badge 'Return overdue' 'bad' %}{% else %}{% badge p.get_stage_display p.stage_tone %}{% endif %}{% if p.value %} <span class="small dim mono">{{ p.value|money_short:currency }}</span>{% endif %}
+        </div>
+        <div class="g-track">
+          <span class="g-bar{% if p.stage == 'SUBMITTED' %} closed{% elif p.tender_overdue %} late{% endif %}" style="left:{{ r.left }}%;width:{{ r.width }}%" title="{{ p.name }} · {{ p.tender_start|date:'j M' }} – return {{ p.tender_due|date:'j M Y, H:i' }}"><span style="width:{{ r.elapsed }}%"></span></span>
+          {% for m in r.marks %}<span class="g-mark m-{{ m.kind }}" style="left:{{ m.left }}%" title="{{ m.label }} · {{ m.date|date:'D j M' }}"></span>{% endfor %}
+        </div>
+      </div>
+      {% endwith %}{% endfor %}
+    </div>
+  </div></div>
+  {% else %}
+  <div class="empty"><h3>No open tenders with a return date</h3><p>Add a tender return date to each lead, tendering or submitted bid to see it here. Enquiry received, site visit, queries close and subcontractor quotes due go on the same chart.</p></div>
+  {% endif %}
+</div>
+{% else %}
+<div class="filters"><a class="chip {% if show == 'live' %}on{% endif %}" href="?view=secured&amp;show=live">Won &amp; live</a><a class="chip {% if show == 'all' %}on{% endif %}" href="?view=secured&amp;show=all">Include complete</a></div>
+<div class="card" style="margin-bottom:1.25rem">
+  <div class="card-head"><h2>Start on site to completion</h2>{% if chart %}<span class="legend small dim"><span class="key bar"></span>Programme <span class="key fill"></span>Time elapsed <span class="key today"></span>Today</span>{% endif %}</div>
+  {% if chart %}
+  <div class="gantt-wrap"><div class="gantt" style="min-width:calc(var(--g-label) + {{ chart.min_width }}px)">
+    <div class="g-row g-head"><div class="g-label">Project</div><div class="g-track">{% for t in chart.ticks %}<span class="g-tick" style="left:{{ t.left }}%">{{ t.label }}</span>{% endfor %}</div></div>
+    <div class="g-body">
+      <div class="g-lines" aria-hidden="true">{% for t in chart.ticks %}<span style="left:{{ t.left }}%"></span>{% endfor %}{% if chart.today %}<span class="today" style="left:{{ chart.today }}%"></span>{% endif %}</div>
+      {% for r in chart.rows %}{% with p=r.item %}
+      <div class="g-row">
+        <div class="g-label">
+          <a class="t1" href="{% url 'programme' org.slug p.pk %}">{{ p.name }}</a>
+          <span class="sub">{{ p.start_date|date:"j M y" }} – {{ p.completion_date|date:"j M y" }}{% if p.client_name %} · {{ p.client_name }}{% endif %}</span>
+          {% badge p.get_stage_display p.stage_tone %}
+        </div>
+        <div class="g-track"><span class="g-bar{% if p.stage == 'COMPLETE' %} closed{% endif %}" style="left:{{ r.left }}%;width:{{ r.width }}%" title="{{ p.name }} · {{ p.start_date|date:'j M Y' }} – {{ p.completion_date|date:'j M Y' }}"><span style="width:{{ r.elapsed }}%"></span></span></div>
+      </div>
+      {% endwith %}{% endfor %}
+    </div>
+  </div></div>
+  {% else %}
+  <div class="empty"><h3>Nothing to show yet</h3><p>Won and live projects appear here once they have a start on site and a completion date.</p></div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if undated %}
+<div class="card"><div class="card-head"><h2>Missing dates</h2><span class="small dim">{% if view == 'tenders' %}add a tender return date{% else %}add a start and completion{% endif %} to put these on the chart</span></div>
+  <ul class="list">{% for p in undated %}<li><span class="ref">{{ p.reference }}</span><span class="grow"><a href="{% url 'project_edit' org.slug p.pk %}">{{ p.name }}</a></span>{% badge p.get_stage_display p.stage_tone %}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% endblock %}

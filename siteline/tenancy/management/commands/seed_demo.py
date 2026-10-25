@@ -106,6 +106,13 @@ class Command(BaseCommand):
             project('Showroom refurbishment, Shrewsbury', Project.STAGE_WON, '2150000', client_name='Westway Motor Group',
                     addr='Battlefield Rd, Shrewsbury', sector='AUTOMOTIVE', start_date=today + timedelta(days=40),
                     completion_date=today + timedelta(days=150))
+            for name, stage, value, client_name, addr, sector, start, finish in [
+                ('Retail unit, Liverpool ONE', Project.STAGE_LIVE, '480000', 'Kumo Retail', 'Liverpool ONE', 'RETAIL', -60, 20),
+                ('Office CAT A, Salford Quays', Project.STAGE_LIVE, '1650000', 'Arden Property', 'Salford Quays', 'OFFICE', -14, 84),
+                ('Pub refurbishment, York', Project.STAGE_WON, '390000', 'Ouse Inns', 'Micklegate, York', 'HOSPITALITY', 21, 77),
+            ]:
+                project(name, stage, value, client_name=client_name, addr=addr, sector=sector, owner_u=pm,
+                        start_date=today + timedelta(days=start), completion_date=today + timedelta(days=finish))
             project('Jewellery store, Argyle Arcade', Project.STAGE_TENDERING, '640000', 60, 'Halden & Co',
                     'Argyle Arcade, Glasgow', 3, sector='RETAIL', lead_source='Framework')
             project('Office CAT B, Kingsway', Project.STAGE_TENDERING, '1850000', 35, 'Arden Property', 'Kingsway, London WC2',
@@ -116,6 +123,23 @@ class Command(BaseCommand):
                     'Hammersmith, London W6', -6, sector='HOSPITALITY')
             project('Store refit, Trafford Centre', Project.STAGE_SUBMITTED, '780000', 55, 'Kumo Retail', 'Trafford Centre', -12,
                     sector='RETAIL')
+            project('Restaurant fit-out, Spinningfields', Project.STAGE_TENDERING, '560000', 45, 'Saltbox Dining',
+                    'Spinningfields, Manchester', 16, sector='HOSPITALITY', owner_u=pm, lead_source='Referral')
+            project('Clinic refurbishment, Altrincham', Project.STAGE_TENDERING, '310000', 50, 'Cedar Health',
+                    'Altrincham', 27, sector='HEALTHCARE', lead_source='Website')
+            # Tender milestones, in days from today: received, site visit, queries close, sub quotes due
+            for name, (rec, visit, queries, quotes) in {
+                'Jewellery store, Argyle Arcade': (-18, -10, -4, 0),
+                'Office CAT B, Kingsway': (-12, -5, 2, 5),
+                'Gym fit-out, Ellesmere Port': (-2, 6, 14, 16),
+                'Aparthotel refurb, Hammersmith': (-40, -30, -16, -12),
+                'Store refit, Trafford Centre': (-35, -25, -20, -16),
+                'Restaurant fit-out, Spinningfields': (-5, 3, 9, 11),
+                'Clinic refurbishment, Altrincham': (0, 8, 18, 21),
+            }.items():
+                Project.objects.filter(name=name).update(
+                    tender_received=today + timedelta(days=rec), site_visit=today + timedelta(days=visit),
+                    queries_close=today + timedelta(days=queries), quotes_due=today + timedelta(days=quotes))
             lost = project('College refurbishment, Pershore', Project.STAGE_LOST, '960000', 30, 'Vale Education', 'Pershore', -40,
                            sector='EDUCATION', outcome_notes='2nd of 5. 4.1% above preferred bidder.')
             lost.decided_at = today - timedelta(days=30)

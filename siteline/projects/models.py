@@ -104,6 +104,11 @@ class Project(TenantModel):
                                 help_text='Tender value while bidding, contract sum once won.')
     probability = models.PositiveSmallIntegerField('Win probability %', null=True, blank=True)
     tender_due = models.DateTimeField('Tender return', null=True, blank=True)
+    tender_received = models.DateField('Enquiry received', null=True, blank=True,
+                                       help_text='When the tender landed. Starts its bar on the workload chart.')
+    site_visit = models.DateField('Site visit', null=True, blank=True)
+    queries_close = models.DateField('Tender queries close', null=True, blank=True)
+    quotes_due = models.DateField('Subcontractor quotes due', null=True, blank=True)
     start_date = models.DateField('Start on site', null=True, blank=True)
     completion_date = models.DateField('Completion', null=True, blank=True)
     lead_source = models.CharField(max_length=120, blank=True)
@@ -156,6 +161,20 @@ class Project(TenantModel):
         if self.value is None or self.probability is None:
             return None
         return self.value * self.probability / 100
+
+    TENDER_MARKS = [('site_visit', 'Site visit', 'visit'), ('queries_close', 'Queries close', 'queries'),
+                    ('quotes_due', 'Sub quotes due', 'quotes')]
+
+    @property
+    def tender_start(self):
+        return self.tender_received or (timezone.localdate(self.created_at) if self.created_at else None)
+
+    @property
+    def tender_return_date(self):
+        return timezone.localdate(self.tender_due) if self.tender_due else None
+
+    def tender_marks(self):
+        return [(getattr(self, f), label, kind) for f, label, kind in self.TENDER_MARKS if getattr(self, f)]
 
     @property
     def tender_overdue(self):

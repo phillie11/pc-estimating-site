@@ -98,16 +98,50 @@ class ProgrammeTests(Base):
         self.assertFalse(self.strip.is_late)
         self.assertTrue(early.is_out_of_sequence)
 
-    def test_overview_is_staff_only_and_lists_dated_jobs(self):
+    def test_workload_is_staff_only_and_shows_secured_jobs(self):
         with org_context(self.org_a):
             self.pa.start_date, self.pa.completion_date = self.today, self.today + timedelta(days=60)
             self.pa.save()
         self.login(self.sub_user)
-        self.assertEqual(self.client.get(self.url('programme_overview', self.org_a)).status_code, 403)
+        self.assertEqual(self.client.get(self.url('workload', self.org_a)).status_code, 403)
         self.login(self.alice)
-        r = self.client.get(self.url('programme_overview', self.org_a))
+        r = self.client.get(self.url('workload', self.org_a) + '?view=secured')
         self.assertContains(r, 'Alpha secret job')
         self.assertNotContains(r, 'Bravo job')
+
+    def test_workload_tenders_chart(self):
+        with org_context(self.org_a):
+            bid = Project.objects.create(
+                name='Hotel tender', stage=Project.STAGE_TENDERING, owner=self.alice,
+                tender_received=self.today - timedelta(days=7), site_visit=self.today,
+                quotes_due=self.today + timedelta(days=5), tender_due=timezone.now() + timedelta(days=10))
+            Project.objects.create(name='Undated lead', stage=Project.STAGE_LEAD)
+        with org_context(self.org_b):
+            Project.objects.create(name='Bravo tender', stage=Project.STAGE_TENDERING,
+                                   tender_due=timezone.now() + timedelta(days=3))
+        self.login(self.alice)
+        r = self.client.get(self.url('workload', self.org_a))
+        self.assertContains(r, 'Hotel tender')
+        self.assertNotContains(r, 'Bravo tender')
+        self.assertContains(r, 'g-mark m-visit')
+        self.assertContains(r, 'g-mark m-quotes')
+        self.assertNotContains(r, 'g-mark m-queries')
+        self.assertContains(r, 'Missing dates')
+        self.assertContains(r, 'Undated lead')
+        row = next(row for row in r.context['chart']['rows'] if row['item'] == bid)
+        self.assertEqual(len(row['marks']), 2)
+        r = self.client.get(self.url('workload', self.org_a) + f'?lead={self.bob.pk}')
+        self.assertNotContains(r, 'Hotel tender')
+
+    def test_project_form_date_checks(self):
+        from .forms import ProjectForm
+        with org_context(self.org_a):
+            f = ProjectForm({'name': 'X', 'stage': 'TENDERING', 'tender_received': '2026-06-10',
+                             'tender_due': '2026-06-01T12:00', 'start_date': '2026-08-01',
+                             'completion_date': '2026-07-01'}, org=self.org_a)
+            self.assertFalse(f.is_valid())
+            self.assertIn('tender_received', f.errors)
+            self.assertIn('completion_date', f.errors)
 
 
 class GanttLayoutTests(Base):
@@ -120,6 +154,7 @@ class GanttLayoutTests(Base):
                             today=wed)
         self.assertEqual(chart['start'], date(2026, 3, 2))
         self.assertEqual(chart['end'], date(2026, 3, 15))
+        self.assertEqual(chart['rows'][0]['elapsed'], f'{1 / 7 * 100:.3f}')
         first, second = chart['rows']
         self.assertEqual(first['left'], f'{2 / 14 * 100:.3f}')
         self.assertEqual(first['width'], '50.000')
@@ -133,6 +168,13 @@ class GanttLayoutTests(Base):
         chart = gantt.build([A()], today=date(2025, 1, 1))
         self.assertIsNone(chart['today'])
         self.assertEqual(chart['ticks'][0]['label'], 'Feb 26')
+
+    def test_marks_widen_the_range_and_sit_mid_day(self):
+        class A:
+            start, finish = date(2026, 3, 4), date(2026, 3, 6)
+        chart = gantt.build([A()], marks=lambda i: [(date(2026, 3, 18), 'Visit', 'visit')], today=date(2026, 3, 4))
+        self.assertEqual(chart['end'], date(2026, 3, 22))
+        self.assertEqual(chart['rows'][0]['marks'][0]['left'], f'{16.5 / 21 * 100:.3f}')
 
     def test_nothing_dated_gives_no_chart(self):
         self.assertIsNone(gantt.build([]))

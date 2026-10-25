@@ -1,5 +1,6 @@
 from django import forms
 from django.conf import settings
+from django.utils import timezone
 
 from .access import assignable_users, staff_users
 from .files import validate_upload
@@ -29,7 +30,8 @@ class ProjectForm(StyledModelForm):
     class Meta:
         model = Project
         fields = ['name', 'client_name', 'site_address', 'sector', 'stage', 'owner', 'value', 'probability',
-                  'tender_due', 'start_date', 'completion_date', 'lead_source', 'description', 'outcome_notes']
+                  'tender_received', 'tender_due', 'site_visit', 'queries_close', 'quotes_due',
+                  'start_date', 'completion_date', 'lead_source', 'description', 'outcome_notes']
 
     def __init__(self, *args, org=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -41,6 +43,16 @@ class ProjectForm(StyledModelForm):
         if p is not None and not 0 <= p <= 100:
             raise forms.ValidationError('Between 0 and 100.')
         return p
+
+    def clean(self):
+        data = super().clean()
+        received, due = data.get('tender_received'), data.get('tender_due')
+        if received and due and received > timezone.localdate(due):
+            self.add_error('tender_received', 'The enquiry must arrive before the tender return.')
+        start, completion = data.get('start_date'), data.get('completion_date')
+        if start and completion and completion < start:
+            self.add_error('completion_date', 'Completion cannot be before the start on site.')
+        return data
 
 
 class TaskForm(StyledModelForm):

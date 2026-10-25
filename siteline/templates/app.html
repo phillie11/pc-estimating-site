@@ -15,7 +15,7 @@
       {% if is_internal %}<a href="{% url 'pipeline' org.slug %}" class="{% if u == 'pipeline' %}on{% endif %}">{% icon 'pipeline' %} Bid pipeline</a>
       <a href="{% url 'tender_analytics' org.slug %}" class="{% if u == 'tender_analytics' %}on{% endif %}">{% icon 'chart' %} Tender analytics</a>{% endif %}
       <a href="{% url 'project_list' org.slug %}" class="{% if project or u == 'project_list' or u == 'project_create' %}on{% endif %}">{% icon 'projects' %} Projects</a>
-      {% if is_internal %}<a href="{% url 'programme_overview' org.slug %}" class="{% if u == 'programme_overview' %}on{% endif %}">{% icon 'programme' %} Programme</a>{% endif %}
+      {% if is_internal %}<a href="{% url 'workload' org.slug %}" class="{% if u == 'workload' %}on{% endif %}">{% icon 'programme' %} Workload</a>{% endif %}
       <a href="{% url 'rfi_register' org.slug %}" class="{% if u == 'rfi_register' %}on{% endif %}">{% icon 'rfi' %} RFI register</a>
       {% if is_internal %}
       <a href="{% url 'sub_list' org.slug %}" class="{% if u == 'sub_list' or u == 'sub_detail' or u == 'sub_create' or u == 'sub_edit' or u == 'trades' %}on{% endif %}">{% icon 'directory' %} Supply chain</a>

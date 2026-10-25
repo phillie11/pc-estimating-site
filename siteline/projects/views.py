@@ -258,23 +258,36 @@ def tender_analytics(request, org_slug):
 # ---------------------------------------------------------------------------
 
 @internal_required
-def programme_overview(request, org_slug):
-    """Every won and live job on one chart, from start on site to completion."""
-    show = request.GET.get('show', 'live')
-    stages = Project.DELIVERY_STAGES + ((Project.STAGE_COMPLETE,) if show == 'all' else ())
-    projects = visible_projects(request).filter(stage__in=stages)
-    undated = [p for p in projects if not (p.start_date and p.completion_date)]
-    chart = gantt.build(projects, start=lambda p: p.start_date, finish=lambda p: p.completion_date,
-                        today=timezone.localdate())
+def workload(request, org_slug):
+    """Gantt of the company's workload: open tenders, or secured jobs on site."""
+    view = request.GET.get('view', 'tenders')
+    today = timezone.localdate()
+    projects = visible_projects(request)
+    leads = None
+    if view == 'secured':
+        show = request.GET.get('show', 'live')
+        stages = Project.DELIVERY_STAGES + ((Project.STAGE_COMPLETE,) if show == 'all' else ())
+        projects = projects.filter(stage__in=stages)
+        undated = [p for p in projects if not (p.start_date and p.completion_date)]
+        chart = gantt.build(projects, start=lambda p: p.start_date, finish=lambda p: p.completion_date, today=today)
+        sort_key = lambda r: (r['item'].start_date, r['item'].completion_date)
+    else:
+        view, show = 'tenders', None
+        projects = projects.filter(stage__in=Project.PIPELINE_STAGES)
+        leads = sorted({p.owner for p in projects if p.owner}, key=lambda u: u.full_name)
+        lead = request.GET.get('lead')
+        if lead and lead.isdigit():
+            projects = projects.filter(owner_id=int(lead))
+        undated = [p for p in projects if not p.tender_due]
+        chart = gantt.build(projects, start=lambda p: p.tender_start, finish=lambda p: p.tender_return_date,
+                            marks=lambda p: p.tender_marks(), today=today)
+        sort_key = lambda r: (r['item'].tender_due, r['item'].name)
     if chart:
-        today = timezone.localdate()
-        chart['rows'].sort(key=lambda r: (r['item'].start_date, r['item'].completion_date))
-        for r in chart['rows']:
-            p = r['item']
-            length = (p.completion_date - p.start_date).days + 1
-            elapsed = min(max((today - p.start_date).days + 1, 0), length)
-            r['elapsed'] = f'{elapsed / length * 100:.1f}' if length > 0 else '0'
-    return render(request, 'projects/programme_overview.html', {'chart': chart, 'undated': undated, 'show': show})
+        chart['rows'].sort(key=sort_key)
+    return render(request, 'projects/workload.html', {
+        'chart': chart, 'undated': undated, 'view': view, 'show': show, 'leads': leads,
+        'lead': request.GET.get('lead', ''),
+    })
 
 
 def _visible_activities(request, project):
