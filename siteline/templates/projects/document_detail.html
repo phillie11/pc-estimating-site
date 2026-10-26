@@ -9,7 +9,11 @@
     <div class="table-wrap"><table class="t"><thead><tr><th>Rev</th><th>File</th><th>Notes</th><th>Uploaded</th><th></th></tr></thead><tbody>
     {% for r in revisions %}<tr><td class="mono">{{ r.revision }}{% if forloop.first %} <span class="badge good plain">Current</span>{% endif %}</td><td class="small">{{ r.original_name }}<span class="sub">{{ r.size|filesize }}</span></td><td class="small">{{ r.notes|default:"—" }}</td><td class="small nowrap">{{ r.uploaded_at|date:"j M Y H:i" }}<span class="sub">{{ r.uploaded_by|default:"" }}</span></td>
       <td class="num"><a class="btn sm" href="{% url 'document_download' org.slug project.pk doc.pk r.pk %}">{% icon 'download' %}</a></td></tr>{% endfor %}
-    </tbody></table></div></div>
+    </tbody></table></div>
+    {% if downloads is not None %}<div class="card-head" style="border-top:1px solid var(--line)"><h3>Downloads</h3><span class="small dim">who opened which revision</span></div>
+      {% if downloads %}<ul class="list">{% for d in downloads %}<li><span class="grow">{{ d.user.full_name|default:"Deleted user" }}<br><span class="small dim">rev {{ d.revision }}</span></span><span class="small dim nowrap">{{ d.at|date:"j M Y, H:i" }}</span></li>{% endfor %}</ul>
+      {% else %}<div class="empty left">Nobody has downloaded this yet.</div>{% endif %}{% endif %}
+  </div>
   {% if can_revise %}<div class="card"><div class="card-head"><h2>Upload new revision</h2></div><div class="card-body">
     <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Upload revision</button></div></form></div></div>{% endif %}
 </div>

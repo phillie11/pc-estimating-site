@@ -123,7 +123,7 @@ def rams_detail(request, org_slug, pk, rams_id):
 def rams_file(request, org_slug, pk, rams_id):
     project = get_project(request, pk)
     r = get_object_or_404(_scoped(Rams.objects.filter(project=project), access.scope(request)), pk=rams_id)
-    return serve(r.file, r.original_name or None)
+    return serve(request, r.file, r.original_name or None, project=project, label=r.reference)
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +215,7 @@ def subvariation_detail(request, org_slug, pk, sv_id):
 def subvariation_file(request, org_slug, pk, sv_id):
     project = get_project(request, pk)
     v = get_object_or_404(_scoped(SubVariation.objects.filter(project=project), access.scope(request)), pk=sv_id)
-    return serve(v.file)
+    return serve(request, v.file, project=project, label=f'{v.reference} supporting document')
 
 
 def subcontract_summary(project, subcontractor_id=None):

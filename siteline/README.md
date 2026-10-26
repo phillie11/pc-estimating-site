@@ -167,7 +167,47 @@ Only the webhook changes a company's subscription status, so a customer can't un
 
 Create `~/backups` first. The backup keeps a rolling seven days. Copy them off-site too, and back up `~/siteline-files`.
 
-### 9. Updating
+### 9. Cloud file storage (AWS S3 London)
+
+PythonAnywhere's disk is too small for tender packs and drawings, so uploaded files go to a private S3 bucket in London. Siteline checks permissions on every download, logs it, then sends the browser a signed link that expires after five minutes. The bucket is never public. Until `STORAGE_BUCKET` is set, files stay on PythonAnywhere's disk as before.
+
+1. **AWS account.** Sign up at aws.amazon.com and choose **Europe (London) eu-west-2** in the region menu, top right.
+2. **Bucket.** S3 → Create bucket.
+   - Name: something like `yourcompany-siteline-files`. Region: **Europe (London)**.
+   - Object ownership: ACLs disabled (the default).
+   - **Block all public access: on** (the default; leave it on).
+   - **Bucket versioning: enable.** Deleted or replaced files can then be recovered.
+   - Default encryption: SSE-S3 (the default).
+3. **Keep old versions for 30 days.** Open the bucket → Management → Create lifecycle rule → apply to all objects → *Permanently delete noncurrent versions of objects* after **30** days.
+4. **A key that can only touch this bucket.** IAM → Users → Create user `siteline-app` (no console access). Add an inline policy (JSON tab), replacing `BUCKET`:
+   ```json
+   {"Version": "2012-10-17", "Statement": [
+     {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": "arn:aws:s3:::BUCKET"},
+     {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": "arn:aws:s3:::BUCKET/*"}
+   ]}
+   ```
+   Then Security credentials → Create access key → *Application running outside AWS*. Copy both keys.
+5. **`.env`** (Files tab), then save:
+   ```
+   STORAGE_BUCKET=yourcompany-siteline-files
+   STORAGE_REGION=eu-west-2
+   STORAGE_ACCESS_KEY=AKIA...
+   STORAGE_SECRET_KEY=...
+   ```
+6. **Install and move existing files** (Bash console):
+   ```bash
+   cd ~/pc-estimating-site/siteline && source .venv/bin/activate && pip install -r requirements.txt
+   python manage.py move_files_to_storage --dry-run
+   python manage.py move_files_to_storage
+   ```
+   Reload on the Web tab. Open a document: the address bar should briefly show `s3.eu-west-2.amazonaws.com`. The local copies in `MEDIA_ROOT` aren't deleted; remove them yourself once you've checked.
+7. **Optional: virus scanning.** GuardDuty → Malware Protection for S3 → enable for the bucket. It scans every upload from subcontractors and is charged per GB scanned.
+
+Other S3-compatible providers work with the same settings plus `STORAGE_ENDPOINT_URL`: DigitalOcean Spaces London (`https://lon1.digitaloceanspaces.com`, region `lon1`) or Cloudflare R2 (`https://<account_id>.eu.r2.cloudflarestorage.com`, region `auto`). See `.env.example`.
+
+Where data lives: files in London; the database where your PythonAnywhere account is (www.pythonanywhere.com is the US, eu.pythonanywhere.com is Germany). There is no UK PythonAnywhere.
+
+### 10. Updating
 ```bash
 cd ~/siteline && git pull && source .venv/bin/activate
 pip install -r requirements.txt
@@ -184,7 +224,8 @@ Then reload on the Web tab.
 
 - **Terms, privacy policy and a data processing agreement.** You'll be a data processor for your customers' client and subcontractor data under UK GDPR. Register with the ICO.
 - **Email verification** on sign-up isn't built yet. Invite links do prove the email address.
-- **Storage.** PythonAnywhere disk quotas are modest. If customers upload a lot of drawings, move files to S3-compatible storage (`django-storages`); the permission-checked download views stay the same.
+- **Storage.** Set up cloud file storage (step 9) before customers upload drawings. PythonAnywhere's disk fills quickly.
+- **Two-factor login** isn't built yet, and security questionnaires ask about it first.
 - **Scale.** PythonAnywhere suits the first few dozen customers. If you outgrow it, the code runs unchanged on Render, Railway or a VPS with Postgres (`DB_ENGINE=postgres`), and subdomain workspaces become possible.
 
 ## Project layout

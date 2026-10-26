@@ -2,6 +2,9 @@ Django==5.1.4
 stripe==11.4.1
 whitenoise==6.8.2
 python-dotenv==1.0.1
+# Cloud file storage (AWS S3 London, DigitalOcean Spaces or Cloudflare R2), switched on by STORAGE_BUCKET
+django-storages==1.14.4
+boto3==1.35.36
 django-axes==7.0.1
 Pillow==11.0.0
 # MySQL on PythonAnywhere

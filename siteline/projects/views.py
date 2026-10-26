@@ -22,7 +22,7 @@ from .access import can_see_variations, get_project, is_bidder, is_internal, req
 from .files import serve
 from .forms import (ActivityForm, AddStaffForm, CommentForm, HandoverForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
                     RevisionForm, TaskForm)
-from .models import Activity, Comment, Document, DocumentRevision, Issue, Project, ProjectInvite, ProjectMember, Task
+from .models import Activity, Comment, Document, DocumentRevision, FileAccess, Issue, Project, ProjectInvite, ProjectMember, Task
 
 
 # ---------------------------------------------------------------------------
@@ -716,7 +716,7 @@ def issue_photo(request, org_slug, pk, issue_id):
     issue = get_object_or_404(Issue, project=project, pk=issue_id)
     if not is_internal(request) and issue.assignee_id != request.user.pk:
         raise PermissionDenied
-    return serve(issue.photo)
+    return serve(request, issue.photo, project=project, label=f'{issue.reference} photo')
 
 
 # ---------------------------------------------------------------------------
@@ -790,8 +790,15 @@ def document_detail(request, org_slug, pk, doc_id):
             notify_collaborators_of_issue(request, project, doc, rev.revision)
             messages.success(request, f'Revision {rev.revision} uploaded.')
             return redirect(request.path)
+    revisions = list(doc.revisions.select_related('uploaded_by'))
+    downloads = None
+    if is_internal(request):
+        names = {r.file.name: r.revision for r in revisions}
+        downloads = list(FileAccess.objects.filter(path__in=names).select_related('user')[:50])
+        for d in downloads:
+            d.revision = names.get(d.path)
     return render(request, 'projects/document_detail.html', project_context(
-        request, project, 'documents', doc=doc, revisions=doc.revisions.select_related('uploaded_by'), form=form,
+        request, project, 'documents', doc=doc, revisions=revisions, form=form, downloads=downloads,
         can_revise=is_internal(request) or doc.created_by_id == request.user.pk))
 
 
@@ -799,4 +806,5 @@ def document_download(request, org_slug, pk, doc_id, rev_id):
     project = get_project(request, pk)
     doc = get_object_or_404(_visible_documents(request, project), pk=doc_id)
     rev = get_object_or_404(DocumentRevision, document=doc, pk=rev_id)
-    return serve(rev.file, rev.original_name)
+    return serve(request, rev.file, rev.original_name, project=project,
+                 label=f'{doc.reference or doc.title} rev {rev.revision}')

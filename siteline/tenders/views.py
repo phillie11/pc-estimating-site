@@ -185,6 +185,16 @@ def _internal(request, project):
     for a in addenda:
         acked = {r.subcontractor_id for r in a.receipts.all()}
         a.outstanding = sorted({p.subcontractor.company_name for p in packages if p.is_open and p.subcontractor_id not in acked})
+    # Which pricing companies have actually opened each issued document and addendum file
+    from projects.models import FileAccess, ProjectMember
+    company = {m.user_id: m.company_name or (m.subcontractor.company_name if m.subcontractor else m.user.full_name)
+               for m in ProjectMember.objects.filter(project=project, subcontractor__isnull=False)
+               .select_related('subcontractor', 'user')}
+    opened = {}
+    for fa in FileAccess.objects.filter(project=project, user_id__in=company).values('path', 'user_id'):
+        opened.setdefault(fa['path'], set()).add(company[fa['user_id']])
+    for a in addenda:
+        a.opened_by = sorted(set().union(*[opened.get(f.file.name, set()) for f in a.files.all()]))
     queries = list(TenderQuery.objects.filter(project=project).select_related('subcontractor', 'asked_by'))
     for q in queries:
         q.form = answer_forms.get(q.pk) or AnswerForm(instance=q)
@@ -195,9 +205,13 @@ def _internal(request, project):
         'declined': sum(1 for p in packages if p.status == Package.DECLINED),
         'unanswered': sum(1 for q in queries if not q.answered_at),
     }
+    documents = list(Document.objects.filter(project=project).prefetch_related('revisions'))
+    for d in documents:
+        cur = d.current
+        d.opened_by = sorted(opened.get(cur.file.name, set())) if cur else []
     return render(request, 'tenders/internal.html', project_context(
         request, project, 'tender', stats=stats, addenda=addenda, queries=queries, addendum_form=addendum_form,
-        documents=Document.objects.filter(project=project).prefetch_related('revisions'), has_packages=bool(packages)))
+        documents=documents, has_packages=bool(packages)))
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +221,7 @@ def _internal(request, project):
 def addendum_file(request, org_slug, pk, file_id):
     project = _project_for_tender(request, pk)
     f = get_object_or_404(AddendumFile, addendum__project=project, pk=file_id)
-    return serve(f.file, f.original_name)
+    return serve(request, f.file, f.original_name, project=project, label=f'{f.addendum.reference}: {f.original_name}')
 
 
 def tender_document(request, org_slug, pk, doc_id):
@@ -216,11 +230,12 @@ def tender_document(request, org_slug, pk, doc_id):
     rev = doc.current
     if rev is None:
         raise PermissionDenied
-    return serve(rev.file, rev.original_name)
+    return serve(request, rev.file, rev.original_name, project=project,
+                 label=f'{doc.reference or doc.title} rev {rev.revision} (tender issue)')
 
 
 def quote_file(request, org_slug, pk, package_id):
     project = _project_for_tender(request, pk)
     qs = Package.objects.filter(project=project) if is_internal(request) else _my_packages(request, project)
     pkg = get_object_or_404(qs, pk=package_id)
-    return serve(pkg.quote_file)
+    return serve(request, pkg.quote_file, project=project, label=f'Quote: {pkg.subcontractor} ({pkg.trade or "package"})')

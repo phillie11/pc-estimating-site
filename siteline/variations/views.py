@@ -154,4 +154,4 @@ def _ctx(request, project, vo, decision_form, can_decide):
 def variation_attachment(request, org_slug, pk, vo_id):
     project = get_project(request, pk)
     vo = get_object_or_404(_visible(request, project), pk=vo_id)
-    return serve(vo.attachment)
+    return serve(request, vo.attachment, project=project, label=f'{vo.reference} attachment')

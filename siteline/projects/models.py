@@ -472,3 +472,20 @@ class Comment(TenantModel):
     class Meta:
         ordering = ['created_at']
         indexes = [models.Index(fields=['content_type', 'object_id'])]
+
+
+class FileAccess(TenantModel):
+    """Who opened which file, and when: settles "we never received addendum 2"."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    project = models.ForeignKey(Project, null=True, blank=True, on_delete=models.CASCADE, related_name='file_access')
+    label = models.CharField(max_length=255)
+    path = models.CharField(max_length=500, db_index=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-at']
+        verbose_name = 'file download'
+
+    def __str__(self):
+        return f'{self.user} opened {self.label}'

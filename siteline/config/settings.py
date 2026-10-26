@@ -173,6 +173,32 @@ STORAGES = {
 # through a view that checks the user belongs to the file's organisation and
 # project. Do not add a /media/ static mapping on PythonAnywhere.
 MEDIA_ROOT = Path(env('MEDIA_ROOT', BASE_DIR / 'private_media'))
+
+# Cloud file storage. Leave STORAGE_BUCKET empty to keep files on this server's disk.
+# Any S3-compatible service works: AWS S3 (London is eu-west-2), DigitalOcean Spaces
+# (set STORAGE_ENDPOINT_URL=https://lon1.digitaloceanspaces.com) or Cloudflare R2.
+# The bucket must be private. Siteline checks permissions, then hands the browser a
+# signed link that expires after STORAGE_LINK_SECONDS.
+STORAGE_BUCKET = env('STORAGE_BUCKET', '')
+STORAGE_LINK_SECONDS = int(env('STORAGE_LINK_SECONDS', '300'))
+STORAGE_REGION = env('STORAGE_REGION', 'eu-west-2')
+if STORAGE_BUCKET:
+    STORAGES['default'] = {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'bucket_name': STORAGE_BUCKET,
+            # Without an endpoint, use AWS's regional one (London by default), never the global one
+            'endpoint_url': env('STORAGE_ENDPOINT_URL') or f'https://s3.{STORAGE_REGION}.amazonaws.com',
+            'region_name': STORAGE_REGION,
+            'access_key': env('STORAGE_ACCESS_KEY'),
+            'secret_key': env('STORAGE_SECRET_KEY'),
+            'default_acl': None,            # never public; the bucket policy decides
+            'querystring_auth': True,       # every link is signed...
+            'querystring_expire': STORAGE_LINK_SECONDS,  # ...and short-lived
+            'file_overwrite': False,
+            'signature_version': 's3v4',
+        },
+    }
 MEDIA_URL = '/files-not-public/'
 MAX_UPLOAD_MB = int(env('MAX_UPLOAD_MB', '50'))
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024

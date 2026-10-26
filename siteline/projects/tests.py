@@ -1,7 +1,16 @@
 """Programme (Gantt) and tender analytics."""
+import io
+import os
+import shutil
+import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
+from urllib.parse import urlencode
 
+from django.core.files.storage import FileSystemStorage
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.test import override_settings
 from django.utils import timezone
 
 from tenancy.context import org_context
@@ -11,7 +20,7 @@ from tenancy.tests import Base, make_user
 from . import gantt
 from .analytics import tender_analytics, value_band
 from .forms import ActivityForm
-from .models import Activity, Project, ProjectMember
+from .models import Activity, Document, DocumentRevision, FileAccess, Project, ProjectMember
 
 
 class ProgrammeTests(Base):
@@ -242,3 +251,98 @@ class TenderAnalyticsTests(Base):
             ProjectMember.objects.create(project=self.pa, user=ext, role=ProjectMember.ROLE_CLIENT)
         self.login(ext)
         self.assertEqual(self.client.get(self.url('tender_analytics', self.org_a)).status_code, 403)
+
+
+# ---------------------------------------------------------------------------
+# File storage: signed cloud links, the download log, and moving files across
+# ---------------------------------------------------------------------------
+
+class SignedLinkStorage(FileSystemStorage):
+    """Stands in for S3: keeps files on disk but hands out signed, expiring URLs."""
+    def url(self, name, parameters=None, expire=None, http_method=None):
+        return f'https://files.example/{name}?expires={expire}&' + urlencode(parameters or {})
+
+
+def cloud(location):
+    return override_settings(STORAGE_BUCKET='test-bucket', STORAGES={
+        'default': {'BACKEND': 'projects.tests.SignedLinkStorage', 'OPTIONS': {'location': location}},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    })
+
+
+class FileStorageTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.local_dir, self.cloud_dir = tempfile.mkdtemp(), tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.local_dir, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self.cloud_dir, ignore_errors=True)
+        self.outsider = make_user('out@x.test', 'Olly Outsider')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=self.outsider, role=Membership.ROLE_EXTERNAL)
+
+    def add_doc(self):
+        with org_context(self.org_a):
+            doc = Document.objects.create(project=self.pa, title='GA plan', reference='A-100',
+                                          visibility=Document.VIS_SHARED)
+            rev = DocumentRevision.objects.create(document=doc, revision='C01', original_name='A-100.pdf', size=8,
+                                                  file=SimpleUploadedFile('A-100.pdf', b'%PDF-1.4'))
+        return doc, rev
+
+    def download(self, doc, rev):
+        return self.client.get(self.url('document_download', self.org_a, self.pa.pk, doc.pk, rev.pk))
+
+    def test_local_disk_streams_and_logs(self):
+        with self.settings(MEDIA_ROOT=self.local_dir):
+            doc, rev = self.add_doc()
+            self.login(self.alice)
+            r = self.download(doc, rev)
+            self.assertEqual(r.status_code, 200)
+            log = FileAccess.all_objects.get()
+            self.assertEqual((log.user, log.project, log.label), (self.alice, self.pa, 'A-100 rev C01'))
+
+    def test_cloud_redirects_to_short_lived_signed_link(self):
+        with cloud(self.cloud_dir):
+            doc, rev = self.add_doc()
+            self.login(self.alice)
+            r = self.download(doc, rev)
+            self.assertEqual(r.status_code, 302)
+            self.assertTrue(r['Location'].startswith(f'https://files.example/{rev.file.name}?expires=300&'))
+            self.assertIn('ResponseContentDisposition=inline', r['Location'])
+            self.assertEqual(r['Cache-Control'], 'private, no-store')
+            self.assertEqual(FileAccess.all_objects.count(), 1)
+
+    def test_cloud_link_is_never_issued_without_permission(self):
+        with cloud(self.cloud_dir):
+            doc, rev = self.add_doc()
+            self.login(self.outsider)   # in the company's portal, not on this project: it doesn't exist for them
+            self.assertEqual(self.download(doc, rev).status_code, 404)
+            self.login(self.bob)        # another company entirely
+            r = self.client.get(self.url('document_download', self.org_b, self.pa.pk, doc.pk, rev.pk))
+            self.assertEqual(r.status_code, 404)
+            self.assertFalse(FileAccess.all_objects.exists())
+
+    def test_download_log_shown_to_staff_only(self):
+        with self.settings(MEDIA_ROOT=self.local_dir):
+            doc, rev = self.add_doc()
+            with org_context(self.org_a):
+                ProjectMember.objects.create(project=self.pa, user=self.outsider, role=ProjectMember.ROLE_CLIENT)
+            self.login(self.outsider)
+            self.download(doc, rev)
+            r = self.client.get(self.url('document_detail', self.org_a, self.pa.pk, doc.pk))
+            self.assertNotContains(r, 'who opened which revision')
+            self.login(self.alice)
+            r = self.client.get(self.url('document_detail', self.org_a, self.pa.pk, doc.pk))
+            self.assertContains(r, 'who opened which revision')
+            self.assertContains(r, 'Olly Outsider')
+
+    def test_move_files_to_storage_copies_once(self):
+        with self.settings(MEDIA_ROOT=self.local_dir):
+            doc, rev = self.add_doc()
+        with cloud(self.cloud_dir), self.settings(MEDIA_ROOT=self.local_dir):
+            call_command('move_files_to_storage', '--dry-run', stdout=io.StringIO())
+            self.assertFalse(os.path.exists(os.path.join(self.cloud_dir, rev.file.name)))
+            call_command('move_files_to_storage', stdout=io.StringIO())
+            self.assertTrue(os.path.exists(os.path.join(self.cloud_dir, rev.file.name)))
+            out = io.StringIO()
+            call_command('move_files_to_storage', stdout=out)
+            self.assertIn('Copied 0, already there 1', out.getvalue())

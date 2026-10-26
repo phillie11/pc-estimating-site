@@ -135,7 +135,7 @@ def rfi_edit(request, org_slug, pk, rfi_id):
 def rfi_attachment(request, org_slug, pk, rfi_id):
     project = get_project(request, pk)
     rfi = get_object_or_404(_visible(request, project), pk=rfi_id)
-    return serve(rfi.attachment)
+    return serve(request, rfi.attachment, project=project, label=f'{rfi.reference} attachment')
 
 
 def rfi_register(request, org_slug):
