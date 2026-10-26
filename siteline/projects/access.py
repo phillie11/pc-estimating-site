@@ -35,10 +35,18 @@ def is_internal(request):
 
 
 def visible_projects(request):
+    """
+    External people see the projects they were invited to. Staff see the projects in the
+    sections they work in: estimators see bids, the projects team sees won and live jobs.
+    """
     qs = Project.objects.all()
     if not is_internal(request):
         qs = qs.filter(members__user=request.user)
-    return qs.select_related('owner')
+    elif not request.membership.can_deliver:
+        qs = qs.filter(stage__in=Project.ESTIMATING_STAGES)
+    elif not request.membership.can_estimate:
+        qs = qs.exclude(stage__in=Project.ESTIMATING_STAGES)
+    return qs.select_related('owner', 'manager')
 
 
 def portal_projects(request):
@@ -95,8 +103,12 @@ def assignable_users(project):
     ).distinct().order_by('full_name')
 
 
-def staff_users(org):
+def staff_users(org, area=None):
+    """Staff of the organisation; area='estimating' or 'delivery' narrows to people who work there."""
     User = get_user_model()
-    return User.objects.filter(
-        memberships__organization=org, memberships__role__in=Membership.INTERNAL_ROLES, memberships__is_active=True
-    ).distinct().order_by('full_name')
+    # One filter() call so every condition applies to the same membership row (this org's)
+    q = Q(memberships__organization=org, memberships__role__in=Membership.INTERNAL_ROLES, memberships__is_active=True)
+    wanted = {'estimating': Membership.AREA_ESTIMATING, 'delivery': Membership.AREA_DELIVERY}.get(area)
+    if wanted:
+        q &= Q(memberships__role__in=Membership.ADMIN_ROLES) | Q(memberships__area__in=[Membership.AREA_BOTH, wanted])
+    return User.objects.filter(q).distinct().order_by('full_name')

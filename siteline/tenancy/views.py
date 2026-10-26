@@ -16,76 +16,122 @@ from rfis.models import RFI
 from variations.models import Variation
 
 from . import notify
-from .forms import MemberRoleForm, OrganizationForm, TeamInviteForm
+from .forms import MemberAreaForm, MemberRoleForm, OrganizationForm, TeamInviteForm
 from .models import ActivityEvent, Membership, Notification, TeamInvite, log_activity
-from .permissions import admin_required, internal_required
+from .permissions import admin_required, delivery_required, estimating_required, internal_required
 
 
 def dashboard(request, org_slug):
+    if is_internal(request):
+        # Staff land on the dashboard of the side of the business they were last working in
+        sections = request.membership.sections
+        section = request.session.get('section')
+        section = section if section in sections else sections[0]
+        return redirect('estimating_home' if section == 'estimating' else 'delivery_home', org_slug=org_slug)
+
+    from directory.models import Package
     user = request.user
+    portal = portal_projects(request)
+    plate = _my_plate(request, portal)
+    plate['my_rfis'] = RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=portal, is_shared=True) \
+        .select_related('project')[:8]
+    subs = user.project_memberships.filter(organization=request.org, subcontractor__isnull=False) \
+        .values_list('subcontractor_id', flat=True)
+    tenders = Package.objects.filter(subcontractor_id__in=subs, status__in=Package.OPEN_STATUSES,
+                                     project__members__user=user).distinct().select_related('project', 'trade')
+    return render(request, 'tenancy/dashboard_external.html', {
+        'tenders': tenders,
+        'projects': portal.exclude(stage__in=Project.CLOSED_STAGES),
+        'activity': ActivityEvent.objects.filter(project__in=portal, internal_only=False).select_related('actor', 'project')[:15],
+        **plate,
+    })
+
+
+def _my_plate(request, projects):
+    user = request.user
+    return {
+        'my_tasks': Task.objects.filter(assignee=user, project__in=projects).exclude(status=Task.STATUS_DONE)
+        .select_related('project')[:8],
+        'my_rfis': RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=projects)
+        .select_related('project')[:8],
+        'my_issues': Issue.objects.filter(assignee=user, project__in=projects).exclude(status=Issue.STATUS_CLOSED)
+        .select_related('project')[:8],
+    }
+
+
+@estimating_required
+def estimating_home(request, org_slug):
+    from directory.models import Package
+    from projects.views import use_section
+    from tenders.models import TenderQuery
+    use_section(request, 'estimating')
     today = timezone.localdate()
-    projects = visible_projects(request)
-
-    my_tasks = Task.objects.filter(assignee=user, project__in=projects).exclude(status=Task.STATUS_DONE) \
-        .select_related('project')[:8]
-    my_rfis = RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=projects) \
-        .select_related('project')[:8]
-    my_issues = Issue.objects.filter(assignee=user, project__in=projects).exclude(status=Issue.STATUS_CLOSED) \
-        .select_related('project')[:8]
-
-    if not is_internal(request):
-        from directory.models import Package
-        portal = portal_projects(request)
-        my_rfis = RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=portal, is_shared=True) \
-            .select_related('project')[:8]
-        activity = ActivityEvent.objects.filter(project__in=portal, internal_only=False).select_related('actor', 'project')[:15]
-        subs = user.project_memberships.filter(organization=request.org, subcontractor__isnull=False) \
-            .values_list('subcontractor_id', flat=True)
-        tenders = Package.objects.filter(subcontractor_id__in=subs, status__in=Package.OPEN_STATUSES,
-                                         project__members__user=user).distinct().select_related('project', 'trade')
-        return render(request, 'tenancy/dashboard_external.html', {
-            'tenders': tenders,
-            'projects': portal.exclude(stage__in=Project.CLOSED_STAGES),
-            'my_tasks': my_tasks, 'my_rfis': my_rfis, 'my_issues': my_issues, 'activity': activity,
-        })
-
+    bids = visible_projects(request).filter(stage__in=Project.ESTIMATING_STAGES)
+    pipeline = bids.filter(stage__in=Project.PIPELINE_STAGES)
     year_ago = today - timedelta(days=365)
-    pipeline = projects.filter(stage__in=Project.PIPELINE_STAGES)
-    pipeline_value = pipeline.aggregate(s=Sum('value'))['s'] or Decimal('0')
-    weighted = sum((p.weighted_value or 0) for p in pipeline.select_related(None).only('value', 'probability'))
-    decided = projects.filter(decided_at__gte=year_ago)
+    decided = Project.objects.filter(decided_at__gte=year_ago)
     won = decided.filter(stage__in=Project.WON_STAGES).count()
     lost = decided.filter(stage=Project.STAGE_LOST).count()
-    win_rate = round(100 * won / (won + lost)) if (won + lost) else None
-    won_value = decided.filter(stage__in=Project.WON_STAGES).aggregate(s=Sum('value'))['s'] or Decimal('0')
-
-    open_rfis = RFI.objects.filter(status=RFI.STATUS_OPEN)
-    pending_vos = Variation.objects.filter(status=Variation.STATUS_SUBMITTED)
-
+    awaited = Package.objects.filter(project__in=pipeline, status=Package.ENQUIRY).select_related('project', 'subcontractor', 'trade')
     ctx = {
+        'section': 'estimating',
         'kpi': {
-            'live': projects.filter(stage__in=Project.DELIVERY_STAGES).count(),
-            'pipeline_value': pipeline_value,
+            'pipeline_value': pipeline.aggregate(s=Sum('value'))['s'] or Decimal('0'),
             'pipeline_count': pipeline.count(),
-            'weighted': weighted,
-            'win_rate': win_rate,
-            'won_value': won_value,
-            'won': won, 'lost': lost,
-            'open_rfis': open_rfis.count(),
-            'overdue_rfis': open_rfis.filter(due_date__lt=today).count(),
-            'pending_vo_count': pending_vos.count(),
-            'pending_vo_value': pending_vos.aggregate(s=Sum('value'))['s'] or Decimal('0'),
+            'weighted': sum((p.weighted_value or 0) for p in pipeline.select_related(None).only('value', 'probability')),
+            'win_rate': round(100 * won / (won + lost)) if (won + lost) else None, 'won': won, 'lost': lost,
+            'won_value': decided.filter(stage__in=Project.WON_STAGES).aggregate(s=Sum('value'))['s'] or Decimal('0'),
+            'returns_14': pipeline.exclude(stage=Project.STAGE_SUBMITTED)
+            .filter(tender_due__lte=timezone.now() + timedelta(days=14)).count(),
+            'quotes_awaited': awaited.count(), 'quotes_overdue': awaited.filter(quote_due__lt=today).count(),
+            'queries': TenderQuery.objects.filter(project__in=pipeline, answered_at__isnull=True).count(),
         },
         'deadlines': pipeline.filter(tender_due__isnull=False, tender_due__lte=timezone.now() + timedelta(days=14))
                      .exclude(stage=Project.STAGE_SUBMITTED).order_by('tender_due')[:8],
-        'insurance': [s for s in Subcontractor.objects.exclude(status=Subcontractor.STATUS_STRUCK_OFF)
-                      .filter(Q(public_liability_expiry__lte=today + timedelta(days=30)) |
-                              Q(employers_liability_expiry__lte=today + timedelta(days=30)))][:8],
-        'my_tasks': my_tasks, 'my_rfis': my_rfis, 'my_issues': my_issues,
-        'activity': ActivityEvent.objects.select_related('actor', 'project')[:15],
-        'org_empty': not projects.exists(),
+        'awaited': awaited.order_by('quote_due')[:10],
+        'my_bids': pipeline.filter(owner=request.user).order_by('tender_due')[:8],
+        'activity': ActivityEvent.objects.filter(project__in=bids).select_related('actor', 'project')[:12],
+        'org_empty': not Project.objects.exists(),
     }
-    return render(request, 'tenancy/dashboard.html', ctx)
+    return render(request, 'tenancy/estimating_home.html', ctx)
+
+
+@delivery_required
+def delivery_home(request, org_slug):
+    from delivery.models import Rams, SubVariation
+    from directory.models import Package
+    from projects.views import use_section
+    use_section(request, 'delivery')
+    today = timezone.localdate()
+    jobs = visible_projects(request).exclude(stage__in=Project.ESTIMATING_STAGES)
+    live = jobs.filter(stage__in=Project.DELIVERY_STAGES)
+    rams = Rams.objects.filter(project__in=live, status=Rams.SUBMITTED).select_related('project', 'subcontractor')
+    subvars = SubVariation.objects.filter(project__in=live, status=SubVariation.SUBMITTED).select_related('project', 'subcontractor')
+    open_rfis = RFI.objects.filter(project__in=live, status=RFI.STATUS_OPEN)
+    client_vos = Variation.objects.filter(project__in=live, status=Variation.STATUS_SUBMITTED)
+    ctx = {
+        'section': 'delivery',
+        'kpi': {
+            'live': live.count(), 'mine': live.filter(manager=request.user).count(),
+            'rams': rams.count(), 'subvars': subvars.count(),
+            'subvars_value': subvars.aggregate(s=Sum('value'))['s'] or Decimal('0'),
+            'client_vos': client_vos.count(),
+            'client_vos_value': client_vos.aggregate(s=Sum('value'))['s'] or Decimal('0'),
+            'open_rfis': open_rfis.count(), 'overdue_rfis': open_rfis.filter(due_date__lt=today).count(),
+            'to_appoint': Package.objects.filter(project__in=live, status__in=Package.OPEN_STATUSES)
+            .values('project', 'trade').distinct().count(),
+        },
+        'unassigned': [p for p in live if p.needs_handover],
+        'my_jobs': live.filter(manager=request.user).order_by('completion_date'),
+        'rams': rams.order_by('submitted_at')[:8],
+        'subvars': subvars.order_by('created_at')[:8],
+        'insurance': [s for s in Subcontractor.objects.filter(packages__project__in=live, packages__status=Package.APPOINTED)
+                      .distinct().filter(Q(public_liability_expiry__lte=today + timedelta(days=30)) |
+                                         Q(employers_liability_expiry__lte=today + timedelta(days=30)))][:8],
+        'activity': ActivityEvent.objects.filter(project__in=jobs).select_related('actor', 'project')[:12],
+        **_my_plate(request, live),
+    }
+    return render(request, 'tenancy/delivery_home.html', ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +165,7 @@ def team(request, org_slug):
             return redirect('team', org_slug=org.slug)
     return render(request, 'tenancy/team.html', {
         'staff': staff, 'externals': externals, 'invites': invites, 'form': form,
-        'role_form': MemberRoleForm(), 'seat_limit': org.plan_config['max_staff'],
+        'role_form': MemberRoleForm(), 'area_choices': Membership.AREA_CHOICES, 'seat_limit': org.plan_config['max_staff'],
         'seats_used': org.staff_count() + invites.count(),
     })
 
@@ -156,6 +202,12 @@ def member_update(request, org_slug, pk):
                 m.role = new_role
                 m.save(update_fields=['role'])
                 messages.success(request, f'{m.user.full_name} is now {m.get_role_display()}.')
+    elif action == 'area':
+        form = MemberAreaForm(request.POST)
+        if form.is_valid():
+            m.area = form.cleaned_data['area']
+            m.save(update_fields=['area'])
+            messages.success(request, f'{m.user.full_name} now works in {m.get_area_display().lower()}.')
     return redirect('team', org_slug=org_slug)
 
 

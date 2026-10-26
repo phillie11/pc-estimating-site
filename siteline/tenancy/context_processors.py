@@ -14,7 +14,14 @@ def tenant(request):
     if org is not None and membership is not None:
         from .models import Notification
         unread = Notification.all_objects.filter(organization=org, user=request.user, read_at__isnull=True).count()
+    # Which half of the system the sidebar shows; project and section pages override it
+    section = None
+    if membership is not None and membership.is_internal:
+        sections = membership.sections
+        section = request.session.get('section')
+        section = section if section in sections else sections[0]
     return {
+        'section': section,
         'unread_notifications': unread,
         'PRODUCT_NAME': settings.PRODUCT_NAME,
         'SUPPORT_EMAIL': settings.SUPPORT_EMAIL,

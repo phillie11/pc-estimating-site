@@ -4,12 +4,24 @@ A multi-tenant project portal for small fit-out and build contractors. Each comp
 
 `Siteline` is a placeholder name. Change it with `PRODUCT_NAME` in `.env`.
 
+## Two halves: estimating and projects
+
+Siteline is two connected systems in one workspace:
+
+- **Estimating**: bids from lead to result, subcontract tenders run through the portal, the bid pipeline, tender workload and tender analytics.
+- **Projects**: won and live jobs, with procurement, programme, RFIs, client and subcontractor variations, RAMS, snags and drawings.
+
+Each staff member is set to *Estimating*, *Projects* or both on the Team page; owners and admins always see both and switch with the toggle at the top of the sidebar. A project's stage decides which half it lives in, and `projects.access.visible_projects` enforces it, so an estimator cannot open a live job and the projects team cannot open a bid.
+
+The join is the **handover**. When a bid is won, estimating picks a project manager, confirms the contract sum and dates, and writes handover notes. The project manager is notified, and the job arrives in Projects with its documents and the subcontract quotes from the tender. Every route to *Won* (pipeline drag, stage select, edit form) goes through the handover.
+
 ## What's in it
 
 | Area | What it does |
 |---|---|
 | **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won. Weighted pipeline, 12-month win rate, tender return deadlines. |
 | **Subcontract tenders (portal)** | Invite subcontractors to price a trade package. They get a notification with a link, never attachments: scope, tender documents, addenda (with acknowledgement tracking) and tender queries are all in the portal, and they submit quotes there. Compare quotes side by side, appoint one, and the rest are told and lose access. Losing the main tender closes every open package. |
+| **Live-job portal for subcontractors** | Appointed subcontractors submit RAMS for review (approve, approve with comments, or revise and resubmit, with revision history) and submit variations, which the projects team approves in full or part, rejects, or passes straight on to the client as a draft variation. Each subcontractor sees only their own. Issuing or revising a shared drawing notifies the client and subcontractors. The overview shows each subcontract's order value, approved variations and RAMS status. |
 | **Notifications** | A bell for everyone, staff and external. Every alert (tender invitations, addenda, queries, quotes, RFI and task assignments, variation decisions) is an in-app notification plus a short email linking to the item. Reply in the portal, not by email. |
 | **Tender analytics** | Win rate by number and by value, results by month, and breakdowns by sector, size, client, lead source and project lead. Recent losses with feedback. 12 months, 24 months or all time. |
 | **Programmes** | A Gantt chart per project: activities with dates, progress, milestones and a "follows" link that flags anything out of sequence or behind. Lines can be internal or shared with the client and subcontractors. The Workload page has two company-wide Gantt charts: **Tenders** (every open bid from enquiry received to tender return, with site visit, queries close and subcontractor quotes due as milestones, filterable by estimator) and **Secured work** (every won and live job from start on site to completion). |
@@ -32,7 +44,8 @@ A multi-tenant project portal for small fit-out and build contractors. Each comp
 | Commercial figures, packages | ✓ | ✓ | – | – |
 | Shared documents / RFIs | ✓ | ✓ | ✓ | ✓ |
 | Internal documents, RFIs, comments | ✓ | ✓ | – | – |
-| Variations | ✓ | ✓ | submitted ones; **client approves** | – |
+| Client variations | ✓ | ✓ | submitted ones; **client approves** | – |
+| Subcontractor variations, RAMS | ✓ | ✓ | – | their own; submit and resubmit |
 | Tasks & snags | all | all | assigned to them | assigned to them |
 | Programme | all lines | all lines | shared lines, read only | shared lines, read only |
 | Tender analytics, workload charts | ✓ | ✓ | – | – |
@@ -50,7 +63,7 @@ This is the part to keep intact as you add features.
 4. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
 5. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
 
-`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 17 more for programmes, workload and analytics, and `tenders/tests.py` 18 for the tender portal). Run them after every change:
+`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 17 more for programmes, workload and analytics, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
 
 ```bash
 DEBUG=1 python manage.py test
@@ -68,8 +81,9 @@ DEBUG=1 python manage.py runserver
 
 Open http://localhost:8000/login/. Demo logins (password `DemoPass!2026`):
 
-- `owner@demo.test`: owner, sees everything
-- `pm@demo.test`: staff project manager
+- `owner@demo.test`: owner, sees estimating and projects and switches between them
+- `estimator@demo.test`: estimating only (bids, sub tenders, pipeline, analytics)
+- `pm@demo.test`: projects only (live jobs, procurement, RAMS, variations)
 - `client@demo.test`: client on the Leeds bar job (try approving VO-001)
 - `sub@demo.test`: joinery subcontractor (appointed on Leeds; invited to price joinery on Kingsway)
 - `bids@demo.test`: drylining subcontractor pricing the Kingsway tender (sees only their tender)
@@ -185,6 +199,7 @@ rfis/         RFI register
 variations/   variations & client approval
 directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
+delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
 templates/    shared templates; app-specific ones live in each app
 static/       app.css (single stylesheet; --accent is set from each company's brand colour), app.js
 ```

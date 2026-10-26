@@ -56,6 +56,7 @@
         }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (res) {
             if (!res.ok) { from.prepend(card); alertBox(res.j.error || 'Could not move this project.'); }
+            else if (res.j.redirect) { window.location = res.j.redirect; }
             else { recount(); }
           })
           .catch(function () { from.prepend(card); alertBox('Network error, project not moved.'); });

@@ -125,9 +125,10 @@ def accept_team_invite(request, token):
 
     def on_accept(user):
         with transaction.atomic():
-            m, created = Membership.objects.get_or_create(organization=org, user=user, defaults={'role': invite.role})
+            m, created = Membership.objects.get_or_create(organization=org, user=user,
+                                                          defaults={'role': invite.role, 'area': invite.area})
             if not created and (m.role == Membership.ROLE_EXTERNAL or not m.is_active):
-                m.role, m.is_active = invite.role, True
+                m.role, m.is_active, m.area = invite.role, True, invite.area
                 m.save()
             invite.status = TeamInvite.STATUS_ACCEPTED
             invite.save(update_fields=['status'])

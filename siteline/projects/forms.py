@@ -29,15 +29,25 @@ class StyledModelForm(forms.ModelForm):
 class ProjectForm(StyledModelForm):
     class Meta:
         model = Project
-        fields = ['name', 'client_name', 'site_address', 'sector', 'stage', 'owner', 'value', 'probability',
+        fields = ['name', 'client_name', 'site_address', 'sector', 'stage', 'owner', 'manager', 'value', 'probability',
                   'tender_received', 'tender_due', 'site_visit', 'queries_close', 'quotes_due',
                   'programme_due', 'quality_due', 'logistics_due',
                   'start_date', 'completion_date', 'lead_source', 'description', 'outcome_notes']
 
-    def __init__(self, *args, org=None, **kwargs):
+    def __init__(self, *args, org=None, membership=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['owner'].queryset = staff_users(org)
+        self.fields['owner'].queryset = staff_users(org, 'estimating')
+        self.fields['manager'].queryset = staff_users(org, 'delivery')
         self.fields['probability'].widget.attrs.update({'min': 0, 'max': 100})
+        if membership is not None:
+            # People only create and move work within the sections they work in
+            allowed = [c for c in Project.STAGE_CHOICES
+                       if (c[0] in Project.ESTIMATING_STAGES and membership.can_estimate)
+                       or (c[0] not in Project.ESTIMATING_STAGES and membership.can_deliver)
+                       or (self.instance.pk and c[0] == self.instance.stage)]
+            self.fields['stage'].choices = allowed
+            if not membership.can_deliver:
+                del self.fields['manager']
 
     def clean_probability(self):
         p = self.cleaned_data.get('probability')
@@ -52,6 +62,26 @@ class ProjectForm(StyledModelForm):
             self.add_error('tender_received', 'The enquiry must arrive before the tender return.')
         start, completion = data.get('start_date'), data.get('completion_date')
         if start and completion and completion < start:
+            self.add_error('completion_date', 'Completion cannot be before the start on site.')
+        return data
+
+
+class HandoverForm(StyledModelForm):
+    """Estimating hands a won job to the projects team."""
+    class Meta:
+        model = Project
+        fields = ['manager', 'value', 'start_date', 'completion_date', 'handover_notes']
+        labels = {'value': 'Contract sum'}
+        widgets = {'handover_notes': forms.Textarea(attrs={'rows': 6})}
+
+    def __init__(self, *args, org=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['manager'].queryset = staff_users(org, 'delivery')
+        self.fields['manager'].required = True
+
+    def clean(self):
+        data = super().clean()
+        if data.get('start_date') and data.get('completion_date') and data['completion_date'] < data['start_date']:
             self.add_error('completion_date', 'Completion cannot be before the start on site.')
         return data
 

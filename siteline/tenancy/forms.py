@@ -29,11 +29,17 @@ class OrganizationForm(forms.ModelForm):
 class TeamInviteForm(forms.ModelForm):
     class Meta:
         model = TeamInvite
-        fields = ['email', 'role']
+        fields = ['email', 'role', 'area']
+        help_texts = {'area': 'Estimating sees bids, sub tenders and analytics; projects sees won and live jobs. '
+                              'Admins always see both.'}
 
     def __init__(self, *args, org=None, **kwargs):
         self.org = org
         super().__init__(*args, **kwargs)
+        self.fields['area'].required = False
+
+    def clean_area(self):
+        return self.cleaned_data.get('area') or Membership.AREA_BOTH
 
     def clean_email(self):
         email = self.cleaned_data['email'].lower()
@@ -47,3 +53,7 @@ class TeamInviteForm(forms.ModelForm):
 
 class MemberRoleForm(forms.Form):
     role = forms.ChoiceField(choices=[c for c in Membership.ROLE_CHOICES if c[0] != Membership.ROLE_EXTERNAL])
+
+
+class MemberAreaForm(forms.Form):
+    area = forms.ChoiceField(choices=Membership.AREA_CHOICES)

@@ -361,3 +361,9 @@ textarea { resize: vertical; }
 .list.notes li.unread .dot { background: var(--accent); }
 .list.notes li.unread a { font-weight: 600; }
 .list.notes .grow .small { display: block; }
+
+/* ---------- Section switcher (estimating / projects) ---------- */
+.switch { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; margin: 0 2px 14px; border-radius: 6px; background: rgba(255,255,255,.06); }
+.switch a { text-align: center; padding: 6px 4px; border-radius: 4px; font-size: 12.5px; font-weight: 600; color: var(--side-dim); text-decoration: none; }
+.switch a:hover { color: #fff; }
+.switch a.on { background: var(--accent); color: var(--accent-ink); }

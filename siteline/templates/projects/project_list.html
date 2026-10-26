@@ -1,25 +1,22 @@
 {% extends "app.html" %}{% load ui %}
-{% block title %}Projects{% endblock %}
+{% block title %}{% if list_section == 'estimating' %}Bids{% else %}Projects{% endif %}{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Projects</h1>
-  <div class="row">{% if is_internal %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a href="{% url 'project_create' org.slug %}" class="btn primary">{% icon 'plus' %} New</a>{% endif %}</div></div>
+<div class="page-head">
+  <div>{% if is_internal %}<div class="eyebrow">{% if list_section == 'estimating' %}Estimating{% else %}Projects{% endif %}</div>{% endif %}<h1>{% if list_section == 'estimating' %}Bids{% else %}Projects{% endif %}</h1></div>
+  <div class="row">{% if is_internal %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a href="{% url 'project_create' org.slug %}{% if list_section == 'estimating' %}?stage=LEAD{% else %}?stage=LIVE{% endif %}" class="btn primary">{% icon 'plus' %} {% if list_section == 'estimating' %}New bid{% else %}New project{% endif %}</a>{% endif %}</div></div>
 <div class="filters">
-  <a class="chip {% if view == 'active' %}on{% endif %}" href="?view=active">Active</a>
-  {% if is_internal %}<a class="chip {% if view == 'pipeline' %}on{% endif %}" href="?view=pipeline">Bidding</a>{% endif %}
-  <a class="chip {% if view == 'live' %}on{% endif %}" href="?view=live">Won &amp; live</a>
-  <a class="chip {% if view == 'closed' %}on{% endif %}" href="?view=closed">Closed</a>
-  <a class="chip {% if view == 'all' %}on{% endif %}" href="?view=all">All</a>
+  {% for code, stages in groups.items %}<a class="chip {% if view == code %}on{% endif %}" href="?view={{ code }}">{% if code == 'open' %}Open bids{% elif code == 'submitted' %}Submitted{% elif code == 'lost' %}Lost &amp; declined{% elif code == 'live' %}Won &amp; live{% elif code == 'complete' %}Complete{% elif code == 'active' %}Active{% elif code == 'closed' %}Closed{% else %}All{% endif %}</a>{% endfor %}
   <span class="spacer"></span>
   <form class="search" method="get"><input type="hidden" name="view" value="{{ view }}"><input type="search" name="q" value="{{ q }}" placeholder="Search name, client, address"></form>
 </div>
 <div class="card">{% if projects %}<div class="table-wrap"><table class="t">
-  <thead><tr><th>Ref</th><th>Project</th><th>Stage</th>{% if is_internal %}<th>Lead</th><th class="num">Value</th>{% endif %}<th>Key date</th></tr></thead><tbody>
+  <thead><tr><th>Ref</th><th>{% if list_section == 'estimating' %}Bid{% else %}Project{% endif %}</th><th>Stage</th>{% if is_internal %}<th>{% if list_section == 'estimating' %}Bid lead{% else %}Project manager{% endif %}</th><th class="num">Value</th>{% endif %}<th>Key date</th></tr></thead><tbody>
   {% for p in projects %}<tr>
     <td class="ref">{{ p.reference }}</td>
     <td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}{% if p.site_address %} · {{ p.site_address }}{% endif %}</span></td>
-    <td>{% badge p.get_stage_display p.stage_tone %}</td>
-    {% if is_internal %}<td class="small">{{ p.owner|default:"—" }}</td><td class="num">{{ p.value|money:currency }}</td>{% endif %}
-    <td class="small nowrap">{% if p.is_pipeline and p.tender_due %}<span class="{% if p.tender_overdue %}overdue{% endif %}">Return {{ p.tender_due|date:"j M" }}</span>{% elif p.start_date %}Start {{ p.start_date|date:"j M Y" }}{% if p.completion_date %}<span class="sub">PC {{ p.completion_date|date:"j M Y" }}</span>{% endif %}{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td>{% badge p.get_stage_display p.stage_tone %}{% if is_internal and p.needs_handover %}<span class="sub">{% badge 'No project manager' 'warn' %}</span>{% endif %}</td>
+    {% if is_internal %}<td class="small">{% if list_section == 'estimating' %}{{ p.owner|default:"—" }}{% else %}{{ p.manager|default:"—" }}{% endif %}</td><td class="num">{{ p.value|money:currency }}</td>{% endif %}
+    <td class="small nowrap">{% if p.is_pipeline and p.tender_due %}<span class="{% if p.tender_overdue %}overdue{% endif %}">Return {{ p.tender_due|date:"j M" }}</span>{% elif p.start_date %}Start {{ p.start_date|date:"j M Y" }}{% if p.completion_date %}<span class="sub">PC {{ p.completion_date|date:"j M Y" }}</span>{% endif %}{% elif p.decided_at %}Decided {{ p.decided_at|date:"j M Y" }}{% else %}<span class="dim">—</span>{% endif %}</td>
   </tr>{% endfor %}</tbody></table></div>
-  {% else %}<div class="empty"><h3>No projects here</h3>{% if is_internal %}<p>Add a bid or a live job to get going.</p><a class="btn primary" href="{% url 'project_create' org.slug %}">New project</a>{% endif %}</div>{% endif %}</div>
+  {% else %}<div class="empty"><h3>Nothing here</h3>{% if is_internal %}<p>{% if list_section == 'estimating' %}Add a lead or tender to start pricing.{% else %}Won bids appear here once estimating hands them over. You can also add a live job directly.{% endif %}</p>{% endif %}</div>{% endif %}</div>
 {% endblock %}

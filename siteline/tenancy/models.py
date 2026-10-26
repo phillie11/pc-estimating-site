@@ -180,9 +180,16 @@ class Membership(models.Model):
     INTERNAL_ROLES = (ROLE_OWNER, ROLE_ADMIN, ROLE_MEMBER)
     ADMIN_ROLES = (ROLE_OWNER, ROLE_ADMIN)
 
+    # Which side of the business a staff member works in. Owners and admins always see both.
+    AREA_BOTH = 'BOTH'
+    AREA_ESTIMATING = 'ESTIMATING'
+    AREA_DELIVERY = 'DELIVERY'
+    AREA_CHOICES = [(AREA_BOTH, 'Estimating & projects'), (AREA_ESTIMATING, 'Estimating'), (AREA_DELIVERY, 'Projects')]
+
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='memberships')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='memberships')
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_MEMBER)
+    area = models.CharField('Works in', max_length=10, choices=AREA_CHOICES, default=AREA_BOTH)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -209,6 +216,18 @@ class Membership(models.Model):
     def is_owner(self):
         return self.role == self.ROLE_OWNER
 
+    @property
+    def can_estimate(self):
+        return self.is_internal and (self.is_admin or self.area in (self.AREA_BOTH, self.AREA_ESTIMATING))
+
+    @property
+    def can_deliver(self):
+        return self.is_internal and (self.is_admin or self.area in (self.AREA_BOTH, self.AREA_DELIVERY))
+
+    @property
+    def sections(self):
+        return [s for s, ok in (('estimating', self.can_estimate), ('delivery', self.can_deliver)) if ok]
+
 
 def _invite_token():
     return secrets.token_urlsafe(32)
@@ -230,6 +249,7 @@ class TeamInvite(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='team_invites')
     email = models.EmailField()
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=Membership.ROLE_MEMBER)
+    area = models.CharField('Works in', max_length=10, choices=Membership.AREA_CHOICES, default=Membership.AREA_BOTH)
     token = models.CharField(max_length=64, unique=True, default=_invite_token, editable=False)
     invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)

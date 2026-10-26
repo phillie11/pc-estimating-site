@@ -297,7 +297,8 @@ class SignupTests(TestCase):
         r = self.client.post(reverse('signup'), {'company_name': 'Admin Ltd', 'full_name': 'Pat', 'email': 'pat@p.test',
                                                  'password': PW})
         org = Organization.objects.get(name='Admin Ltd')
-        self.assertRedirects(r, reverse('dashboard', args=[org.slug]))
+        # The dashboard sends staff on to their section's home, so only check the first hop
+        self.assertRedirects(r, reverse('dashboard', args=[org.slug]), fetch_redirect_response=False)
         self.assertNotEqual(org.slug, 'admin')  # reserved word avoided
         self.assertTrue(org.has_access)
         self.assertEqual(org.subscription_status, Organization.STATUS_TRIAL)

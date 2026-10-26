@@ -2,10 +2,10 @@
 {% block title %}Workload{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><div class="eyebrow">All projects</div><h1>Workload</h1></div>
-  <div class="row"><a href="{% url 'project_create' org.slug %}?stage=TENDERING" class="btn">{% icon 'plus' %} New tender</a></div>
+  <div><div class="eyebrow">{% if view == 'tenders' %}Estimating{% else %}Projects{% endif %}</div><h1>{% if view == 'tenders' %}Tender workload{% else %}Secured work{% endif %}</h1></div>
+  {% if view == 'tenders' %}<div class="row"><a href="{% url 'project_create' org.slug %}?stage=TENDERING" class="btn">{% icon 'plus' %} New tender</a></div>{% endif %}
 </div>
-<nav class="tabs"><a href="?view=tenders" class="{% if view == 'tenders' %}on{% endif %}">Tenders</a><a href="?view=secured" class="{% if view == 'secured' %}on{% endif %}">Secured work</a></nav>
+{% if membership.can_estimate and membership.can_deliver %}<nav class="tabs"><a href="?view=tenders" class="{% if view == 'tenders' %}on{% endif %}">Tenders</a><a href="?view=secured" class="{% if view == 'secured' %}on{% endif %}">Secured work</a></nav>{% endif %}
 
 {% if view == 'tenders' %}
 {% if leads|length > 1 %}<div class="filters"><a class="chip {% if not lead %}on{% endif %}" href="?view=tenders">Everyone</a>{% for u in leads %}<a class="chip {% if lead == u.pk|stringformat:'s' %}on{% endif %}" href="?view=tenders&amp;lead={{ u.pk }}">{{ u.full_name }}</a>{% endfor %}</div>{% endif %}
@@ -48,7 +48,7 @@
       <div class="g-row">
         <div class="g-label">
           <a class="t1" href="{% url 'programme' org.slug p.pk %}">{{ p.name }}</a>
-          <span class="sub">{{ p.start_date|date:"j M y" }} – {{ p.completion_date|date:"j M y" }}{% if p.client_name %} · {{ p.client_name }}{% endif %}</span>
+          <span class="sub">{{ p.start_date|date:"j M y" }} – {{ p.completion_date|date:"j M y" }}{% if p.manager %} · {{ p.manager.full_name }}{% elif p.client_name %} · {{ p.client_name }}{% endif %}</span>
           {% badge p.get_stage_display p.stage_tone %}
         </div>
         <div class="g-track"><span class="g-bar{% if p.stage == 'COMPLETE' %} closed{% endif %}" style="left:{{ r.left }}%;width:{{ r.width }}%" title="{{ p.name }} · {{ p.start_date|date:'j M Y' }} – {{ p.completion_date|date:'j M Y' }}"><span style="width:{{ r.elapsed }}%"></span></span></div>

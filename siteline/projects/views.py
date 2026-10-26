@@ -15,12 +15,12 @@ from django.views.decorators.http import require_POST
 
 from tenancy import notify
 from tenancy.models import log_activity
-from tenancy.permissions import admin_required, internal_required
+from tenancy.permissions import admin_required, estimating_required, internal_required
 
 from . import analytics, gantt
 from .access import can_see_variations, get_project, is_bidder, is_internal, require_internal, visible_projects
 from .files import serve
-from .forms import (ActivityForm, AddStaffForm, CommentForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
+from .forms import (ActivityForm, AddStaffForm, CommentForm, HandoverForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
                     RevisionForm, TaskForm)
 from .models import Activity, Comment, Document, DocumentRevision, Issue, Project, ProjectInvite, ProjectMember, Task
 
@@ -29,15 +29,42 @@ from .models import Activity, Comment, Document, DocumentRevision, Issue, Projec
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+def use_section(request, section):
+    """Remember which side of the business a staff member is working in, for the sidebar."""
+    if is_internal(request) and section in request.membership.sections:
+        request.session['section'] = section
+    return section
+
+
 def project_context(request, project, tab, **extra):
-    """Context every project tab needs: the project, tabs and badge counts."""
+    """
+    Context every project tab needs: the project, tabs and badge counts.
+
+    Tabs follow the project's section. A bid shows estimating tabs (tender, sub
+    quotes, documents). A won or live job shows the projects team's tabs
+    (programme, procurement, RFIs, variations, RAMS, snags). Externals see what
+    their role allows; a tendering subcontractor sees only their tender.
+    """
+    from directory.models import Package
+    from delivery.access import can_use_site_portal, site_counts
     internal = is_internal(request)
-    tender_tab = ('tender', 'Tender' if internal else 'Your tender', reverse('tender', args=[request.org.slug, project.pk]), None)
+    org, pk = request.org.slug, project.pk
+    url = lambda name: reverse(name, args=[org, pk])  # noqa: E731
+    section = use_section(request, project.section)
+    base = {'project': project, 'tab': tab, 'project_member': getattr(request, 'project_member', None),
+            'section': section, **extra}
     if is_bidder(request):
-        return {'project': project, 'tab': tab, 'tabs': [tender_tab], 'project_member': request.project_member, **extra}
-    tabs = [('overview', 'Overview', reverse('project_detail', args=[request.org.slug, project.pk]), None)]
-    if internal:
-        tabs.append(tender_tab)
+        return {**base, 'tabs': [('tender', 'Your tender', url('tender'), None)]}
+
+    tabs = [('overview', 'Overview', url('project_detail'), None)]
+    if internal and section == 'estimating':
+        quotes = Package.objects.filter(project=project, status=Package.QUOTED).count()
+        tabs += [('tender', 'Sub tenders', url('tender'), None),
+                 ('packages', 'Sub quotes', url('package_list'), quotes),
+                 ('documents', 'Documents', url('document_list'), None),
+                 ('team', 'Team', url('project_team'), None)]
+        return {**base, 'tabs': tabs}
+
     from rfis.models import RFI
     rfi_qs = RFI.objects.filter(project=project, status=RFI.STATUS_OPEN)
     task_qs = Task.objects.filter(project=project).exclude(status=Task.STATUS_DONE)
@@ -46,24 +73,28 @@ def project_context(request, project, tab, **extra):
         rfi_qs = rfi_qs.filter(is_shared=True)
         task_qs = task_qs.filter(assignee=request.user)
         issue_qs = issue_qs.filter(assignee=request.user)
-    tabs += [
-        ('programme', 'Programme', reverse('programme', args=[request.org.slug, project.pk]), None),
-        ('tasks', 'Tasks', reverse('task_list', args=[request.org.slug, project.pk]), task_qs.count()),
-        ('issues', 'Snags & issues', reverse('issue_list', args=[request.org.slug, project.pk]), issue_qs.count()),
-        ('documents', 'Documents', reverse('document_list', args=[request.org.slug, project.pk]), None),
-        ('rfis', 'RFIs', reverse('rfi_list', args=[request.org.slug, project.pk]), rfi_qs.count()),
-    ]
+    tabs.append(('programme', 'Programme', url('programme'), None))
+    if internal:
+        open_pkgs = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES)
+        tabs.append(('packages', 'Procurement', url('package_list'), open_pkgs.filter(status=Package.QUOTED).count()))
+        if open_pkgs.exists():
+            tabs.append(('tender', 'Sub tenders', url('tender'), None))
+    tabs.append(('rfis', 'RFIs', url('rfi_list'), rfi_qs.count()))
     if can_see_variations(request):
         from variations.models import Variation
         vo_qs = Variation.objects.filter(project=project, status=Variation.STATUS_SUBMITTED)
-        tabs.append(('variations', 'Variations', reverse('variation_list', args=[request.org.slug, project.pk]), vo_qs.count()))
-    if internal:
-        from directory.models import Package
-        quotes = Package.objects.filter(project=project, status=Package.QUOTED).count()
-        tabs.append(('packages', 'Packages & quotes', reverse('package_list', args=[request.org.slug, project.pk]), quotes))
-    tabs.append(('team', 'Team', reverse('project_team', args=[request.org.slug, project.pk]), None))
-    return {'project': project, 'tab': tab, 'tabs': tabs, 'project_member': getattr(request, 'project_member', None),
-            **extra}
+        tabs.append(('variations', 'Client variations' if internal else 'Variations', url('variation_list'), vo_qs.count()))
+    if can_use_site_portal(request):
+        counts = site_counts(request, project)
+        tabs += [('subvariations', 'Sub variations' if internal else 'Variations', url('subvariation_list'), counts['subvariations']),
+                 ('rams', 'RAMS', url('rams_list'), counts['rams'])]
+    tabs += [
+        ('issues', 'Snags & issues', url('issue_list'), issue_qs.count()),
+        ('tasks', 'Tasks', url('task_list'), task_qs.count()),
+        ('documents', 'Documents', url('document_list'), None),
+        ('team', 'Team', url('project_team'), None),
+    ]
+    return {**base, 'tabs': tabs}
 
 
 def comments_for(request, obj):
@@ -84,7 +115,7 @@ def handle_comment(request, obj, project, label):
         c.author = request.user
         c.save()
         target_shared = getattr(obj, 'is_shared', True) and getattr(obj, 'status', None) != 'DRAFT' \
-            and type(obj).__name__ not in ('Variation', 'Task', 'Issue')
+            and type(obj).__name__ not in ('Variation', 'Task', 'Issue', 'SubVariation')
         log_activity(request, 'commented on', label, project=project, url=request.path,
                      internal_only=c.internal_only or not target_shared)
         return True
@@ -99,16 +130,33 @@ def _money(v):
 # Projects
 # ---------------------------------------------------------------------------
 
-def project_list(request, org_slug):
-    view = request.GET.get('view', 'active')
+def project_list(request, org_slug, section=None):
+    """
+    Staff get one list per section: bids (estimating) at /bids/, jobs (projects) at /projects/.
+    External people get every project they were invited to.
+    """
+    internal = is_internal(request)
     q = request.GET.get('q', '').strip()
     qs = visible_projects(request)
-    groups = {
-        'active': Project.PIPELINE_STAGES + Project.DELIVERY_STAGES,
-        'pipeline': Project.PIPELINE_STAGES,
-        'live': Project.DELIVERY_STAGES,
-        'closed': Project.CLOSED_STAGES,
-    }
+    if internal:
+        section = section or 'delivery'
+        if section not in request.membership.sections:
+            if section == 'delivery' and request.membership.can_estimate:
+                return redirect('bid_list', org_slug=org_slug)
+            raise PermissionDenied
+        use_section(request, section)
+        if section == 'estimating':
+            groups = {'open': Project.PIPELINE_STAGES, 'submitted': (Project.STAGE_SUBMITTED,),
+                      'lost': (Project.STAGE_LOST, Project.STAGE_DECLINED), 'all': Project.ESTIMATING_STAGES}
+        else:
+            groups = {'live': Project.DELIVERY_STAGES, 'complete': (Project.STAGE_COMPLETE,),
+                      'all': Project.DELIVERY_STAGES + (Project.STAGE_COMPLETE,)}
+        view = request.GET.get('view', 'open' if section == 'estimating' else 'live')
+        view = view if view in groups else next(iter(groups))
+    else:
+        groups = {'active': Project.PIPELINE_STAGES + Project.DELIVERY_STAGES, 'live': Project.DELIVERY_STAGES,
+                  'closed': Project.CLOSED_STAGES, 'all': tuple(dict(Project.STAGE_CHOICES))}
+        view = request.GET.get('view', 'active')
     if view in groups:
         qs = qs.filter(stage__in=groups[view])
     if q:
@@ -123,14 +171,18 @@ def project_list(request, org_slug):
                         p.probability or '', p.tender_due.strftime('%Y-%m-%d %H:%M') if p.tender_due else '',
                         p.start_date or '', p.completion_date or '', p.owner or ''])
         return resp
-    return render(request, 'projects/project_list.html', {'projects': qs, 'view': view, 'q': q})
+    return render(request, 'projects/project_list.html', {'projects': qs, 'view': view, 'q': q, 'groups': groups,
+                                                          'list_section': section})
 
 
 @internal_required
 def project_create(request, org_slug):
     org = request.org
-    initial = {'stage': request.GET.get('stage', Project.STAGE_LEAD), 'owner': request.user}
-    form = ProjectForm(request.POST or None, org=org, initial=initial)
+    default = Project.STAGE_LEAD if request.membership.can_estimate else Project.STAGE_LIVE
+    stage = request.GET.get('stage', default)
+    initial = {'stage': stage, 'owner': request.user if stage in Project.ESTIMATING_STAGES else None,
+               'manager': None if stage in Project.ESTIMATING_STAGES else request.user}
+    form = ProjectForm(request.POST or None, org=org, membership=request.membership, initial=initial)
     if request.method == 'POST' and form.is_valid():
         if form.cleaned_data['stage'] not in Project.CLOSED_STAGES and not org.can_add_project():
             messages.error(request, f'Your {org.plan_config["name"]} plan allows {org.plan_config["max_active_projects"]} '
@@ -180,10 +232,33 @@ def project_detail(request, org_slug, pk):
     activity = project.activity.select_related('actor')
     if not internal:
         activity = activity.filter(internal_only=False)
+    from delivery.access import subcontractor_id
+    from delivery.views import subcontract_summary
+    subcontracts = None
+    if project.section == 'delivery' and (internal or subcontractor_id(request)):
+        subcontracts = subcontract_summary(project, None if internal else subcontractor_id(request))
+        if commercial is not None:
+            commercial['committed'] = sum(r['total'] for r in subcontracts)
+    docs = Document.objects.filter(project=project).prefetch_related('revisions').order_by('-updated_at')
+    if not internal:
+        docs = docs.filter(visibility=Document.VIS_SHARED)
+    latest = [d.current for d in docs[:6] if d.current]
+    tender = None
+    if internal and project.section == 'estimating':
+        from directory.models import Package
+        from tenders.models import Addendum, TenderQuery
+        pkgs = Package.objects.filter(project=project)
+        tender = {'invited': pkgs.count(), 'quoted': pkgs.filter(submitted_at__isnull=False).count(),
+                  'trades': pkgs.values('trade').distinct().count(),
+                  'queries': TenderQuery.objects.filter(project=project, answered_at__isnull=True).count(),
+                  'addenda': Addendum.objects.filter(project=project).count()}
+    m = request.membership
+    stage_choices = [c for c in Project.STAGE_CHOICES if internal and
+                     (m.can_estimate if c[0] in Project.ESTIMATING_STAGES else m.can_deliver)]
     return render(request, 'projects/project_detail.html', project_context(
         request, project, 'overview', stats=stats, commercial=commercial, activity=activity[:12],
-        members=project.members.select_related('user')[:12],
-        stage_choices=Project.STAGE_CHOICES,
+        members=project.members.select_related('user')[:12], stage_choices=stage_choices,
+        subcontracts=subcontracts, latest_revisions=latest, tender=tender,
     ))
 
 
@@ -197,9 +272,16 @@ def _close_tenders_if_lost(request, project):
 def project_edit(request, org_slug, pk):
     project = get_project(request, pk)
     old_stage = project.stage
-    form = ProjectForm(request.POST or None, instance=project, org=request.org)
+    form = ProjectForm(request.POST or None, instance=project, org=request.org, membership=request.membership)
     if request.method == 'POST' and form.is_valid():
-        p = form.save()
+        p = form.save(commit=False)
+        if _crosses_to_delivery(old_stage, p.stage):
+            # A win goes through the handover, which records who takes it on
+            p.stage = old_stage
+            p.save()
+            messages.info(request, 'Saved. Complete the handover to move it to the projects team.')
+            return redirect('project_handover', org_slug=org_slug, pk=pk)
+        p.save()
         if p.stage != old_stage:
             log_activity(request, f'moved to {p.get_stage_display()}', p.name, project=p, url=p.get_absolute_url())
             _close_tenders_if_lost(request, p)
@@ -226,7 +308,7 @@ def project_delete(request, org_slug, pk):
 # Bid pipeline board
 # ---------------------------------------------------------------------------
 
-@internal_required
+@estimating_required
 def pipeline(request, org_slug):
     qs = visible_projects(request)
     columns = []
@@ -236,7 +318,8 @@ def pipeline(request, org_slug):
         columns.append({'code': code, 'label': dict(Project.STAGE_CHOICES)[code], 'items': items, 'total': total})
     recent_closed = qs.filter(stage__in=[Project.STAGE_LOST, Project.STAGE_DECLINED]).order_by('-decided_at')[:10]
     return render(request, 'projects/pipeline.html', {'columns': columns, 'recent_closed': recent_closed,
-                                                      'stage_choices': Project.STAGE_CHOICES})
+                                                      'stage_choices': Project.STAGE_CHOICES,
+                                                      'section': use_section(request, 'estimating')})
 
 
 @require_POST
@@ -252,6 +335,15 @@ def project_stage(request, org_slug, pk):
         return JsonResponse({'ok': False, 'error': 'Unknown stage'}, status=400)
     if project.stage in Project.CLOSED_STAGES and stage not in Project.CLOSED_STAGES and not request.org.can_add_project():
         return JsonResponse({'ok': False, 'error': 'Active project limit reached for your plan'}, status=402)
+    if _crosses_to_delivery(project.stage, stage):
+        # Winning is estimating's call, made through the handover (which checks who may do it)
+        url = reverse('project_handover', args=[org_slug, pk])
+        if request.content_type == 'application/json':
+            return JsonResponse({'ok': True, 'redirect': url})
+        return redirect(url)
+    allowed = request.membership.can_estimate if stage in Project.ESTIMATING_STAGES else request.membership.can_deliver
+    if not allowed:
+        return JsonResponse({'ok': False, 'error': 'That stage belongs to the other team.'}, status=403)
     if project.stage != stage:
         project.stage = stage
         project.save()
@@ -263,11 +355,51 @@ def project_stage(request, org_slug, pk):
     return redirect(project)
 
 
+def _crosses_to_delivery(old, new):
+    return old in Project.ESTIMATING_STAGES and new not in Project.ESTIMATING_STAGES
+
+
 @internal_required
+def project_handover(request, org_slug, pk):
+    """
+    The join between the two halves of the business. Estimating marks a bid won and
+    hands it to a project manager with the contract sum, dates and what they need
+    to know; a projects user can also assign a manager to a job that has none.
+    """
+    project = get_project(request, pk)
+    winning = project.section == 'estimating'
+    if (winning and not request.membership.can_estimate) or (not winning and not request.membership.can_deliver):
+        raise PermissionDenied
+    if not winning and not project.needs_handover:
+        return redirect(project)
+    form = HandoverForm(request.POST or None, instance=project, org=request.org)
+    if request.method == 'POST' and form.is_valid():
+        p = form.save(commit=False)
+        if winning:
+            p.stage = Project.STAGE_WON
+        p.handed_over_at, p.handed_over_by = timezone.now(), request.user
+        p.save()
+        notify.alert([p.manager], f'Handed over to you: {p.name}', p.get_absolute_url(), project=p, actor=request.user,
+                     org=request.org)
+        log_activity(request, 'handed over to', f'{p.manager.full_name}: {p.name}', project=p, url=p.get_absolute_url())
+        messages.success(request, f'{p.name} handed over to {p.manager.full_name}.')
+        if request.membership.can_deliver:
+            return redirect(p)
+        return redirect('bid_list', org_slug=org_slug)
+    from directory.models import Package
+    quotes = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES + (Package.APPOINTED,)) \
+        .select_related('subcontractor', 'trade')
+    return render(request, 'projects/handover.html', {'project': project, 'form': form, 'winning': winning,
+                                                      'quotes': quotes, 'section': use_section(request, 'estimating' if winning else 'delivery')})
+
+
+@estimating_required
 def tender_analytics(request, org_slug):
-    data = analytics.tender_analytics(visible_projects(request), request.GET.get('period', '12'),
+    # Outcomes span both sections: a won bid now belongs to the projects team but is still a win
+    data = analytics.tender_analytics(Project.objects.all(), request.GET.get('period', '12'),
                                       today=timezone.localdate())
-    return render(request, 'projects/analytics.html', {**data, 'periods': analytics.PERIODS})
+    return render(request, 'projects/analytics.html', {**data, 'periods': analytics.PERIODS,
+                                                       'section': use_section(request, 'estimating')})
 
 
 # ---------------------------------------------------------------------------
@@ -276,8 +408,15 @@ def tender_analytics(request, org_slug):
 
 @internal_required
 def workload(request, org_slug):
-    """Gantt of the company's workload: open tenders, or secured jobs on site."""
-    view = request.GET.get('view', 'tenders')
+    """Gantt of the company's workload: open tenders (estimating), or secured jobs on site (projects)."""
+    m = request.membership
+    default = 'tenders' if request.session.get('section') != 'delivery' and m.can_estimate else 'secured'
+    view = request.GET.get('view', default)
+    if view == 'secured' and not m.can_deliver:
+        view = 'tenders'
+    if view != 'secured' and not m.can_estimate:
+        view = 'secured'
+    use_section(request, 'delivery' if view == 'secured' else 'estimating')
     today = timezone.localdate()
     projects = visible_projects(request)
     leads = None
@@ -303,6 +442,7 @@ def workload(request, org_slug):
         chart['rows'].sort(key=sort_key)
     return render(request, 'projects/workload.html', {
         'chart': chart, 'undated': undated, 'view': view, 'show': show, 'leads': leads,
+        'section': 'delivery' if view == 'secured' else 'estimating',
         'lead': request.GET.get('lead', ''),
     })
 
@@ -481,6 +621,19 @@ def task_edit(request, org_slug, pk, task_id):
     return render(request, 'projects/task_form.html', project_context(request, project, 'tasks', form=form, task=task))
 
 
+def notify_collaborators_of_issue(request, project, doc, revision, new=False):
+    """Staff issuing a shared drawing or document: the client, consultants and appointed subs are told."""
+    if not is_internal(request) or doc.visibility != Document.VIS_SHARED:
+        return
+    people = [m.user for m in ProjectMember.objects.filter(
+        project=project, role__in=[ProjectMember.ROLE_CLIENT, ProjectMember.ROLE_CONSULTANT, ProjectMember.ROLE_SUBCONTRACTOR])
+        .select_related('user')]
+    label = f'{doc.reference} {doc.title}'.strip() if doc.reference else doc.title
+    notify.alert(people, f'{"Issued" if new else "New revision"}: {label} rev {revision}',
+                 reverse('document_detail', args=[request.org.slug, project.pk, doc.pk]), project=project,
+                 actor=request.user, org=request.org)
+
+
 def notify_assignee(request, user, subject, project, path):
     notify.alert([user], subject, path, project=project, actor=request.user, org=request.org)
 
@@ -602,6 +755,7 @@ def document_list(request, org_slug, pk):
             log_activity(request, 'uploaded', f'{doc.title} rev {form.cleaned_data["revision"]}', project=project,
                          url=reverse('document_detail', args=[org_slug, pk, doc.pk]),
                          internal_only=doc.visibility == Document.VIS_INTERNAL)
+            notify_collaborators_of_issue(request, project, doc, form.cleaned_data['revision'], new=True)
             messages.success(request, f'{doc.title} uploaded.')
             return redirect('document_list', org_slug=org_slug, pk=pk)
     return render(request, 'projects/documents.html', project_context(
@@ -633,6 +787,7 @@ def document_detail(request, org_slug, pk, doc_id):
             doc.save(update_fields=['updated_at'])
             log_activity(request, 'uploaded new revision of', f'{doc.title} rev {rev.revision}', project=project,
                          url=request.path, internal_only=doc.visibility == Document.VIS_INTERNAL)
+            notify_collaborators_of_issue(request, project, doc, rev.revision)
             messages.success(request, f'Revision {rev.revision} uploaded.')
             return redirect(request.path)
     return render(request, 'projects/document_detail.html', project_context(

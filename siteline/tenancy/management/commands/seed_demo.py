@@ -5,8 +5,9 @@ Create a demo workspace with realistic data.
     python manage.py seed_demo --reset    # deletes and recreates it
 
 Logins (password for all: DemoPass!2026):
-    owner@demo.test        Owner
-    pm@demo.test           Staff (project manager)
+    owner@demo.test        Owner: sees estimating and projects, and switches between them
+    estimator@demo.test    Staff, estimating only: bids, sub tenders, pipeline, analytics
+    pm@demo.test           Staff, projects only: live jobs, procurement, RAMS, variations
     client@demo.test       External: client on the Leeds bar project
     sub@demo.test          External: joinery subcontractor (appointed on Leeds, pricing Kingsway)
     bids@demo.test         External: drylining subcontractor pricing Kingsway
@@ -27,6 +28,7 @@ from rfis.models import RFI
 from tenancy.context import org_context
 from tenancy.models import Membership, Notification, Organization, log_activity
 from tenders.models import Addendum, AddendumFile, AddendumReceipt, TenderQuery
+from delivery.models import Rams, SubVariation
 from variations.models import Variation
 
 PASSWORD = 'DemoPass!2026'
@@ -66,8 +68,8 @@ class Command(BaseCommand):
         org = create_organization('Northbank Interiors', owner)
         org.slug = SLUG
         org.save()
-        Membership.objects.create(organization=org, user=pm, role=Membership.ROLE_MEMBER)
-        Membership.objects.create(organization=org, user=est, role=Membership.ROLE_ADMIN)
+        Membership.objects.create(organization=org, user=pm, role=Membership.ROLE_MEMBER, area=Membership.AREA_DELIVERY)
+        Membership.objects.create(organization=org, user=est, role=Membership.ROLE_MEMBER, area=Membership.AREA_ESTIMATING)
         Membership.objects.create(organization=org, user=client, role=Membership.ROLE_EXTERNAL)
         Membership.objects.create(organization=org, user=subu, role=Membership.ROLE_EXTERNAL)
         Membership.objects.create(organization=org, user=bidu, role=Membership.ROLE_EXTERNAL)
@@ -104,7 +106,11 @@ class Command(BaseCommand):
                 return p
 
             leeds = project('Bar & kitchen fit-out, Call Lane', Project.STAGE_LIVE, '1240000', client_name='Neon Leisure Group',
-                            addr='48 Call Lane, Leeds LS1', sector='HOSPITALITY', owner_u=pm,
+                            addr='48 Call Lane, Leeds LS1', sector='HOSPITALITY', owner_u=est, manager=pm,
+                            handed_over_at=now - timedelta(days=50), handed_over_by=est,
+                            handover_notes='Tender qualified: no out-of-hours working, client to provide asbestos R&D survey.\n'
+                                           'Neighbouring units trading throughout; agree noisy works windows with centre management.\n'
+                                           'Joinery priced on Lund Joinery quote (lowest by 8%); bar back veneer still to be confirmed.',
                             start_date=today - timedelta(days=28), completion_date=today + timedelta(days=45),
                             description='Full strip-out and fit-out of ground floor bar and first floor kitchen. Live neighbouring units.')
             project('Showroom refurbishment, Shrewsbury', Project.STAGE_WON, '2150000', client_name='Westway Motor Group',
@@ -115,7 +121,7 @@ class Command(BaseCommand):
                 ('Office CAT A, Salford Quays', Project.STAGE_LIVE, '1650000', 'Arden Property', 'Salford Quays', 'OFFICE', -14, 84),
                 ('Pub refurbishment, York', Project.STAGE_WON, '390000', 'Ouse Inns', 'Micklegate, York', 'HOSPITALITY', 21, 77),
             ]:
-                project(name, stage, value, client_name=client_name, addr=addr, sector=sector, owner_u=pm,
+                project(name, stage, value, client_name=client_name, addr=addr, sector=sector, owner_u=est, manager=pm,
                         start_date=today + timedelta(days=start), completion_date=today + timedelta(days=finish))
             project('Jewellery store, Argyle Arcade', Project.STAGE_TENDERING, '640000', 60, 'Halden & Co',
                     'Argyle Arcade, Glasgow', 3, sector='RETAIL', lead_source='Framework')
@@ -253,6 +259,35 @@ class Command(BaseCommand):
                                 due_date=today - timedelta(days=1), created_by=pm)
             Task.objects.create(project=leeds, title='Update programme after M&E coordination', assignee=pm,
                                 due_date=today + timedelta(days=6), created_by=pm)
+            # Live-job portal: Lund Joinery's RAMS and variations on Leeds
+            join_pkg = Package.objects.get(project=leeds, subcontractor=s_join)
+            for title, scope, status, days, comments in [
+                ('Bar joinery installation', 'Bar back, front and shelving', Rams.APPROVED, 20, ''),
+                ('Working at height: mobile towers', 'Bulkhead and high-level joinery', Rams.COMMENTS, 12,
+                 'Approved. Add tower inspection record sheets to the site file.'),
+                ('Kitchen wall cladding', 'Hygienic cladding to first floor kitchen', Rams.SUBMITTED, 1, ''),
+            ]:
+                Rams.objects.create(project=leeds, subcontractor=s_join, package=join_pkg, title=title, scope=scope,
+                                    status=status, file=ContentFile(b'%PDF-1.4\n', name='rams.pdf'),
+                                    original_name=f'{title}.pdf', submitted_by=subu,
+                                    submitted_at=now - timedelta(days=days), review_comments=comments,
+                                    reviewed_by=pm if status != Rams.SUBMITTED else None,
+                                    reviewed_at=now - timedelta(days=days - 1) if status != Rams.SUBMITTED else None)
+            sv1 = SubVariation.objects.create(
+                project=leeds, subcontractor=s_join, package=join_pkg, title='Extra back-bar shelving', reason='INSTRUCTION',
+                instructed_by='Priya, site walk 12 Oct', description='Two additional oak shelves and brackets to back bar.',
+                value=Decimal('1200'), status=SubVariation.APPROVED, approved_value=Decimal('1100'),
+                decision_notes='Agreed at £1,100 including fixings.', decided_by=pm, decided_at=now - timedelta(days=9),
+                submitted_by=subu)
+            SubVariation.objects.create(
+                project=leeds, subcontractor=s_join, package=join_pkg, title='Bar front re-veneer after RFI-001',
+                reason='DESIGN', instructed_by='RFI-001 response', value=Decimal('2350'), time_impact_days=2,
+                description='Re-make bar front panels in smoked eucalyptus as confirmed in RFI-001.', submitted_by=subu)
+            Notification.objects.create(user=pm, project=leeds, title=f'RAMS to review: Kitchen wall cladding ({s_join})',
+                                        url=f'/{SLUG}/projects/{leeds.pk}/rams/')
+            Notification.objects.create(user=subu, project=leeds, title=f'{sv1.reference} approved: {sv1.title}',
+                                        url=f'/{SLUG}/projects/{leeds.pk}/sub-variations/{sv1.pk}/')
+
             Issue.objects.create(project=leeds, title='Damaged skirting to corridor C1', issue_type='SNAG',
                                  location='Ground floor corridor C1', assignee=subu, due_date=today + timedelta(days=5),
                                  created_by=pm)
@@ -302,7 +337,7 @@ class Command(BaseCommand):
                 (s_elec, 'Electrical', None, 'QUOTED', '96400'),
             ]
             for s_, trade_name, member, status, value in bids:
-                pkg = Package.objects.create(
+                Package.objects.create(
                     project=kings, subcontractor=s_, trade=t[trade_name], scope=scopes[trade_name], quote_due=due,
                     status=status, invited_by=est, sent_at=now - timedelta(days=12),
                     viewed_at=now - timedelta(days=11) if status != 'ENQUIRY' or member else None,

@@ -1,0 +1,26 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>{{ v.reference }} · {{ v.title }}</h2>{% badge v.get_status_display v.status_tone %}</div><div class="card-body">
+      <dl class="dl">
+        <dt>Subcontractor</dt><dd>{{ v.subcontractor }}</dd>
+        <dt>Reason</dt><dd>{{ v.get_reason_display }}</dd>
+        {% if v.instructed_by %}<dt>Instructed by</dt><dd>{{ v.instructed_by }}</dd>{% endif %}
+        <dt>Claimed</dt><dd class="mono">{{ v.value|money:currency }}</dd>
+        {% if v.approved_value is not None %}<dt>Approved</dt><dd class="mono"><strong>{{ v.approved_value|money:currency }}</strong></dd>{% endif %}
+        {% if v.time_impact_days %}<dt>Time impact</dt><dd>{{ v.time_impact_days }} days</dd>{% endif %}
+        {% if v.file %}<dt>Supporting document</dt><dd><a href="{% url 'subvariation_file' org.slug project.pk v.pk %}">Download</a></dd>{% endif %}
+        {% if is_internal and v.client_variation %}<dt>Recovered as</dt><dd><a href="{{ v.client_variation.get_absolute_url }}">{{ v.client_variation }}</a> {% badge v.client_variation.get_status_display v.client_variation.status_tone %}</dd>{% endif %}
+      </dl>
+      <hr><div style="white-space:pre-wrap">{{ v.description }}</div>
+      {% if v.decision_notes %}<hr><h3>Decision notes</h3><div class="quote {% if v.status == 'APPROVED' %}answer{% endif %}">{{ v.decision_notes }}</div>{% endif %}
+      {% if not is_internal and v.status == 'SUBMITTED' %}<form method="post" style="margin-top:14px" data-confirm="Withdraw {{ v.reference }}?">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn danger sm">Withdraw</button></form>{% endif %}
+    </div></div>
+    {% include "partials/comments.html" %}
+  </div>
+  {% if can_decide %}<div class="card"><div class="card-head"><h2>Decide</h2></div><div class="card-body">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="decide">{% with form=decision_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Send decision</button></div></form>
+  </div></div>{% endif %}
+</div>
+{% endblock %}

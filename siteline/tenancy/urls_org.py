@@ -1,6 +1,7 @@
 from django.urls import path
 
 from billing import views as billing
+from delivery import views as delivery
 from directory import views as directory
 from projects import views as projects
 from rfis import views as rfis
@@ -34,11 +35,15 @@ urlpatterns = [
     path('rfis/', rfis.rfi_register, name='rfi_register'),
 
     path('projects/', projects.project_list, name='project_list'),
+    path('bids/', projects.project_list, {'section': 'estimating'}, name='bid_list'),
+    path('estimating/', views.estimating_home, name='estimating_home'),
+    path('delivery/', views.delivery_home, name='delivery_home'),
     path('projects/new/', projects.project_create, name='project_create'),
     path(P, projects.project_detail, name='project_detail'),
     path(P + 'edit/', projects.project_edit, name='project_edit'),
     path(P + 'delete/', projects.project_delete, name='project_delete'),
     path(P + 'stage/', projects.project_stage, name='project_stage'),
+    path(P + 'handover/', projects.project_handover, name='project_handover'),
     path(P + 'team/', projects.project_team, name='project_team'),
 
     path(P + 'programme/', projects.programme, name='programme'),
@@ -71,6 +76,12 @@ urlpatterns = [
     path(P + 'variations/<int:vo_id>/file/', variations.variation_attachment, name='variation_attachment'),
 
     path(P + 'packages/', directory.package_list, name='package_list'),
+    path(P + 'rams/', delivery.rams_list, name='rams_list'),
+    path(P + 'rams/<int:rams_id>/', delivery.rams_detail, name='rams_detail'),
+    path(P + 'rams/<int:rams_id>/file/', delivery.rams_file, name='rams_file'),
+    path(P + 'sub-variations/', delivery.subvariation_list, name='subvariation_list'),
+    path(P + 'sub-variations/<int:sv_id>/', delivery.subvariation_detail, name='subvariation_detail'),
+    path(P + 'sub-variations/<int:sv_id>/file/', delivery.subvariation_file, name='subvariation_file'),
     path(P + 'tender/', tenders.tender, name='tender'),
     path(P + 'tender/addenda/<int:file_id>/', tenders.addendum_file, name='addendum_file'),
     path(P + 'tender/documents/<int:doc_id>/', tenders.tender_document, name='tender_document'),

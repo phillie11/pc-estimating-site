@@ -1,0 +1,23 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Hand over {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <div class="crumbs"><a href="{{ project.get_absolute_url }}">{{ project.reference }}</a> / {% if winning %}Won{% else %}Project manager{% endif %}</div>
+  <h1>{% if winning %}Won: hand over to the projects team{% else %}Assign a project manager{% endif %}</h1>
+  <p class="dim" style="margin:4px 0 0">{{ project.name }}{% if project.client_name %} · {{ project.client_name }}{% endif %}</p>
+</div></div>
+<div class="grid split">
+  <div class="card"><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">{% if winning %}Mark won and hand over{% else %}Assign{% endif %}</button><a class="btn ghost" href="{{ project.get_absolute_url }}">Cancel</a></div></form>
+  </div></div>
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>What carries across</h2></div><div class="card-body small">
+      <p>The project manager is notified and the job moves to <strong>Projects</strong>, with its documents, team and subcontractor quotes.</p>
+      <p style="margin:0">Subcontractors who priced at tender stay in procurement, so the projects team can appoint them or re-tender without starting again.{% if winning %} Estimating keeps the result in its win rate and analytics.{% endif %}</p>
+    </div></div>
+    {% if quotes %}<div class="card"><div class="card-head"><h2>Sub quotes from the tender</h2></div>
+      <ul class="list">{% for q in quotes %}<li><span class="grow">{{ q.subcontractor }}<br><span class="small dim">{{ q.trade|default:"Package" }}</span></span><span class="mono small">{{ q.quote_value|money:currency }}</span></li>{% endfor %}</ul></div>{% endif %}
+  </div>
+</div>
+{% endblock %}

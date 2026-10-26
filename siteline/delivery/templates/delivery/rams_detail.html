@@ -1,0 +1,25 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>{{ r.reference }} · {{ r.title }}</h2>{% badge r.get_status_display r.status_tone %}</div><div class="card-body">
+      <dl class="dl">
+        <dt>Subcontractor</dt><dd>{{ r.subcontractor }}</dd>
+        {% if r.scope %}<dt>Covers</dt><dd>{{ r.scope }}</dd>{% endif %}
+        <dt>Submitted</dt><dd>{{ r.submitted_at|date:"j M Y, H:i" }}{% if r.submitted_by %} by {{ r.submitted_by.full_name }}{% endif %}</dd>
+        <dt>Document</dt><dd><a href="{% url 'rams_file' org.slug project.pk r.pk %}">{{ r.original_name|default:"Download" }}</a></dd>
+        {% if r.reviewed_at %}<dt>Reviewed</dt><dd>{{ r.reviewed_at|date:"j M Y" }} by {{ r.reviewed_by.full_name }}</dd>{% endif %}
+      </dl>
+      {% if r.review_comments %}<hr><h3>Reviewer's comments</h3><div class="quote {% if r.status != 'REJECTED' %}answer{% endif %}">{{ r.review_comments }}</div>{% endif %}
+    </div></div>
+    {% if can_review %}<div class="card"><div class="card-head"><h2>Review</h2></div><div class="card-body">
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="review">{% with form=review_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Send decision</button></div></form>
+    </div></div>{% endif %}
+    {% if can_resubmit %}<div class="card"><div class="card-head"><h2>Resubmit</h2></div><div class="card-body">
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="resubmit">{% with form=resubmit_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Submit revision {{ r.revision|add:1 }}</button></div></form>
+    </div></div>{% endif %}
+  </div>
+  <div class="card"><div class="card-head"><h2>Revisions</h2></div>
+    <ul class="list">{% for h in history %}<li><span class="grow">{% if h.pk == r.pk %}<strong>Rev {{ h.revision }}</strong>{% else %}<a href="{{ h.get_absolute_url }}">Rev {{ h.revision }}</a>{% endif %}<br><span class="small dim">{{ h.submitted_at|date:"j M Y" }}</span></span>{% badge h.get_status_display h.status_tone %}</li>{% endfor %}</ul></div>
+</div>
+{% endblock %}

@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'variations',
     'directory',
     'tenders',
+    'delivery',
 ]
 
 MIDDLEWARE = [

@@ -73,6 +73,8 @@ class Project(TenantModel):
         (STAGE_DECLINED, 'Declined to bid'),
     ]
     PIPELINE_STAGES = (STAGE_LEAD, STAGE_TENDERING, STAGE_SUBMITTED)
+    # Estimating owns bids until they are won; the projects (delivery) team owns them after
+    ESTIMATING_STAGES = (STAGE_LEAD, STAGE_TENDERING, STAGE_SUBMITTED, STAGE_LOST, STAGE_DECLINED)
     DELIVERY_STAGES = (STAGE_WON, STAGE_LIVE)
     CLOSED_STAGES = (STAGE_COMPLETE, STAGE_LOST, STAGE_DECLINED)
     BOARD_STAGES = (STAGE_LEAD, STAGE_TENDERING, STAGE_SUBMITTED, STAGE_WON)
@@ -119,7 +121,14 @@ class Project(TenantModel):
     decided_at = models.DateField('Decision date', null=True, blank=True)
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-                              related_name='owned_projects', verbose_name='Project lead')
+                              related_name='owned_projects', verbose_name='Bid lead')
+    manager = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name='managed_projects', verbose_name='Project manager')
+    handover_notes = models.TextField(blank=True, help_text='What the projects team needs to know: qualifications, '
+                                                            'risks, client expectations, key subcontractor quotes.')
+    handed_over_at = models.DateTimeField(null=True, blank=True)
+    handed_over_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                       related_name='+')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -151,6 +160,15 @@ class Project(TenantModel):
     @property
     def is_pipeline(self):
         return self.stage in self.PIPELINE_STAGES
+
+    @property
+    def section(self):
+        return 'estimating' if self.stage in self.ESTIMATING_STAGES else 'delivery'
+
+    @property
+    def needs_handover(self):
+        """A won or live job with nobody on the projects team running it."""
+        return self.section == 'delivery' and self.stage != self.STAGE_COMPLETE and self.manager_id is None
 
     @property
     def stage_tone(self):

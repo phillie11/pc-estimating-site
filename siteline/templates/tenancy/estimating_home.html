@@ -1,0 +1,45 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Estimating{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><div class="eyebrow">Estimating · {% now "l j F" %}</div><h1>Morning, {{ request.user.get_short_name }}</h1></div>
+  <div class="row"><a href="{% url 'project_create' org.slug %}?stage=LEAD" class="btn primary">{% icon 'plus' %} New bid</a></div>
+</div>
+{% if org_empty %}<div class="card" style="margin-bottom:1.25rem"><div class="card-body">
+  <h2>Get set up</h2>
+  <ol style="margin:0;padding-left:20px;line-height:2">
+    <li><a href="{% url 'project_create' org.slug %}?stage=LEAD">Add your first bid</a></li>
+    <li><a href="{% url 'sub_create' org.slug %}">Add subcontractors to your supply chain</a> so you can send them tenders</li>
+    <li><a href="{% url 'team' org.slug %}">Invite your team</a> and set who works in estimating and who runs projects</li>
+  </ol></div></div>{% endif %}
+<div class="kpis">
+  <div class="kpi hero"><div class="label">Bid pipeline</div><div class="value">{{ kpi.pipeline_value|money_short:currency }}</div><div class="note">{{ kpi.pipeline_count }} bid{{ kpi.pipeline_count|pluralize }} · weighted {{ kpi.weighted|money_short:currency }}</div></div>
+  <div class="kpi"><div class="label">Win rate · 12 mo</div><div class="value">{% if kpi.win_rate is not None %}{{ kpi.win_rate }}%{% else %}—{% endif %}</div><div class="note">{{ kpi.won }} won · {{ kpi.lost }} lost · {{ kpi.won_value|money_short:currency }}</div></div>
+  <div class="kpi"><div class="label">Returns · 14 days</div><div class="value">{{ kpi.returns_14 }}</div><div class="note"><a href="{% url 'workload' org.slug %}?view=tenders">workload →</a></div></div>
+  <div class="kpi"><div class="label">Sub quotes awaited</div><div class="value">{{ kpi.quotes_awaited }}</div><div class="note">{% if kpi.quotes_overdue %}<span class="bad">{{ kpi.quotes_overdue }} overdue</span>{% else %}none overdue{% endif %}</div></div>
+  <div class="kpi"><div class="label">Tender queries</div><div class="value">{% if kpi.queries %}<span class="bad">{{ kpi.queries }}</span>{% else %}0{% endif %}</div><div class="note">from subcontractors, unanswered</div></div>
+</div>
+<div class="grid split">
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>Tender returns · next 14 days</h2><a class="small" href="{% url 'pipeline' org.slug %}">Pipeline →</a></div>
+      {% if deadlines %}<div class="table-wrap"><table class="t"><tbody>{% for p in deadlines %}
+        <tr><td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}{% if p.owner %} · {{ p.owner.full_name }}{% endif %}</span></td>
+          <td class="nowrap {% if p.tender_overdue %}overdue{% endif %}">{{ p.tender_due|date:"D j M, H:i" }}<span class="sub">{% if p.tender_overdue %}overdue{% else %}in {{ p.tender_due|timeuntil }}{% endif %}</span></td>
+          <td class="num">{{ p.value|money_short:currency }}</td></tr>{% endfor %}</tbody></table></div>
+      {% else %}<div class="empty left">No tender returns due in the next fortnight.</div>{% endif %}
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Subcontractor quotes awaited</h2></div>
+      {% if awaited %}<ul class="list">{% for a in awaited %}<li><span class="grow"><a href="{% url 'package_list' org.slug a.project_id %}">{{ a.subcontractor }}</a> <span class="dim small">· {{ a.trade|default:"package" }} · {{ a.project.name }}</span></span><span class="small nowrap {% if a.is_overdue %}overdue{% else %}dim{% endif %}">{{ a.quote_due|date:"D j M"|default:"" }}</span></li>{% endfor %}</ul>
+      {% else %}<div class="empty left">No quotes outstanding.</div>{% endif %}
+    </div>
+  </div>
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Your bids</h2><a class="small" href="{% url 'bid_list' org.slug %}">All bids →</a></div>
+      {% if my_bids %}<ul class="list">{% for p in my_bids %}<li><span class="grow"><a href="{{ p.get_absolute_url }}">{{ p.name }}</a><br><span class="small dim">{% if p.tender_due %}Returns {{ p.tender_due|date:"j M" }}{% else %}No return date{% endif %}</span></span>{% badge p.get_stage_display p.stage_tone %}</li>{% endfor %}</ul>
+      {% else %}<div class="empty left">You aren't bid lead on anything open.</div>{% endif %}</div>
+    <div class="card"><div class="card-head"><h2>Recent activity</h2></div>{% include "partials/feed.html" with show_project=True %}</div>
+  </div>
+</div>
+{% endblock %}

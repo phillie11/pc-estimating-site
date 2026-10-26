@@ -7,17 +7,34 @@
   <aside class="side">
     <a class="brand" href="{% url 'dashboard' org.slug %}">
       {% if org.logo %}<img src="{% url 'org_logo' org.slug %}" alt="">{% else %}<span class="mark">{{ org.name|first|upper }}</span>{% endif %}
-      <span><span class="name">{{ org.name }}</span><br><span class="sub">{% if is_internal %}Workspace{% else %}Project portal{% endif %}</span></span>
+      <span><span class="name">{{ org.name }}</span><br><span class="sub">{% if not is_internal %}Project portal{% elif section == 'estimating' %}Estimating{% else %}Projects{% endif %}</span></span>
     </a>
+    {% if is_internal and membership.can_estimate and membership.can_deliver %}
+    <div class="switch" role="tablist" aria-label="Section">
+      <a role="tab" href="{% url 'estimating_home' org.slug %}" class="{% if section == 'estimating' %}on{% endif %}" aria-selected="{% if section == 'estimating' %}true{% else %}false{% endif %}">Estimating</a>
+      <a role="tab" href="{% url 'delivery_home' org.slug %}" class="{% if section == 'delivery' %}on{% endif %}" aria-selected="{% if section == 'delivery' %}true{% else %}false{% endif %}">Projects</a>
+    </div>{% endif %}
     {% with u=request.resolver_match.url_name %}
     <nav class="nav">
+      {% if not is_internal %}
       <a href="{% url 'dashboard' org.slug %}" class="{% if u == 'dashboard' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
       <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}">{% icon 'bell' %} Notifications{% if unread_notifications %}<span class="count unread">{{ unread_notifications }}</span>{% endif %}</a>
-      {% if is_internal %}<a href="{% url 'pipeline' org.slug %}" class="{% if u == 'pipeline' %}on{% endif %}">{% icon 'pipeline' %} Bid pipeline</a>
-      <a href="{% url 'tender_analytics' org.slug %}" class="{% if u == 'tender_analytics' %}on{% endif %}">{% icon 'chart' %} Tender analytics</a>{% endif %}
-      <a href="{% url 'project_list' org.slug %}" class="{% if project or u == 'project_list' or u == 'project_create' %}on{% endif %}">{% icon 'projects' %} Projects</a>
-      {% if is_internal %}<a href="{% url 'workload' org.slug %}" class="{% if u == 'workload' %}on{% endif %}">{% icon 'programme' %} Workload</a>{% endif %}
+      <a href="{% url 'project_list' org.slug %}" class="{% if project or u == 'project_list' %}on{% endif %}">{% icon 'projects' %} Projects</a>
       <a href="{% url 'rfi_register' org.slug %}" class="{% if u == 'rfi_register' %}on{% endif %}">{% icon 'rfi' %} RFI register</a>
+      {% elif section == 'estimating' %}
+      <a href="{% url 'estimating_home' org.slug %}" class="{% if u == 'estimating_home' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
+      <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}">{% icon 'bell' %} Notifications{% if unread_notifications %}<span class="count unread">{{ unread_notifications }}</span>{% endif %}</a>
+      <a href="{% url 'bid_list' org.slug %}" class="{% if project or u == 'bid_list' or u == 'project_create' %}on{% endif %}">{% icon 'tender' %} Bids</a>
+      <a href="{% url 'pipeline' org.slug %}" class="{% if u == 'pipeline' %}on{% endif %}">{% icon 'pipeline' %} Bid pipeline</a>
+      <a href="{% url 'workload' org.slug %}?view=tenders" class="{% if u == 'workload' %}on{% endif %}">{% icon 'programme' %} Tender workload</a>
+      <a href="{% url 'tender_analytics' org.slug %}" class="{% if u == 'tender_analytics' %}on{% endif %}">{% icon 'chart' %} Tender analytics</a>
+      {% else %}
+      <a href="{% url 'delivery_home' org.slug %}" class="{% if u == 'delivery_home' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
+      <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}">{% icon 'bell' %} Notifications{% if unread_notifications %}<span class="count unread">{{ unread_notifications }}</span>{% endif %}</a>
+      <a href="{% url 'project_list' org.slug %}" class="{% if project or u == 'project_list' or u == 'project_create' %}on{% endif %}">{% icon 'projects' %} Projects</a>
+      <a href="{% url 'workload' org.slug %}?view=secured" class="{% if u == 'workload' %}on{% endif %}">{% icon 'programme' %} Secured work</a>
+      <a href="{% url 'rfi_register' org.slug %}" class="{% if u == 'rfi_register' %}on{% endif %}">{% icon 'rfi' %} RFI register</a>
+      {% endif %}
       {% if is_internal %}
       <a href="{% url 'sub_list' org.slug %}" class="{% if u == 'sub_list' or u == 'sub_detail' or u == 'sub_create' or u == 'sub_edit' or u == 'trades' %}on{% endif %}">{% icon 'directory' %} Supply chain</a>
       <div class="nav-label">Company</div>

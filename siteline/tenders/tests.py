@@ -255,5 +255,5 @@ class NotificationTests(TenderBase):
         with org_context(self.org_a):
             Notification.objects.create(user=self.alice, title='Unread one', url='/')
         self.login(self.alice)
-        r = self.client.get(self.url('dashboard', self.org_a))
+        r = self.client.get(self.url('estimating_home', self.org_a))
         self.assertEqual(r.context['unread_notifications'], 1)
