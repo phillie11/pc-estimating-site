@@ -167,41 +167,47 @@ Only the webhook changes a company's subscription status, so a customer can't un
 
 Create `~/backups` first. The backup keeps a rolling seven days. Copy them off-site too, and back up `~/siteline-files`.
 
-### 9. Cloud file storage (AWS S3 London)
+### 9. Cloud file storage and virus scanning (AWS S3 London)
 
-PythonAnywhere's disk is too small for tender packs and drawings, so uploaded files go to a private S3 bucket in London. Siteline checks permissions on every download, logs it, then sends the browser a signed link that expires after five minutes. The bucket is never public. Until `STORAGE_BUCKET` is set, files stay on PythonAnywhere's disk as before.
+PythonAnywhere's disk is too small for tender packs and drawings, so uploaded files go to a private S3 bucket in London, and GuardDuty scans every upload for malware. Siteline checks permissions on every download, logs it, then sends the browser a signed link that expires after five minutes. The bucket is never public. Until `STORAGE_BUCKET` is set, files stay on PythonAnywhere's disk as before. You need a paid PythonAnywhere plan: the free one blocks connections to AWS.
 
-1. **AWS account.** Sign up at aws.amazon.com and choose **Europe (London) eu-west-2** in the region menu, top right.
-2. **Bucket.** S3 → Create bucket.
-   - Name: something like `yourcompany-siteline-files`. Region: **Europe (London)**.
-   - Object ownership: ACLs disabled (the default).
-   - **Block all public access: on** (the default; leave it on).
-   - **Bucket versioning: enable.** Deleted or replaced files can then be recovered.
-   - Default encryption: SSE-S3 (the default).
-3. **Keep old versions for 30 days.** Open the bucket → Management → Create lifecycle rule → apply to all objects → *Permanently delete noncurrent versions of objects* after **30** days.
-4. **A key that can only touch this bucket.** IAM → Users → Create user `siteline-app` (no console access). Add an inline policy (JSON tab), replacing `BUCKET`:
+1. **Account.** aws.amazon.com → Create an AWS account. Choose the **Paid plan** (the Free plan closes the account when its credits run out). Basic support.
+2. **Protect it.** IAM → *Add MFA for root user* → passkey or authenticator app.
+3. **Region.** Top right → **Europe (London) eu-west-2**. Check it on every page.
+4. **Spending alert.** Budgets → Create budget → template *Monthly cost budget* → 20 (USD) → your email.
+5. **Bucket.** S3 → Create bucket: a unique lower-case name, region London, ACLs disabled, **Block all public access on** (never turn it off), **Bucket versioning enabled**, default encryption SSE-S3 with Bucket Key.
+6. **Lifecycle.** Bucket → Management → Create lifecycle rule `cleanup`, all objects: permanently delete noncurrent versions after **30** days; delete incomplete multipart uploads after **7** days.
+7. **Virus scanning.** GuardDuty → *Malware Protection for S3* (you don't need full GuardDuty) → Enable → your bucket, all objects → **Tag scanned objects: enabled** → *Create and use a new service role*.
+8. **A key that can only touch this bucket.** IAM → Users → Create user `siteline-app` (no console access) → Attach policies directly → Create policy → JSON, replacing `BUCKET` twice:
    ```json
-   {"Version": "2012-10-17", "Statement": [
-     {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": "arn:aws:s3:::BUCKET"},
-     {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": "arn:aws:s3:::BUCKET/*"}
-   ]}
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {"Sid": "ListBucket", "Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::BUCKET"},
+       {"Sid": "Files", "Effect": "Allow",
+        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectTagging"],
+        "Resource": "arn:aws:s3:::BUCKET/*"}
+     ]
+   }
    ```
-   Then Security credentials → Create access key → *Application running outside AWS*. Copy both keys.
-5. **`.env`** (Files tab), then save:
+   Name it `siteline-files-access`, attach it, create the user. Then the user → Security credentials → Create access key → *Application running outside AWS*. The secret is shown once; keep it in a password manager.
+9. **`.env`** (Files tab), then save:
    ```
-   STORAGE_BUCKET=yourcompany-siteline-files
+   STORAGE_BUCKET=your-bucket-name
    STORAGE_REGION=eu-west-2
    STORAGE_ACCESS_KEY=AKIA...
    STORAGE_SECRET_KEY=...
    ```
-6. **Install and move existing files** (Bash console):
-   ```bash
-   cd ~/pc-estimating-site/siteline && source .venv/bin/activate && pip install -r requirements.txt
-   python manage.py move_files_to_storage --dry-run
-   python manage.py move_files_to_storage
-   ```
-   Reload on the Web tab. Open a document: the address bar should briefly show `s3.eu-west-2.amazonaws.com`. The local copies in `MEDIA_ROOT` aren't deleted; remove them yourself once you've checked.
-7. **Optional: virus scanning.** GuardDuty → Malware Protection for S3 → enable for the bucket. It scans every upload from subcontractors and is charged per GB scanned.
+10. **Install and move existing files** (Bash console):
+    ```bash
+    cd ~/pc-estimating-site/siteline && source .venv/bin/activate && pip install -r requirements.txt
+    python manage.py move_files_to_storage --dry-run
+    python manage.py move_files_to_storage
+    ```
+    Reload on the Web tab. The local copies in `MEDIA_ROOT` aren't deleted; remove them yourself once you've checked.
+11. **Check.** Open a document in Siteline: the address bar briefly shows `s3.eu-west-2.amazonaws.com`. In S3, a file's Tags should show `GuardDutyMalwareScanStatus = NO_THREATS_FOUND`.
+
+Do not add a bucket policy that denies unscanned files until Siteline's scan check is in place: it would also block the copy in step 10.
 
 Other S3-compatible providers work with the same settings plus `STORAGE_ENDPOINT_URL`: DigitalOcean Spaces London (`https://lon1.digitaloceanspaces.com`, region `lon1`) or Cloudflare R2 (`https://<account_id>.eu.r2.cloudflarestorage.com`, region `auto`). See `.env.example`.
 
