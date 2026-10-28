@@ -43,6 +43,33 @@ def user(email, name, title=''):
     return u
 
 
+def demo_pdf(title, subtitle=''):
+    """A real one-page PDF showing the document's title, so demo downloads open properly."""
+    def esc(t):
+        t = t.replace('\u2013', '-').replace('\u2014', '-').replace('\u2018', "'").replace('\u2019', "'")
+        return t.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)').encode('latin-1', 'replace').decode('latin-1')
+    text = (f'BT /F1 22 Tf 60 760 Td ({esc(title)}) Tj ET\n'
+            f'BT /F1 12 Tf 60 735 Td ({esc(subtitle)}) Tj ET\n'
+            f'BT /F1 10 Tf 60 60 Td (Demo document created by seed_demo) Tj ET\n').encode('latin-1')
+    objects = [
+        b'<< /Type /Catalog /Pages 2 0 R >>',
+        b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R '
+        b'/Resources << /Font << /F1 5 0 R >> >> >>',
+        b'<< /Length ' + str(len(text)).encode() + b' >>\nstream\n' + text + b'endstream',
+        b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    ]
+    out, offsets = bytearray(b'%PDF-1.4\n'), []
+    for i, body in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += f'{i} 0 obj\n'.encode() + body + b'\nendobj\n'
+    xref = len(out)
+    out += f'xref\n0 {len(objects) + 1}\n0000000000 65535 f \n'.encode()
+    out += b''.join(f'{o:010d} 00000 n \n'.encode() for o in offsets)
+    out += f'trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n'.encode()
+    return bytes(out)
+
+
 class Command(BaseCommand):
     help = 'Create a demo workspace'
 
@@ -268,7 +295,7 @@ class Command(BaseCommand):
                 ('Kitchen wall cladding', 'Hygienic cladding to first floor kitchen', Rams.SUBMITTED, 1, ''),
             ]:
                 Rams.objects.create(project=leeds, subcontractor=s_join, package=join_pkg, title=title, scope=scope,
-                                    status=status, file=ContentFile(b'%PDF-1.4\n', name='rams.pdf'),
+                                    status=status, file=ContentFile(demo_pdf(title, f'RAMS · {s_join}'), name='rams.pdf'),
                                     original_name=f'{title}.pdf', submitted_by=subu,
                                     submitted_at=now - timedelta(days=days), review_comments=comments,
                                     reviewed_by=pm if status != Rams.SUBMITTED else None,
@@ -301,7 +328,7 @@ class Command(BaseCommand):
                 d = Document.objects.create(project=leeds, title=title, reference=ref, category=cat, visibility=vis,
                                             created_by=pm)
                 for rev in (['P01', 'C01'] if cat == 'DRAWING' else ['P01']):
-                    content = ContentFile(b'%PDF-1.4\n% demo file\n', name=f'{ref}-{rev}.pdf')
+                    content = ContentFile(demo_pdf(title, f'{ref} revision {rev}'), name=f'{ref}-{rev}.pdf')
                     DocumentRevision.objects.create(document=d, revision=rev, file=content, original_name=f'{ref}-{rev}.pdf',
                                                     size=content.size, uploaded_by=pm)
 
@@ -318,7 +345,7 @@ class Command(BaseCommand):
                                ('Reflected ceiling plans', 'KW-A-300')]:
                 d = Document.objects.create(project=kings, title=title, reference=ref, category='TENDER',
                                             tender_issue=True, created_by=est)
-                content = ContentFile(b'%PDF-1.4\n% demo file\n', name=f'{ref}.pdf')
+                content = ContentFile(demo_pdf(title, f'{ref} · tender issue T1'), name=f'{ref}.pdf')
                 DocumentRevision.objects.create(document=d, revision='T1', file=content, original_name=f'{ref}.pdf',
                                                 size=content.size, uploaded_by=est)
             scopes = {
@@ -352,7 +379,7 @@ class Command(BaseCommand):
             add1 = Addendum.objects.create(project=kings, title='Revised level 3 layout',
                                            description='Meeting rooms 3.04–3.06 reconfigured. Partition lengths increase by '
                                                        'about 18m. Revised GA attached.', issued_by=est)
-            AddendumFile.objects.create(addendum=add1, file=ContentFile(b'%PDF-1.4\n', name='KW-A-103-T2.pdf'),
+            AddendumFile.objects.create(addendum=add1, file=ContentFile(demo_pdf('Revised level 3 layout', 'KW-A-103 revision T2'), name='KW-A-103-T2.pdf'),
                                         original_name='KW-A-103-T2.pdf', size=10)
             AddendumReceipt.objects.create(addendum=add1, subcontractor=s_dry, user=bidu)
             q1 = TenderQuery.objects.create(project=kings, subcontractor=s_dry, asked_by=bidu,
