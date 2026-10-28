@@ -183,6 +183,11 @@ STORAGE_BUCKET = env('STORAGE_BUCKET', '')
 STORAGE_LINK_SECONDS = int(env('STORAGE_LINK_SECONDS', '300'))
 STORAGE_REGION = env('STORAGE_REGION', 'eu-west-2')
 if STORAGE_BUCKET:
+    _missing = [k for k in ('STORAGE_ACCESS_KEY', 'STORAGE_SECRET_KEY') if not (env(k) or '').strip()]
+    if _missing:
+        # Fail at start-up with a plain message, not a signing error deep inside boto on the first upload
+        raise RuntimeError(f'STORAGE_BUCKET is set but {" and ".join(_missing)} {"are" if len(_missing) > 1 else "is"} empty in .env. '
+                           'Add the siteline-app access key, or put # before STORAGE_BUCKET to keep files on disk.')
     STORAGES['default'] = {
         'BACKEND': 'storages.backends.s3.S3Storage',
         'OPTIONS': {
