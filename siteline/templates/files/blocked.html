@@ -1,0 +1,10 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}File blocked{% endblock %}
+{% block content %}
+<div class="card" style="max-width:620px;border-color:#EDBDB7"><div class="card-body">
+  <h1 style="font-size:1.3rem">{% if infected %}This file contains a virus{% else %}This file couldn't be virus-checked{% endif %}</h1>
+  <p><strong>{{ label }}</strong> {% if infected %}was flagged as malicious by the virus scanner, so it has been blocked and can't be downloaded by anyone.{% else %}couldn't be scanned (password-protected or encrypted files can't be checked), so it has been blocked to be safe.{% endif %}</p>
+  <p>{% if is_internal %}The project team has been notified. Ask whoever uploaded it to send a clean{% if not infected %}, unprotected{% endif %} copy, then delete this one.{% else %}{{ org.name }} has been notified. If you uploaded it, please upload a clean{% if not infected %}, unprotected{% endif %} copy.{% endif %}</p>
+  {% if project %}<p class="small" style="margin:0"><a href="{{ project.get_absolute_url }}">Back to {{ project.name }}</a></p>{% endif %}
+</div></div>
+{% endblock %}

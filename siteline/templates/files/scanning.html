@@ -1,0 +1,10 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Checking file{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="8">{% endblock %}
+{% block content %}
+<div class="card" style="max-width:620px"><div class="card-body">
+  <h1 style="font-size:1.3rem">Virus check in progress</h1>
+  <p><strong>{{ label }}</strong> was uploaded moments ago and is still being checked for viruses. It will open automatically once it's cleared, usually within a minute.</p>
+  <p class="small dim" style="margin:0">This page refreshes itself. {% if project %}<a href="{{ project.get_absolute_url }}">Back to {{ project.name }}</a>{% endif %}</p>
+</div></div>
+{% endblock %}

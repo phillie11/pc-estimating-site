@@ -207,7 +207,40 @@ PythonAnywhere's disk is too small for tender packs and drawings, so uploaded fi
     Reload on the Web tab. The local copies in `MEDIA_ROOT` aren't deleted; remove them yourself once you've checked.
 11. **Check.** Open a document in Siteline: the address bar briefly shows `s3.eu-west-2.amazonaws.com`. In S3, a file's Tags should show `GuardDutyMalwareScanStatus = NO_THREATS_FOUND`.
 
-Do not add a bucket policy that denies unscanned files until Siteline's scan check is in place: it would also block the copy in step 10.
+12. **Hourly scan check.** Siteline already refuses to hand out any file until GuardDuty has tagged it clean: people see "virus check in progress" for the minute or so that takes, and an infected or unscannable file is blocked for everyone, with the project team notified. The scheduled check catches bad uploads straight away and tells the uploader too. Tasks tab → add an **hourly** task (use your own folder name):
+    ```
+    cd ~/YOUR-FOLDER/siteline && .venv/bin/python manage.py check_file_scans
+    ```
+13. **Files uploaded before scanning was on.** GuardDuty only scans new uploads. Run this once and read the last line:
+    ```bash
+    python manage.py check_file_scans
+    ```
+    If "still being scanned" stays above 0 on a second run a few minutes later, those files predate scanning. Ask GuardDuty to scan them, wait five minutes, then run the plain command again until it reads 0:
+    ```bash
+    python manage.py check_file_scans --retrigger
+    ```
+14. **Make AWS enforce it too.** Once step 13 reads 0, add a bucket policy so S3 itself refuses any file not tagged clean, even if Siteline had a bug. Find the GuardDuty role first: IAM → Roles → search `Malware` or `GuardDuty` → open the role → copy its **ARN**. Then S3 → your bucket → Permissions → Bucket policy → Edit, paste, replace `BUCKET` and the role ARN, and save:
+    ```json
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Sid": "OnlyServeScannedCleanFiles",
+        "Effect": "Deny",
+        "Principal": "*",
+        "Action": "s3:GetObject",
+        "Resource": "arn:aws:s3:::BUCKET/*",
+        "Condition": {
+          "StringNotEquals": {
+            "s3:ExistingObjectTag/GuardDutyMalwareScanStatus": "NO_THREATS_FOUND",
+            "aws:PrincipalArn": "PASTE-THE-GUARDDUTY-ROLE-ARN"
+          }
+        }
+      }]
+    }
+    ```
+    The role is excluded so GuardDuty can still read new files to scan them. After this, `move_files_to_storage` and `--retrigger` can no longer read unscanned files, which is intended.
+
+If scanning ever stops working (every download says "virus check in progress"), check Malware Protection is still enabled on the bucket in GuardDuty. `STORAGE_MALWARE_SCAN=0` in `.env` turns Siteline's check off, but only use it while the bucket policy in step 14 is not in place, and fix scanning rather than leaving it off.
 
 Other S3-compatible providers work with the same settings plus `STORAGE_ENDPOINT_URL`: DigitalOcean Spaces London (`https://lon1.digitaloceanspaces.com`, region `lon1`) or Cloudflare R2 (`https://<account_id>.eu.r2.cloudflarestorage.com`, region `auto`). See `.env.example`.
 

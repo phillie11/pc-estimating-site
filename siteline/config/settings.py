@@ -182,6 +182,9 @@ MEDIA_ROOT = Path(env('MEDIA_ROOT', BASE_DIR / 'private_media'))
 STORAGE_BUCKET = env('STORAGE_BUCKET', '')
 STORAGE_LINK_SECONDS = int(env('STORAGE_LINK_SECONDS', '300'))
 STORAGE_REGION = env('STORAGE_REGION', 'eu-west-2')
+# GuardDuty Malware Protection tags every upload; files are only handed out once tagged clean.
+# Set STORAGE_MALWARE_SCAN=0 only if scanning is not enabled on the bucket.
+STORAGE_MALWARE_SCAN = env_bool('STORAGE_MALWARE_SCAN', True)
 if STORAGE_BUCKET:
     _missing = [k for k in ('STORAGE_ACCESS_KEY', 'STORAGE_SECRET_KEY') if not (env(k) or '').strip()]
     if _missing:
@@ -200,7 +203,9 @@ if STORAGE_BUCKET:
             'default_acl': None,            # never public; the bucket policy decides
             'querystring_auth': True,       # every link is signed...
             'querystring_expire': STORAGE_LINK_SECONDS,  # ...and short-lived
-            'file_overwrite': False,
+            # Every stored name contains a random folder, so the pre-upload "is this name taken?"
+            # lookup is unnecessary, and it would be refused once the bucket only serves scanned files
+            'file_overwrite': True,
             'signature_version': 's3v4',
         },
     }

@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest import mock
 from urllib.parse import urlencode
 
 from django.core.files.storage import FileSystemStorage
@@ -20,7 +21,7 @@ from tenancy.tests import Base, make_user
 from . import gantt
 from .analytics import tender_analytics, value_band
 from .forms import ActivityForm
-from .models import Activity, Document, DocumentRevision, FileAccess, Project, ProjectMember
+from .models import Activity, Document, DocumentRevision, FileAccess, FileScan, Project, ProjectMember
 
 
 class ProgrammeTests(Base):
@@ -263,14 +264,14 @@ class SignedLinkStorage(FileSystemStorage):
         return f'https://files.example/{name}?expires={expire}&' + urlencode(parameters or {})
 
 
-def cloud(location):
-    return override_settings(STORAGE_BUCKET='test-bucket', STORAGES={
+def cloud(location, scan=False):
+    return override_settings(STORAGE_BUCKET='test-bucket', STORAGE_MALWARE_SCAN=scan, STORAGES={
         'default': {'BACKEND': 'projects.tests.SignedLinkStorage', 'OPTIONS': {'location': location}},
         'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
     })
 
 
-class FileStorageTests(Base):
+class FileStorageMixin:
     def setUp(self):
         super().setUp()
         self.local_dir, self.cloud_dir = tempfile.mkdtemp(), tempfile.mkdtemp()
@@ -290,6 +291,9 @@ class FileStorageTests(Base):
 
     def download(self, doc, rev):
         return self.client.get(self.url('document_download', self.org_a, self.pa.pk, doc.pk, rev.pk))
+
+
+class FileStorageTests(FileStorageMixin, Base):
 
     def test_local_disk_streams_and_logs(self):
         with self.settings(MEDIA_ROOT=self.local_dir):
@@ -346,3 +350,77 @@ class FileStorageTests(Base):
             out = io.StringIO()
             call_command('move_files_to_storage', stdout=out)
             self.assertIn('Copied 0, already there 1', out.getvalue())
+
+
+class MalwareScanTests(FileStorageMixin, Base):
+    """Files in cloud storage are only handed out once GuardDuty has tagged them clean."""
+    def scanned(self, verdict):
+        return mock.patch('projects.files.fetch_scan_tag', return_value=verdict)
+
+    def test_clean_file_is_served_and_the_verdict_cached(self):
+        with cloud(self.cloud_dir, scan=True), self.scanned('NO_THREATS_FOUND') as fetch:
+            doc, rev = self.add_doc()
+            self.login(self.alice)
+            self.assertEqual(self.download(doc, rev).status_code, 302)
+            self.assertEqual(self.download(doc, rev).status_code, 302)
+            self.assertEqual(fetch.call_count, 1)
+            self.assertTrue(FileScan.all_objects.get(path=rev.file.name).is_clean)
+
+    def test_unscanned_file_waits(self):
+        with cloud(self.cloud_dir, scan=True), self.scanned(None):
+            doc, rev = self.add_doc()
+            self.login(self.alice)
+            r = self.download(doc, rev)
+            self.assertEqual(r.status_code, 409)
+            self.assertContains(r, 'Virus check in progress', status_code=409)
+            self.assertFalse(FileAccess.all_objects.exists())
+            self.assertFalse(FileScan.all_objects.exists())
+
+    def test_infected_file_blocked_and_staff_told_once(self):
+        from tenancy.models import Notification
+        with cloud(self.cloud_dir, scan=True), self.scanned('THREATS_FOUND'):
+            doc, rev = self.add_doc()
+            self.login(self.alice)
+            r = self.download(doc, rev)
+            self.assertEqual(r.status_code, 403)
+            self.assertContains(r, 'contains a virus', status_code=403)
+            self.download(doc, rev)
+            self.assertEqual(Notification.all_objects.filter(user=self.alice, title__startswith='Infected').count(), 1)
+            self.assertFalse(FileAccess.all_objects.exists())
+
+    def test_unscannable_file_blocked(self):
+        with cloud(self.cloud_dir, scan=True), self.scanned('UNSUPPORTED'):
+            doc, rev = self.add_doc()
+            self.login(self.alice)
+            r = self.download(doc, rev)
+            self.assertEqual(r.status_code, 403)
+            self.assertContains(r, "couldn't be virus-checked", status_code=403)
+
+    def test_scanning_can_be_switched_off(self):
+        with cloud(self.cloud_dir, scan=False), self.scanned('THREATS_FOUND') as fetch:
+            doc, rev = self.add_doc()
+            self.login(self.alice)
+            self.assertEqual(self.download(doc, rev).status_code, 302)
+            fetch.assert_not_called()
+
+    def test_scheduled_check_alerts_uploader_and_staff_once(self):
+        from tenancy.models import Notification
+        with cloud(self.cloud_dir, scan=True), self.scanned('THREATS_FOUND'):
+            doc, rev = self.add_doc()
+            DocumentRevision.all_objects.filter(pk=rev.pk).update(uploaded_by=self.outsider)
+            call_command('check_file_scans', stdout=io.StringIO(), stderr=io.StringIO())
+            call_command('check_file_scans', stdout=io.StringIO(), stderr=io.StringIO())
+            self.assertEqual(FileScan.all_objects.get(path=rev.file.name).status, 'THREATS_FOUND')
+            for user in (self.alice, self.outsider):
+                self.assertEqual(Notification.all_objects.filter(user=user, title__startswith='Infected').count(), 1)
+
+    def test_retrigger_asks_for_scans_of_unscanned_files(self):
+        with cloud(self.cloud_dir, scan=True), self.scanned(None), \
+                mock.patch('projects.management.commands.check_file_scans.retrigger_scan') as retrigger:
+            doc, rev = self.add_doc()
+            call_command('check_file_scans', stdout=io.StringIO())
+            retrigger.assert_not_called()
+            out = io.StringIO()
+            call_command('check_file_scans', '--retrigger', stdout=out)
+            self.assertEqual([c.args[0].name for c in retrigger.call_args_list], [rev.file.name])
+            self.assertIn('Asked GuardDuty to scan 1 file', out.getvalue())

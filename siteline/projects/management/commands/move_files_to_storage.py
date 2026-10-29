@@ -29,6 +29,18 @@ def stored_file_names():
                     yield name
 
 
+def in_bucket(name):
+    """Whether a file is already in the bucket (the storage's own exists() always says no when overwriting)."""
+    if not hasattr(default_storage, 'connection'):
+        return default_storage.exists(name)
+    from botocore.exceptions import ClientError
+    try:
+        default_storage.connection.meta.client.head_object(Bucket=default_storage.bucket_name, Key=name)
+        return True
+    except ClientError:
+        return False
+
+
 class Command(BaseCommand):
     help = 'Copy uploaded files from local disk into cloud storage (STORAGE_BUCKET).'
 
@@ -45,7 +57,7 @@ class Command(BaseCommand):
                 missing += 1
                 self.stderr.write(f'missing locally: {name}')
                 continue
-            if default_storage.exists(name):
+            if in_bucket(name):
                 skipped += 1
                 continue
             if not dry_run:

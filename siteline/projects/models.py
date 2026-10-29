@@ -489,3 +489,22 @@ class FileAccess(TenantModel):
 
     def __str__(self):
         return f'{self.user} opened {self.label}'
+
+
+class FileScan(TenantModel):
+    """Malware scan result for one stored file, as tagged by GuardDuty. Only final results are kept."""
+    CLEAN = 'NO_THREATS_FOUND'
+    INFECTED = 'THREATS_FOUND'
+    FINAL = (CLEAN, INFECTED, 'UNSUPPORTED', 'ACCESS_DENIED', 'FAILED')
+
+    path = models.CharField(max_length=500, unique=True)
+    status = models.CharField(max_length=20)
+    checked_at = models.DateTimeField(auto_now=True)
+    alerted_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f'{self.path}: {self.status}'
+
+    @property
+    def is_clean(self):
+        return self.status == self.CLEAN
