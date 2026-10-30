@@ -1,6 +1,6 @@
 # ADR 0001: A shared record base (`core`), proven on RFIs
 
-- **Status:** accepted for RFIs; variations, RAMS, sub variations, snags and documents to follow
+- **Status:** accepted for RFIs and client variations; RAMS, sub variations, snags and documents to follow
 - **Date:** 2026-10-30
 - **Code:** `core/` (models, registry, workflow, access, forms), `rfis/` (first adopter), migrations `core 0001`–`0002`, `rfis 0003`–`0005`
 
@@ -37,6 +37,10 @@ Everything is a `TenantModel`: scoped to the current organisation, fails closed 
 Data and table changes are in separate migrations because PostgreSQL refuses to alter a table with row changes pending in the same transaction. `core/tests/test_rfi_migration.py` runs forward and backward on seeded data from two companies.
 
 RFI status changes now go through `rfis/workflow.py`: `respond`, `respond_and_close`, `close`, `reopen`, `void`. The views, URLs, templates and CSV are unchanged for users. `Pass ball` is an ordinary audited save (`reassigned`), not a transition, because it doesn't change status.
+
+### Client variations adopt it (migration plan step 1, done)
+
+`variations.Variation` subclasses `RecordBase` (prefix `VO`). `variations 0003` renames `raised_by → created_by` and adds the base columns; `0004` fills `ref`, sets drafts `INTERNAL` and everything else `SHARED`, gives submitted ones the project's first client as ball in court, and creates the sequence, index rows, back-filled `created` audit entries and a `RecordLink(DERIVED_FROM)` to the RFI wherever `Variation.rfi` is set; `0005` adds the extension-of-time and quotation-due fields. `variations/test_migration.py` runs it forward and back on two companies. Transitions are in `variations/workflow.py`: `submit` (staff; sets `SHARED`, passes the ball to the contract's administrator if a client, else the first client), `approve`/`reject` (the project's client, plus owners/admins recording a decision the client gave elsewhere, with notes; the old `can_decide_variations` rule as the `may_decide` predicate), `withdraw` (staff). A withdrawn draft stays internal. `Variation.rfi` stays, kept in step with its link by `variations.views.sync_rfi_link`. Early warnings (`EW`) and change events (`CE`) in `changes/` are new record types on the base from the start, always internal.
 
 ## Deviations from the reference design, and why
 

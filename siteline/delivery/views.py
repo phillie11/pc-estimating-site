@@ -187,7 +187,7 @@ def subvariation_detail(request, org_slug, pk, sv_id):
                         project=project, title=v.title, description=f'{v.description}\n\n(From {v.reference}, {v.subcontractor})',
                         cause='CLIENT_INSTRUCTION' if v.reason == 'INSTRUCTION' else 'DESIGN_CHANGE' if v.reason == 'DESIGN'
                         else 'SITE_CONDITION' if v.reason == 'SITE' else 'OTHER',
-                        value=v.approved_value, time_impact_days=v.time_impact_days, raised_by=request.user)
+                        value=v.approved_value, time_impact_days=v.time_impact_days, created_by=request.user)
                 v.save()
                 verb = 'approved' if v.status == SubVariation.APPROVED else 'rejected'
                 notify.alert(sub_users(project, v.subcontractor_id), f'{v.reference} {verb}: {v.title}', v.get_absolute_url(),

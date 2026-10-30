@@ -1,9 +1,10 @@
 {% extends "project_base.html" %}{% load ui %}
 {% block project_actions %}{% if is_internal %}
-  {% if vo.status == 'DRAFT' %}<form method="post" data-confirm="Submit {{ vo.reference }} to the client for approval?">{% csrf_token %}<input type="hidden" name="action" value="submit"><button class="btn primary">Submit to client</button></form>{% endif %}
+  {% if vo.status == 'DRAFT' %}<form method="post" data-confirm="Submit {{ vo.reference }} to the client for approval? They'll be emailed and can see it in their portal from now on.">{% csrf_token %}<input type="hidden" name="action" value="submit"><button class="btn primary">Submit to client</button></form>{% endif %}
   {% if vo.status == 'DRAFT' or vo.status == 'SUBMITTED' %}<a class="btn" href="{% url 'variation_edit' org.slug project.pk vo.pk %}">Edit</a>
-  <form method="post" data-confirm="Withdraw {{ vo.reference }}?">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn ghost">Withdraw</button></form>{% endif %}{% endif %}{% endblock %}
+  <form method="post" data-confirm="Withdraw {{ vo.reference }}? It can't be submitted again.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn ghost">Withdraw</button></form>{% endif %}{% endif %}{% endblock %}
 {% block project_content %}
+{% include "commercial/_subnav.html" %}
 <p class="small"><a href="{% url 'variation_list' org.slug project.pk %}">← Variations</a></p>
 <div class="grid split">
   <div class="stack">
@@ -15,7 +16,7 @@
       {% if vo.decided_at %}<hr><h3>Decision</h3><p><strong>{{ vo.get_status_display }}</strong> by {{ vo.decided_by }} on {{ vo.decided_at|date:"j M Y" }}{% if vo.approved_value is not None %} at <span class="mono">{{ vo.approved_value|money:currency }}</span>{% endif %}.</p>{% if vo.decision_notes %}<div class="quote">{{ vo.decision_notes }}</div>{% endif %}{% endif %}
     </div></div>
     {% if can_decide or is_org_admin and vo.status == 'SUBMITTED' %}<div class="card" style="border:2px solid var(--accent)"><div class="card-head"><h2>{% if can_decide %}Your decision{% else %}Record client decision{% endif %}</h2></div><div class="card-body">
-      {% if not can_decide %}<p class="small dim">Admins only. Use this when the client decided by email or verbally, and record how in the notes. It's logged under your name.</p>{% endif %}
+      {% if can_decide %}<p class="small dim">Approving instructs the contractor to carry out this variation at the approved value. Rejecting tells them not to. Either way they are told straight away.</p>{% else %}<p class="small dim">Admins only. Use this when the client decided by email or verbally, and record how in the notes. It's logged under your name.</p>{% endif %}
       <form method="post">{% csrf_token %}<input type="hidden" name="action" value="decide">{% with form=decision_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Confirm decision</button></div></form>
     </div></div>{% endif %}
     {% include "partials/comments.html" %}
@@ -24,11 +25,17 @@
     <dt>Quoted value</dt><dd class="mono"><strong>{{ vo.value|money:currency }}</strong></dd>
     {% if vo.approved_value is not None %}<dt>Approved value</dt><dd class="mono">{{ vo.approved_value|money:currency }}</dd>{% endif %}
     <dt>Time impact</dt><dd>{% if vo.time_impact_days %}{{ vo.time_impact_days }} day{{ vo.time_impact_days|pluralize }}{% else %}None stated{% endif %}</dd>
+    {% if vo.eot_days_requested is not None %}<dt>{{ vocab.time_extension|capfirst }} requested</dt><dd>{{ vo.eot_days_requested }} day{{ vo.eot_days_requested|pluralize }}</dd>{% endif %}
+    {% if vo.eot_days_granted is not None %}<dt>{{ vocab.time_extension|capfirst }} granted</dt><dd>{{ vo.eot_days_granted }} day{{ vo.eot_days_granted|pluralize }}</dd>{% endif %}
+    {% if vo.quotation_due %}<dt>Quotation due</dt><dd>{{ vo.quotation_due|date:"j M Y" }}</dd>{% endif %}
     <dt>Cause</dt><dd>{{ vo.get_cause_display }}</dd>
     {% if vo.client_reference %}<dt>Client ref</dt><dd class="mono">{{ vo.client_reference }}</dd>{% endif %}
     {% if vo.rfi and is_internal or vo.rfi and vo.rfi.is_shared %}<dt>From RFI</dt><dd><a href="{{ vo.rfi.get_absolute_url }}">{{ vo.rfi.reference }}</a></dd>{% endif %}
-    <dt>Raised</dt><dd>{{ vo.created_at|date:"j M Y" }} by {{ vo.raised_by|default:"—" }}</dd>
+    {% if is_internal and change_events %}<dt>From change event</dt><dd>{% for idx in change_events %}<a href="{{ idx.url }}">{{ idx.ref }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    {% if is_internal and sub_variations %}<dt>Recovers sub variations</dt><dd>{% for sv in sub_variations %}<a href="{{ sv.get_absolute_url }}">{{ sv.reference }}</a> ({{ sv.subcontractor }}){% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    <dt>Raised</dt><dd>{{ vo.created_at|date:"j M Y" }} by {{ vo.created_by|default:"—" }}</dd>
     {% if vo.submitted_at %}<dt>Submitted</dt><dd>{{ vo.submitted_at|date:"j M Y" }}</dd>{% endif %}
+    {% if is_internal and vo.ball_in_court_user and vo.status == 'SUBMITTED' %}<dt>Waiting on</dt><dd>{{ vo.ball_in_court_user }}</dd>{% endif %}
   </dl></div></div>
 </div>
 {% endblock %}
