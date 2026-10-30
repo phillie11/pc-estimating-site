@@ -5,6 +5,7 @@ One settings file, driven by environment variables (loaded from .env).
 Everything production-sensitive defaults to the safe value.
 """
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -160,6 +161,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
+# Tests create hundreds of users; real PBKDF2 hashing made the suite 20x slower and ran CI past
+# its time limit. Only `manage.py test` gets the fast hasher. Recovery codes keep their own PBKDF2.
+if len(sys.argv) > 1 and sys.argv[1] == 'test':
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'login'
