@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'tenders',
     'delivery',
     'jobs',
+    'actions',
 ]
 
 MIDDLEWARE = [
