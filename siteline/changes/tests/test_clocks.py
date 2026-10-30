@@ -14,7 +14,7 @@ D = date.fromisoformat
 
 
 class CalendarWeekTests(SimpleTestCase):
-    # (start, weeks, expected): NEC4 clause 13 counts calendar weeks, so bank holidays, weekends,
+    # (start, weeks, expected): Siteline counts NEC periods in plain calendar weeks, so bank holidays, weekends,
     # Christmas, Easter and 29 February are all ordinary days
     TABLE = [
         ('2026-01-05', 8, '2026-03-02'),   # plain Monday to Monday
@@ -102,40 +102,56 @@ class QuotationAndReplyTests(SimpleTestCase):
 
 
 class DeemedAcceptanceTests(SimpleTestCase):
+    """
+    NEC4 62.6: accepted once the failure continues for a further 2 weeks after the Contractor's
+    notice, so it takes effect the day after notice + 14 days; a reply on notice + 14 still counts.
+    (Regression: it used to take effect on notice + 14, a day early.)
+    """
     SUBMITTED = D('2026-04-22')  # reply due 6 May
 
-    # (failure notified, reply received, deemed date or None)
+    # (failure notified, reply received, first day treated as accepted, or None)
     TABLE = [
         (None, None, None),                          # no notice of failure: nothing deemed
         ('2026-05-06', None, None),                  # notice on the reply's last day: too early
         ('2026-05-01', None, None),                  # notice before the reply was due: doesn't count
-        ('2026-05-07', None, '2026-05-21'),          # first day late: deemed two weeks on
-        ('2026-05-25', None, '2026-06-08'),          # late notice, across the 25 May bank holiday
-        ('2026-05-07', '2026-05-15', None),          # PM replied before deemed acceptance
-        ('2026-05-07', '2026-05-21', '2026-05-21'),  # reply on the deemed day itself: too late
+        ('2026-05-07', None, '2026-05-22'),          # first day late: notice + 14 is 21 May, accepted 22 May
+        ('2026-05-25', None, '2026-06-09'),          # late notice, across the 25 May bank holiday (calendar weeks)
+        ('2026-05-07', '2026-05-15', None),          # PM replied well before
+        ('2026-05-07', '2026-05-21', None),          # reply on notice + 14, the last day: in time
+        ('2026-05-07', '2026-05-22', '2026-05-22'),  # reply on the day acceptance takes effect: too late
+        ('2026-12-17', None, '2027-01-01'),          # over Christmas: no bank holiday adjustment
     ]
 
     def test_table(self):
         for failure, reply, deemed in self.TABLE:
+            submitted = self.SUBMITTED if not failure or failure < '2026-12-01' else D('2026-11-30')
             with self.subTest(failure=failure, reply=reply):
-                self.assertEqual(c.deemed_acceptance_date(self.SUBMITTED, failure and D(failure), reply and D(reply)),
+                self.assertEqual(c.deemed_acceptance_date(submitted, failure and D(failure), reply and D(reply)),
                                  deemed and D(deemed))
 
-    def test_clock_counts_down_then_reports_accepted(self):
-        clocks = c.nec_clocks(D('2026-05-14'), quotation_submitted_on=self.SUBMITTED,
-                              failure_notified_on=D('2026-05-07'))
-        deemed = clocks[-1]
-        self.assertEqual((deemed.key, deemed.deadline, deemed.days_left, deemed.tone),
-                         ('deemed', D('2026-05-21'), 7, c.TONE_SOON))
-        self.assertIn('Treated as accepted on 21 May 2026 unless', deemed.message)
-        after = c.nec_clocks(D('2026-05-21'), quotation_submitted_on=self.SUBMITTED, failure_notified_on=D('2026-05-07'))
-        self.assertEqual(after[-1].tone, c.TONE_DONE)
-        self.assertIn('Treated as accepted on 21 May 2026:', after[-1].message)
+    def test_edge_days_of_the_clock(self):
+        # notice 7 May: 21 May is the PM's last day (not yet accepted), 22 May it is accepted
+        def last(today):
+            return c.nec_clocks(D(today), quotation_submitted_on=self.SUBMITTED, failure_notified_on=D('2026-05-07'))[-1]
+        for today, left, tone in [('2026-05-14', 8, c.TONE_OK), ('2026-05-15', 7, c.TONE_SOON),
+                                  ('2026-05-21', 1, c.TONE_SOON), ('2026-05-22', 0, c.TONE_DONE),
+                                  ('2026-05-30', -8, c.TONE_DONE)]:
+            with self.subTest(today=today):
+                clock = last(today)
+                self.assertEqual((clock.key, clock.deadline, clock.days_left, clock.tone),
+                                 ('deemed', D('2026-05-22'), left, tone))
+        self.assertIn('Treated as accepted on 22 May 2026 unless', last('2026-05-21').message)
+        self.assertIn('replies by 21 May 2026', last('2026-05-21').message)
+        self.assertIn('Treated as accepted on 22 May 2026:', last('2026-05-22').message)
 
     def test_early_notice_of_failure_is_flagged(self):
         clocks = c.nec_clocks(D('2026-05-10'), quotation_submitted_on=self.SUBMITTED, failure_notified_on=D('2026-05-05'))
         self.assertEqual(clocks[-1].key, 'deemed')
         self.assertIn('Notify again after 6 May 2026', clocks[-1].message)
+
+    def test_no_clause_13_claim(self):
+        self.assertNotIn('clause 13', c.__doc__)
+        self.assertNotIn('clause 13', c.weeks_after.__doc__)
 
 
 class JCTPromptTests(SimpleTestCase):

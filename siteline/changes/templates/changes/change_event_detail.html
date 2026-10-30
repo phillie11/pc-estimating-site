@@ -14,7 +14,7 @@
 
     {% if clocks %}<div class="card"><div class="card-head"><h2>Notices and clocks</h2>{% badge 'Advisory' 'warn' %}</div><div class="card-body">
       {% for c in clocks %}<div class="row" style="align-items:flex-start;margin-bottom:10px">{% badge c.label c.tone %}<div><strong>{% if c.deadline and c.key != 'delay_notice' %}{{ c.deadline|date:"D j M Y" }}{% endif %}</strong> <span class="{% if c.is_late %}overdue{% endif %}">{{ c.message }}</span> <span class="small dim">({{ c.clause }})</span></div></div>{% endfor %}
-      <p class="small dim">{{ advisory }} Counted in calendar weeks with no allowance for bank holidays{% if contract.is_nec %} (NEC4 clause 13){% endif %}; amendments to the contract change these periods.</p>
+      <p class="small dim">{{ advisory }} Counted in plain calendar weeks with no allowance for bank holidays; how your contract counts time, and any amendments, to the contract can change these dates.</p>
     </div></div>{% elif not contract %}<div class="card"><div class="card-body small"><a href="{% url 'contract_edit' org.slug project.pk %}">Set up the contract</a> to see the notice clocks for this change event.</div></div>{% endif %}
 
     <div class="card"><div class="card-head"><h2>Estimate</h2></div>

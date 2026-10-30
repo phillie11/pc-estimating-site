@@ -14,9 +14,14 @@ NEC4 ECC (core clauses as published):
   62.6  If the Project Manager doesn't reply in time, the Contractor may notify that failure.
         If it continues for a further 2 weeks after that notice, the quotation is treated as
         accepted (deemed acceptance).
-Day counting follows NEC4 clause 13: periods are calendar weeks of 7 days. Weekends and bank
-holidays are counted like any other day; nothing here looks at a holiday calendar. (The
-Construction Act's payment periods do leave bank holidays out; these clocks are not those.)
+Siteline counts these NEC periods as plain calendar weeks of 7 days, with weekends and bank
+holidays counted like any other day. That is a simplification, not a rule taken from a clause:
+check the Contract Data and any Z clauses for how your contract counts time. (Payment dates are
+different: the Construction Act leaves bank holidays out, see holidays/calendar.py.)
+
+Deemed acceptance: the quotation is treated as accepted once the failure has continued for a
+further 2 weeks after the Contractor's notice, so it takes effect the day after notice + 14 days.
+A reply on or before notice + 14 days still counts.
 
 JCT has no time-barred notification of variations. What it does require, in every form, is
 written notice "forthwith" once it becomes reasonably apparent that progress is or is likely to
@@ -43,7 +48,7 @@ def _d(day):
 
 
 def weeks_after(day, weeks):
-    """Calendar weeks, per NEC4 clause 13: no working-day or bank holiday adjustment."""
+    """Plain calendar weeks: no working-day or bank holiday adjustment (advisory, see the module docstring)."""
     return day + timedelta(weeks=weeks)
 
 
@@ -105,18 +110,19 @@ def reply_deadline(submitted_on):
 
 def deemed_acceptance_date(submitted_on, failure_notified_on, reply_received_on=None):
     """
-    The date a quotation is treated as accepted (NEC4 62.6), or None: no reply came in time and the
-    Contractor notified the failure after the reply period ended; deemed accepted 2 weeks after that
-    notice unless a reply arrives first. A notice given before the reply was late doesn't count.
+    The first day a quotation is treated as accepted (NEC4 62.6), or None. It needs no reply in
+    time and a notice of that failure given after the reply period ended. The failure must then
+    continue for a further 2 weeks, so acceptance takes effect the day after notice + 14 days. A
+    reply on or before notice + 14 days prevents it. A notice given before the reply was late doesn't count.
     """
     if submitted_on is None or failure_notified_on is None:
         return None
     if failure_notified_on <= reply_deadline(submitted_on):
         return None
-    deemed = weeks_after(failure_notified_on, DEEMED_WEEKS)
-    if reply_received_on is not None and reply_received_on < deemed:
+    last_day_to_reply = weeks_after(failure_notified_on, DEEMED_WEEKS)
+    if reply_received_on is not None and reply_received_on <= last_day_to_reply:
         return None
-    return deemed
+    return last_day_to_reply + timedelta(days=1)
 
 
 def nec_clocks(today, aware_on=None, notified_on=None, quotation_instructed_on=None, quotation_submitted_on=None,
@@ -153,7 +159,8 @@ def nec_clocks(today, aware_on=None, notified_on=None, quotation_instructed_on=N
                 else:
                     clocks.append(Clock('deemed', 'Deemed acceptance', deemed, left, TONE_SOON if left <= DUE_SOON_DAYS
                                         else TONE_OK, f'Treated as accepted on {_d(deemed)} unless the {pm} '
-                                        f'replies first ({left} day{"s" if left != 1 else ""} left).', 'NEC4 62.6'))
+                                        f'replies by {_d(deemed - timedelta(days=1))} ({left} day{"s" if left != 1 else ""} '
+                                        'left).', 'NEC4 62.6'))
             elif failure_notified_on is not None and failure_notified_on <= due:
                 clocks.append(Clock('deemed', 'Deemed acceptance', due, None, TONE_SOON,
                                     f'Your notice of failure was given before the reply was late, so it does not '
