@@ -6,7 +6,7 @@ python-dotenv==1.2.4
 django-storages==1.14.6
 boto3==1.35.36
 django-axes==7.1.0
-Pillow==12.3.0
+Pillow==13.0.0
 # PDF drawing register and transmittal issue sheets (ReportLab, BSD) and page counts of uploaded PDFs (pypdf, BSD)
 reportlab==5.0.1
 pypdf==6.19.0
