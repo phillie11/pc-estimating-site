@@ -16,10 +16,13 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 
+from holidays.calendar import DEFAULT_REGION, REGION_CHOICES
 from tenancy.models import TenantModel
 
 from . import presets
 from .vocabulary import family, vocabulary
+
+DEFAULT_CLIENT_RESPONSE_DAYS = 14
 
 
 class MainContract(TenantModel):
@@ -77,6 +80,16 @@ class MainContract(TenantModel):
                                                               null=True, blank=True)
     pay_less_notice_days = models.PositiveSmallIntegerField('Pay less notice (days before final date)',
                                                             null=True, blank=True)
+
+    bank_holiday_region = models.CharField(
+        'Bank holidays', max_length=20, choices=REGION_CHOICES, default=DEFAULT_REGION,
+        help_text='Which part of the UK the contract is under. Payment and notice dates leave out its bank '
+                  'holidays, Christmas Day and Good Friday.')
+    client_response_days = models.PositiveSmallIntegerField(
+        'Client to decide variations within (days)', default=DEFAULT_CLIENT_RESPONSE_DAYS,
+        validators=[MinValueValidator(1), MaxValueValidator(365)],
+        help_text='Submitting a variation sets its respond-by date this many days ahead. Staff can change it '
+                  'on each variation.')
 
     administrator = models.ForeignKey('projects.ProjectMember', null=True, blank=True, on_delete=models.SET_NULL,
                                       related_name='+', verbose_name="Client's contract administrator",
@@ -144,12 +157,18 @@ class MainContract(TenantModel):
     def preset(self):
         return presets.preset_for(self.form)
 
-    def apply_preset(self, only_blank=True):
-        """Fill payment, retention and defects terms from the form's standard ones. Returns the fields changed."""
+    def apply_preset(self, only_blank=True, creating=False):
+        """
+        Fill payment, retention and defects terms from the form's standard ones. Returns the fields
+        changed. only_blank leaves values already set; when creating, a value still at the model's
+        default (damages per week, half the retention at completion) counts as not set, or an NEC
+        contract would never get delay damages per day.
+        """
         changed = []
         for name, value in self.preset.values().items():
             current = getattr(self, name)
-            if only_blank and current not in (None, ''):
+            untouched = creating and current == self._meta.get_field(name).get_default()
+            if only_blank and current not in (None, '') and not untouched:
                 continue
             if current != value:
                 setattr(self, name, value)
@@ -185,4 +204,4 @@ class MainContract(TenantModel):
     def next_payment_timetable(self, today):
         valuation = presets.next_valuation_date(today, self.valuation_day)
         return presets.payment_timetable(valuation, self.due_date_offset_days, self.final_date_offset_days,
-                                         self.pay_less_notice_days)
+                                         self.pay_less_notice_days, region=self.bank_holiday_region)

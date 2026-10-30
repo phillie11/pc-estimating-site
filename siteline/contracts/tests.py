@@ -20,12 +20,12 @@ class PresetTableTests(SimpleTestCase):
     TABLE = {
         'JCT_MW': (0, 14, 5, Decimal('5'), 3, 'WEEK'),
         'JCT_MWD': (0, 14, 5, Decimal('5'), 3, 'WEEK'),
-        'JCT_IC': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
-        'JCT_ICD': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
+        'JCT_IC': (7, 14, 5, Decimal('5'), 6, 'WEEK'),   # 95% certified unless stated (verify note)
+        'JCT_ICD': (7, 14, 5, Decimal('5'), 6, 'WEEK'),
         'JCT_SBC': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
         'JCT_DB': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
         'NEC4_ECC': (7, 14, 7, None, None, 'DAY'),
-        'BESPOKE': (30, 17, 7, None, None, 'WEEK'),  # the Scheme for Construction Contracts
+        'BESPOKE': (7, 17, 7, None, None, 'WEEK'),  # the Scheme: interim due 7 days after the period (para 4)
     }
 
     def test_every_form_has_a_preset(self):
@@ -40,6 +40,15 @@ class PresetTableTests(SimpleTestCase):
                                  (due, final, pay_less, retention, defects, per))
                 self.assertEqual(p.retention_released_at_pc_percent, Decimal('50'))  # half at PC
 
+    def test_scheme_interim_due_date_is_seven_days(self):
+        # Regression: was 30, the Scheme's final payment rule (para 5), not the interim one (para 4)
+        self.assertEqual(presets.SCHEME.due_date_offset_days, 7)
+        self.assertIn('Part II para 4', presets.__doc__)
+
+    def test_ic_retention_carries_a_verify_note(self):
+        self.assertIn('Verify', presets.preset_for('JCT_IC').note)
+        self.assertEqual(presets.preset_for('JCT_SBC').retention_percent, Decimal('3'))
+
     def test_unknown_form_falls_back_to_the_scheme(self):
         self.assertIs(presets.preset_for('SOMETHING_ELSE'), presets.SCHEME)
         self.assertIn('Scheme', presets.SCHEME.label)
@@ -50,20 +59,34 @@ class PresetTableTests(SimpleTestCase):
 
 
 class PaymentTimetableTests(SimpleTestCase):
+    # JCT IC: 7 / 14 / 5 days, counted leaving out Christmas Day, Good Friday and bank holidays (s116)
+    # (valuation, region, due, final, pay less by)
     TABLE = [
-        # valuation, due, final, pay less (calendar days, JCT IC: 7 / 14 / 5)
-        ('2026-11-28', '2026-12-05', '2026-12-19', '2026-12-14'),
-        ('2026-12-28', '2027-01-04', '2027-01-18', '2027-01-13'),  # across Christmas: no bank holiday skip
+        ('2026-11-28', 'england-and-wales', '2026-12-05', '2026-12-19', '2026-12-14'),   # nothing to skip
+        ('2026-12-21', 'england-and-wales', '2026-12-30', '2027-01-14', '2027-01-09'),   # skips 25, 28 Dec, 1 Jan
+        ('2026-12-21', 'scotland', '2026-12-30', '2027-01-15', '2027-01-10'),            # and 4 Jan (2 Jan's substitute)
+        ('2026-03-28', 'england-and-wales', '2026-04-05', '2026-04-20', '2026-04-15'),   # Good Friday, Easter Monday
+        ('2026-03-28', 'scotland', '2026-04-05', '2026-04-19', '2026-04-14'),            # no Easter Monday
+        ('2026-07-04', 'northern-ireland', '2026-07-11', '2026-07-26', '2026-07-21'),    # the Boyne (13 Jul)
+        ('2026-07-04', 'england-and-wales', '2026-07-11', '2026-07-25', '2026-07-20'),
     ]
 
     def test_jct_ic_table(self):
-        for valuation, due, final, pay_less in self.TABLE:
-            t = presets.payment_timetable(D(valuation), 7, 14, 5)
-            self.assertEqual((t.due_date, t.final_date, t.pay_less_by), (D(due), D(final), D(pay_less)))
+        for valuation, region, due, final, pay_less in self.TABLE:
+            with self.subTest(valuation=valuation, region=region):
+                t = presets.payment_timetable(D(valuation), 7, 14, 5, region=region)
+                self.assertEqual((t.due_date, t.final_date, t.pay_less_by), (D(due), D(final), D(pay_less)))
 
     def test_scheme(self):
-        t = presets.payment_timetable(D('2026-01-31'), 30, 17, 7)
-        self.assertEqual((t.due_date, t.final_date, t.pay_less_by), (D('2026-03-02'), D('2026-03-19'), D('2026-03-12')))
+        p = presets.SCHEME
+        t = presets.payment_timetable(D('2026-01-31'), p.due_date_offset_days, p.final_date_offset_days,
+                                      p.pay_less_notice_days)
+        self.assertEqual((t.due_date, t.final_date, t.pay_less_by), (D('2026-02-07'), D('2026-02-24'), D('2026-02-17')))
+
+    def test_contract_uses_its_region(self):
+        c = MainContract(form='JCT_IC', valuation_day=21, bank_holiday_region='scotland')
+        c.apply_preset()
+        self.assertEqual(c.next_payment_timetable(D('2026-12-01')).final_date, D('2027-01-15'))
 
     def test_missing_terms_give_none(self):
         self.assertIsNone(presets.payment_timetable(None, 7, 14, 5))
@@ -87,6 +110,20 @@ class ContractModelTests(SimpleTestCase):
         self.assertNotIn('pay_less_notice_days', changed)
         c.apply_preset(only_blank=False)
         self.assertEqual(c.pay_less_notice_days, 5)
+
+    def test_preset_on_create_overrides_untouched_defaults(self):
+        # Regression: NEC delay damages per day and the release share were never applied, as the model
+        # defaults (per week, 50%) are not blank
+        c = MainContract(form='NEC4_ECC', nec_main_option='A')
+        self.assertNotIn('lads_period', c.apply_preset())
+        self.assertEqual(c.lads_period, 'WEEK')
+        c = MainContract(form='NEC4_ECC', nec_main_option='A')
+        self.assertIn('lads_period', c.apply_preset(creating=True))
+        self.assertEqual(c.lads_period, 'DAY')
+        # A value the user changed from the default is still kept
+        c = MainContract(form='NEC4_ECC', retention_released_at_pc_percent=Decimal('100'))
+        c.apply_preset(creating=True)
+        self.assertEqual(c.retention_released_at_pc_percent, Decimal('100'))
 
     def test_retention_rule_and_rounding(self):
         c = MainContract(form='JCT_IC', retention_percent=Decimal('3'))
@@ -153,13 +190,14 @@ class ContractViewTests(CommercialTestBase):
         r = self.client.post(self.url('contract_edit', self.pa.pk), {
             'form': 'JCT_IC', 'edition': '2016', 'contract_sum': '125000.50', 'start_date': '2026-11-02',
             'completion_date': '2027-03-26', 'administrator': self.carla_member.pk, 'lads_rate': '2500',
-            'lads_period': 'WEEK', 'retention_released_at_pc_percent': '50', 'valuation_day': '28'})
+            'lads_period': 'WEEK', 'retention_released_at_pc_percent': '50', 'valuation_day': '28',
+            'bank_holiday_region': 'england-and-wales', 'client_response_days': '14'})
         self.assertEqual(r.status_code, 302)
         with org_context(self.org_a):
             c = MainContract.objects.get(project=self.pa)
             p = Project.objects.get(pk=self.pa.pk)
         self.assertEqual((c.due_date_offset_days, c.final_date_offset_days, c.pay_less_notice_days,
-                          c.retention_percent, c.defects_period_months), (7, 14, 5, Decimal('3'), 6))
+                          c.retention_percent, c.defects_period_months), (7, 14, 5, Decimal('5'), 6))
         self.assertEqual(p.value, Decimal('125000.50'))
         self.assertEqual((p.start_date, p.completion_date), (D('2026-11-02'), D('2027-03-26')))
         self.assertEqual(c.contract_sum, Decimal('125000.50'))  # read through to the project, never copied
@@ -171,10 +209,21 @@ class ContractViewTests(CommercialTestBase):
         self.assertContains(r, 'check your contract')
         self.assertContains(r, 'Advisory')
 
+    def test_nec_set_up_gets_damages_per_day(self):
+        self.login(self.pat)
+        self.client.post(self.url('contract_edit', self.pa.pk), {
+            'form': 'NEC4_ECC', 'nec_main_option': 'A', 'lads_period': 'WEEK', 'bank_holiday_region': 'scotland',
+            'client_response_days': '10', 'retention_released_at_pc_percent': '50'})
+        with org_context(self.org_a):
+            c = MainContract.objects.get(project=self.pa)
+        self.assertEqual((c.lads_period, c.bank_holiday_region, c.client_response_days), ('DAY', 'scotland', 10))
+
     def test_nec_needs_a_main_option(self):
         self.login(self.pat)
         r = self.client.post(self.url('contract_edit', self.pa.pk), {'form': 'NEC4_ECC', 'lads_period': 'DAY',
-                                                                     'retention_released_at_pc_percent': '50'})
+                                                                     'retention_released_at_pc_percent': '50',
+                                                                     'bank_holiday_region': 'england-and-wales',
+                                                                     'client_response_days': '14'})
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Pick the main option')
 

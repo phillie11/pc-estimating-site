@@ -53,7 +53,7 @@ def contract_edit(request, org_slug, pk):
     form = ContractForm(request.POST or None, instance=instance, project=project)
     if request.method == 'POST' and form.is_valid():
         contract = form.save(commit=False, actor=request.user)  # also sets the sum and dates on the project
-        filled = contract.apply_preset(only_blank=True)
+        filled = contract.apply_preset(only_blank=True, creating=creating)
         with transaction.atomic():
             project.save(update_fields=['value', 'start_date', 'completion_date', 'updated_at'])
             contract.save()

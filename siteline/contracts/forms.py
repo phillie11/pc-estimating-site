@@ -20,7 +20,7 @@ class ContractForm(StyledModelForm):
     class Meta:
         model = MainContract
         fields = ['form', 'edition', 'nec_main_option', 'contract_sum', 'start_date', 'completion_date',
-                  'administrator', 'lads_rate', 'lads_period', 'retention_percent', 'retention_released_at_pc_percent',
+                  'administrator', 'bank_holiday_region', 'client_response_days', 'lads_rate', 'lads_period', 'retention_percent', 'retention_released_at_pc_percent',
                   'defects_period_months', 'valuation_day', 'due_date_offset_days', 'final_date_offset_days',
                   'pay_less_notice_days', 'amendments']
         widgets = {'amendments': forms.Textarea(attrs={'rows': 5})}

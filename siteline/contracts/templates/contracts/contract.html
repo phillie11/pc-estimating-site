@@ -27,13 +27,15 @@
       <dt>Due date</dt><dd>{% if contract.due_date_offset_days is not None %}{{ contract.due_date_offset_days }} day{{ contract.due_date_offset_days|pluralize }} after the {{ vocab.valuation_date }}{% else %}—{% endif %}</dd>
       <dt>Final date for payment</dt><dd>{% if contract.final_date_offset_days is not None %}{{ contract.final_date_offset_days }} days after the due date{% else %}—{% endif %}</dd>
       <dt>Pay less notice</dt><dd>{% if contract.pay_less_notice_days is not None %}No later than {{ contract.pay_less_notice_days }} days before the final date{% else %}—{% endif %}</dd>
+      <dt>Bank holidays</dt><dd>{{ contract.get_bank_holiday_region_display }}</dd>
+      <dt>Client decides {{ vocab.change_plural }} within</dt><dd>{{ contract.client_response_days }} days of submission</dd>
     </dl>
     {% if timetable %}<h3 style="margin-top:12px">Next payment cycle</h3><dl class="dl">
       <dt>{{ vocab.valuation_date|capfirst }}</dt><dd>{{ timetable.valuation_date|date:"D j M Y" }}</dd>
       <dt>Due date</dt><dd>{{ timetable.due_date|date:"D j M Y" }}</dd>
       <dt>Pay less notice by</dt><dd>{{ timetable.pay_less_by|date:"D j M Y" }}</dd>
       <dt>Final date for payment</dt><dd>{{ timetable.final_date|date:"D j M Y" }}</dd>
-    </dl><p class="small dim">Counted in calendar days. The Construction Act and the JCT forms leave bank holidays out, so check any date near one.</p>{% elif not contract.valuation_day %}<p class="small dim">Add the valuation day to see the next payment dates.</p>{% endif %}
+    </dl><p class="small dim">Days counted as the Construction Act counts them: Christmas Day, Good Friday and {{ contract.get_bank_holiday_region_display }} bank holidays are left out.</p>{% elif not contract.valuation_day %}<p class="small dim">Add the valuation day to see the next payment dates.</p>{% endif %}
     <form method="post" action="{% url 'contract_edit' org.slug project.pk %}" data-confirm="Reset the payment, retention and defects terms to the standard {{ contract.preset.label }} terms? Anything you changed from the standard will be overwritten.">{% csrf_token %}<input type="hidden" name="action" value="preset"><button class="btn sm ghost" style="min-height:44px">Reset to the standard terms</button></form>
   </div></div>
 </div>

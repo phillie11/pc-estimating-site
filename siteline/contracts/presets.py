@@ -6,7 +6,9 @@ any amendments override all of this).
 
 Fixed data plus pure functions, so the tests can hold them to a table.
 
-Payment timetable, in calendar days:
+Payment timetable, in days counted as the Construction Act counts them (s116: a period runs
+from the day after, and Christmas Day, Good Friday and bank holidays in the contract's part of
+the UK are left out; holidays/calendar.py):
   valuation (or assessment) date
     + due_date_offset_days   -> due date
     + final_date_offset_days -> final date for payment (counted from the due date)
@@ -16,23 +18,27 @@ Where the terms come from (as published; amendments are common):
   JCT MW/MWD 2016 and 2024: monthly due dates; final date 14 days after the due date; pay less
     notice no later than 5 days before the final date; retention 5% (half released at
     Practical Completion); Rectification Period 3 months if none is stated.
-  JCT IC/ICD, SBC and DB 2016 and 2024: due date 7 days after each Interim Valuation Date;
-    final date 14 days after the due date; pay less notice 5 days before the final date;
-    retention 3% (half at Practical Completion); Rectification Period 6 months if none stated.
+  JCT IC/ICD 2016 and 2024: due date 7 days after each Interim Valuation Date; final date 14
+    days after the due date; pay less notice 5 days before the final date; interim payments at
+    95% of value unless the Contract Particulars say otherwise, so 5% retention (half at Practical
+    Completion); Rectification Period 6 months if none stated. VERIFY: see the note on _IC.
+  JCT SBC and DB 2016 and 2024: as IC for the payment periods; Retention Percentage 3% unless the
+    Contract Particulars state less; Rectification Period 6 months if none stated.
   NEC4 ECC with Option Y(UK)2: payment due 7 days after the assessment date; final date 14 days
     after it becomes due; pay less notice 7 days before the final date. Retention only under
     Option X16 and defects dates are in Contract Data, so neither is pre-filled.
   Scheme for Construction Contracts (the fallback where a contract has no compliant payment
-    terms): due 30 days after the end of the period (or the claim, if later); final date 17
-    days after the due date; pay less notice 7 days before the final date.
-
-The Construction Act and the JCT forms leave bank holidays out when counting periods of days.
-These dates are plain calendar days, which is one more reason they are advisory.
+    terms): an interim payment is due 7 days after the end of the relevant period, or when the
+    claim is made if that is later (Part II para 4; the 30 days in para 5 is for the final
+    payment); final date 17 days after the due date (para 8); pay less notice 7 days before the
+    final date (para 10).
 """
 import calendar
 from dataclasses import asdict, dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
+
+from holidays.calendar import DEFAULT_REGION, add_days, subtract_days
 
 ADVISORY = 'Advisory: check your contract.'
 
@@ -61,16 +67,22 @@ _MW = dict(due_date_offset_days=0, final_date_offset_days=14, pay_less_notice_da
            retention_percent=Decimal('5'), defects_period_months=3)
 _JCT = dict(due_date_offset_days=7, final_date_offset_days=14, pay_less_notice_days=5,
             retention_percent=Decimal('3'), defects_period_months=6)
+# IC/ICD: interim certificates are for 95% of the value before Practical Completion unless the
+# Contract Particulars state another percentage, i.e. 5% retention (JCT IC 2016 clause 4.9 and its
+# Contract Particulars entry, as described in published commentary). The form's own text couldn't be
+# checked when this was written: VERIFY against IC/ICD 2016 and 2024 before relying on it.
+_IC = {**_JCT, 'retention_percent': Decimal('5')}
+IC_NOTE = 'Retention: 5% (95% of value certified) unless the Contract Particulars say otherwise. Verify.'
 
-SCHEME = Preset('Scheme for Construction Contracts (fallback)', due_date_offset_days=30, final_date_offset_days=17,
+SCHEME = Preset('Scheme for Construction Contracts (fallback)', due_date_offset_days=7, final_date_offset_days=17,
                 pay_less_notice_days=7, note='Applies where the contract has no compliant payment terms.')
 
 PRESETS = {
     'JCT_MW': Preset('JCT Minor Works', **_MW, note='Due dates monthly from the Date for Commencement.'),
     'JCT_MWD': Preset("JCT Minor Works with contractor's design", **_MW,
                       note='Due dates monthly from the Date for Commencement.'),
-    'JCT_IC': Preset('JCT Intermediate', **_JCT),
-    'JCT_ICD': Preset("JCT Intermediate with contractor's design", **_JCT),
+    'JCT_IC': Preset('JCT Intermediate', **_IC, note=IC_NOTE),
+    'JCT_ICD': Preset("JCT Intermediate with contractor's design", **_IC, note=IC_NOTE),
     'JCT_SBC': Preset('JCT Standard Building Contract', **_JCT),
     'JCT_DB': Preset('JCT Design and Build', **_JCT),
     'NEC4_ECC': Preset('NEC4 ECC with Option Y(UK)2', due_date_offset_days=7, final_date_offset_days=14,
@@ -110,10 +122,13 @@ class PaymentTimetable:
     pay_less_by: date
 
 
-def payment_timetable(valuation_date, due_offset, final_offset, pay_less_days):
-    """Due date, final date for payment and last day for a pay less notice, in calendar days. Advisory."""
+def payment_timetable(valuation_date, due_offset, final_offset, pay_less_days, region=DEFAULT_REGION):
+    """
+    Due date, final date for payment and last day for a pay less notice. Days are counted leaving
+    out Christmas Day, Good Friday and the region's bank holidays (HGCRA s116). Advisory.
+    """
     if valuation_date is None or None in (due_offset, final_offset, pay_less_days):
         return None
-    due = valuation_date + timedelta(days=due_offset)
-    final = due + timedelta(days=final_offset)
-    return PaymentTimetable(valuation_date, due, final, final - timedelta(days=pay_less_days))
+    due = add_days(valuation_date, due_offset, region)
+    final = add_days(due, final_offset, region)
+    return PaymentTimetable(valuation_date, due, final, subtract_days(final, pay_less_days, region))

@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'variations',
     'contracts',
     'changes',
+    'holidays',
     'directory',
     'tenders',
     'delivery',
