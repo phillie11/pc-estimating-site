@@ -1,0 +1,9 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Slow down{% endblock %}
+{% block auth %}
+<h1>Too many tries</h1>
+<p class="dim">That's been done a lot of times in a short while, so we've paused it to keep accounts safe. Nothing you've saved is affected.</p>
+<p>Please wait about {{ retry_minutes }} minute{{ retry_minutes|pluralize }} and try again.</p>
+<p class="small dim">Seeing this when you've only tried once or twice? Contact <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>.</p>
+<a class="btn" href="/home/">Go to your workspace</a>
+{% endblock %}

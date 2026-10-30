@@ -1,0 +1,10 @@
+Hi {{ user.get_short_name }},
+
+{{ actor.full_name }} has reset your two-factor sign-in for {{ PRODUCT_NAME }}. Your old authenticator code and recovery codes no longer work.
+
+Next time you sign in you can set it up again with your phone:
+{{ link }}
+
+If you didn't ask for this, tell {{ actor.full_name }} or another owner at {{ org.name }} straight away.
+
+— {{ PRODUCT_NAME }}

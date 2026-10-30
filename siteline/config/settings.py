@@ -60,10 +60,13 @@ INSTALLED_APPS = [
     'tenders',
     'delivery',
     'jobs',
+    'security',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Content-Security-Policy and Permissions-Policy (security/middleware.py)
+    'security.middleware.SecurityHeadersMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -72,9 +75,15 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'axes.middleware.AxesMiddleware',
+    # Rate limits on sign-up, password reset, invites, codes, uploads, exports and search (429 page)
+    'security.middleware.RateLimitMiddleware',
+    # Owners and admins without two-factor sign-in are sent to set it up
+    'security.middleware.TwoFactorEnforcementMiddleware',
     # Resolves /<org_slug>/... to an Organization, checks membership and
     # subscription, and scopes every tenant query to that organisation.
     'tenancy.middleware.TenantMiddleware',
+    # After TenantMiddleware, so a non-member still gets a 404 before any "confirm it's you"
+    'security.middleware.StepUpMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -151,11 +160,36 @@ LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'login'
 
 # Brute-force protection
+# The visitor's address, shared by django-axes and the rate limits. On PythonAnywhere set
+# CLIENT_IP_HEADER=X-Real-IP; on AWS config/alb_wsgi.py already fixes REMOTE_ADDR. Unset, only
+# REMOTE_ADDR is trusted. See security/ip.py.
+CLIENT_IP_HEADER = env('CLIENT_IP_HEADER', '')
+CLIENT_IP_PROXY_COUNT = int(env('CLIENT_IP_PROXY_COUNT', '1'))
+AXES_CLIENT_IP_CALLABLE = 'security.ip.client_ip'
 AXES_FAILURE_LIMIT = 6
 AXES_COOLOFF_TIME = 1  # hours
 AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]
 AXES_USERNAME_FORM_FIELD = 'username'
 AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_TEMPLATE = 'security/locked_out.html'  # wrong passwords and wrong two-factor codes both count
+
+# Two-factor sign-in (security/). Required for workspace owners and admins and platform staff,
+# optional for everyone else. TWO_FACTOR_ENFORCE=0 only for a short emergency (check --deploy warns).
+TWO_FACTOR_ENFORCE = env_bool('TWO_FACTOR_ENFORCE', True)
+TWO_FACTOR_REMEMBER_DAYS = 30
+TWO_FACTOR_PENDING_SECONDS = 300   # time allowed between the password and the code
+# Billing, team and role changes, exports and archiving/deleting need a password or code this recently
+STEP_UP_SECONDS = 600
+
+# Cache: the app's own database, so rate limits are shared by every web process and server with no
+# Redis. The table is made by security/migrations/0002 (the same as `manage.py createcachetable`).
+# CACHE_BACKEND=locmem is only for local experiments (check --deploy warns, security.W002).
+if env('CACHE_BACKEND', 'database') == 'locmem':
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
+else:
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+                          'LOCATION': 'siteline_cache', 'OPTIONS': {'MAX_ENTRIES': 20000}}}
+RATELIMIT_ENABLED = env_bool('RATELIMIT_ENABLED', True)
 
 LANGUAGE_CODE = 'en-gb'
 TIME_ZONE = 'Europe/London'
@@ -291,18 +325,39 @@ PLANS = {
 }
 TRIAL_PLAN = 'team'
 
-# Security hardening when not in DEBUG
+# Security headers and cookies. `manage.py check --deploy` is clean apart from two deliberate choices:
+#  * security.W005 (SECURE_HSTS_INCLUDE_SUBDOMAINS off): other services may run on subdomains of
+#    the domain over plain HTTP. SECURE_HSTS_INCLUDE_SUBDOMAINS=1 once every subdomain is HTTPS.
+#  * security.W021 (SECURE_HSTS_PRELOAD off): preloading is hard to undo, so it waits for the
+#    final domain. SECURE_HSTS_PRELOAD=1 when ready (it also needs include-subdomains).
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', True)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = int(env('SECURE_HSTS_SECONDS', '0'))
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_REFERRER_POLICY = 'same-origin'
+    # A year, unless SECURE_HSTS_SECONDS says otherwise (0 switches it off, e.g. while trying a new domain)
+    SECURE_HSTS_SECONDS = int(env('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
+    SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', False)
+    # Browsers only accept a __Host- cookie if it is Secure, on / and has no Domain, so a sibling
+    # subdomain can't plant or overwrite the session. (The new name signs everyone out once.)
+    SESSION_COOKIE_NAME = '__Host-sessionid'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+# Invite and password-reset links carry their token in the path: never send it to another site
+SECURE_REFERRER_POLICY = 'same-origin'
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 X_FRAME_OPTIONS = 'DENY'
 SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 14
+CSRF_COOKIE_SAMESITE = 'Lax'
+# CSRF_COOKIE_HTTPONLY stays off: static/js/app.js reads the token for the pipeline board's fetch()
+# Content-Security-Policy (security/middleware.py). CSP_REPORT_ONLY=1 sends it as report-only.
+CSP_REPORT_ONLY = env_bool('CSP_REPORT_ONLY', False)
+
+# The test suite turns two-factor enforcement off except in the tests that switch it back on
+# (security/tests), so the other apps' tests can keep signing in with force_login.
+TEST_RUNNER = 'security.testing.TestRunner'
 
 LOGGING = {
     'version': 1,
