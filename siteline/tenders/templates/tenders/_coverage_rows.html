@@ -1,0 +1,10 @@
+{% load ui %}<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th class="num">Invited</th><th class="num">Opened</th><th class="num">Quoted</th><th class="num">Declined</th><th class="num">Outstanding</th><th>Cover</th><th>Quotes due</th></tr></thead><tbody>
+{% for r in rows %}<tr{% if r.thin %} class="thin" style="background:var(--bad-bg)"{% endif %}>
+  <td><strong>{{ r.trade_name }}</strong></td>
+  <td class="num">{{ r.invited }}</td><td class="num">{{ r.viewed }}</td>
+  <td class="num"><strong>{{ r.quoted }}</strong><span class="dim"> / {{ r.target }}</span></td>
+  <td class="num">{{ r.declined }}</td><td class="num">{{ r.outstanding }}</td>
+  <td>{% badge r.status_label r.status_tone %}</td>
+  <td class="small nowrap">{% if r.days_to_due is not None and r.days_to_due <= 3 and r.thin %}<span class="overdue">{{ r.due_label }}</span>{% else %}{{ r.due_label }}{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>

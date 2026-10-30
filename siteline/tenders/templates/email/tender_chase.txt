@@ -1,0 +1,16 @@
+Hi,
+
+A reminder from {{ org.name }}: we are still waiting for your quote for
+
+  {{ trades }}
+  {{ project.name }}{% if project.site_address %}, {{ project.site_address }}{% endif %}{% if due %}
+
+Quotes due: {{ due|date:"l j F Y" }}{% endif %}
+
+The scope, tender documents and any addenda are in the {{ org.name }} portal,
+and you submit your quote there. Set up your free account to open it:
+{{ link }}
+
+If you are not pricing it, you can decline in the portal so we stop chasing.
+
+— {{ PRODUCT_NAME }}

@@ -725,6 +725,9 @@ class PipelineMoveTests(Base):
         super().setUp()
         with org_context(self.org_a):
             self.bid = Project.objects.create(name='Retail refit', stage=Project.STAGE_TENDERING)
+            # Already through the bid/no-bid gate: these tests are about the Move to control, not the gate
+            from tenders.models import BidReview
+            BidReview.objects.create(project=self.bid, decision=BidReview.PROCEED)
         self.login(self.alice)
         self.move = self.url('project_stage', self.org_a, self.bid.pk)
 
