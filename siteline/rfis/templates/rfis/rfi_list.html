@@ -11,8 +11,8 @@
 </div>
 <div class="card">{% if rfis %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Subject</th><th>Ball in court</th><th>Required</th><th>Status</th><th class="num">Days</th></tr></thead><tbody>
 {% for r in rfis %}<tr><td class="ref">{{ r.reference }}</td>
-  <td><a class="rowlink" href="{{ r.get_absolute_url }}">{{ r.subject }}</a><span class="sub">{{ r.get_category_display }} · raised by {{ r.raised_by|default:"—" }}{% if is_internal and not r.is_shared %} · internal{% endif %}</span></td>
-  <td class="small">{{ r.assigned_to|default:"—" }}</td>
+  <td><a class="rowlink" href="{{ r.get_absolute_url }}">{{ r.title }}</a><span class="sub">{{ r.get_category_display }} · raised by {{ r.created_by|default:"—" }}{% if is_internal and not r.is_shared %} · internal{% endif %}</span></td>
+  <td class="small">{{ r.ball_in_court_user|default:"—" }}</td>
   <td class="small nowrap {% if r.is_overdue %}overdue{% endif %}">{{ r.due_date|date:"j M"|default:"—" }}</td>
   <td>{% badge r.get_status_display r.status_tone %}</td><td class="num mono">{{ r.days_open }}</td></tr>{% endfor %}
 </tbody></table></div>{% else %}<div class="empty"><h3>No RFIs here</h3><p>Raise one and set who has the ball. They'll be emailed and see it in their portal.</p></div>{% endif %}</div>

@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'tenancy',
     'billing',
     'projects',
+    'core',
     'rfis',
     'variations',
     'directory',

@@ -80,11 +80,28 @@ This is the part to keep intact as you add features.
 7. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
 8. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
 
-`tenancy/tests.py` covers all of this (45 tests, including regression tests from an independent access-control review; `tenancy/test_fail_closed.py` adds 30 for the fail-closed rule, combined querysets and subqueries, the bulk-write guard, the admin and every management command run against two companies; `projects/tests.py` adds 65 more for programmes, workload, analytics, files and archived projects, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
+`tenancy/tests.py` covers all of this (45 tests, including regression tests from an independent access-control review; `tenancy/test_fail_closed.py` adds 30 for the fail-closed rule, combined querysets and subqueries, the bulk-write guard, the admin and every management command run against two companies; `projects/tests.py` adds 65 more for programmes, workload, analytics, files and archived projects, `tenders/tests.py` 18 for the tender portal, `delivery/tests.py` 17 for the estimating/projects split and the live-job portal, and `core/tests/` 71 for the shared record base below). Run them after every change:
 
 ```bash
 DEBUG=1 python manage.py test
 ```
+
+## Building a new record type
+
+Every numbered, per-project register (RFIs today; variations, RAMS, sub variations, snags and documents next) sits on `core.models.RecordBase`. Why it looks the way it does, and the order the existing registers move over, is in [docs/adr/0001-core-record-base.md](docs/adr/0001-core-record-base.md). `rfis/` is the worked example: copy it.
+
+What you get by subclassing: a per-project number and stored `ref` (`RFI-007`) from a locked `NumberSequence`; `title`, `status`, `visibility` (`INTERNAL`/`SHARED`, with an `is_shared` property), `due_date`, `ball_in_court_user` and `ball_in_court_company`; `created_by/at`, `updated_by/at`; soft delete (`soft_delete()`, `restore()`, `purge()`) with `retain_until` and `legal_hold`; an optimistic-lock `version`; a `RecordIndex` row kept in step on every save; and an append-only `AuditEntry` per change with field-level diffs. It is a `TenantModel`, so everything above about tenant separation applies unchanged.
+
+Checklist:
+
+1. **Model.** Subclass `RecordBase`; give the subclass `class Meta(RecordBase.Meta)` so it keeps `unique (project, number)` and the managers. Declare `STATUS_CHOICES` and override `status` with your choices and default (max 20 characters). Override `visibility` only to change its default (internal unless the register is shared by default, as RFIs are). Don't add your own `number`, `title`, `project`, `created_at`, `updated_at` or ball-in-court fields: use the base ones, and label them in the form (`labels = {'title': 'Subject'}`). Add `get_absolute_url()`; the index stores it.
+2. **Register** it in your `AppConfig.ready()`: `register_record_type(Model, prefix='VO', transitions=TRANSITIONS, open_statuses=(...), audit_fields=(...))`. `open_statuses` are the statuses in which the ball-in-court person has something to do ("Needs me"); `draft_statuses` are the ones in which staff may delete their own record. `audit_fields` are your own fields to diff on top of the base ones; leave out anything large or derived.
+3. **Transitions.** In `yourapp/workflow.py`, declare a list of `core.workflow.Transition(name, source=(...), target=..., label=..., allowed=..., sets_ball_in_court=..., on_apply=...)`. `allowed(record, user)` decides who may make it (`core.access.record_staff` and `record_staff_or_ball_in_court` cover the common cases); `on_apply(record, user, **params)` sets the other fields (`responded_at`, `closed_at`). In views call `apply_transition(record, name, request.user, **params)`, never set `status` by hand. It raises `TransitionForbidden` (a `PermissionDenied`, so a 403) and `InvalidTransition` (show it as a message). Use `available_transitions(record, user)` to decide which buttons to show.
+4. **Saving.** Always `record.save(actor=request.user)` so `created_by`/`updated_by` and the audit trail know who did it; pass `audit_action='reassigned'` for a named non-status change. Catch `core.exceptions.RecordConflict` where a save could race. Edit forms subclass `core.forms.RecordFormMixin` first (`class VariationForm(RecordFormMixin, StyledModelForm)`) so a stale form is refused. `queryset.update()` skips the audit, index and version: don't use it on records in app code.
+   Who may soft-delete, restore, purge, set legal hold and redact is decided in `core.access` (`can_soft_delete`, `can_restore`, `can_purge`, `can_set_legal_hold`, `can_redact`), and the record methods ask it, so don't repeat those rules in views. Records are kept until their project's completion plus the organisation's `core.RetentionPolicy` years (default 12), and nothing purges automatically. For GDPR erasure use `core.models.redact(record_or_user, actor, reason)`, the only sanctioned change to audit rows.
+5. **Access.** `Model.objects` hides soft-deleted rows (`with_deleted` shows them, `all_objects` is unscoped as everywhere). Views still fetch the project with `projects.access.get_project()` and filter externals to `visibility=VIS_SHARED`. Anything listing records across types reads `RecordIndex` through `core.access.visible_index(request)` (or `needs_me(request)`), never `RecordIndex.objects` directly. If externals' rule is narrower than visibility (a subcontractor sees only their own), the index can't serve them yet: see the ADR.
+6. **Adopting an existing register** takes three migrations, as `rfis 0003`–`0005`: (a) rename fields to the base names and add the new columns, (b) a reversible `RunPython` that fills `ref`/`visibility` and creates the `NumberSequence`, `RecordIndex` and back-filled `created` `AuditEntry` rows from the historical models, (c) drop the old columns. Keep data changes and `ALTER TABLE`s in separate migrations (PostgreSQL). A new register only needs its `CreateModel`.
+7. **Tests.** Copy `core/tests/base.py` for set-up and add your type's versions of: numbering per project (`test_records.NumberingTests`), index kept in step on create/update/transition/soft delete (`IndexTests`), audit diffs (`AuditTests`), each transition's permissions and source statuses through the views (`test_workflow`), another company can't see it and no organisation fails closed (`test_tenancy`), and, when adopting an existing register, the forward and backward data migration on seeded data (`test_rfi_migration`).
 
 ## Background jobs and email
 
@@ -344,11 +361,13 @@ accounts/     User (email login), sign-up, invites, profile
 tenancy/      Organization, Membership, tenant middleware/manager, notifications, dashboard, team, settings, digest, demo seed, tests
 billing/      Stripe checkout, portal, webhook
 projects/     projects, pipeline, team & portal invites, tasks, snags, documents, comments, access rules
-rfis/         RFI register
+core/         shared record base: numbering, record index, links, audit trail, transitions (docs/adr/0001)
+rfis/         RFI register (the first record type on core)
 variations/   variations & client approval
 directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
 delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
+docs/adr/     architecture decision records
 jobs/         background job queue and worker (run_worker, jobs_status), email outbox
 templates/    shared templates; app-specific ones live in each app
 static/       app.css (single stylesheet; --accent is set from each company's brand colour, --accent-ink to white or near-black, whichever contrasts more), app.js

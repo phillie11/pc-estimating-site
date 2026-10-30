@@ -33,7 +33,8 @@ def dashboard(request, org_slug):
     user = request.user
     portal = portal_projects(request)
     plate = _my_plate(request, portal)
-    plate['my_rfis'] = RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=portal, is_shared=True) \
+    plate['my_rfis'] = RFI.objects.filter(ball_in_court_user=user, status=RFI.STATUS_OPEN, project__in=portal,
+                                          visibility=RFI.VIS_SHARED) \
         .select_related('project')[:8]
     subs = user.project_memberships.filter(organization=request.org, subcontractor__isnull=False) \
         .values_list('subcontractor_id', flat=True)
@@ -57,7 +58,7 @@ def _my_plate(request, projects):
     plate = {
         'my_tasks': Task.objects.filter(assignee=user, project__in=projects).exclude(status=Task.STATUS_DONE)
         .select_related('project')[:8],
-        'my_rfis': RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=projects)
+        'my_rfis': RFI.objects.filter(ball_in_court_user=user, status=RFI.STATUS_OPEN, project__in=projects)
         .select_related('project')[:8],
         'my_issues': Issue.objects.filter(assignee=user, project__in=projects, status=Issue.STATUS_OPEN)
         .select_related('project')[:8],

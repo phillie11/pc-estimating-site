@@ -3,11 +3,16 @@ from django.db import models
 from django.urls import reverse
 from django.utils import timezone
 
-from projects.models import PRIORITY_CHOICES, Project, save_with_number, upload_rfi
-from tenancy.models import TenantModel
+from core.models import RecordBase
+from projects.models import PRIORITY_CHOICES, upload_rfi
 
 
-class RFI(TenantModel):
+class RFI(RecordBase):
+    """
+    A request for information. The first record type on core.models.RecordBase: number/ref,
+    title (shown as "Subject"), status, visibility, due date, ball in court, created/updated by,
+    soft delete and audit all come from there. Status changes go through rfis.workflow.
+    """
     CATEGORY_CHOICES = [
         ('DESIGN', 'Design'), ('TECHNICAL', 'Technical'), ('SPECIFICATION', 'Specification'),
         ('DRAWING', 'Drawing'), ('COMMERCIAL', 'Commercial'), ('PROGRAMME', 'Programme'),
@@ -25,9 +30,6 @@ class RFI(TenantModel):
     LIVE_STATUSES = (STATUS_OPEN, STATUS_RESPONDED)
     IMPACT_CHOICES = [('NONE', 'None'), ('POSSIBLE', 'Possible'), ('YES', 'Yes'), ('TBC', 'TBC')]
 
-    project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='rfis')
-    number = models.PositiveIntegerField(editable=False)
-    subject = models.CharField(max_length=200)
     question = models.TextField()
     category = models.CharField(max_length=14, choices=CATEGORY_CHOICES, default='DESIGN')
     priority = models.CharField(max_length=7, choices=PRIORITY_CHOICES, default='NORMAL')
@@ -35,10 +37,7 @@ class RFI(TenantModel):
     document_reference = models.CharField('Drawing / spec ref', max_length=200, blank=True)
     attachment = models.FileField(upload_to=upload_rfi, blank=True)
 
-    raised_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='raised_rfis')
-    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-                                    related_name='assigned_rfis', verbose_name='Ball in court',
-                                    help_text='Who needs to answer this.')
+    visibility = models.CharField(max_length=8, choices=RecordBase.VISIBILITY_CHOICES, default=RecordBase.VIS_SHARED)
     due_date = models.DateField('Response required by', null=True, blank=True)
 
     response = models.TextField(blank=True)
@@ -48,25 +47,13 @@ class RFI(TenantModel):
 
     cost_impact = models.CharField(max_length=8, choices=IMPACT_CHOICES, default='TBC')
     programme_impact_days = models.IntegerField('Programme impact (days)', null=True, blank=True)
-    is_shared = models.BooleanField('Visible to project collaborators', default=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
+    class Meta(RecordBase.Meta):
         ordering = ['-number']
-        unique_together = [('project', 'number')]
         verbose_name = 'RFI'
 
     def __str__(self):
-        return f'{self.reference} {self.subject}'
-
-    @property
-    def reference(self):
-        return f'RFI-{self.number:03d}'
-
-    def save(self, *args, **kwargs):
-        return save_with_number(self, super().save, *args, **kwargs)
+        return f'{self.reference} {self.title}'
 
     def get_absolute_url(self):
         return reverse('rfi_detail', args=[self.organization.slug, self.project_id, self.pk])

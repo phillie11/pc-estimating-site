@@ -300,10 +300,10 @@ class SendRemindersTests(Base):
         late = timezone.localdate() - timedelta(days=2)
         soon = timezone.now() + timedelta(days=1)
         with org_context(self.org_a):
-            RFI.objects.filter(pk=self.rfi_a.pk).update(assigned_to=self.alice, due_date=late)
+            RFI.objects.filter(pk=self.rfi_a.pk).update(ball_in_court_user=self.alice, due_date=late)
             Project.objects.create(name='Alpha tender', stage=Project.STAGE_TENDERING, tender_due=soon)
         with org_context(self.org_b):
-            RFI.objects.create(project=self.pb, subject='Bravo question', question='?', assigned_to=self.bob, due_date=late)
+            RFI.objects.create(project=self.pb, title='Bravo question', question='?', ball_in_court_user=self.bob, due_date=late)
             Project.objects.create(name='Bravo tender', stage=Project.STAGE_TENDERING, tender_due=soon)
 
     def test_each_org_digest_goes_only_to_its_own_members(self):

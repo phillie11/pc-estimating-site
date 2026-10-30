@@ -3,7 +3,7 @@ Hi {{ user.get_short_name }},
 Your {{ org.name }} round-up for {% now "l j F" %}:
 {% if rfis %}
 RFIs overdue and waiting on you
-{% for r in rfis %}  - {{ r.reference }} {{ r.subject }} ({{ r.project.name }}), due {{ r.due_date|date:"j M" }}
+{% for r in rfis %}  - {{ r.reference }} {{ r.title }} ({{ r.project.name }}), due {{ r.due_date|date:"j M" }}
 {% endfor %}{% endif %}{% if tenders %}
 Tender returns in the next 3 days
 {% for p in tenders %}  - {{ p.name }}: {{ p.tender_due|date:"D j M H:i" }}
