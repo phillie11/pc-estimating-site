@@ -228,21 +228,21 @@ class Command(BaseCommand):
                                    quote_value=Decimal('132000'))
             Package.objects.create(project=leeds, subcontractor=s_floor, trade=t['Flooring'], status='ENQUIRY')
 
-            r1 = RFI.objects.create(project=leeds, subject='Bar back panelling – veneer species', category='SPECIFICATION',
+            r1 = RFI.objects.create(project=leeds, title='Bar back panelling – veneer species', category='SPECIFICATION',
                                     question='Drawing 1203-JD-04 calls for "dark oak veneer" but the finishes schedule lists '
                                              'smoked eucalyptus. Please confirm which is correct before we order.',
-                                    raised_by=subu, assigned_to=client, due_date=today - timedelta(days=2),
+                                    created_by=subu, ball_in_court_user=client, due_date=today - timedelta(days=2),
                                     document_reference='1203-JD-04 rev C', priority='HIGH')
-            RFI.objects.create(project=leeds, subject='Kitchen extract route through first floor slab', category='DESIGN',
+            RFI.objects.create(project=leeds, title='Kitchen extract route through first floor slab', category='DESIGN',
                                question='Proposed extract duct clashes with a downstand beam on grid C/4. Can the route '
-                                        'move 600mm east?', raised_by=pm, assigned_to=client, due_date=today + timedelta(days=4))
-            r3 = RFI.objects.create(project=leeds, subject='Fire door ironmongery set', category='TECHNICAL',
-                                    question='Confirm ironmongery set for doors D07–D12.', raised_by=pm, assigned_to=client,
+                                        'move 600mm east?', created_by=pm, ball_in_court_user=client, due_date=today + timedelta(days=4))
+            r3 = RFI.objects.create(project=leeds, title='Fire door ironmongery set', category='TECHNICAL',
+                                    question='Confirm ironmongery set for doors D07–D12.', created_by=pm, ball_in_court_user=client,
                                     due_date=today - timedelta(days=10), status=RFI.STATUS_RESPONDED,
                                     response='Use set FD30-B as per the schedule issued 3 Oct.', responded_by=client,
                                     responded_at=now - timedelta(days=8))
-            RFI.objects.create(project=leeds, subject='Internal: confirm crane permit date', category='SITE', is_shared=False,
-                               question='Check with council when the lifting permit lands.', raised_by=pm, assigned_to=pm,
+            RFI.objects.create(project=leeds, title='Internal: confirm crane permit date', category='SITE', is_shared=False,
+                               question='Check with council when the lifting permit lands.', created_by=pm, ball_in_court_user=pm,
                                due_date=today + timedelta(days=1))
 
             Variation.objects.create(project=leeds, title='Additional acoustic ceiling to private dining', cause='CLIENT_INSTRUCTION',

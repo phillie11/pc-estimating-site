@@ -29,7 +29,7 @@ class TenderBase(Base):
             self.sub_b = Subcontractor.objects.create(company_name='Dry B Ltd', email='bea@dry-b.test')
             for u in (self.dry_a, self.dry_b):
                 Membership.objects.create(organization=self.org_a, user=u, role=Membership.ROLE_EXTERNAL)
-            self.shared_rfi = RFI.objects.create(project=self.bid, subject='Client-side RFI', question='?', is_shared=True)
+            self.shared_rfi = RFI.objects.create(project=self.bid, title='Client-side RFI', question='?', is_shared=True)
             self.issued = self._doc('Tender drawings', tender=True)
             self.private = self._doc('Client contract', tender=False, shared=True)
 

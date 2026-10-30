@@ -39,7 +39,7 @@ class Base(TestCase):
         self.org_b = create_organization('Bravo Build', self.bob)
         with org_context(self.org_a):
             self.pa = Project.objects.create(name='Alpha secret job', stage=Project.STAGE_LIVE, value=Decimal('100000'))
-            self.rfi_a = RFI.objects.create(project=self.pa, subject='A question', question='?', raised_by=self.alice)
+            self.rfi_a = RFI.objects.create(project=self.pa, title='A question', question='?', created_by=self.alice)
             self.vo_a = Variation.objects.create(project=self.pa, title='A VO', description='x', value=Decimal('500'))
             self.sub_a = Subcontractor.objects.create(company_name='Alpha Sparks')
         with org_context(self.org_b):
@@ -95,15 +95,15 @@ class TenantIsolationTests(Base):
     def test_post_with_other_orgs_user_id_is_rejected(self):
         self.login(self.alice)
         r = self.client.post(self.url('rfi_create', self.org_a, self.pa.pk), {
-            'subject': 'x', 'question': 'y', 'category': 'DESIGN', 'priority': 'NORMAL',
-            'assigned_to': self.bob.pk, 'cost_impact': 'TBC', 'is_shared': 'on'})
+            'title': 'x', 'question': 'y', 'category': 'DESIGN', 'priority': 'NORMAL',
+            'ball_in_court_user': self.bob.pk, 'cost_impact': 'TBC', 'is_shared': 'on'})
         self.assertEqual(r.status_code, 200)  # form re-rendered with error
         with org_context(self.org_a):
-            self.assertFalse(RFI.objects.filter(subject='x').exists())
+            self.assertFalse(RFI.objects.filter(title='x').exists())
 
     def test_numbering_is_per_project(self):
         with org_context(self.org_a):
-            r2 = RFI.objects.create(project=self.pa, subject='Second', question='?')
+            r2 = RFI.objects.create(project=self.pa, title='Second', question='?')
         self.assertEqual(self.rfi_a.reference, 'RFI-001')
         self.assertEqual(r2.reference, 'RFI-002')
         self.assertEqual(self.pa.reference, 'P-0001')
@@ -121,7 +121,7 @@ class ExternalPortalTests(Base):
             ProjectMember.objects.create(project=self.pa, user=self.client_user, role=ProjectMember.ROLE_CLIENT)
             ProjectMember.objects.create(project=self.pa, user=self.sub_user, role=ProjectMember.ROLE_SUBCONTRACTOR)
             self.other = Project.objects.create(name='Unshared job', stage=Project.STAGE_LIVE)
-            self.internal_rfi = RFI.objects.create(project=self.pa, subject='Internal only', question='?', is_shared=False)
+            self.internal_rfi = RFI.objects.create(project=self.pa, title='Internal only', question='?', is_shared=False)
             self.vo_a.status = Variation.STATUS_SUBMITTED
             self.vo_a.save()
             self.draft = Variation.objects.create(project=self.pa, title='Draft VO', description='x', value=Decimal('1'))
@@ -173,7 +173,7 @@ class ExternalPortalTests(Base):
 
     def test_assignee_can_respond_to_rfi_but_not_close(self):
         with org_context(self.org_a):
-            self.rfi_a.assigned_to = self.client_user
+            self.rfi_a.ball_in_court_user = self.client_user
             self.rfi_a.save()
         self.login(self.client_user)
         r = self.client.post(self.url('rfi_detail', self.org_a, self.pa.pk, self.rfi_a.pk),
@@ -416,7 +416,7 @@ class SecurityReviewRegressionTests(Base):
         Membership.objects.create(organization=self.org_a, user=sub, role=Membership.ROLE_EXTERNAL)
         with org_context(self.org_a):
             ProjectMember.objects.create(project=self.pa, user=sub, role='SUBCONTRACTOR')
-            hidden = RFI.objects.create(project=self.pa, subject='Hidden', question='?', is_shared=False)
+            hidden = RFI.objects.create(project=self.pa, title='Hidden', question='?', is_shared=False)
         self.login(self.alice)
         self.client.post(self.url('rfi_detail', self.org_a, self.pa.pk, hidden.pk), {'action': 'comment', 'body': 'x'})
         self.client.post(self.url('variation_detail', self.org_a, self.pa.pk, self.vo_a.pk), {'action': 'submit'})
