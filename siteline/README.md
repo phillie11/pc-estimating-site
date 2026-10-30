@@ -25,14 +25,14 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 | **Notifications** | A bell for everyone, staff and external. Every alert (tender invitations, addenda, queries, quotes, RFI and task assignments, variation decisions) is an in-app notification plus a short email linking to the item. Reply in the portal, not by email. |
 | **Tender analytics** | Win rate by number and by value, results by month, and breakdowns by sector, size, client, lead source and project lead. Recent losses with feedback. 12 months, 24 months or all time. |
 | **Programmes** | A Gantt chart per project: activities with dates, progress, milestones and a "follows" link that flags anything out of sequence or behind. Lines can be internal or shared with the client and subcontractors. The Workload page has two company-wide Gantt charts: **Tenders** (every open bid from enquiry received to tender return, with site visit, queries close and subcontractor quotes due as milestones, filterable by estimator) and **Secured work** (every won and live job from start on site to completion). |
-| **Projects** | One record from first lead to completion. Overview with commercial position (contract sum + approved variations = forecast final account). |
+| **Projects** | One record from first lead to completion. Overview with commercial position (contract sum + approved variations = forecast final account). **Archived, not deleted:** once a project has anything on it (documents, RFIs, variations, RAMS, packages, snags, tasks, programme, downloads) an owner or admin can only archive it. See [Archiving](#archiving-instead-of-deleting). |
 | **Client & subcontractor portal** | Invite external people per project by email. They get free logins and only see what's shared with them. |
 | **RFIs** | Numbered per project (RFI-001), ball-in-court assignment, due dates, responses, threaded comments, internal notes, CSV register. Company-wide RFI register. |
 | **Variations** | Draft → submit to client → client approves or rejects in the portal (with PO ref). Linked to RFIs. CSV export. |
 | **Snags & tasks** | Assign to staff or subcontractors; subs mark snags "ready for inspection" from their phone. |
 | **Documents** | Revision-controlled drawings, specs, RAMS. The current revision is the highest one (P01 → P10 → C01 → C02), not the last uploaded: filing an old P03 after C01 doesn't replace it unless you tick "make current". Internal or shared per document. Externals can upload (e.g. RAMS). |
-| **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. |
-| **Billing** | 14-day trial, then Stripe subscription (Starter / Team / Business). Plan limits on staff seats and active projects. External users are never charged. |
+| **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. A subcontractor with quotes, RAMS or variations on file is archived rather than deleted. |
+| **Billing** | 14-day trial, then Stripe subscription (Starter / Team / Business). Plan limits on staff seats and active projects (archived projects don't count). External users are never charged. |
 | **Daily digest** | Overdue RFIs, tender returns in 3 days, insurance expiring, trial ending. |
 
 ### Who sees what
@@ -52,6 +52,15 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 
 A **tendering subcontractor** (invited to price a package, not yet appointed) sees only their tender page: their own package and quote, documents issued to tenderers, addenda, and query answers issued to everyone. They can't see other bidders, the client's documents, RFIs, the programme or anything else on the project. Appointing them turns them into a normal subcontractor on the project.
 | Team, settings, billing | ✓ | team list only | – | – |
+
+### Archiving instead of deleting
+
+Deleting a project used to take its RFIs, variations, RAMS, sub variations, packages, documents, the activity trail and the download log with it. Now:
+
+- **Project with records:** *Edit project → Archive project* (owners and admins). It disappears from the bid and project lists, the pipeline, workload charts, dashboards, tender analytics, reminders and the plan's active-project count, and collaborators lose access. Nothing is deleted. Owners and admins find it under the **Archived** filter on Bids or Projects, can open every tab, and can **Restore** it (if the plan has room).
+- **Project with nothing on it** (a lead added by mistake): still deleted outright, by typing its reference.
+- **Subcontractors** work the same way from *Edit subcontractor*: archive if they have quotes, RAMS, variations or addendum receipts (they drop out of the list and tender invitations; owners and admins see them under *Status → Archived*), delete if not.
+- The database backs this up: those records' links to their project and subcontractor are `RESTRICT`, so even Django admin or the shell can't delete a project or subcontractor out from under them. Deleting a whole workspace still removes everything.
 
 ## How tenant separation works
 

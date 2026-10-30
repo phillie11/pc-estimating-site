@@ -133,6 +133,15 @@ class Project(TenantModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Archived instead of deleted once it holds records: hidden from lists, the pipeline, workload and plan
+    # limits, but kept (with its audit trail and download log) for owners and admins
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archived_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='+')
+
+    # Related records that mean a project must be archived, not deleted
+    RECORD_RELATIONS = ('rfis', 'variations', 'rams', 'sub_variations', 'packages', 'documents', 'file_access',
+                        'tasks', 'issues', 'activities', 'addenda', 'tender_queries')
 
     class Meta:
         ordering = ['-updated_at']
@@ -157,6 +166,33 @@ class Project(TenantModel):
 
     def get_absolute_url(self):
         return reverse('project_detail', args=[self.organization.slug, self.pk])
+
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
+
+    def has_records(self):
+        """Anything worth keeping hangs off it. Portal access, the activity feed and notifications don't count."""
+        return any(getattr(self, name).exists() for name in self.RECORD_RELATIONS)
+
+    def archive(self, user):
+        self.archived_at, self.archived_by = timezone.now(), user
+        self.save(update_fields=['archived_at', 'archived_by', 'updated_at'])
+
+    def restore(self):
+        self.archived_at, self.archived_by = None, None
+        self.save(update_fields=['archived_at', 'archived_by', 'updated_at'])
+
+    @classmethod
+    def active_count(cls, org):
+        """Projects counted against the plan limit: open and not archived."""
+        return cls.all_objects.filter(organization=org, archived_at__isnull=True) \
+            .exclude(stage__in=cls.CLOSED_STAGES).count()
+
+    @classmethod
+    def plan_has_room(cls, org):
+        limit = org.plan_config['max_active_projects']
+        return limit is None or cls.active_count(org) < limit
 
     @property
     def is_pipeline(self):
@@ -421,7 +457,7 @@ class Document(TenantModel):
     VIS_SHARED = 'SHARED'
     VISIBILITY_CHOICES = [(VIS_INTERNAL, 'Internal only'), (VIS_SHARED, 'Shared with project collaborators')]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='documents')
+    project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='documents')
     title = models.CharField(max_length=200)
     reference = models.CharField('Doc / drawing no.', max_length=80, blank=True)
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, default='DRAWING')
@@ -536,7 +572,7 @@ class Comment(TenantModel):
 class FileAccess(TenantModel):
     """Who opened which file, and when: settles "we never received addendum 2"."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
-    project = models.ForeignKey(Project, null=True, blank=True, on_delete=models.CASCADE, related_name='file_access')
+    project = models.ForeignKey(Project, null=True, blank=True, on_delete=models.RESTRICT, related_name='file_access')
     label = models.CharField(max_length=255)
     path = models.CharField(max_length=500, db_index=True)
     ip = models.GenericIPAddressField(null=True, blank=True)

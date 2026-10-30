@@ -53,7 +53,7 @@ class AddendumFile(TenantModel):
 class AddendumReceipt(TenantModel):
     """A subcontractor confirming they have seen an addendum and priced it."""
     addendum = models.ForeignKey(Addendum, on_delete=models.CASCADE, related_name='receipts')
-    subcontractor = models.ForeignKey('directory.Subcontractor', on_delete=models.CASCADE, related_name='+')
+    subcontractor = models.ForeignKey('directory.Subcontractor', on_delete=models.RESTRICT, related_name='+')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     acknowledged_at = models.DateTimeField(auto_now_add=True)
 

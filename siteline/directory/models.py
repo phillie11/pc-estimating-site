@@ -51,6 +51,10 @@ class Subcontractor(TenantModel):
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Archived instead of deleted once they have quotes, RAMS or variations on record (see Project)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archived_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='+')
 
     class Meta:
         ordering = ['company_name']
@@ -60,6 +64,24 @@ class Subcontractor(TenantModel):
 
     def get_absolute_url(self):
         return reverse('sub_detail', args=[self.organization.slug, self.pk])
+
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
+
+    def has_records(self):
+        """Packages (quotes and appointments), RAMS, variations or addendum receipts on file."""
+        from tenders.models import AddendumReceipt
+        return self.packages.exists() or self.rams.exists() or self.variations.exists() \
+            or AddendumReceipt.all_objects.filter(subcontractor=self).exists()
+
+    def archive(self, user):
+        self.archived_at, self.archived_by = timezone.now(), user
+        self.save(update_fields=['archived_at', 'archived_by', 'updated_at'])
+
+    def restore(self):
+        self.archived_at, self.archived_by = None, None
+        self.save(update_fields=['archived_at', 'archived_by', 'updated_at'])
 
     @property
     def next_insurance_expiry(self):
@@ -121,8 +143,8 @@ class Package(TenantModel):
     OPEN_STATUSES = (ENQUIRY, QUOTED)
     CLOSED_STATUSES = (DECLINED, UNSUCCESSFUL)
 
-    project = models.ForeignKey('projects.Project', on_delete=models.CASCADE, related_name='packages')
-    subcontractor = models.ForeignKey(Subcontractor, on_delete=models.CASCADE, related_name='packages')
+    project = models.ForeignKey('projects.Project', on_delete=models.RESTRICT, related_name='packages')
+    subcontractor = models.ForeignKey(Subcontractor, on_delete=models.RESTRICT, related_name='packages')
     trade = models.ForeignKey(Trade, null=True, blank=True, on_delete=models.SET_NULL)
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='ENQUIRY')
     scope = models.TextField('Scope of works', blank=True)

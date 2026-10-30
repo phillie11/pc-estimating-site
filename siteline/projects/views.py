@@ -18,7 +18,8 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required, estimating_required, internal_required
 
 from . import analytics, gantt
-from .access import can_see_variations, get_project, is_bidder, is_internal, require_internal, visible_projects
+from .access import (can_see_archived, can_see_variations, get_project, is_bidder, is_internal, require_internal,
+                     visible_projects)
 from .files import serve
 from .forms import (ActivityForm, AddStaffForm, CommentForm, HandoverForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
                     RevisionForm, TaskForm)
@@ -151,12 +152,16 @@ def project_list(request, org_slug, section=None):
         else:
             groups = {'live': Project.DELIVERY_STAGES, 'complete': (Project.STAGE_COMPLETE,),
                       'all': Project.DELIVERY_STAGES + (Project.STAGE_COMPLETE,)}
+        if can_see_archived(request):
+            groups['archived'] = groups['all']
         view = request.GET.get('view', 'open' if section == 'estimating' else 'live')
         view = view if view in groups else next(iter(groups))
     else:
         groups = {'active': Project.PIPELINE_STAGES + Project.DELIVERY_STAGES, 'live': Project.DELIVERY_STAGES,
                   'closed': Project.CLOSED_STAGES, 'all': tuple(dict(Project.STAGE_CHOICES))}
         view = request.GET.get('view', 'active')
+    if view == 'archived' and 'archived' in groups:
+        qs = visible_projects(request, include_archived=True).filter(archived_at__isnull=False)
     if view in groups:
         qs = qs.filter(stage__in=groups[view])
     if q:
@@ -184,7 +189,7 @@ def project_create(request, org_slug):
                'manager': None if stage in Project.ESTIMATING_STAGES else request.user}
     form = ProjectForm(request.POST or None, org=org, membership=request.membership, initial=initial)
     if request.method == 'POST' and form.is_valid():
-        if form.cleaned_data['stage'] not in Project.CLOSED_STAGES and not org.can_add_project():
+        if form.cleaned_data['stage'] not in Project.CLOSED_STAGES and not Project.plan_has_room(org):
             messages.error(request, f'Your {org.plan_config["name"]} plan allows {org.plan_config["max_active_projects"]} '
                                     'active projects. Close some or upgrade.')
         else:
@@ -287,13 +292,18 @@ def project_edit(request, org_slug, pk):
             _close_tenders_if_lost(request, p)
         messages.success(request, 'Project saved.')
         return redirect(p)
-    return render(request, 'projects/project_form.html', {'form': form, 'project': project})
+    return render(request, 'projects/project_form.html', {'form': form, 'project': project,
+                                                          'has_records': project.has_records()})
 
 
 @require_POST
 @admin_required
 def project_delete(request, org_slug, pk):
+    """Only for a project with nothing on it, such as a lead added by mistake. Anything else is archived."""
     project = get_project(request, pk)
+    if project.has_records():
+        messages.error(request, f'{project.reference} has records on it, so it can only be archived.')
+        return redirect('project_edit', org_slug=org_slug, pk=pk)
     if request.POST.get('confirm') != project.reference:
         messages.error(request, f'Type {project.reference} to confirm deletion.')
         return redirect('project_edit', org_slug=org_slug, pk=pk)
@@ -302,6 +312,35 @@ def project_delete(request, org_slug, pk):
     log_activity(request, 'deleted project', name)
     messages.success(request, f'{name} deleted.')
     return redirect('project_list', org_slug=org_slug)
+
+
+@require_POST
+@admin_required
+def project_archive(request, org_slug, pk):
+    """
+    Take a project out of every list, the pipeline, workload and plan limits without
+    losing its RFIs, variations, RAMS, documents, audit trail or download log.
+    Collaborators lose access; owners and admins can still open and restore it.
+    """
+    project = get_project(request, pk)
+    if request.POST.get('action') == 'restore':
+        if not project.is_archived:
+            return redirect(project)
+        if project.stage not in Project.CLOSED_STAGES and not Project.plan_has_room(request.org):
+            messages.error(request, f'Your {request.org.plan_config["name"]} plan allows '
+                                    f'{request.org.plan_config["max_active_projects"]} active projects. '
+                                    'Close some or upgrade before restoring this one.')
+            return redirect(project)
+        project.restore()
+        log_activity(request, 'restored project', project.name, project=project, url=project.get_absolute_url())
+        messages.success(request, f'{project.reference} restored.')
+        return redirect(project)
+    if not project.is_archived:
+        project.archive(request.user)
+        log_activity(request, 'archived project', project.name, project=project, url=project.get_absolute_url())
+        messages.success(request, f'{project.reference} archived. Nothing was deleted; find it under Archived.')
+    return redirect(f'{reverse("bid_list" if project.section == "estimating" else "project_list", args=[org_slug])}'
+                    '?view=archived')
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +372,7 @@ def project_stage(request, org_slug, pk):
         stage = None
     if stage not in dict(Project.STAGE_CHOICES):
         return JsonResponse({'ok': False, 'error': 'Unknown stage'}, status=400)
-    if project.stage in Project.CLOSED_STAGES and stage not in Project.CLOSED_STAGES and not request.org.can_add_project():
+    if project.stage in Project.CLOSED_STAGES and stage not in Project.CLOSED_STAGES and not Project.plan_has_room(request.org):
         return JsonResponse({'ok': False, 'error': 'Active project limit reached for your plan'}, status=402)
     if _crosses_to_delivery(project.stage, stage):
         # Winning is estimating's call, made through the handover (which checks who may do it)
@@ -396,7 +435,7 @@ def project_handover(request, org_slug, pk):
 @estimating_required
 def tender_analytics(request, org_slug):
     # Outcomes span both sections: a won bid now belongs to the projects team but is still a win
-    data = analytics.tender_analytics(Project.objects.all(), request.GET.get('period', '12'),
+    data = analytics.tender_analytics(Project.objects.filter(archived_at__isnull=True), request.GET.get('period', '12'),
                                       today=timezone.localdate())
     return render(request, 'projects/analytics.html', {**data, 'periods': analytics.PERIODS,
                                                        'section': use_section(request, 'estimating')})

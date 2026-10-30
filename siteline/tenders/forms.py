@@ -43,7 +43,7 @@ class TenderInviteForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields['trade'].queryset = Trade.objects.all()
         self.fields['subcontractors'].queryset = Subcontractor.objects.exclude(email='') \
-            .exclude(status=Subcontractor.STATUS_STRUCK_OFF).prefetch_related('trades')
+            .exclude(status=Subcontractor.STATUS_STRUCK_OFF).filter(archived_at__isnull=True).prefetch_related('trades')
         if project is not None and project.quotes_due:
             self.fields['quote_due'].initial = project.quotes_due
         style_widgets(self)

@@ -69,7 +69,7 @@ def estimating_home(request, org_slug):
     bids = visible_projects(request).filter(stage__in=Project.ESTIMATING_STAGES)
     pipeline = bids.filter(stage__in=Project.PIPELINE_STAGES)
     year_ago = today - timedelta(days=365)
-    decided = Project.objects.filter(decided_at__gte=year_ago)
+    decided = Project.objects.filter(decided_at__gte=year_ago, archived_at__isnull=True)
     won = decided.filter(stage__in=Project.WON_STAGES).count()
     lost = decided.filter(stage=Project.STAGE_LOST).count()
     awaited = Package.objects.filter(project__in=pipeline, status=Package.ENQUIRY).select_related('project', 'subcontractor', 'trade')
@@ -125,7 +125,8 @@ def delivery_home(request, org_slug):
         'my_jobs': live.filter(manager=request.user).order_by('completion_date'),
         'rams': rams.order_by('submitted_at')[:8],
         'subvars': subvars.order_by('created_at')[:8],
-        'insurance': [s for s in Subcontractor.objects.filter(packages__project__in=live, packages__status=Package.APPOINTED)
+        'insurance': [s for s in Subcontractor.objects.filter(packages__project__in=live, packages__status=Package.APPOINTED,
+                                                              archived_at__isnull=True)
                       .distinct().filter(Q(public_liability_expiry__lte=today + timedelta(days=30)) |
                                          Q(employers_liability_expiry__lte=today + timedelta(days=30)))][:8],
         'activity': ActivityEvent.objects.filter(project__in=jobs).select_related('actor', 'project')[:12],

@@ -534,3 +534,138 @@ class CurrentRevisionTests(Base):
         flagged = dict(DocumentRevision.all_objects.filter(is_current=True).values_list('document_id', 'revision'))
         # All P/C: highest code wins even though C01 was uploaded last; any odd code: latest upload wins
         self.assertEqual(flagged, {self.doc.pk: 'C02', other.pk: 'P02'})
+
+
+class ArchiveTests(Base):
+    """Projects and subcontractors with records are archived, never deleted; empty ones can still go."""
+
+    def setUp(self):
+        super().setUp()
+        from directory.models import Package
+        self.staff = make_user('staff@a.test', 'Stan Staff')
+        self.ext = make_user('client@c.test', 'Cara Client')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=self.staff, role=Membership.ROLE_MEMBER)
+            Membership.objects.create(organization=self.org_a, user=self.ext, role=Membership.ROLE_EXTERNAL)
+            ProjectMember.objects.create(project=self.pa, user=self.ext, role=ProjectMember.ROLE_CLIENT)
+            self.bid = Project.objects.create(name='Archived tender', stage=Project.STAGE_TENDERING,
+                                              tender_due=timezone.now() + timedelta(days=5))
+            Package.objects.create(project=self.bid, subcontractor=self.sub_a)
+            self.lead = Project.objects.create(name='Mistaken lead', stage=Project.STAGE_LEAD)
+
+    def archive(self, project):
+        return self.client.post(self.url('project_archive', self.org_a, project.pk))
+
+    def test_project_with_records_cannot_be_deleted(self):
+        from rfis.models import RFI
+        self.login(self.alice)
+        r = self.client.post(self.url('project_delete', self.org_a, self.pa.pk), {'confirm': self.pa.reference})
+        self.assertRedirects(r, self.url('project_edit', self.org_a, self.pa.pk), fetch_redirect_response=False)
+        self.assertTrue(Project.all_objects.filter(pk=self.pa.pk).exists())
+        self.assertTrue(RFI.all_objects.filter(pk=self.rfi_a.pk).exists())
+        self.assertContains(self.client.get(self.url('project_edit', self.org_a, self.pa.pk)), 'Archive project')
+
+    def test_records_block_a_hard_delete_at_the_database_level_too(self):
+        from django.db.models import RestrictedError
+        with org_context(self.org_a), self.assertRaises(RestrictedError):
+            Project.objects.get(pk=self.pa.pk).delete()
+        with org_context(self.org_a), self.assertRaises(RestrictedError):
+            self.sub_a.delete()
+
+    def test_empty_lead_can_still_be_deleted(self):
+        self.login(self.alice)
+        self.assertContains(self.client.get(self.url('project_edit', self.org_a, self.lead.pk)), 'Delete permanently')
+        self.client.post(self.url('project_delete', self.org_a, self.lead.pk), {'confirm': self.lead.reference})
+        self.assertFalse(Project.all_objects.filter(pk=self.lead.pk).exists())
+
+    def test_archive_keeps_records_and_audit(self):
+        from tenancy.models import ActivityEvent
+        from variations.models import Variation
+        self.login(self.alice)
+        with org_context(self.org_a):
+            FileAccess.objects.create(user=self.alice, project=self.pa, label='A-100', path='x')
+        self.archive(self.pa)
+        self.pa.refresh_from_db()
+        self.assertEqual((self.pa.is_archived, self.pa.archived_by), (True, self.alice))
+        self.assertTrue(Variation.all_objects.filter(pk=self.vo_a.pk).exists())
+        self.assertTrue(FileAccess.all_objects.filter(project=self.pa).exists())
+        self.assertTrue(ActivityEvent.all_objects.filter(project=self.pa, verb='archived project').exists())
+
+    def test_archived_hidden_from_lists_pipeline_and_workload(self):
+        self.login(self.alice)
+        self.archive(self.pa)
+        self.archive(self.bid)
+        self.assertNotContains(self.client.get(self.url('project_list', self.org_a) + '?view=all'), 'Alpha secret job')
+        self.assertNotContains(self.client.get(self.url('bid_list', self.org_a) + '?view=all'), 'Archived tender')
+        self.assertNotContains(self.client.get(self.url('pipeline', self.org_a)), 'Archived tender')
+        self.assertNotContains(self.client.get(self.url('workload', self.org_a) + '?view=tenders'), 'Archived tender')
+        self.assertNotContains(self.client.get(self.url('workload', self.org_a) + '?view=secured'), 'Alpha secret job')
+        # Owners and admins still find and open them
+        self.assertContains(self.client.get(self.url('project_list', self.org_a) + '?view=archived'), 'Alpha secret job')
+        self.assertContains(self.client.get(self.url('bid_list', self.org_a) + '?view=archived'), 'Archived tender')
+        self.assertContains(self.client.get(self.url('project_detail', self.org_a, self.pa.pk)), 'Restore')
+        self.assertContains(self.client.get(self.url('rfi_list', self.org_a, self.pa.pk)), 'A question')
+
+    def test_staff_and_collaborators_cannot_open_archived(self):
+        self.login(self.alice)
+        self.archive(self.pa)
+        for user in (self.staff, self.ext):
+            self.login(user)
+            self.assertEqual(self.client.get(self.url('project_detail', self.org_a, self.pa.pk)).status_code, 404)
+        self.login(self.staff)
+        self.assertNotContains(self.client.get(self.url('project_list', self.org_a) + '?view=archived'), 'Alpha secret job')
+        self.assertEqual(self.archive(self.bid).status_code, 403)
+        self.login(self.ext)
+        self.assertNotContains(self.client.get(self.url('project_list', self.org_a) + '?view=archived'), 'Alpha secret job')
+
+    @override_settings(PLANS={'team': {'name': 'Tiny', 'max_staff': 3, 'max_active_projects': 1}})
+    def test_archived_projects_free_up_the_plan_limit(self):
+        self.login(self.alice)
+        self.client.post(self.url('project_create', self.org_a), {'name': 'Over limit', 'stage': 'LEAD'})
+        self.assertFalse(Project.all_objects.filter(name='Over limit').exists())
+        for p in (self.pa, self.bid, self.lead):
+            self.archive(p)
+        self.assertEqual(Project.active_count(self.org_a), 0)
+        self.client.post(self.url('project_create', self.org_a), {'name': 'Room now', 'stage': 'LEAD'})
+        self.assertTrue(Project.all_objects.filter(name='Room now').exists())
+        # Restoring one would go over the limit again, so it is refused
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        self.pa.refresh_from_db()
+        self.assertTrue(self.pa.is_archived)
+
+    def test_restore(self):
+        self.login(self.alice)
+        self.archive(self.pa)
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        self.pa.refresh_from_db()
+        self.assertFalse(self.pa.is_archived)
+        self.assertContains(self.client.get(self.url('project_list', self.org_a) + '?view=all'), 'Alpha secret job')
+
+    def test_subcontractor_with_records_is_archived_not_deleted(self):
+        from directory.models import Package, Subcontractor
+        self.login(self.alice)
+        archive = self.url('sub_archive', self.org_a, self.sub_a.pk)
+        self.client.post(archive, {'action': 'delete'})
+        self.assertTrue(Package.all_objects.filter(subcontractor=self.sub_a).exists())
+        self.client.post(archive, {'action': 'archive'})
+        self.sub_a.refresh_from_db()
+        self.assertTrue(self.sub_a.is_archived)
+        listed = lambda qs='': list(self.client.get(self.url('sub_list', self.org_a) + qs).context['subs'])  # noqa: E731
+        self.assertEqual(listed(), [])
+        self.assertEqual(listed('?status=ARCHIVED'), [self.sub_a])
+        self.assertContains(self.client.get(self.url('sub_detail', self.org_a, self.sub_a.pk)), 'Restore')
+        self.login(self.staff)
+        self.assertEqual(self.client.get(self.url('sub_detail', self.org_a, self.sub_a.pk)).status_code, 404)
+        self.assertEqual(listed('?status=ARCHIVED'), [])
+        with org_context(self.org_a):
+            from tenders.forms import TenderInviteForm
+            self.assertNotIn(self.sub_a, TenderInviteForm(project=self.bid).fields['subcontractors'].queryset)
+            spare = Subcontractor.objects.create(company_name='Added twice')
+        self.login(self.alice)
+        self.client.post(self.url('sub_archive', self.org_a, spare.pk), {'action': 'delete'})
+        self.assertFalse(Subcontractor.all_objects.filter(pk=spare.pk).exists())
+
+    def test_deleting_a_company_still_removes_everything(self):
+        """RESTRICT stops piecemeal deletes but not the workspace itself going (seed_demo --reset, admin)."""
+        self.org_a.delete()
+        self.assertFalse(Project.all_objects.filter(organization_id=self.org_a.pk).exists())
