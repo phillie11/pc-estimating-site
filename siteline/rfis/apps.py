@@ -10,6 +10,7 @@ class RfisConfig(AppConfig):
 
         from .models import RFI
         from .workflow import AUDIT_FIELDS, TRANSITIONS
-        # Only an open RFI is waiting on its ball-in-court person; a responded one is back with the team
-        register_record_type(RFI, prefix='RFI', transitions=TRANSITIONS, open_statuses=(RFI.STATUS_OPEN,),
-                             audit_fields=AUDIT_FIELDS)
+        # Open: waiting on whoever must answer. Responded: back with whoever raised it, to accept or reopen.
+        register_record_type(RFI, prefix='RFI', transitions=TRANSITIONS,
+                             open_statuses=(RFI.STATUS_OPEN, RFI.STATUS_RESPONDED),
+                             draft_statuses=(RFI.STATUS_DRAFT,), audit_fields=AUDIT_FIELDS)

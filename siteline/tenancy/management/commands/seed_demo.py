@@ -237,7 +237,7 @@ class Command(BaseCommand):
                                question='Proposed extract duct clashes with a downstand beam on grid C/4. Can the route '
                                         'move 600mm east?', created_by=pm, ball_in_court_user=client, due_date=today + timedelta(days=4))
             r3 = RFI.objects.create(project=leeds, title='Fire door ironmongery set', category='TECHNICAL',
-                                    question='Confirm ironmongery set for doors D07–D12.', created_by=pm, ball_in_court_user=client,
+                                    question='Confirm ironmongery set for doors D07–D12.', created_by=pm, ball_in_court_user=pm,
                                     due_date=today - timedelta(days=10), status=RFI.STATUS_RESPONDED,
                                     response='Use set FD30-B as per the schedule issued 3 Oct.', responded_by=client,
                                     responded_at=now - timedelta(days=8))

@@ -26,6 +26,7 @@ class RecordType:
     transitions: dict = field(default_factory=dict)  # name -> Transition
     open_statuses: tuple = ()  # statuses where the ball-in-court person has something to do
     audit_fields: tuple = BASE_AUDIT_FIELDS
+    draft_statuses: tuple = ()  # not yet issued: staff may delete their own (core.access.can_soft_delete)
 
     @property
     def key(self):
@@ -43,7 +44,7 @@ class RecordType:
 _registry = {}
 
 
-def register_record_type(model, *, prefix, transitions=(), open_statuses=(), audit_fields=()):
+def register_record_type(model, *, prefix, transitions=(), open_statuses=(), audit_fields=(), draft_statuses=()):
     from .models import RecordBase
     if not (isinstance(model, type) and issubclass(model, RecordBase)):
         raise ImproperlyConfigured(f'{model!r} must subclass core.models.RecordBase to be registered.')
@@ -61,7 +62,8 @@ def register_record_type(model, *, prefix, transitions=(), open_statuses=(), aud
     for name in audit_fields:
         model._meta.get_field(name)  # FieldDoesNotExist now rather than on the first save
     rt = RecordType(model=model, prefix=prefix, transitions=by_name, open_statuses=tuple(open_statuses),
-                    audit_fields=tuple(dict.fromkeys((*BASE_AUDIT_FIELDS, *audit_fields))))
+                    audit_fields=tuple(dict.fromkeys((*BASE_AUDIT_FIELDS, *audit_fields))),
+                    draft_statuses=tuple(draft_statuses))
     _registry[model] = rt
     return rt
 

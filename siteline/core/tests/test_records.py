@@ -4,6 +4,8 @@ from unittest import mock
 
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models.query import QuerySet
+
+from core import models as core_models
 from django.utils import timezone
 
 from core.exceptions import PurgeRefused, RecordConflict
@@ -49,23 +51,40 @@ class NumberingTests(RecordTestBase):
             NumberSequence.objects.all().delete()
         self.assertEqual(self.rfi().ref, 'RFI-004')
 
-    def test_losing_the_race_to_create_the_sequence_uses_the_winners_row(self):
-        """Two first RFIs on a project at once: one creation hits the unique constraint and carries on."""
+    def test_a_read_from_before_the_sequence_existed_finds_it_under_the_project_lock(self):
+        """Our first look missed the row another request just made: the locked re-read finds it."""
         with org_context(self.org_a):
             NumberSequence.objects.create(project=self.pa, key='rfis.rfi', next_value=5)  # the other request's row
-        real_first, raced = QuerySet.first, []
+        real_exists, raced = QuerySet.exists, []
 
-        def first(qs):
+        def exists(qs):
             if qs.model is NumberSequence and not raced:
                 raced.append(True)
-                return None  # as if read before the other request committed
-            return real_first(qs)
+                return False  # as if read before the other request committed
+            return real_exists(qs)
 
-        with mock.patch.object(QuerySet, 'first', autospec=True, side_effect=first):
+        with mock.patch.object(QuerySet, 'exists', autospec=True, side_effect=exists):
             r = self.rfi()
         self.assertEqual((raced, r.ref), ([True], 'RFI-005'))
         with org_context(self.org_a):
             self.assertEqual(NumberSequence.objects.get(project=self.pa).next_value, 6)
+
+    def test_losing_the_race_to_create_the_sequence_uses_the_winners_row(self):
+        """Both requests found no row even under the lock (another database's isolation): the unique constraint decides."""
+        with org_context(self.org_a):
+            NumberSequence.objects.create(project=self.pa, key='rfis.rfi', next_value=5)
+        real, raced = core_models._locked_first, []
+
+        def locked_first(qs):
+            if not raced:
+                raced.append(True)
+                return None
+            return real(qs)
+
+        with mock.patch.object(QuerySet, 'exists', autospec=True, return_value=False), \
+                mock.patch.object(core_models, '_locked_first', side_effect=locked_first):
+            r = self.rfi()
+        self.assertEqual(r.ref, 'RFI-005')
 
     def test_a_failed_save_gives_its_number_back(self):
         self.rfi()
@@ -110,7 +129,9 @@ class IndexTests(RecordTestBase):
             self.assertEqual((self.idx(r).title, self.idx(r).visibility), ('Which oak veneer?', 'INTERNAL'))
             apply_transition(r, 'respond', self.carla, response='Smoked oak')
             idx = self.idx(r)
-            self.assertEqual((idx.status, idx.status_label, idx.is_open), ('RESPONDED', 'Responded', False))
+            # Answered: the ball is back with whoever raised it, to accept or reopen
+            self.assertEqual((idx.status, idx.status_label, idx.is_open, idx.ball_in_court_user),
+                             ('RESPONDED', 'Responded', True, self.alice))
             r.soft_delete(self.alice)
         with org_context(self.org_a):
             self.assertFalse(RecordIndex.objects.filter(pk=idx.pk).exists())

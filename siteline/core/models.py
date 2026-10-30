@@ -9,10 +9,13 @@ See docs/adr/0001-core-record-base.md for why it looks like this, and the README
   RecordIndex     one row per record of any type, kept in step by RecordBase.save(): what
                   "Needs me", search and links read instead of querying every register.
   RecordLink      a typed link between two indexed records.
-  AuditEntry      append-only history per record with field-level diffs.
+  AuditEntry      append-only history per record with field-level diffs; redact() is the one
+                  sanctioned change (GDPR erasure).
+  RetentionPolicy how many years after project completion an organisation keeps records.
 
 Everything here is a TenantModel, so it is scoped to the current organisation and fails closed.
 """
+import contextvars
 import datetime
 import decimal
 
@@ -20,8 +23,12 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
-from django.db import IntegrityError, models, transaction
-from django.db.models import Max
+from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied
+from django.db import IntegrityError, OperationalError, models, transaction
+from django.db.models import F, Max
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
 from django.db.models.fields.files import FieldFile
 from django.utils import timezone
 
@@ -29,7 +36,7 @@ from tenancy.context import get_current_org
 from tenancy.models import TenantManager, TenantModel, TenantQuerySet
 
 from .exceptions import PurgeRefused, RecordConflict
-from .registry import get_record_type
+from .registry import get_record_type, record_types
 
 VIS_INTERNAL = 'INTERNAL'
 VIS_SHARED = 'SHARED'
@@ -57,31 +64,104 @@ class NumberSequence(TenantModel):
         return f'{self.key} #{self.next_value} on project {self.project_id}'
 
 
-def next_number(record):
-    """
-    Take the next number for this record's type and project. Call inside the transaction that
-    saves the record, so a failed save gives the number back. The first record of a type on a
-    project creates the sequence, starting after any number already used (rows that predate it).
-    """
-    key = get_record_type(record).key
-    # Pinned by organisation and project, so all_objects can't reach another company's sequence
-    rows = NumberSequence.all_objects.select_for_update().filter(
-        organization_id=record.organization_id, project_id=record.project_id, key=key)
-    with transaction.atomic():
-        seq = rows.first()
-        if seq is None:
-            used = type(record).all_objects.filter(project_id=record.project_id).aggregate(m=Max('number'))['m'] or 0
-            try:
-                with transaction.atomic():  # savepoint: someone else may create it first
-                    seq = NumberSequence(organization_id=record.organization_id, project_id=record.project_id,
-                                         key=key, next_value=used + 1)
-                    seq.save()
-            except IntegrityError:
-                seq = rows.get()
+def _locked_first(qs):
+    """The first row of qs, locked. order_by() keeps the lock to the row itself (no ORDER BY pk)."""
+    return next(iter(qs.select_for_update().order_by()[:1]), None)
+
+
+def _is_deadlock(exc):
+    return 'deadlock' in str(exc).lower() or getattr(exc, 'args', (None,))[0] == 1213  # 1213: MySQL
+
+
+def _take_number(record, rows, explicit):
+    if rows.exists():
+        # The usual case: lock the existing row by itself, without a range lock on the index
+        seq = _locked_first(rows)
+    else:
+        seq = None
+    if seq is None:
+        # First of its type on this project (or our read predates the row): only this branch
+        # serialises on the project row, so two first RFIs can't both create the sequence or
+        # deadlock on MySQL's gap locks. Re-read with a locking read, which sees the latest commit.
+        from projects.models import Project
+        list(Project.all_objects.select_for_update().filter(pk=record.project_id).order_by().values_list('pk'))
+        seq = _locked_first(rows)
+    if seq is None:
+        used = type(record).all_objects.filter(project_id=record.project_id).aggregate(m=Max('number'))['m'] or 0
+        try:
+            with transaction.atomic():  # savepoint: someone else may still create it first
+                seq = NumberSequence(organization_id=record.organization_id, project_id=record.project_id,
+                                     key=get_record_type(record).key, next_value=used + 1)
+                seq.save()
+        except IntegrityError:
+            seq = rows.select_for_update().get()
+    if explicit:
+        # A number set by hand: take it, and make sure the sequence never hands it out again
+        number = explicit
+        seq.next_value = max(seq.next_value, explicit + 1)
+    else:
         number = seq.next_value
         seq.next_value = number + 1
-        seq.save(update_fields=['next_value'])
-        return number
+    seq.save(update_fields=['next_value'])
+    return number
+
+
+def next_number(record, explicit=None):
+    """
+    Take the next number for this record's type and project, or record that `explicit` (a number
+    set by hand) is used. Call inside the transaction that saves the record, so a failed save gives
+    the number back. The first record of a type on a project creates the sequence, starting after
+    any number already used (rows that predate it). A deadlock is retried once from a savepoint;
+    on MySQL a deadlock rolls back the whole transaction, so there the retry fails loudly instead.
+    """
+    # Pinned by organisation and project, so all_objects can't reach another company's sequence
+    rows = NumberSequence.all_objects.filter(organization_id=record.organization_id, project_id=record.project_id,
+                                             key=get_record_type(record).key)
+    for attempt in (1, 2):
+        try:
+            with transaction.atomic():
+                return _take_number(record, rows, explicit)
+        except OperationalError as e:
+            if attempt == 2 or not _is_deadlock(e):
+                raise
+
+
+# ---------------------------------------------------------------------------
+# Retention
+# ---------------------------------------------------------------------------
+
+def add_years(day, years):
+    try:
+        return day.replace(year=day.year + years)
+    except ValueError:  # 29 February into a non-leap year
+        return day.replace(year=day.year + years, day=28)
+
+
+class RetentionPolicy(TenantModel):
+    """
+    How long an organisation keeps records after its project completes. With no row the
+    default is settings.RECORD_RETENTION_YEARS (12 if unset). Kept in core rather than on
+    Organization so the policy can grow (per record type, per sector) without touching tenancy.
+    """
+    retention_years = models.PositiveSmallIntegerField(
+        help_text='Records are kept this many years after their project completes.')
+
+    class Meta(TenantModel.Meta):
+        constraints = [models.UniqueConstraint(fields=['organization'], name='core_one_retention_policy_per_org')]
+        verbose_name_plural = 'retention policies'
+
+    def __str__(self):
+        return f'{self.retention_years} years'
+
+    @staticmethod
+    def default_years():
+        return getattr(settings, 'RECORD_RETENTION_YEARS', 12)
+
+    @classmethod
+    def years_for(cls, org_id):
+        # Pinned to the organisation the caller already holds
+        years = cls.all_objects.filter(organization_id=org_id).values_list('retention_years', flat=True).first()
+        return cls.default_years() if years is None else years
 
 
 # ---------------------------------------------------------------------------
@@ -221,21 +301,29 @@ class RecordBase(TenantModel):
             raise PermissionError(f'{type(self).__name__} saved against another organisation\'s project.')
         adding = self._state.adding
         update_fields = kwargs.get('update_fields')
+        saved = None  # audited field names this save writes; None for all of them
         if update_fields is not None:
+            saved = {self._meta.get_field(name).name for name in update_fields}
             kwargs['update_fields'] = {*update_fields, 'version', 'updated_at', 'updated_by'}
-        expected = self.version
+        expected, before = self.version, (self.pk, self.number, self.ref)
         try:
             with transaction.atomic():
                 if adding:
                     if actor is not None and not self.created_by_id:
                         self.created_by = actor
-                    if not self.number:
-                        self.number = next_number(self)
+                    # A number set by hand is kept, and the sequence moves past it
+                    self.number = next_number(self, explicit=self.number or None)
                 if not self.ref:
                     self.ref = rt.format_ref(self.number)
                 if actor is not None:
                     self.updated_by = actor
                 changes = self._changes()
+                if saved is not None:
+                    changes = {k: v for k, v in changes.items() if k in saved}
+                if 'legal_hold' in changes:
+                    from .access import can_set_legal_hold
+                    if not can_set_legal_hold(actor, self.organization_id):
+                        raise PermissionDenied('Only owners and admins can set or clear a legal hold.')
                 if not adding:
                     self._expected_version = expected  # read by _do_update
                     self.version = expected + 1
@@ -245,59 +333,94 @@ class RecordBase(TenantModel):
                 action = 'created' if adding else audit_action or ('updated' if changes else None)
                 if action:
                     # Written with the record's organisation explicitly, so this works inside unscoped() too
-                    AuditEntry.all_objects.create(
-                        organization_id=self.organization_id, record_idx=idx, action=action, changes=changes,
-                        actor=actor or (self.created_by if adding else None), note=audit_note[:255])
+                    AuditEntry.write(self.organization_id, idx, action, actor or (self.created_by if adding else None),
+                                     changes=changes, note=audit_note)
         except BaseException:
-            self.version, self._expected_version = expected, None  # the transaction rolled back
+            # The transaction rolled back: put the copy back as it was, so a retry is a clean first save
+            self.version, self._expected_version = expected, None
+            if adding:
+                self.pk, self.number, self.ref = before
+                self._state.adding = True
             raise
-        self._audit_before = self._audit_values()
+        after = self._audit_values()
+        if saved is None:
+            self._audit_before = after
+        else:  # fields this save didn't write still count as changed next time
+            self._audit_before = {**getattr(self, '_audit_before', {}), **{k: after[k] for k in saved if k in after}}
 
     save.alters_data = True
 
     def _do_update(self, base_qs, using, pk_val, values, update_fields, forced_update):
-        """The UPDATE only matches the version this copy was loaded at; anything else is a lost edit."""
+        """
+        The UPDATE only matches the version this copy was loaded at. Matching nothing means someone
+        else saved it, or it was purged: either way refuse, and never fall through to Django's INSERT,
+        which would bring a purged record back.
+        """
         expected = getattr(self, '_expected_version', None)
         if expected is None:
             return super()._do_update(base_qs, using, pk_val, values, update_fields, forced_update)
-        updated = super()._do_update(base_qs.filter(version=expected), using, pk_val, values, update_fields,
-                                     forced_update)
-        if not updated and base_qs.filter(pk=pk_val).exists():
-            raise RecordConflict(f'{self.reference} was changed by someone else since it was opened.')
-        return updated
+        if not super()._do_update(base_qs.filter(version=expected), using, pk_val, values, update_fields,
+                                  forced_update):
+            raise RecordConflict(f'{self.reference} was changed or removed by someone else since it was opened.')
+        return True
 
     # --- soft delete, retention -----------------------------------------------
+    # Who may do these is decided in core.access (can_soft_delete, can_restore, can_purge,
+    # can_set_legal_hold), so the rules live in one place.
     def soft_delete(self, actor, note=''):
+        from .access import can_soft_delete
+        if not can_soft_delete(actor, self):
+            raise PermissionDenied(f'You cannot delete {self.reference}.')
         self.deleted_at, self.deleted_by = timezone.now(), actor
         self.save(actor=actor, audit_action='deleted', audit_note=note)
 
     soft_delete.alters_data = True
 
     def restore(self, actor, note=''):
+        from .access import can_restore
+        if not can_restore(actor, self):
+            raise PermissionDenied(f'You cannot restore {self.reference}.')
         self.deleted_at, self.deleted_by = None, None
         self.save(actor=actor, audit_action='restored', audit_note=note)
 
     restore.alters_data = True
 
+    def effective_retain_until(self):
+        """
+        retain_until if set by hand, else the project's completion date plus the organisation's
+        retention period (RetentionPolicy). None while the project has no completion date.
+        """
+        if self.retain_until:
+            return self.retain_until
+        completion = self.project.completion_date
+        if completion is None:
+            return None
+        return add_years(completion, RetentionPolicy.years_for(self.organization_id))
+
     def check_purge(self):
-        """Raise PurgeRefused unless the record may be removed for good now."""
+        """Raise PurgeRefused unless the record may be removed for good now. Nothing purges automatically."""
         if not self.is_deleted:
             raise PurgeRefused(f'{self.reference} must be deleted before it is purged.')
         if self.legal_hold:
             raise PurgeRefused(f'{self.reference} is under legal hold.')
-        if self.retain_until and self.retain_until > timezone.localdate():
-            raise PurgeRefused(f'{self.reference} must be kept until {self.retain_until:%d %b %Y}.')
+        keep_until = self.effective_retain_until()
+        if keep_until is None:
+            raise PurgeRefused(f'{self.reference} has no retention date yet: its project has no completion date.')
+        if keep_until > timezone.localdate():
+            raise PurgeRefused(f'{self.reference} must be kept until {keep_until:%d %b %Y}.')
 
     def purge(self, actor, note=''):
         """
-        Remove the row itself. Its index row stays (marked purged) and so does its audit trail,
-        which is append-only; the 'purged' entry says who did it.
+        Remove the row itself (owners only). Its index row stays (marked purged) and so does its
+        audit trail, which is append-only; the 'purged' entry says who did it.
         """
+        from .access import can_purge
+        if not can_purge(actor, self):
+            raise PermissionDenied('Only owners can purge records.')
         self.check_purge()
         with transaction.atomic():
             idx = RecordIndex.with_deleted_for(self)
-            AuditEntry.all_objects.create(organization_id=self.organization_id, record_idx=idx, actor=actor,
-                                          action='purged', changes={}, note=note[:255])
+            AuditEntry.write(self.organization_id, idx, 'purged', actor, note=note)
             idx.purged_at = timezone.now()
             idx.save()
             self._purging = True
@@ -400,10 +523,31 @@ def index_record(record):
 # Links and audit
 # ---------------------------------------------------------------------------
 
+# Set only inside redact(): the one sanctioned way to change audit rows (GDPR erasure)
+_redacting = contextvars.ContextVar('core_redacting', default=False)
+REDACTED = '[redacted]'
+
+
+def _nulls_user_fks(model, kwargs):
+    """True for the UPDATE Django's delete collector runs when a user is deleted: user FKs set to None."""
+    User = get_user_model()
+    for name, value in kwargs.items():
+        f = model._meta.get_field(name)
+        if value is not None or not (f.is_relation and f.related_model is User):
+            return False
+    return bool(kwargs)
+
+
 class AppendOnlyMixin:
-    """Queryset writes that would rewrite history are refused. Django's delete cascades (a whole workspace) still run."""
+    """
+    Queryset writes that would rewrite history are refused. Two exceptions: deleting a user sets
+    their FKs to NULL (the actor's name stays in actor_name), and redact() is let through.
+    Django's delete cascades (a whole workspace) still run, as they use _raw_delete.
+    """
 
     def update(self, **kwargs):
+        if _redacting.get() or _nulls_user_fks(self.model, kwargs):
+            return super().update(**kwargs)
         raise PermissionError(f'{self.model.__name__} rows are append-only.')
 
     update.alters_data = True
@@ -419,6 +563,14 @@ class AppendOnlyMixin:
 
     bulk_update.alters_data = True
 
+    def bulk_create(self, objs, *args, **kwargs):
+        # bulk_create(objs, batch_size, ignore_conflicts, update_conflicts, ...): an upsert would overwrite rows
+        if kwargs.get('update_conflicts') or (len(args) >= 3 and args[2]):
+            raise PermissionError(f'{self.model.__name__} rows are append-only: no update_conflicts.')
+        return super().bulk_create(objs, *args, **kwargs)
+
+    bulk_create.alters_data = True
+
 
 class AppendOnlyQuerySet(AppendOnlyMixin, models.QuerySet):
     pass
@@ -428,18 +580,24 @@ class TenantAppendOnlyQuerySet(AppendOnlyMixin, TenantQuerySet):
     pass
 
 
+def _actor_name(user):
+    return ((getattr(user, 'full_name', '') or getattr(user, 'email', '')) if user else '')[:150]
+
+
 class AuditEntry(TenantModel):
     """
     What happened to a record, by whom, with the audited fields' old and new values as
-    {"field": [old, new]}. Append-only: save() refuses to change an existing entry and
-    delete() refuses outright, on the instance and the queryset. Deleting a whole workspace
-    still removes them, through Django's cascade. With Postgres we can add a trigger that
-    refuses UPDATE/DELETE in the database too (see the ADR).
+    {"field": [old, new]}. Append-only: save() always INSERTs (an existing pk is an IntegrityError),
+    delete() refuses, and so do queryset update(), delete(), bulk_update() and upserts; loaddata
+    can't overwrite an existing row either. actor_name keeps who acted after the user is deleted.
+    The only sanctioned change is redact() (GDPR erasure). Deleting a whole workspace still removes
+    them, through Django's cascade. Postgres triggers can enforce this in the database (see the ADR).
     """
     record_idx = models.ForeignKey(RecordIndex, on_delete=models.RESTRICT, related_name='audit')
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                               related_name='+')
-    action = models.CharField(max_length=40)  # created, updated, deleted, restored, purged, linked, a transition name
+    actor_name = models.CharField(max_length=150, blank=True, help_text='Who acted, as named at the time.')
+    action = models.CharField(max_length=40)  # created, updated, deleted, restored, purged, linked, redacted, a transition
     changes = models.JSONField(default=dict, blank=True)
     note = models.CharField(max_length=255, blank=True)
     at = models.DateTimeField(default=timezone.now, db_index=True)
@@ -452,11 +610,22 @@ class AuditEntry(TenantModel):
         verbose_name_plural = 'audit entries'
 
     def __str__(self):
-        return f'{self.actor or "System"} {self.action} {self.record_idx_id} at {self.at:%Y-%m-%d %H:%M}'
+        return f'{self.actor_name or "System"} {self.action} {self.record_idx_id} at {self.at:%Y-%m-%d %H:%M}'
+
+    @classmethod
+    def write(cls, org_id, idx, action, actor, changes=None, note=''):
+        """Add an entry. The organisation is explicit, so this works inside unscoped() too."""
+        entry = cls(organization_id=org_id, record_idx=idx, action=action, actor=actor, actor_name=_actor_name(actor),
+                    changes=changes or {}, note=note[:255])
+        entry.save()
+        return entry
 
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise PermissionError('Audit entries are append-only.')
+        if self.actor_id and not self.actor_name:
+            self.actor_name = _actor_name(self.actor)
+        kwargs['force_insert'] = True  # never an UPDATE, even for AuditEntry(pk=<existing>)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -487,7 +656,7 @@ class RecordLink(TenantModel):
         unique_together = [('from_idx', 'to_idx', 'kind')]
 
     def __str__(self):
-        return f'{self.from_idx} {self.get_kind_display().lower()} {self.to_idx}'
+        return f'{self.from_idx.ref} {self.get_kind_display().lower()} {self.to_idx.ref}'
 
     def save(self, *args, **kwargs):
         if not self._state.adding:
@@ -498,12 +667,34 @@ class RecordLink(TenantModel):
         if len(org_ids) > 1 or (self.organization_id and self.organization_id not in org_ids):
             raise PermissionError('Records can only be linked within one organisation.')
         self.organization_id = self.organization_id or self.from_idx.organization_id
+        kwargs['force_insert'] = True  # never an UPDATE, even for RecordLink(pk=<existing>)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         if not getattr(self, '_unlinking', False):
             raise PermissionError('Remove a link with core.models.unlink(), which records it in the audit trail.')
         return super().delete(*args, **kwargs)
+
+
+@receiver(pre_save, sender=AuditEntry)
+@receiver(pre_save, sender=RecordLink)
+def _refuse_raw_overwrite(sender, instance, raw, **kwargs):
+    """
+    loaddata / import_data save raw, bypassing save(), and would UPDATE a row that already exists.
+    Re-loading a row exactly as it is changes nothing and is allowed; any different value is refused.
+    """
+    if not raw or instance.pk is None:
+        return
+
+    def same(a, b):
+        if isinstance(a, datetime.datetime) and isinstance(b, datetime.datetime):
+            return abs(a - b) < datetime.timedelta(milliseconds=1)  # JSON dumps keep milliseconds only
+        return a == b
+
+    existing = sender._base_manager.filter(pk=instance.pk).first()
+    if existing is not None and not all(same(getattr(existing, f.attname), getattr(instance, f.attname))
+                                        for f in sender._meta.concrete_fields):
+        raise PermissionError(f'{sender.__name__} {instance.pk} already exists; append-only rows are not overwritten.')
 
 
 def _idx(record_or_idx):
@@ -519,10 +710,10 @@ def link(source, target, kind=RecordLink.RELATES, actor=None):
             return found
         made = RecordLink(organization_id=a.organization_id, from_idx=a, to_idx=b, kind=kind, created_by=actor)
         made.save()
+        # Refs only, never titles: the other record may be internal, or erased later
         for idx, other in ((a, b), (b, a)):
-            AuditEntry.all_objects.create(organization_id=idx.organization_id, record_idx=idx, actor=actor,
-                                          action='linked', changes={'link': [None, f'{kind} {other.ref}']},
-                                          note=str(made)[:255])
+            AuditEntry.write(idx.organization_id, idx, 'linked', actor,
+                             changes={'link': [None, f'{kind} {other.ref}']}, note=str(made))
         return made
 
 
@@ -532,10 +723,103 @@ def unlink(source, target, kind=RecordLink.RELATES, actor=None):
         found = RecordLink.all_objects.filter(from_idx=a, to_idx=b, kind=kind).first()
         if not found:
             return False
-        note = str(found)[:255]
+        note = str(found)
         found._unlinking = True
         found.delete()
         for idx, other in ((a, b), (b, a)):
-            AuditEntry.all_objects.create(organization_id=idx.organization_id, record_idx=idx, actor=actor,
-                                          action='unlinked', changes={'link': [f'{kind} {other.ref}', None]}, note=note)
+            AuditEntry.write(idx.organization_id, idx, 'unlinked', actor,
+                             changes={'link': [f'{kind} {other.ref}', None]}, note=note)
         return True
+
+
+# ---------------------------------------------------------------------------
+# Redaction (GDPR erasure)
+# ---------------------------------------------------------------------------
+
+def _scrub(value, needles):
+    if isinstance(value, str):
+        for n in needles:
+            value = value.replace(n, REDACTED)
+    return value
+
+
+def redact(record_or_user, actor, reason):
+    """
+    Erase personal data from the audit trail and the index. The only sanctioned way to change
+    audit rows; it records itself with a 'redacted' entry (the reason as its note, no values).
+
+    A record: every old and new value in its audit entries becomes "[redacted]" (the field names
+    stay, so the trail still shows what changed and when), and so does its title, on the record
+    and in the index.
+
+    A user: entries they made lose the actor link and name, values that pointed at them (ball in
+    court and other user fields) or contain their name or email become "[redacted]", and so do
+    those strings in record and index titles. Then delete the user as usual.
+
+    Other free text on a live record (an RFI's question) is not touched: edit or purge the record.
+    Works in the current organisation; inside unscoped() it covers every organisation. The actor
+    must be an owner or admin of each organisation touched, or a superuser (core.access.can_redact).
+    Returns the number of audit entries changed.
+    """
+    from .access import can_redact
+    if not reason:
+        raise ValueError('Say why the data is being redacted.')
+    if isinstance(record_or_user, get_user_model()):
+        return _redact_user(record_or_user, actor, reason, can_redact)
+    record = record_or_user
+    if not can_redact(actor, record.organization_id):
+        raise PermissionDenied('Only owners and admins can redact records.')
+    with transaction.atomic():
+        idx = RecordIndex.with_deleted_for(record)
+        changed = 0
+        token = _redacting.set(True)
+        try:
+            for entry in AuditEntry.all_objects.filter(record_idx=idx):
+                scrubbed = {k: [None if v is None else REDACTED for v in pair] for k, pair in entry.changes.items()}
+                if scrubbed != entry.changes:
+                    AuditEntry.all_objects.filter(pk=entry.pk).update(changes=scrubbed)
+                    changed += 1
+        finally:
+            _redacting.reset(token)
+        # Straight updates, so the redaction itself doesn't write the old title into a new diff
+        type(record).all_objects.filter(pk=record.pk).update(title=REDACTED, version=F('version') + 1)
+        RecordIndex.all_objects.filter(pk=idx.pk).update(title=REDACTED)
+        AuditEntry.write(idx.organization_id, idx, 'redacted', actor, note=reason)
+    record.refresh_from_db()
+    return changed
+
+
+def _redact_user(user, actor, reason, can_redact):
+    User = get_user_model()
+    user_fields = {f.name for rt in record_types() for f in rt.model._meta.concrete_fields
+                   if f.is_relation and f.related_model is User}
+    needles = sorted({s for s in (user.full_name, user.email) if s}, key=len, reverse=True)
+    touched = {}
+    for entry in AuditEntry.objects.select_related('record_idx'):  # current org, or all inside unscoped()
+        changes = {name: [REDACTED if name in user_fields and v == user.pk else _scrub(v, needles) for v in pair]
+                   for name, pair in entry.changes.items()}
+        mine = entry.actor_id == user.pk
+        if mine or changes != entry.changes:
+            touched[entry.pk] = (entry, changes, mine)
+    titles = [i for i in RecordIndex.with_deleted.all() if any(n in i.title for n in needles)]
+    for org_id in {e.organization_id for e, _, _ in touched.values()} | {i.organization_id for i in titles}:
+        if not can_redact(actor, org_id):
+            raise PermissionDenied('Only owners and admins can redact.')
+    with transaction.atomic():
+        token = _redacting.set(True)
+        try:
+            for entry, changes, mine in touched.values():
+                fields = {'changes': changes, **({'actor': None, 'actor_name': REDACTED} if mine else {})}
+                AuditEntry.all_objects.filter(pk=entry.pk).update(**fields)
+        finally:
+            _redacting.reset(token)
+        for idx in titles:
+            title = _scrub(idx.title, needles)
+            RecordIndex.all_objects.filter(pk=idx.pk).update(title=title)
+            idx.content_type.model_class().all_objects.filter(pk=idx.object_id) \
+                .update(title=title, version=F('version') + 1)
+        done = {e.record_idx_id: e.record_idx for e, _, _ in touched.values()}
+        done.update({i.pk: i for i in titles})
+        for idx in done.values():
+            AuditEntry.write(idx.organization_id, idx, 'redacted', actor, note=reason)
+    return len(touched)

@@ -8,8 +8,9 @@ core.workflow.apply_transition(rfi, name, user).
   RESPONDED / CLOSED / VOID ──reopen──► OPEN
 
 Responding is open to staff and to whoever has the ball in court; closing it with the
-response, closing, reopening and voiding are staff only. The ball stays where it is
-(see the ADR's open questions on passing it back to the raiser).
+response, closing, reopening and voiding are staff only. Responding passes the ball back to
+whoever raised the RFI, to accept and close or reopen (BALL_AFTER_RESPONSE below). Voiding a
+closed RFI means reopening it first. Both are recommended defaults pending the product owner.
 """
 from django.utils import timezone
 
@@ -17,6 +18,14 @@ from core.access import record_staff, record_staff_or_ball_in_court
 from core.workflow import Transition
 
 from .models import RFI
+
+
+def ball_after_response(rfi, user):
+    """Who has the ball once an RFI is answered: whoever raised it. To keep it with the responder, use KEEP."""
+    return rfi.created_by
+
+
+BALL_AFTER_RESPONSE = ball_after_response  # or core.workflow.KEEP
 
 
 def _record_response(rfi, user, response=''):
@@ -39,9 +48,10 @@ def _clear_closed(rfi, user):
 
 TRANSITIONS = [
     Transition('respond', source=(RFI.STATUS_OPEN,), target=RFI.STATUS_RESPONDED, label='respond to',
-               allowed=record_staff_or_ball_in_court, on_apply=_record_response),
+               allowed=record_staff_or_ball_in_court, sets_ball_in_court=BALL_AFTER_RESPONSE,
+               on_apply=_record_response),
     Transition('respond_and_close', source=(RFI.STATUS_OPEN,), target=RFI.STATUS_CLOSED, label='respond to and close',
-               allowed=record_staff, on_apply=_respond_and_close),
+               allowed=record_staff, sets_ball_in_court=BALL_AFTER_RESPONSE, on_apply=_respond_and_close),
     Transition('close', source=(RFI.STATUS_OPEN, RFI.STATUS_RESPONDED), target=RFI.STATUS_CLOSED, label='close',
                allowed=record_staff, on_apply=_stamp_closed),
     Transition('reopen', source=(RFI.STATUS_RESPONDED, RFI.STATUS_CLOSED, RFI.STATUS_VOID), target=RFI.STATUS_OPEN,

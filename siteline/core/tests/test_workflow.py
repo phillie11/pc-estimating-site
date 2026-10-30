@@ -52,15 +52,18 @@ class TransitionTests(RecordTestBase):
             self.assertEqual([t.name for t in available_transitions(self.r, self.alice)],
                              ['respond', 'respond_and_close', 'close', 'void'])
 
-    def test_transition_can_pass_the_ball(self):
-        handback = Transition('hand_back', source=('RESPONDED',), target='OPEN',
-                              sets_ball_in_court=lambda record, user: record.created_by)
-        with mock.patch.dict(get_record_type(RFI).transitions, {'hand_back': handback}), org_context(self.org_a):
+    def test_answering_passes_the_ball_back_to_the_raiser(self):
+        with org_context(self.org_a):
             apply_transition(self.r, 'respond', self.carla, response='Oak')
-            apply_transition(self.r, 'hand_back', self.carla)
             idx = RecordIndex.objects.get(object_id=self.r.pk)
         self.assertEqual((self.r.ball_in_court_user, idx.ball_in_court_user, idx.is_open), (self.alice, self.alice, True))
         self.assertEqual(self.audit()[-1][1]['ball_in_court_user'], [self.carla.pk, self.alice.pk])
+
+    def test_a_transition_can_clear_or_keep_the_ball(self):
+        park = Transition('park', source=('OPEN',), target='DRAFT', sets_ball_in_court=None)
+        with mock.patch.dict(get_record_type(RFI).transitions, {'park': park}), org_context(self.org_a):
+            apply_transition(self.r, 'park', self.alice)
+        self.assertIsNone(self.r.ball_in_court_user)
 
     def test_registration_rejects_unknown_statuses(self):
         with self.assertRaises(ImproperlyConfigured):
