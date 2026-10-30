@@ -7,20 +7,25 @@
 </div>
 {% if total_count %}
 <div class="filters" aria-label="Show">
-  <a class="chip {% if not kind %}on{% endif %}" href="{% qs kind='' %}">Everything</a>
-  {% for code, label in kinds_here.items %}<a class="chip {% if kind == code %}on{% endif %}" href="{% qs kind=code %}">{{ label }}</a>{% endfor %}
+  <a class="chip {% if not kind %}on{% endif %}" href="{% qs kind='' page='' %}">Everything</a>
+  {% for code, label in kinds_here.items %}<a class="chip {% if kind == code %}on{% endif %}" href="{% qs kind=code page='' %}">{{ label }}</a>{% endfor %}
   {% if projects_here|length > 1 %}<span class="spacer"></span>
   <form method="get" class="search">{% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
     <label class="sr-only" for="nm-project">Project</label>
     <select id="nm-project" name="project" data-autosubmit style="width:auto"><option value="">All projects</option>{% for p in projects_here %}<option value="{{ p.pk }}" {% if project_filter == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></form>{% endif %}
 </div>
-{% if show_money and money %}<div class="money-strip"><span class="small">Value waiting on your decision</span><span class="big">{{ money|money:currency }}</span></div>{% endif %}
+{% if show_money and money %}<div class="money-strip"><span class="small">Value waiting on your decision</span><span class="big">{{ money|money_exact:currency }}</span></div>{% endif %}
 {% for code, label, rows in groups %}
   <div class="group-head {{ code }}"><h2>{{ label }}</h2><span class="small dim">{{ rows|length }}</span></div>
   <div class="card">{% include "partials/register_table.html" with rows=rows show_project=True show_money=show_money %}</div>
 {% empty %}
   <div class="card">{% include "partials/empty_state.html" with title="Nothing of that kind is waiting on you" message="Try another filter, or show everything." cta_url="?" cta_label="Show everything" %}</div>
 {% endfor %}
+{% if page.has_other_pages %}<nav class="filters" aria-label="Pages" style="margin-top:1rem">
+  <span class="small dim">{{ page.start_index }} to {{ page.end_index }} of {{ shown_count }}</span>
+  {% if page.has_previous %}<a class="chip" href="{% qs page=page.previous_page_number %}">Sooner</a>{% endif %}
+  {% if page.has_next %}<a class="chip" href="{% qs page=page.next_page_number %}">Later</a>{% endif %}
+</nav>{% endif %}
 {% else %}
 <div class="card">{% if is_internal %}{% url 'dashboard' org.slug as home %}{% include "partials/empty_state.html" with title="Nothing is waiting on you" message="RFIs passed to you, RAMS and subcontractor variations on jobs you run, snags to inspect and tasks given to you all appear here as soon as they need you." cta_url=home cta_label="Back to your dashboard" cta_plain=True %}
 {% else %}{% url 'dashboard' org.slug as home %}{% include "partials/empty_state.html" with title="Nothing is waiting on you" message="When the team asks you for a decision, an answer or a price, it appears here and you get an email with a link straight to it." cta_url=home cta_label="See your projects" cta_plain=True %}{% endif %}</div>

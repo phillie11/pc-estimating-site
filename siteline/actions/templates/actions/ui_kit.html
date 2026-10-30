@@ -34,7 +34,7 @@
 <section class="ui-section">
   <h2>decision_panel</h2>
   <p class="small dim">One decision, with the money and one clear button. Used on the client's and subcontractor's "Decisions waiting".</p>
-  <div class="money-strip"><span class="small">Value waiting on your decision</span><span class="big">{{ money|money:currency }}</span></div>
+  <div class="money-strip"><span class="small">Value waiting on your decision</span><span class="big">{{ money|money_exact:currency }}</span></div>
   <div class="decisions">{% for item in samples %}{% include "partials/decision_panel.html" with item=item show_project=True %}{% endfor %}</div>
   <pre class="code">{% templatetag openblock %} include "partials/decision_panel.html" with item=item show_project=True {% templatetag closeblock %}</pre>
 </section>

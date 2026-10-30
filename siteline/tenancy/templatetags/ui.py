@@ -22,6 +22,30 @@ def money(value, symbol='£'):
 
 
 @register.filter
+def money_exact(value, symbol='£'):
+    """£1,850.50, to the penny (half up): for amounts someone approves or is paid."""
+    if value in (None, ''):
+        return '—'
+    try:
+        v = Decimal(value)
+    except (InvalidOperation, TypeError, ValueError):
+        return value
+    from decimal import ROUND_HALF_UP
+    sign = '-' if v < 0 else ''
+    return f'{sign}{symbol}{abs(v).quantize(Decimal("0.01"), ROUND_HALF_UP):,}'
+
+
+@register.filter
+def badge_count(n, cap=99):
+    """A count for a small badge: 7, 42, 99+."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return ''
+    return f'{cap}+' if n > cap else str(n)
+
+
+@register.filter
 def money_short(value, symbol='£'):
     """£1.2m / £450k for tight spaces."""
     if value in (None, ''):

@@ -68,7 +68,7 @@ class RecordsProvider:
         from . import registry
         qs = needs_me(request).exclude(record_type__in=registry.covered_record_types())
         out = []
-        for idx in qs.select_related('project')[:200]:
+        for idx in qs.select_related('project'):
             responded = idx.status == 'RESPONDED'
             out.append(Item(
                 kind=idx.record_type.split('.')[-1], title=idx.title, url=idx.url, ref=idx.ref, project=idx.project,
@@ -95,7 +95,7 @@ class ClientVariationProvider:
             .filter(project__in=_portal(request).values('pk'))
         return [Item(
             kind=self.kind, title=v.title, url=v.get_absolute_url(), ref=v.reference, project=v.project,
-            due=None, priority=PRIORITY_HIGH if v.proceed_at_risk else PRIORITY_NORMAL,
+            due=getattr(v, 'due_date', None), priority=PRIORITY_HIGH if v.proceed_at_risk else PRIORITY_NORMAL,
             action='Approve or reject', status_label=v.get_status_display(), tone=v.status_tone, amount=v.value,
             detail=(f'{v.time_impact_days} days time impact' if v.time_impact_days else ''),
             key=f'vo:{v.pk}',
@@ -268,5 +268,69 @@ class TaskProvider:
         return out
 
 
+class HookProvider:
+    """
+    Items from another app's function, found by dotted path, so modules being built on other
+    branches plug in without this app importing them. While the module doesn't exist yet the
+    provider lists nothing. Results may be Items, dicts of Item fields, or model rows (title,
+    ref/reference, project, due_date, get_absolute_url). Rows on projects this person can't
+    open through the portal (portal_projects) are dropped, whatever the hook returned.
+    """
+
+    def __init__(self, kind, label, path, takes='request', staff=None, covers=()):
+        self.kind, self.label, self.path, self.takes, self.staff, self.covers = kind, label, path, takes, staff, covers
+
+    def resolve(self):
+        import importlib
+        module, _, name = self.path.rpartition('.')
+        try:
+            return getattr(importlib.import_module(module), name)
+        except ModuleNotFoundError as e:
+            if e.name and (module == e.name or module.startswith(e.name + '.')):
+                return None  # that app hasn't been merged yet
+            raise
+        except AttributeError:
+            return None
+
+    def items(self, request):
+        if self.staff is not None and _staff(request) != self.staff:
+            return []
+        fn = self.resolve()
+        if fn is None:
+            return []
+        rows = fn(request.user) if self.takes == 'user' else fn(request)
+        allowed = set(_portal(request).values_list('pk', flat=True))
+        out = []
+        for row in rows or ():
+            item = self._coerce(row)
+            if item is not None and (item.project is None or item.project.pk in allowed):
+                out.append(item)
+        return out
+
+    def _coerce(self, row):
+        if isinstance(row, Item):
+            row.kind = row.kind or self.kind
+            return row
+        if isinstance(row, dict):
+            return Item(**{'kind': self.kind, **row})
+        url = row.get_absolute_url() if hasattr(row, 'get_absolute_url') else ''
+        if not url:
+            return None
+        return Item(kind=self.kind, title=str(getattr(row, 'title', row)), url=url,
+                    ref=getattr(row, 'ref', '') or getattr(row, 'reference', '') or '',
+                    project=getattr(row, 'project', None), due=getattr(row, 'due_date', None),
+                    status_label=getattr(row, 'status_label', '') or (row.get_status_display()
+                                                                     if hasattr(row, 'get_status_display') else ''),
+                    tone=getattr(row, 'status_tone', 'accent'), key=f'{self.kind}:{getattr(row, "pk", "")}')
+
+
+# Hooks into modules on other branches; each lists nothing until its module exists
+HOOKS = [
+    lambda: HookProvider('coverage_alert', 'Tender coverage', 'tenders.actions.coverage_alerts', staff=True),
+    lambda: HookProvider('change', 'Early warnings and compensation events', 'changes.actions.items'),
+    lambda: HookProvider('transmittal', 'Documents to acknowledge', 'documents.models.pending_acknowledgements',
+                         takes='user', staff=False),
+]
+
 BUILT_IN = [RecordsProvider, ClientVariationProvider, RamsReviseProvider, RamsReviewProvider, SubVariationProvider,
-            TenderProvider, AddendumProvider, SnagProvider, SnagInspectProvider, TaskProvider]
+            TenderProvider, AddendumProvider, SnagProvider, SnagInspectProvider, TaskProvider] + HOOKS

@@ -7,7 +7,7 @@
     <section aria-labelledby="dw">
       <div class="row between" style="margin-bottom:.5rem"><h2 id="dw" style="margin:0">Decisions waiting{% if waiting_count %} <span class="dim">· {{ waiting_count }}</span>{% endif %}</h2>{% if waiting_count %}<a class="small" href="{% url 'needs_me' org.slug %}">See all →</a>{% endif %}</div>
       {% if waiting %}
-        {% if is_client and waiting_money %}<div class="money-strip"><span class="small">Variations waiting for your approval</span><span class="big">{{ waiting_money|money:currency }}</span></div>{% endif %}
+        {% if is_client and waiting_money %}<div class="money-strip"><span class="small">Variations waiting for your approval</span><span class="big">{{ waiting_money|money_exact:currency }}</span></div>{% endif %}
         <div class="decisions">{% for item in waiting %}{% include "partials/decision_panel.html" with item=item show_project=True %}{% endfor %}</div>
         {% if waiting_count > waiting|length %}<p class="small"><a href="{% url 'needs_me' org.slug %}">{{ waiting_count|add:"-12" }} more waiting on you →</a></p>{% endif %}
       {% else %}

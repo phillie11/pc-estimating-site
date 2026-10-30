@@ -4,7 +4,7 @@
 <div class="topbar"><button data-nav-toggle aria-label="Menu">{% icon 'menu' %}</button>
   <span class="mark" style="width:26px;height:26px;border-radius:4px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:800">{{ org.name|first|upper }}</span>
   <strong>{{ org.name }}</strong>
-  <a class="needs" href="{% url 'needs_me' org.slug %}" aria-label="Needs me: {{ needs_me_count }} waiting">{% icon 'inbox' %}{% if needs_me_count %}<span>{{ needs_me_count }}</span>{% endif %}</a>
+  <a class="needs" href="{% url 'needs_me' org.slug %}" aria-label="Needs me: {{ needs_me_count }} waiting">{% icon 'inbox' %}{% if needs_me_count %}<span>{{ needs_me_count|badge_count }}</span>{% endif %}</a>
   <a class="bell" href="{% url 'notifications' org.slug %}" aria-label="Notifications">{% icon 'bell' %}{% if unread_notifications %}<span>{{ unread_notifications }}</span>{% endif %}</a></div>
 <div class="shell">
   <aside class="side">
@@ -24,7 +24,7 @@
       {% else %}
       <a href="{% url 'delivery_home' org.slug %}" class="{% if u == 'delivery_home' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
       {% endif %}
-      <a href="{% url 'needs_me' org.slug %}" class="{% if u == 'needs_me' %}on{% endif %}">{% icon 'inbox' %} Needs me{% if needs_me_count %}<span class="count unread">{{ needs_me_count }}</span>{% endif %}</a>
+      <a href="{% url 'needs_me' org.slug %}" class="{% if u == 'needs_me' %}on{% endif %}">{% icon 'inbox' %} Needs me{% if needs_me_count %}<span class="count unread">{{ needs_me_count|badge_count }}</span>{% endif %}</a>
       <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}">{% icon 'bell' %} Notifications{% if unread_notifications %}<span class="count unread">{{ unread_notifications }}</span>{% endif %}</a>
       {% if section == 'estimating' %}
       <a href="{% url 'bid_list' org.slug %}" class="{% if project or u == 'bid_list' or u == 'project_create' %}on{% endif %}">{% icon 'tender' %} Bids</a>

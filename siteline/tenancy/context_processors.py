@@ -14,6 +14,23 @@ def _lazy(org, fn):
     return value
 
 
+def portal_switcher(request):
+    """
+    The portal's project switcher: open projects they collaborate on (portal_projects), each
+    linking to its overview, then tenders they are pricing, linking to the tender page (the
+    only page a tendering subcontractor may open).
+    """
+    from projects.access import portal_projects, visible_projects
+    from projects.models import Project
+    from tenders.services import tender_url
+    shared = portal_projects(request).exclude(stage__in=Project.CLOSED_STAGES).order_by('name')
+    entries = [{'pk': p.pk, 'name': p.name, 'sub': p.site_address, 'url': p.get_absolute_url()} for p in shared]
+    seen = {e['pk'] for e in entries}
+    tenders = visible_projects(request).exclude(stage__in=Project.CLOSED_STAGES).exclude(pk__in=seen).order_by('name')
+    entries += [{'pk': p.pk, 'name': p.name, 'sub': 'Your tender', 'url': tender_url(p)} for p in tenders]
+    return entries
+
+
 def tenant(request):
     org = getattr(request, 'org', None)
     membership = getattr(request, 'membership', None)
@@ -37,11 +54,7 @@ def tenant(request):
         import actions
         needs_me_count = _lazy(org, lambda: actions.count_for_user(request))
         if not membership.is_internal:
-            from projects.access import visible_projects
-            from projects.models import Project
-            # The portal's project switcher: the open projects they were invited to
-            switcher = _lazy(org, lambda: list(visible_projects(request).exclude(stage__in=Project.CLOSED_STAGES)
-                                               .order_by('name')))
+            switcher = _lazy(org, lambda: portal_switcher(request))
     # Which half of the system the sidebar shows; project and section pages override it
     section = None
     if membership is not None and membership.is_internal:

@@ -10,7 +10,7 @@ and one button to open it. Used for the client's and subcontractor's "Decisions 
     {% if item.detail %}<p class="small dim">{{ item.detail }}</p>{% endif %}
   </div>
   <div class="decision-side">
-    {% if item.amount is not None %}<div class="decision-amount">{{ item.amount|money:currency }}</div>{% endif %}
+    {% if item.amount is not None %}<div class="decision-amount">{{ item.amount|money_exact:currency }}</div>{% endif %}
     <div class="small {% if item.is_overdue %}overdue{% else %}dim{% endif %}">{% if item.due %}{% if item.is_overdue %}Was due{% else %}Due{% endif %} {{ item.due|date:"D j M" }}{% else %}No due date{% endif %}</div>
     <a class="btn primary" href="{{ item.url }}">{{ item.action|default:"Open" }}</a>
   </div>
