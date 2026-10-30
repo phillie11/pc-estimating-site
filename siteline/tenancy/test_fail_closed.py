@@ -12,7 +12,7 @@ from django.core import mail
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef, Subquery
 from django.urls import reverse
 from django.utils import timezone
 
@@ -76,6 +76,63 @@ class FailClosedReadTests(Base):
         self.assertEqual([p.name for p in qs.all()], ['Alpha secret job'])  # still filtered to A
         with org_context(self.org_b), self.assertRaises(PermissionError):
             list(qs.all())
+
+
+class GuardBypassTests(Base):
+    """
+    Regression tests from the independent security review: ways a query reached
+    the database without passing through _guarded().
+    """
+    def names(self, qs):
+        return sorted(p.name for p in qs)
+
+    def test_or_and_xor_with_a_queryset_built_without_an_org(self):
+        pre = Project.objects.filter(name__icontains='job')  # a class attribute, or built before org_context
+        with org_context(self.org_b):
+            self.assertEqual(self.names(Project.objects.filter(pk=self.pb.pk) | pre), ['Bravo job'])
+            self.assertEqual(self.names(pre | Project.objects.filter(pk=self.pb.pk)), ['Bravo job'])
+            self.assertEqual(self.names(pre & Project.objects.all()), ['Bravo job'])
+            self.assertEqual(self.names(Project.objects.none() ^ pre), ['Bravo job'])
+
+    def test_combining_with_all_objects_is_refused(self):
+        with org_context(self.org_b):
+            for combine in (lambda: Project.objects.all() | Project.all_objects.all(),
+                            lambda: Project.objects.all() & Project.all_objects.all(),
+                            lambda: Project.objects.order_by().union(Project.all_objects.order_by()),
+                            lambda: Project.objects.none().union(Project.all_objects.order_by())):
+                with self.assertRaises(PermissionError):
+                    list(combine())
+
+    def test_subquery_and_exists_built_without_an_org(self):
+        """Subquery() and Exists() copy .query and never call the queryset's own guards."""
+        name = Subquery(Project.objects.filter(pk=OuterRef('project')).values('name')[:1])
+        has_rfis = Exists(RFI.objects.filter(project=OuterRef('pk')))
+        rfi_project_names = RFI.all_objects.annotate(n=name).values_list('n', flat=True)
+        projects_with_rfis = Project.all_objects.annotate(h=has_rfis).filter(h=True).values_list('name', flat=True)
+        with self.assertRaises(TenantContextMissing):
+            list(rfi_project_names)
+        with self.assertRaises(TenantContextMissing):
+            list(projects_with_rfis)
+        with org_context(self.org_b):
+            self.assertEqual(list(rfi_project_names.all()), [None])  # Alpha's RFI; Bravo can't read its project
+            self.assertEqual(list(projects_with_rfis.all()), [])
+
+    def test_org_is_read_when_the_sql_is_compiled_not_when_it_is_built(self):
+        names = RFI.all_objects.annotate(
+            n=Subquery(Project.objects.filter(pk=OuterRef('project')).values('name')[:1])).values_list('n', flat=True)
+        qs = Project.objects.all()
+        with org_context(self.org_a):
+            self.assertEqual(list(names.all()), ['Alpha secret job'])
+            self.assertEqual(self.names(qs.all()), ['Alpha secret job'])
+        with org_context(self.org_b):
+            self.assertEqual(list(names.all()), [None])
+            self.assertEqual(self.names(qs.all()), ['Bravo job'])
+
+    def test_subquery_built_in_one_org_cannot_run_in_another(self):
+        with org_context(self.org_a):
+            name = Subquery(Project.objects.filter(pk=OuterRef('project')).values('name')[:1])
+        with org_context(self.org_b), self.assertRaises(PermissionError):
+            list(RFI.all_objects.annotate(n=name).values_list('n', flat=True))
 
 
 class EscapeHatchTests(Base):

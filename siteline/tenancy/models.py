@@ -3,8 +3,9 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import FullResultSet, ImproperlyConfigured
 from django.db import models, transaction
+from django.db.models.sql.where import AND
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -267,20 +268,69 @@ class TeamInvite(models.Model):
 # Base class for every model that belongs to one organisation
 # ---------------------------------------------------------------------------
 
+class TenantFilter(models.Expression):
+    """
+    `organization_id = <the current organisation>`, decided when the SQL is
+    compiled rather than when the queryset is built. Every TenantModel.objects
+    queryset carries one in its WHERE clause, so whatever Django does with the
+    query afterwards (`|`, `&`, `^`, union(), Subquery(), Exists()) the filter
+    goes with it and is applied wherever and whenever the SQL finally runs.
+
+    Pinned to an organisation (made while one was current) it keeps to that one
+    and raises PermissionError inside another. Unpinned it uses the current
+    organisation, matches everything inside unscoped(), and raises
+    TenantContextMissing with neither.
+    """
+    conditional = True
+    output_field = models.BooleanField()
+
+    def __init__(self, column, org_pk=None):
+        super().__init__()
+        self.column, self.org_pk = column, org_pk
+
+    def get_source_expressions(self):
+        return [self.column]
+
+    def set_source_expressions(self, exprs):
+        (self.column,) = exprs
+
+    def as_sql(self, compiler, connection):
+        if compiler.query.is_empty():
+            raise FullResultSet  # .none(): the query matches nothing anyway and is never sent
+        model = self.column.target.model.__name__
+        current = get_current_org()
+        if self.org_pk is not None:
+            if current is not None and current.pk != self.org_pk:
+                raise PermissionError(f'{model} query built for one organisation run inside another.')
+            org_pk = self.org_pk
+        elif current is not None:
+            org_pk = current.pk
+        elif is_unscoped():
+            raise FullResultSet  # no condition: every company
+        else:
+            raise TenantContextMissing(
+                f'{model}.objects queried with no current organisation. '
+                'Wrap the code in org_context(org), or use unscoped() / all_objects if it really means every company.'
+            )
+        sql, params = compiler.compile(self.column)
+        return f'{sql} = %s', (*params, org_pk)
+
+
 class TenantQuerySet(models.QuerySet):
     """
     Fails closed. A queryset made while an organisation is current is filtered
-    to it there and then. One made with none (a form field's class-level
-    queryset, a command that forgot org_context) is filtered to whichever
-    organisation is current when it runs, and raises TenantContextMissing if
-    there is none, unless it is inside unscoped(). Every way Django runs a
-    query (iteration, count, exists, aggregate, update, delete, pk__in=qs)
-    goes through _guarded() first.
+    to it. One made with none (a form field's class-level queryset, a command
+    that forgot org_context) is filtered to whichever organisation is current
+    when it runs, and raises TenantContextMissing if there is none, unless it
+    is inside unscoped(). The filter is a TenantFilter in the WHERE clause, so
+    it survives combining querysets and Subquery()/Exists(); _guarded() runs
+    first on every way Django runs a query (iteration, count, exists,
+    aggregate, update, delete, pk__in=qs) to fail early with a clear message.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._tenant_org = None        # the organisation this queryset is filtered to
+        self._tenant_org = None        # the organisation this queryset is pinned to
         self._tenant_unscoped = False  # made inside unscoped()
 
     def _clone(self):
@@ -289,17 +339,18 @@ class TenantQuerySet(models.QuerySet):
         return c
 
     def _scoped(self):
-        """Called by the manager: filter to the current organisation now, if there is one."""
+        """Called by the manager: pin to the current organisation if there is one, else filter when run."""
         org = get_current_org()
-        if org is not None:
-            qs = self.filter(organization=org)
-            qs._tenant_org = org
-            return qs
-        self._tenant_unscoped = is_unscoped()
+        if org is None and is_unscoped():
+            self._tenant_unscoped = True
+            return self
+        column = models.F('organization_id').resolve_expression(self.query, allow_joins=False)
+        self.query.where.add(TenantFilter(column, org.pk if org else None), AND)
+        self._tenant_org = org
         return self
 
     def _guarded(self):
-        """This queryset, or a copy filtered to the current organisation, safe to run."""
+        """Raise now if this queryset may not run here; the TenantFilter does the filtering."""
         current = get_current_org()
         if self._tenant_org is not None:
             if current is not None and current.pk != self._tenant_org.pk:
@@ -312,20 +363,45 @@ class TenantQuerySet(models.QuerySet):
                 f'{self.model.__name__}.objects queried with no current organisation. '
                 'Wrap the code in org_context(org), or use unscoped() / all_objects if it really means every company.'
             )
-        if self.query.combinator:
-            raise TenantContextMissing(f'Build {self.model.__name__} union/intersection queries inside org_context().')
-        qs = self._chain()
-        qs.query.add_q(models.Q(organization=current))
-        qs._tenant_org = current
-        return qs
+        return self
+
+    # --- combining ----------------------------------------------------------
+    # Each operand's own TenantFilter travels into the combined SQL. An
+    # all_objects queryset has none, so it would read every company.
+    def _check_operands(self, *others):
+        for other in others:
+            if isinstance(other, models.QuerySet) and not isinstance(other, TenantQuerySet):
+                raise PermissionError(f'Combine {self.model.__name__}.objects querysets only with each other, '
+                                      'not with all_objects.')
+
+    def __or__(self, other):
+        self._check_operands(other)
+        return super().__or__(other)
+
+    def __and__(self, other):
+        self._check_operands(other)
+        return super().__and__(other)
+
+    def __xor__(self, other):
+        self._check_operands(other)
+        return super().__xor__(other)
+
+    def union(self, *other_qs, all=False):
+        self._check_operands(*other_qs)
+        return super().union(*other_qs, all=all)
+
+    def intersection(self, *other_qs):
+        self._check_operands(*other_qs)
+        return super().intersection(*other_qs)
+
+    def difference(self, *other_qs):
+        self._check_operands(*other_qs)
+        return super().difference(*other_qs)
 
     # --- reads ------------------------------------------------------------
     def _fetch_all(self):
         if self._result_cache is None:
-            qs = self._guarded()
-            if qs is not self:
-                qs._fetch_all()
-                self._result_cache, self._prefetch_done = qs._result_cache, qs._prefetch_done
+            self._guarded()
         super()._fetch_all()
 
     def iterator(self, chunk_size=None):
@@ -356,10 +432,11 @@ class TenantQuerySet(models.QuerySet):
     # --- writes -----------------------------------------------------------
     def update(self, **kwargs):
         qs = self._guarded()
+        org = qs._tenant_org or get_current_org()
         for key in ('organization', 'organization_id'):
             if key in kwargs:
                 target = getattr(kwargs[key], 'pk', kwargs[key])
-                if qs._tenant_org is not None and target != qs._tenant_org.pk:
+                if org is not None and target != org.pk:
                     raise PermissionError('Refusing to move rows into a different organisation.')
         return super(TenantQuerySet, qs).update(**kwargs)
 
