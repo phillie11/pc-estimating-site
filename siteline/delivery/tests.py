@@ -233,17 +233,22 @@ class SubVariationTests(SitePortalBase):
 
 
 class DrawingIssueTests(SitePortalBase):
-    def upload(self, visibility):
+    # Issuing is now a transmittal (documents app): "Issue to usual recipients" sends one, and with
+    # no distribution rules or earlier transmittals the usual recipients are the client, consultants
+    # and subcontractors, as before. A plain upload notifies nobody.
+    def upload(self, visibility, issue=False):
         self.login(self.pm)
         self.client.post(self.url('document_list', self.org_a, self.pa.pk), {
-            'title': 'Bar elevations', 'reference': 'A-201', 'category': 'DRAWING', 'visibility': visibility,
-            'file': pdf('A-201.pdf'), 'revision': 'C02'})
+            'title': 'Bar elevations', 'reference': 'A-201', 'accept_naming': 'on', 'category': 'DRAWING',
+            'visibility': visibility, 'file': pdf('A-201.pdf'), 'revision': 'C02',
+            **({'issue_now': 'on', 'purpose': 'CONSTRUCTION'} if issue else {})})
 
     def test_shared_issue_notifies_collaborators(self):
-        self.upload(Document.VIS_SHARED)
+        self.upload(Document.VIS_SHARED, issue=True)
         for u in (self.sub1, self.sub2, self.cli):
             self.assertTrue(Notification.all_objects.filter(user=u, title__contains='A-201').exists())
 
-    def test_internal_upload_notifies_nobody(self):
+    def test_upload_without_issuing_notifies_nobody(self):
+        self.upload(Document.VIS_SHARED)
         self.upload(Document.VIS_INTERNAL)
         self.assertFalse(Notification.all_objects.filter(title__contains='A-201').exists())
