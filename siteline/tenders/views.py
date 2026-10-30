@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from directory.models import Package
-from projects.access import get_project, is_internal
+from projects.access import get_project, is_internal, posted_id
 from projects.files import serve
 from projects.models import Document
 from projects.views import project_context
@@ -81,7 +81,7 @@ def _bidder(request, project):
                 messages.success(request, 'Thanks for letting them know.')
                 return redirect('dashboard', org_slug=request.org.slug)
         if action == 'ack':
-            addendum = get_object_or_404(Addendum, project=project, pk=request.POST.get('addendum'))
+            addendum = get_object_or_404(Addendum, project=project, pk=posted_id(request, 'addendum'))
             AddendumReceipt.objects.get_or_create(addendum=addendum, subcontractor_id=sub_id,
                                                   defaults={'user': request.user})
             return redirect(url + '#addenda')
@@ -149,7 +149,7 @@ def _internal(request, project):
                 messages.success(request, f'{a.reference} issued to everyone pricing.')
                 return redirect(url + '#addenda')
         elif action == 'answer':
-            q = get_object_or_404(TenderQuery, project=project, pk=request.POST.get('query'))
+            q = get_object_or_404(TenderQuery, project=project, pk=posted_id(request, 'query'))
             form = AnswerForm(request.POST, instance=q)
             if form.is_valid():
                 was_published = TenderQuery.objects.get(pk=q.pk).published

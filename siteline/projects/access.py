@@ -23,6 +23,7 @@ subcontractor; an unsuccessful or declined bidder loses access.
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 
 from tenancy.models import Membership
@@ -90,6 +91,14 @@ def get_project(request, pk, allow_bidder=False, allow_archived_write=False):
     if is_bidder(request) and not allow_bidder:
         raise PermissionDenied
     return project
+
+
+def posted_id(request, name):
+    """The id a form posted as `name` (which row to act on); anything but a positive whole number is a 404."""
+    value = request.POST.get(name, '')
+    if not value.isdigit() or not value.isascii():
+        raise Http404
+    return int(value)
 
 
 def can_see_archived(request):

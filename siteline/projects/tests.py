@@ -931,3 +931,25 @@ class ArchivedVisibilityTests(Base):
         self.client.post(self.url('project_archive', self.org_a, self.pa.pk))
         self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
         self.assertEqual((Notification.all_objects.count(), mail.outbox), (before, []))
+
+
+class PostedIdTests(Base):
+    """An id posted from a form that isn't a number is a 404, not a server error."""
+
+    def test_non_numeric_ids_are_not_found(self):
+        with org_context(self.org_a):
+            doc = Document.objects.create(project=self.pa, title='GA plan')
+            bid = Project.objects.create(name='Shopfit bid', stage=Project.STAGE_TENDERING)
+        self.login(self.alice)
+        posts = [
+            (self.url('document_detail', self.org_a, self.pa.pk, doc.pk), {'action': 'make_current', 'revision': 'abc'}),
+            (self.url('project_team', self.org_a, self.pa.pk), {'action': 'remove', 'member': '1 OR 1=1'}),
+            (self.url('project_team', self.org_a, self.pa.pk), {'action': 'revoke', 'invite': 'x'}),
+            (self.url('project_team', self.org_a, self.pa.pk), {'action': 'resend', 'invite': ''}),
+            (self.url('tender', self.org_a, bid.pk), {'action': 'answer', 'query': 'x'}),
+            (self.url('package_list', self.org_a, bid.pk), {'action': 'note', 'package': 'x'}),
+            (self.url('sub_detail', self.org_a, self.sub_a.pk), {'action': 'delete_contact', 'contact': 'x'}),
+            (self.url('trades', self.org_a), {'action': 'delete', 'trade': 'x'}),
+        ]
+        for url, data in posts:
+            self.assertEqual(self.client.post(url, data).status_code, 404, (url, data))

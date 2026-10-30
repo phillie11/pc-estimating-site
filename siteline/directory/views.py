@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from projects.access import get_project
+from projects.access import get_project, posted_id
 from projects.models import ProjectMember
 from projects.views import project_context
 from tenancy.models import log_activity
@@ -132,7 +132,7 @@ def sub_detail(request, org_slug, pk):
                 c.save()
                 return redirect(sub)
         elif request.POST.get('action') == 'delete_contact':
-            SubcontractorContact.objects.filter(subcontractor=sub, pk=request.POST.get('contact')).delete()
+            SubcontractorContact.objects.filter(subcontractor=sub, pk=posted_id(request, 'contact')).delete()
             return redirect(sub)
     return render(request, 'directory/sub_detail.html', {
         'sub': sub, 'contacts': sub.contacts.all(), 'contact_form': contact_form,
@@ -146,7 +146,7 @@ def trades(request, org_slug):
     form = TradeForm(request.POST or None)
     if request.method == 'POST':
         if request.POST.get('action') == 'delete':
-            Trade.objects.filter(pk=request.POST.get('trade')).delete()
+            Trade.objects.filter(pk=posted_id(request, 'trade')).delete()
             return redirect('trades', org_slug=org_slug)
         if form.is_valid():
             name = form.cleaned_data['name'].strip()
@@ -183,7 +183,7 @@ def package_list(request, org_slug, pk):
                 return back
         else:
             pkg = get_object_or_404(Package.objects.select_related('subcontractor', 'trade', 'project'),
-                                    project=project, pk=request.POST.get('package'))
+                                    project=project, pk=posted_id(request, 'package'))
             if action == 'appoint' and pkg.status in (Package.ENQUIRY, Package.QUOTED):
                 services.appoint(request, pkg)
                 messages.success(request, f'{pkg.subcontractor} appointed for {pkg.trade or "the package"}. '
