@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'directory',
     'tenders',
     'delivery',
+    'jobs',
 ]
 
 MIDDLEWARE = [
@@ -228,6 +229,19 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', f'{PRODUCT_NAME} <no-reply@example.com>')
+# 1: send each email during the request, as before (the worker only retries failures).
+# 0: queue it in the outbox for `manage.py run_worker`. Only set 0 where a worker is running.
+EMAIL_SYNC = env_bool('EMAIL_SYNC', True)
+
+# Background jobs (jobs/__init__.py). JOBS_RUN_INLINE=1 runs each job in the web process
+# once its transaction commits, for local development without a worker.
+JOBS_RUN_INLINE = env_bool('JOBS_RUN_INLINE', False)
+JOBS_MAX_ATTEMPTS = int(env('JOBS_MAX_ATTEMPTS', '5'))
+JOBS_BACKOFF_BASE = int(env('JOBS_BACKOFF_BASE', '30'))     # seconds before the first retry, doubling after
+JOBS_BACKOFF_MAX = int(env('JOBS_BACKOFF_MAX', '3600'))
+JOBS_LOCK_TIMEOUT = int(env('JOBS_LOCK_TIMEOUT', '900'))    # a running job older than this is assumed lost
+JOBS_POLL_SECONDS = float(env('JOBS_POLL_SECONDS', '5'))
+JOBS_KEEP_DAYS = int(env('JOBS_KEEP_DAYS', '30'))           # finished jobs and sent emails are deleted after this
 
 # Stripe
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', '')
