@@ -193,18 +193,27 @@ module "app" {
   worker_command       = var.worker_command
   worker_desired_count = var.worker_desired_count
   enable_schedules     = var.enable_schedules
-  scheduled_jobs = {
-    # The same jobs as the PythonAnywhere Tasks tab (siteline/README.md steps 8 and 9.12).
-    # The 02:00 mysqldump backup is not needed: RDS takes automated backups.
-    send-reminders = {
-      command  = ["python", "manage.py", "send_reminders"]
-      schedule = "cron(0 6 * * ? *)" # 06:00 UTC daily
-    }
-    check-file-scans = {
-      command  = ["python", "manage.py", "check_file_scans"]
-      schedule = "cron(0 * * * ? *)" # hourly, on the hour
-    }
-  }
+  scheduled_jobs = merge(
+    {
+      # The same jobs as the PythonAnywhere Tasks tab (siteline/README.md steps 8 and 9.12).
+      # The 02:00 mysqldump backup is not needed: RDS takes automated backups.
+      send-reminders = {
+        command  = ["python", "manage.py", "send_reminders"]
+        schedule = "cron(0 6 * * ? *)" # 06:00 UTC daily
+      }
+      check-file-scans = {
+        command  = ["python", "manage.py", "check_file_scans"]
+        schedule = "cron(0 * * * ? *)" # hourly, on the hour
+      }
+    },
+    # With no worker service, an hourly burst still retries failed emails and prunes old jobs
+    { for k, job in {
+      run-worker-burst = {
+        command  = ["python", "manage.py", "run_worker", "--burst"]
+        schedule = "cron(30 * * * ? *)" # hourly, at half past
+      }
+    } : k => job if var.worker_desired_count == 0 },
+  )
 
   log_retention_days      = var.log_retention_days
   alb_deletion_protection = var.alb_deletion_protection
@@ -239,6 +248,9 @@ module "app" {
       EMAIL_PORT         = "587"
       EMAIL_USE_TLS      = "1"
       DEFAULT_FROM_EMAIL = local.from_email
+
+      # With a worker running, emails go through the outbox; without one, they're sent during the request
+      EMAIL_SYNC = var.worker_desired_count > 0 ? "0" : "1"
 
       STRIPE_PRICE_STARTER  = var.stripe_price_starter
       STRIPE_PRICE_TEAM     = var.stripe_price_team
