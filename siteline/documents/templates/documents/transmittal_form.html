@@ -1,0 +1,11 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<p class="small"><a href="{% if transmittal %}{{ transmittal.get_absolute_url }}{% else %}{% url 'transmittal_list' org.slug project.pk %}{% endif %}">← {% if transmittal %}{{ transmittal.reference }}{% else %}Transmittals{% endif %}</a></p>
+<div class="card" style="max-width:900px"><div class="card-head"><h2>{% if transmittal %}Edit draft {{ transmittal.reference }}{% else %}New transmittal{% endif %}</h2></div><div class="card-body">
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+    <p class="small dim">Issuing shares the ticked revisions with the people and companies ticked, notifies them, and asks each to acknowledge receipt. It can't be undone; a transmittal stays on record once issued.</p>
+    <div class="form-actions"><button class="btn" name="then" value="draft">Save draft</button><button class="btn primary" name="then" value="issue">Issue now</button></div>
+  </form>
+</div></div>
+</div>{% endblock %}

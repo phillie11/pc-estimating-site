@@ -1,0 +1,39 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if is_internal and transmittal.status == 'DRAFT' %}
+  <a class="btn" href="{% url 'transmittal_edit' org.slug project.pk transmittal.pk %}">Edit</a>
+  <form method="post" data-confirm="Cancel this draft? It stays on record as cancelled.">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button class="btn">Cancel draft</button></form>
+  <form method="post" data-confirm="Issue {{ transmittal.reference }}? The recipients will be notified and can open these revisions.">{% csrf_token %}<input type="hidden" name="action" value="issue"><button class="btn primary">Issue now</button></form>
+{% endif %}{% if transmittal.is_sent %}{% if transmittal.sheet %}<a class="btn" href="{% url 'transmittal_sheet' org.slug project.pk transmittal.pk %}">{% icon 'download' %} Issue sheet</a>{% else %}<span class="small dim">Issue sheet being prepared…</span>{% endif %}{% endif %}{% endblock %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<p class="small"><a href="{% url 'transmittal_list' org.slug project.pk %}">← Transmittals</a></p>
+{% if can_acknowledge %}<div class="banner"><span>{{ org.name }} has sent you these documents. Please confirm you've received them.</span>
+  <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="acknowledge"><button class="btn">Confirm receipt</button></form></div>{% endif %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2><span class="mono">{{ transmittal.reference }}</span> · {{ transmittal.title }}</h2>{% badge transmittal.get_status_display transmittal.status_tone %}</div>
+    <div class="card-body">
+      <dl class="parts">
+        <div><dt>Purpose</dt><dd>{{ transmittal.get_purpose_display }}</dd></div>
+        <div><dt>Issued</dt><dd>{{ transmittal.issued_at|date:"j M Y H:i"|default:"Not yet" }}</dd></div>
+        <div><dt>By</dt><dd>{{ transmittal.issued_by.full_name|default:"—" }}</dd></div>
+        <div><dt>Acknowledge by</dt><dd>{{ transmittal.due_date|date:"j M Y"|default:"—" }}</dd></div>
+      </dl>
+      {% if transmittal.cover_note %}<p style="margin-top:12px;white-space:pre-line">{{ transmittal.cover_note }}</p>{% endif %}
+    </div>
+    <div class="table-wrap"><table class="t"><thead><tr><th>Number</th><th>Title</th><th>Rev</th><th>Suit.</th><th></th></tr></thead><tbody>
+    {% for i in items %}<tr><td class="ref nowrap">{{ i.reference|default:i.revision.document.reference|default:"—" }}</td>
+      <td><a href="{% url 'revision_detail' org.slug project.pk i.revision.document_id i.revision_id %}">{{ i.title|default:i.revision.document.title }}</a>
+        {% if i.revision.newer_hidden %}<span class="sub small dim">A newer revision is being prepared</span>{% elif i.revision.is_superseded %}<span class="sub">{% badge 'Superseded' 'warn' %}{% if i.revision.newer %} by {{ i.revision.newer.revision }}{% endif %}</span>{% elif i.revision.is_withdrawn %}<span class="sub">{% badge 'Withdrawn' 'bad' %}</span>{% endif %}</td>
+      <td class="mono">{{ i.revision_code|default:i.revision.revision }}</td><td class="mono">{{ i.suitability|default:i.revision.suitability|default:"—" }}</td>
+      <td class="num">{% if is_internal or not i.revision.is_withdrawn %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk i.revision.document_id i.revision_id %}" aria-label="Download">{% icon 'download' %}</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="5"><div class="empty left">No documents on this transmittal yet. {% if is_internal and transmittal.status == 'DRAFT' %}<a href="{% url 'transmittal_edit' org.slug project.pk transmittal.pk %}">Add some</a>.{% endif %}</div></td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Recipients</h2>{% if transmittal.status == 'ISSUED' %}<span class="small dim">{{ pending|length }} still to confirm</span>{% endif %}</div>
+    {% if recipients %}<ul class="list">{% for r in recipients %}<li><span class="grow">{{ r.name }}{% if r.is_company %} <span class="small dim">(company)</span>{% endif %}<br>
+      <span class="small dim">{% if r.acknowledged_at %}Received {{ r.acknowledged_at|date:"j M Y, H:i" }}{% if r.acknowledged_by %} · {{ r.acknowledged_by.full_name }}{% endif %}{% if r.acknowledged_note %} · {{ r.acknowledged_note }}{% endif %}{% elif transmittal.is_sent %}Not confirmed yet{% else %}Will be sent on issue{% endif %}</span></span>
+      {% if is_internal and transmittal.status == 'ISSUED' and not r.acknowledged_at %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="record_receipt"><input type="hidden" name="recipient" value="{{ r.pk }}"><input type="hidden" name="note" value="Recorded by {{ user.full_name }}"><button class="btn sm">Record receipt</button></form>{% endif %}</li>{% endfor %}</ul>
+    {% else %}<div class="empty left">Nobody yet. {% if is_internal and transmittal.status == 'DRAFT' %}<a href="{% url 'transmittal_edit' org.slug project.pk transmittal.pk %}">Add recipients</a>.{% endif %}</div>{% endif %}
+  </div>
+</div>
+</div>{% endblock %}
