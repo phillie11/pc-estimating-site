@@ -42,7 +42,12 @@ class Subcontractor(TenantModel):
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=40, blank=True)
     address = models.CharField(max_length=300, blank=True)
-    regions = models.CharField('Regions covered', max_length=200, blank=True, help_text='e.g. North West, Midlands')
+    # Which UK regions they work in: codes from directory.regions.REGION_CHOICES ('UK' = nationwide).
+    # A JSON list rather than a many-to-many so it needs no extra table; filtered in Python.
+    region_codes = models.JSONField('Regions covered', default=list, blank=True)
+    # Free text from before regions were a list (kept as typed), or anything the list can't say
+    regions = models.CharField('Region notes', max_length=200, blank=True,
+                               help_text='Anything the list above does not cover, e.g. "M62 corridor only".')
     website = models.URLField(blank=True)
     rating = models.PositiveSmallIntegerField(null=True, blank=True, choices=[(i, f'{i} / 5') for i in range(1, 6)])
     public_liability_expiry = models.DateField(null=True, blank=True)
@@ -82,6 +87,11 @@ class Subcontractor(TenantModel):
     def restore(self):
         self.archived_at, self.archived_by = None, None
         self.save(update_fields=['archived_at', 'archived_by', 'updated_at'])
+
+    @property
+    def region_labels(self):
+        from .regions import labels
+        return labels(self.region_codes or [])
 
     @property
     def next_insurance_expiry(self):
@@ -166,6 +176,9 @@ class Package(TenantModel):
 
     notes = models.CharField('Internal note', max_length=300, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Reminders to quote (tenders.coverage.chase): when the last one went, and how many
+    chased_at = models.DateTimeField('Last chased', null=True, blank=True)
+    chase_count = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
         ordering = ['trade__name', 'quote_value']

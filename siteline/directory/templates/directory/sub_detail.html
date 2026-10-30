@@ -21,7 +21,7 @@
       <dt>Contact</dt><dd>{{ sub.contact_name|default:"—" }}</dd>
       <dt>Email</dt><dd>{% if sub.email %}<a href="mailto:{{ sub.email }}">{{ sub.email }}</a>{% else %}—{% endif %}</dd>
       <dt>Phone</dt><dd>{{ sub.phone|default:"—" }}</dd>
-      <dt>Regions</dt><dd>{{ sub.regions|default:"—" }}</dd>
+      <dt>Regions</dt><dd>{% if sub.region_labels %}{{ sub.region_labels|join:", " }}{% else %}—{% endif %}{% if sub.regions %}<span class="sub">{{ sub.regions }}</span>{% endif %}</dd>
       {% if sub.website %}<dt>Website</dt><dd><a href="{{ sub.website }}" rel="noopener" target="_blank">{{ sub.website|cut:"https://"|cut:"http://" }}</a></dd>{% endif %}
       <dt>Rating</dt><dd>{% if sub.rating %}{{ sub.rating }} / 5{% else %}—{% endif %}</dd>
       <dt>Accreditations</dt><dd>{{ sub.accreditations|default:"—" }}</dd>
