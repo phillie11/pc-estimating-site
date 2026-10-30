@@ -34,3 +34,7 @@ output "certificate_dns_records" {
 output "transfer_bucket" {
   value = aws_s3_bucket.transfer.bucket
 }
+
+output "scheduled_job_names" {
+  value = sort(keys(var.scheduled_jobs))
+}

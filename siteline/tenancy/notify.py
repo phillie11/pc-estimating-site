@@ -1,11 +1,13 @@
 """Notifications: in-app (the bell) plus an email that links back to the portal.
 
-Email failures are logged, never shown to the user as errors.
+Emails go through the outbox (jobs/outbox.py): rendered here, stored, and sent
+by the worker with retries, or straight away while EMAIL_SYNC is on. Failures are
+logged, never shown to the user as errors.
 """
 import logging
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.db import transaction
 from django.template.loader import render_to_string
 
 logger = logging.getLogger(__name__)
@@ -23,10 +25,13 @@ def send(to, subject, template, context, org=None, reply_to=None):
     ctx = {'PRODUCT_NAME': settings.PRODUCT_NAME, 'org': org, 'SITE_URL': settings.SITE_URL, **context}
     body = render_to_string(f'email/{template}.txt', ctx)
     prefix = f'[{org.name}] ' if org else ''
+    from jobs.outbox import queue_email
     try:
-        send_mail(prefix + subject, body, settings.DEFAULT_FROM_EMAIL, recipients, fail_silently=False)
+        with transaction.atomic():  # a savepoint: a failed write mustn't break the caller's transaction
+            queue_email(prefix + subject, body, recipients, org=org,
+                        reply_to=[reply_to] if isinstance(reply_to, str) else reply_to)
     except Exception:  # noqa: BLE001 - email must never break a request
-        logger.exception('Email to %s failed (%s)', recipients, subject)
+        logger.exception('Queueing an email failed (%s, %s recipient(s))', subject, len(recipients))
 
 
 def alert(users, title, url, project=None, actor=None, org=None, email=True):

@@ -105,7 +105,7 @@ variable "worker_memory" {
 }
 
 variable "worker_desired_count" {
-  description = "0 until the background worker exists in the app"
+  description = "Background worker containers (manage.py run_worker). The siteline module sets EMAIL_SYNC=0 when this is above 0"
   type        = number
   default     = 0
 }

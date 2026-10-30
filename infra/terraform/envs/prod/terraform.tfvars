@@ -22,6 +22,6 @@ stripe_price_business = ""
 enable_schedules = false
 
 web_desired_count    = 2
-worker_desired_count = 0 # the background worker does not exist in the app yet
+worker_desired_count = 0 # set 1 once a deploy includes the jobs app (run_worker); see infra/README.md "Turn the background worker on"
 db_instance_class    = "db.t4g.small"
 db_multi_az          = false # true adds a standby database in a second zone (about +£25/month)
