@@ -6,7 +6,9 @@ bind = f"0.0.0.0:{os.environ.get('PORT', '8000')}"
 # Sized for a 0.5 vCPU / 1 GB Fargate task: 2 processes x 4 threads.
 workers = int(os.environ.get('GUNICORN_WORKERS', '2'))
 threads = int(os.environ.get('GUNICORN_THREADS', '4'))
-worker_tmp_dir = '/dev/shm'
+# Workers' heartbeat files, in memory: the gunicorn docs' advice for containers, where /tmp is on the
+# overlay disk and a slow write gets workers killed. Nothing secret is written here.
+worker_tmp_dir = '/dev/shm'  # nosec B108
 
 timeout = int(os.environ.get('GUNICORN_TIMEOUT', '60'))
 graceful_timeout = 30

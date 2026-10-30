@@ -21,7 +21,7 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 |---|---|
 | **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won, with a "Move to" control on every card for touch and keyboard users (moving to Won still opens the handover). Weighted pipeline, 12-month win rate, tender return deadlines. |
 | **Subcontract tenders (portal)** | Invite subcontractors to price a trade package. They get a notification with a link, never attachments: scope, tender documents, addenda (with acknowledgement tracking) and tender queries are all in the portal, and they submit quotes there. Compare quotes side by side, appoint one, and the rest are told and lose access. Losing the main tender closes every open package. |
-| **Live-job portal for subcontractors** | Appointed subcontractors submit RAMS for review (approve, approve with comments, or revise and resubmit, with revision history) and submit variations, which the projects team approves in full or part, rejects, or passes straight on to the client as a draft variation. Each subcontractor sees only their own. Issuing or revising a shared drawing notifies the client and subcontractors. The overview shows each subcontract's order value, approved variations and RAMS status. |
+| **Live-job portal for subcontractors** | Appointed subcontractors submit RAMS for review (approve, approve with comments, or revise and resubmit, with revision history) and submit variations, which the projects team approves in full or part, rejects, or passes straight on to the client as a draft variation. Each subcontractor sees only their own. Drawings reach them on transmittals (see Documents), and they acknowledge receipt in the portal. The overview shows each subcontract's order value, approved variations and RAMS status. |
 | **Notifications** | A bell for everyone, staff and external. Every alert (tender invitations, addenda, queries, quotes, RFI and task assignments, variation decisions) is an in-app notification plus a short email linking to the item. Reply in the portal, not by email. |
 | **Tender analytics** | Win rate by number and by value, results by month, and breakdowns by sector, size, client, lead source and project lead. Recent losses with feedback. 12 months, 24 months or all time. |
 | **Programmes** | A Gantt chart per project: activities with dates, progress, milestones and a "follows" link that flags anything out of sequence or behind. Lines can be internal or shared with the client and subcontractors. The Workload page has two company-wide Gantt charts: **Tenders** (every open bid from enquiry received to tender return, with site visit, queries close and subcontractor quotes due as milestones, filterable by estimator) and **Secured work** (every won and live job from start on site to completion). |
@@ -31,7 +31,7 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 | **Variations** | Draft → submit to client → client approves or rejects in the portal (with PO ref). Linked to RFIs and change events. Extension of time requested and granted. CSV export. |
 | **Commercial tab (staff only)** | Contract set-up per job (JCT MW/MWD/IC/ICD/DB/SBC 2016 or 2024, NEC4 ECC Options A–F, bespoke): damages, retention and release, defects period, payment terms pre-filled from the form's standard terms (advisory: check your contract), the client's contract administrator. Words follow the form (`contracts/vocabulary.py`). Change register: early warnings (EW-001) and change events (CE-001) priced as cost and revenue lines, linked to the RFI or early warning they came from, the client variation they become and the sub variations they create. Advisory NEC4 clocks (8-week notification time bar, 3-week quotation, 2-week reply, deemed acceptance) and a JCT notice-of-delay prompt. Company-wide change register at `/changes/`. |
 | **Snags & tasks** | Assign to staff or subcontractors; subs mark snags "ready for inspection" from their phone. |
-| **Documents** | Revision-controlled drawings, specs, RAMS. The current revision is the highest one (P01 → P10 → C01 → C02), not the last uploaded: filing an old P03 after C01 doesn't replace it unless you tick "make current". Internal or shared per document. Externals can upload (e.g. RAMS). |
+| **Documents** | A drawing register numbered to BS EN ISO 19650-2 (UK National Annex), with per-project code lists, revision status (work in progress, shared, published, superseded, withdrawn) and suitability. The current revision is the highest one (P01 → P10 → C01 → C02), not the last uploaded; superseded revisions stay viewable with a "Superseded by P03" banner. Bulk upload reads numbers and revisions from file names and previews each file before it's added. Numbered transmittals (TR-001) issue revisions to people or companies, who acknowledge receipt; that is what shares revisions with externals. CSV and PDF issue sheets. Externals can upload (e.g. RAMS). See [Document control](#document-control). |
 | **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. A subcontractor with quotes, RAMS or variations on file is archived rather than deleted. |
 | **Billing** | 14-day trial, then Stripe subscription (Starter / Team / Business). Plan limits on staff seats and active projects (archived projects don't count). External users are never charged. |
 | **Daily digest** | Overdue RFIs, tender returns in 3 days, insurance expiring, trial ending. |
@@ -87,6 +87,16 @@ This is the part to keep intact as you add features.
 DEBUG=1 python manage.py test
 ```
 
+## Document control
+
+The Documents tab of a project (`documents/`, with `projects.Document` and `projects.DocumentRevision`).
+
+- **Numbering.** `documents/naming.py` parses and checks ISO 19650 numbers (`SLN-ABC-ZZ-02-DR-A-1001`: project, originator, volume, level, type, role, number) as pure functions. Revision and suitability are separate fields on each revision. Each project has code lists (`CodeList`), starting from the UK defaults in `naming.DEFAULT_CODES` until someone changes one, a project code and a file-name pattern (`RegisterSettings`). A number that doesn't conform is a warning: staff tick "use this number anyway", externals' uploads are flagged for staff to check ("Numbers to check" on the register).
+- **Statuses.** Making a revision current marks the previous one `SUPERSEDED` (with `superseded_by`); filing an older one marks it superseded by the current one; going back to an earlier revision supersedes the newer; withdrawing the current one hands over to the latest left. A revision's status otherwise follows its suitability (S0 work in progress, S1-S4 shared, A/B/CR published).
+- **Who sees what.** `documents/access.py`. Staff see everything. An external sees a revision once it was on an issued transmittal to them or their company, or when its document is shared with their role and the revision has been shared at some point (`DocumentRevision.shared_at`, set when it leaves work in progress or is transmitted, and never cleared). So a revision that was only ever work in progress stays internal even after it is superseded or withdrawn. Documents shared before transmittals existed keep working (projects migration 0013 marked their revisions shared). If a revision was superseded by one the external hasn't been issued, they see "A newer revision is being prepared", not its number. Externals can see that a revision was withdrawn but can't download it; staff can, with a "do not use" banner. Text in PDF issue sheets is escaped before it reaches ReportLab's markup.
+- **Transmittals** (`documents.Transmittal`, `TR-`, on `core.RecordBase`). Issuing one shares its revisions, notifies the recipients, puts the ball in their court until each acknowledges (any of a company's people can acknowledge for it), and queues the PDF issue sheet (`documents.transmittal_sheet` job). "Issue to usual recipients" (on uploads, the document page and bulk upload) uses the project's distribution rules for the document's discipline, else whoever it last went to, else every client, consultant and subcontractor on the project. Transmittals are only for their recipients, so their index rows stay internal: the "Needs me" registry should read `documents.models.pending_acknowledgements(user)` for externals.
+- **Bulk upload.** Files are stored (and so virus-scanned) straight away, read against the project's pattern, and previewed as new document, new revision (and what it supersedes), older revision, conflict, already uploaded or needs details. A row can't be committed while its file is still being scanned or if the scan failed. Batches of more than 10 files get their checksum and page count from the `documents.file_facts` job, which waits for the scan. Uploads still pass through Django; direct browser-to-S3 upload is a follow-up.
+
 ## Building a new record type
 
 Every numbered, per-project register (RFIs today; variations, RAMS, sub variations, snags and documents next) sits on `core.models.RecordBase`. Why it looks the way it does, and the order the existing registers move over, is in [docs/adr/0001-core-record-base.md](docs/adr/0001-core-record-base.md). `rfis/` is the worked example: copy it.
@@ -127,6 +137,18 @@ Slow or unreliable work (sending email, for now) runs in the background from a q
 - **Password reset emails** are not queued. Django's reset form sends them itself, during the request: the person is waiting on the page for that email, it has no organisation, and a failure should show at once.
 - **Local development and tests.** Leave `EMAIL_SYNC=1` and no worker is needed; emails print to the console. `JOBS_RUN_INLINE=1` runs every job in the web process as soon as its transaction commits. Tests keep the default, so `django.core.mail.outbox` fills as before; `jobs/tests.py`, `jobs/test_outbox.py` and `jobs/test_hardening.py` (43 tests) cover the queue and the worker path with `override_settings(EMAIL_SYNC=False)`.
 
+## Sign-in security
+
+All in `security/`; the route lists are in `security/middleware.py` and `security/ratelimit.py`, so views elsewhere don't change.
+
+- **Two-factor sign-in** (an authenticator app, RFC 6238 codes). Required for workspace owners and admins and platform staff: `TwoFactorEnforcementMiddleware` sends them to *Set up two-factor sign-in* wherever they go until it's on (only sign-out and the set-up pages are open). Optional for everyone else, from *Your account*. The password step doesn't sign anyone in when two-factor is on; only the right code does. Ten single-use recovery codes, stored as salted PBKDF2 hashes and shown once. *Remember this device for 30 days* sets a signed, `HttpOnly`, `Secure` cookie tied to the user, their password hash and their authenticator, so a password change or a reset ends it. Wrong codes count towards the django-axes lockout, and ten wrong codes in a row, from anywhere, lock codes for that account until a recovery code is used or an owner resets it (both are recorded in the admin under **Security → Security events**). The QR code is drawn on the server (`segno`), and the key is shown for typing in by hand. The key being set up is kept only in that person's session until a code from it is typed, so someone else who knows the password can't read it in advance. An owner can reset a member's two-factor from *Team → Two-factor sign-in* (it's logged in Activity and the member is emailed), unless that person also works in another company's workspace or is platform staff (then only platform support can, by deleting the device in the admin).
+- **The risk of a reset.** After a reset, the next person to sign in with that member's password is asked to set up two-factor with *their* phone. So an owner should only reset after checking it's really the member asking (in person or by phone, not just by email), and the member is emailed straight away: *"Your two-factor sign-in was reset ... If this wasn't expected, contact your owner"*. If a reset wasn't expected, change the member's password before they next sign in.
+- **Step-up.** Billing, company settings, inviting staff or external collaborators, role and member changes, CSV exports and archiving, restoring or deleting a project or subcontractor need a password or code in the last 10 minutes (`STEP_UP_SECONDS`); otherwise the person is asked to confirm it's them, then sent back.
+- **Rate limits**, counted in their own table (`security.RateLimitCounter`, one atomic UPDATE per request, never culled like a cache) and answered with a "Too many tries" page (429): sign-up, password reset (per address and per email), login, invites, invite links, two-factor codes, uploads, exports, search and the Stripe webhook. IPv6 addresses count per /64. Rows for finished windows are deleted as new ones start. The site cache is the database too (`security/migrations/0002` makes its table on `migrate`, the same as `python manage.py createcachetable`).
+- **Headers**: Content-Security-Policy (scripts only from this site; `CSP_REPORT_ONLY=1` to trial a change), Permissions-Policy, `Referrer-Policy: same-origin`, `nosniff`, HSTS for a year by default when `DEBUG` is off (`SECURE_HSTS_SECONDS` overrides), and a `__Host-` session cookie. Fonts are self-hosted in `static/fonts/`, so pages load nothing from Google. `manage.py check --deploy` reports only `security.W005` and `security.W021`, both deliberate (see `config/settings.py`).
+- **The visitor's IP address** for limits and lockouts comes from `REMOTE_ADDR` unless `CLIENT_IP_HEADER` says otherwise: set `CLIENT_IP_HEADER=X-Real-IP` on PythonAnywhere. AWS needs nothing (`config/alb_wsgi.py`). **Only set it when the app can't be reached except through the proxy that sets that header**: if the server also answers directly (on its own IP address, say), anyone can send the header themselves and pick any address, dodging the limits and the login lockout. `check --deploy` warns (`security.W003`) if the header is set and `ALLOWED_HOSTS` contains a bare IP address.
+- **Tests.** The test runner (`security/testing.py`) switches two-factor enforcement off so the other apps' tests can sign in with `force_login`; `security/tests/` switches it back on.
+
 ## Run it locally
 
 ```bash
@@ -146,6 +168,8 @@ Open http://localhost:8000/login/. Demo logins (password `DemoPass!2026`):
 - `sub@demo.test`: joinery subcontractor (appointed on Leeds; invited to price joinery on Kingsway)
 - `bids@demo.test`: drylining subcontractor pricing the Kingsway tender (sees only their tender)
 
+Owners and admins (`owner@demo.test`) are asked to set up two-factor sign-in with an authenticator app on first sign-in.
+
 Emails print to the console while `EMAIL_BACKEND` is unset.
 
 ## CI
@@ -156,7 +180,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every
   - The MySQL job uses the `mysql:8.0` service container with the same settings as production (`DB_ENGINE=mysql`: utf8mb4, `STRICT_TRANS_TABLES`, `CONN_MAX_AGE=280`). It connects as root so the test runner can create `test_siteline`. It installs `pkg-config`, `default-libmysqlclient-dev` and `build-essential` from apt and compiles `mysqlclient`. It also checks that the server is 8.0 with utf8mb4 and strict mode, and runs `manage.py check --database default` for the MySQL-specific checks. Warnings there are printed but do not fail the job; the one known warning, `mysql.W003` on `projects.FileScan.path`, is fine on MySQL 8.0 InnoDB. Any migration that relies on database-specific behaviour, such as `SELECT ... FOR UPDATE SKIP LOCKED`, must pass this job before it is deployed to PythonAnywhere.
   - The SQLite and PostgreSQL jobs leave `mysqlclient` out of the install because it has to be compiled and they do not use it.
   - Branch protection: once `Tests (mysql)` has passed on `main`, add it to the required status checks next to `Tests (sqlite)` and `Tests (postgres)`.
-- **Security scan**: `pip-audit` on `requirements.txt` and `requirements-dev.txt`, and `bandit -r siteline -ll`. This is non-blocking for now (`continue-on-error`) while the existing findings are fixed. Findings show up as warnings on the run.
+- **Security scan**: `pip-audit` on `requirements.txt` and `requirements-dev.txt`, and `bandit -r siteline -ll`. Both are blocking: a known advisory in any pin, or a medium-or-higher Bandit finding, fails the job. A reviewed false positive gets `# nosec <ID>` and a comment on that line saying why.
 
 Dependabot (`.github/dependabot.yml`) opens weekly update PRs for the pip requirements and for the GitHub Actions, which are pinned to commit SHAs. The `@claude` workflow (`.github/workflows/claude.yml`) only runs for repository owners, members and collaborators.
 
@@ -345,14 +369,14 @@ The move from PythonAnywhere to AWS (ECS Fargate, RDS PostgreSQL, SES) is script
 ## Running the platform
 
 - Admin is at `/<ADMIN_PATH>/` (default `platform-admin`). From there you can see every company, its plan and status, extend a trial (`trial_ends_at`) or suspend a workspace (`is_suspended`).
-- Login is rate-limited (6 failures locks that email + IP for an hour). Unlock with `python manage.py axes_reset`.
+- Login is rate-limited (6 failures locks that email + IP for an hour; wrong two-factor codes count too). Unlock with `python manage.py axes_reset`.
+- Someone who has lost their phone and their recovery codes: an owner of their workspace resets it from *Team → Two-factor sign-in*. If they also work in another company's workspace, delete their device under **Security → Two-factor devices** in the platform admin instead (after checking it's really them).
 
 ## Before you take money: open items
 
 - **Terms, privacy policy and a data processing agreement.** You'll be a data processor for your customers' client and subcontractor data under UK GDPR. Register with the ICO.
 - **Email verification** on sign-up isn't built yet. Invite links do prove the email address.
 - **Storage.** Set up cloud file storage (step 9) before customers upload drawings. PythonAnywhere's disk fills quickly.
-- **Two-factor login** isn't built yet, and security questionnaires ask about it first.
 - **Scale.** PythonAnywhere suits the first few dozen customers. If you outgrow it, the code runs unchanged on Render, Railway or a VPS with Postgres (`DB_ENGINE=postgres`), and subdomain workspaces become possible.
 
 ## Project layout
@@ -372,8 +396,10 @@ holidays/     UK bank holidays by region (bundled gov.uk-format table, `manage.p
 directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
 delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
+documents/    drawing register naming, code lists, bulk upload, transmittals, issue sheets
 docs/adr/     architecture decision records
 jobs/         background job queue and worker (run_worker, jobs_status), email outbox
+security/     two-factor sign-in, step-up, rate limits, security headers
 templates/    shared templates; app-specific ones live in each app
 static/       app.css (single stylesheet; --accent is set from each company's brand colour, --accent-ink to white or near-black, whichever contrasts more), app.js
 ```

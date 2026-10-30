@@ -17,6 +17,7 @@ from tenancy.permissions import admin_required, internal_required
 
 from .forms import ContactForm, SubcontractorForm, TradeForm
 from .models import Package, Subcontractor, SubcontractorContact, Trade
+from .regions import NATIONWIDE, REGION_CHOICES, REGION_LABELS
 
 
 def _subs(request):
@@ -32,6 +33,7 @@ def sub_list(request, org_slug):
     trade = request.GET.get('trade', '')
     status = request.GET.get('status', '')
     insurance = request.GET.get('insurance', '')
+    region = request.GET.get('region', '')
     if status == 'ARCHIVED' and request.membership.is_admin:
         qs = qs.filter(archived_at__isnull=False)
     else:
@@ -49,20 +51,26 @@ def sub_list(request, org_slug):
         soon = timezone.localdate() + timedelta(days=30)
         qs = qs.filter(Q(public_liability_expiry__lte=soon) | Q(employers_liability_expiry__lte=soon))
     qs = qs.distinct()
+    if region in REGION_LABELS:
+        # Regions are a JSON list, which SQLite can't search inside portably: filter in Python.
+        # Nationwide subcontractors count for every region.
+        qs = qs.filter(pk__in=[s.pk for s in qs.only('pk', 'region_codes')
+                               if region in (s.region_codes or []) or NATIONWIDE in (s.region_codes or [])])
     if request.GET.get('export') == 'csv':
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = 'attachment; filename="subcontractors.csv"'
         w = csv.writer(resp)
-        w.writerow(['Company', 'Trades', 'Status', 'Contact', 'Email', 'Phone', 'Regions', 'Rating',
+        w.writerow(['Company', 'Trades', 'Status', 'Contact', 'Email', 'Phone', 'Regions', 'Region notes', 'Rating',
                     'PL expiry', 'EL expiry', 'Accreditations'])
         for s in qs:
             w.writerow([s.company_name, '; '.join(t.name for t in s.trades.all()), s.get_status_display(),
-                        s.contact_name, s.email, s.phone, s.regions, s.rating or '',
+                        s.contact_name, s.email, s.phone, '; '.join(s.region_labels), s.regions, s.rating or '',
                         s.public_liability_expiry or '', s.employers_liability_expiry or '', s.accreditations])
         return resp
     return render(request, 'directory/sub_list.html', {
         'subs': qs, 'trades': Trade.objects.annotate(n=Count('subcontractors')), 'q': q, 'trade': trade,
-        'status': status, 'insurance': insurance, 'status_choices': Subcontractor.STATUS_CHOICES
+        'status': status, 'insurance': insurance, 'region': region, 'region_choices': REGION_CHOICES,
+        'status_choices': Subcontractor.STATUS_CHOICES
         + ([('ARCHIVED', 'Archived')] if request.membership.is_admin else []),
     })
 

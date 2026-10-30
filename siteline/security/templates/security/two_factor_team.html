@@ -1,0 +1,18 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Two-factor sign-in{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Two-factor sign-in</h1>
+  <p class="dim" style="margin:4px 0 0">Owners and admins must sign in with a code from their phone as well as their password. Everyone else can turn it on from Your account.</p></div>
+  <a class="btn" href="{% url 'team' org.slug %}">Back to Team</a></div>
+<div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Role</th><th>Two-factor</th><th></th></tr></thead><tbody>
+  {% for m in members %}<tr>
+    <td><strong>{{ m.user.full_name }}</strong><span class="sub">{{ m.user.email }}</span></td>
+    <td>{{ m.get_role_display }}</td>
+    <td>{% if m.has_two_factor %}{% badge "On" "good" %}{% elif m.is_admin %}{% badge "Not set up: asked at next sign-in" "warn" %}{% else %}{% badge "Off" "plain" %}{% endif %}</td>
+    <td class="num">{% if membership.is_owner and m.has_two_factor and m.user != request.user %}
+      <form method="post" action="{% url 'two_factor_reset_member' org.slug m.pk %}" class="inline"
+            data-confirm="Reset two-factor sign-in for {{ m.user.full_name }}? Their authenticator and recovery codes stop working, and they'll be emailed. Only do this if they've lost their phone and you're sure it's them asking.">{% csrf_token %}<button class="linkbtn">Reset</button></form>{% endif %}</td>
+  </tr>{% empty %}<tr><td colspan="4"><div class="empty">No one in this workspace yet. Invite staff from the Team page.</div></td></tr>{% endfor %}
+</tbody></table></div></div>
+<p class="small dim" style="margin-top:12px">Only owners can reset someone's two-factor sign-in, and every reset is recorded in Activity. Someone who also works in another company's workspace has to ask {{ PRODUCT_NAME }} support instead.</p>
+{% endblock %}

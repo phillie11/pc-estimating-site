@@ -1,0 +1,11 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Your recovery codes{% endblock %}
+{% block auth %}
+<h1>Save your recovery codes</h1>
+<p class="dim">If you lose your phone, each of these codes lets you sign in once. Print them or keep them in a password manager. <strong>This is the only time they are shown.</strong></p>
+<ul class="mono" style="list-style:none;padding:12px 16px;margin:0 0 14px;border:1px solid var(--line);border-radius:6px;columns:2;font-size:15px;line-height:1.9">
+  {% for c in codes %}<li>{{ c }}</li>{% endfor %}
+</ul>
+<p class="small dim">Lost them? Make new ones from Your account; the old ones then stop working.</p>
+<a class="btn primary block" href="{{ next }}">I've saved them, carry on</a>
+{% endblock %}

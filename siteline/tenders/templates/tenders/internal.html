@@ -10,6 +10,33 @@
 </div>
 {% if not has_packages %}<div class="card" style="margin-bottom:1.25rem"><div class="empty"><h3>No one is pricing yet</h3><p>Invite subcontractors from <a href="{% url 'package_list' org.slug project.pk %}">Packages &amp; quotes</a>. They get a notification with a link to this tender in the portal, where they find the scope, documents and addenda, ask questions and submit their quote.</p></div></div>{% endif %}
 
+{% if project.section == 'estimating' %}<div class="card" id="bid" style="margin-bottom:1.25rem"><div class="card-head"><h2>Bid or no bid</h2>
+  {% if review.result %}<span>{% badge review.get_result_display review.result_tone %} <span class="mono small">{{ review.score }}/100</span></span>{% elif review.decision == 'SKIPPED' %}{% badge 'Check skipped' 'muted' %}{% elif review.decision == 'DECLINED' %}{% badge 'Declined' 'muted' %}{% else %}{% badge 'Not scored' 'muted' %}{% endif %}</div>
+  <div class="card-body small">
+    {% if review.assessed_at %}<p style="margin:0 0 6px">Scored by {{ review.assessed_by.full_name|default:"someone who has left" }} on {{ review.assessed_at|date:"j M Y" }}{% if review.workload_bids is not None %}, when the bid lead had {{ review.workload_bids }} other open bid{{ review.workload_bids|pluralize }} at the same time{% endif %}.</p>{% endif %}
+    {% if review.contract_form or review.bidders or review.client_budget %}<p style="margin:0 0 6px">{% if review.contract_form %}{{ review.get_contract_form_display }}{% if review.amendments %} (amended){% endif %}{% endif %}{% if review.bidders %} · {{ review.bidders }} bidder{{ review.bidders|pluralize }}{% endif %}{% if review.client_budget %} · client budget {{ review.client_budget|money:currency }}{% endif %}</p>{% endif %}
+    {% if review.decline_reason %}<p style="margin:0 0 6px">Declined: {{ review.decline_summary }}</p>{% endif %}
+    <a href="{% url 'bid_gate' org.slug project.pk %}">{% if review.result %}Review or re-score{% else %}Score it now{% endif %} →</a>{% if gate_required and not review.result %} <span class="dim">(required for bids of this value)</span>{% endif %}
+  </div></div>{% endif %}
+
+{% if rows %}<div class="card" id="coverage" style="margin-bottom:1.25rem">
+  <div class="card-head"><h2>Trade coverage</h2><span class="small dim">{{ due_label }} · target {{ target }} quote{{ target|pluralize }} per trade</span></div>
+  {% include "tenders/_coverage_rows.html" %}
+  <div class="card-body">
+    {% if outstanding %}<form method="post" class="row" style="flex-wrap:wrap;gap:8px">{% csrf_token %}<input type="hidden" name="action" value="chase">
+      <button class="btn primary" {% if not to_chase %}disabled{% endif %}>Chase {{ to_chase }} still to quote</button>
+      <span class="small dim">{% if to_chase %}Each subcontractor who hasn't quoted gets one reminder in the portal and by email, linking to this tender.{% else %}Everyone still to quote was chased today.{% endif %}{% if last_chased %} Last chase {{ last_chased|date:"j M, H:i" }}.{% endif %}</span></form>
+    {% else %}<p class="small dim" style="margin:0">Nobody is outstanding: every invitation has a quote or a decline.</p>{% endif %}
+  </div>
+  {% for r in rows %}{% if r.thin %}<details class="card-body" style="border-top:1px solid var(--line-2)"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center"><strong>Suggest more for {{ r.trade_name }}</strong>&nbsp;<span class="small dim">· {{ r.short_by }} more quote{{ r.short_by|pluralize }} wanted</span></summary>
+    {% if r.suggestions %}<ul class="list">{% for s in r.suggestions %}<li><span class="grow"><a href="{{ s.get_absolute_url }}">{{ s.company_name }}</a>
+      <span class="sub">{% badge s.insurance_label s.insurance_tone %} {% if s.region_fit == 'yes' %}{% badge 'Covers this area' 'good' %}{% elif s.region_fit == 'no' %}{% badge 'Other regions' 'muted' %}{% else %}{% badge 'Regions not known' 'muted' %}{% endif %}{% if s.rating %} <span class="small dim">{{ s.rating }}/5</span>{% endif %}{% if s.region_labels %} <span class="small dim">{{ s.region_labels|join:", " }}</span>{% endif %}</span></span>
+      <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="invite_suggested"><input type="hidden" name="trade" value="{{ r.trade.pk }}"><input type="hidden" name="subcontractor" value="{{ s.pk }}"><button class="btn sm">Invite</button></form></li>{% endfor %}</ul>
+    <p class="small dim" style="margin:6px 0 0">Approved subcontractors for {{ r.trade_name }} who weren't invited, insured first. Region matching is approximate: we read the site address{% if site_regions %} (looks like {{ site_regions|join:", " }}){% endif %} against the regions each subcontractor says they cover. Invite sends them the same scope and quote date as the others.</p>
+    {% else %}<p class="small dim" style="margin:6px 0 0">No other approved subcontractors with an email address do {{ r.trade_name }}. <a href="{% url 'sub_create' org.slug %}">Add one to your supply chain</a> or approve a pending one.</p>{% endif %}
+  </details>{% endif %}{% endfor %}
+</div>{% endif %}
+
 <div class="grid split">
   <div class="stack">
     <div class="card" id="queries"><div class="card-head"><h2>Tender queries</h2></div>

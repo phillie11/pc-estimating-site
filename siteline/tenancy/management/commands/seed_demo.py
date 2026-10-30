@@ -331,6 +331,9 @@ class Command(BaseCommand):
                     content = ContentFile(demo_pdf(title, f'{ref} revision {rev}'), name=f'{ref}-{rev}.pdf')
                     d.add_revision(DocumentRevision(revision=rev, file=content, original_name=f'{ref}-{rev}.pdf',
                                                     size=content.size, uploaded_by=pm))
+            # Drawing register: ISO-numbered drawings, superseded revisions and transmittals (documents app)
+            from documents.demo import seed as seed_documents
+            seed_documents(leeds, pm, client, subu, s_join, demo_pdf)
 
             for verb, target, actor, internal in [('raised', f'{r1.reference} Bar back panelling', subu, False),
                                                   ('responded to', r3.reference, client, False),
@@ -399,5 +402,8 @@ class Command(BaseCommand):
                               (bidu, f'{add1.reference} issued: {add1.title}')]:
                 Notification.objects.create(user=u_, project=kings, title=title,
                                             url=f'/{SLUG}/projects/{kings.pk}/tender/')
+
+            from tenders.demo import seed as seed_bid_discipline
+            seed_bid_discipline(owner, est)  # bid/no-bid scores, loss reviews, coverage (tenders/demo.py)
 
         self.stdout.write(self.style.SUCCESS(f'Demo workspace ready at /{SLUG}/  (password {PASSWORD})'))

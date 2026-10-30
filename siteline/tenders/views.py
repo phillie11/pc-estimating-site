@@ -1,10 +1,14 @@
+from datetime import datetime, time
+
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from directory.models import Package
+from directory.models import Package, Subcontractor, Trade
+from directory.regions import guess_regions
+from directory.regions import labels as region_labels
 from projects.access import get_project, is_internal, posted_id
 from projects.files import serve
 from projects.models import Document
@@ -12,9 +16,9 @@ from projects.views import project_context
 from tenancy import notify
 from tenancy.models import log_activity
 
-from . import services
+from . import coverage, gate, services
 from .forms import AddendumForm, AnswerForm, DeclineForm, QueryForm, QuoteForm
-from .models import Addendum, AddendumFile, AddendumReceipt, TenderQuery
+from .models import Addendum, AddendumFile, AddendumReceipt, BidReview, TenderQuery, TenderSettings
 
 
 def _my_packages(request, project):
@@ -177,6 +181,18 @@ def _internal(request, project):
                              project=project, actor=request.user, org=request.org)
             messages.success(request, 'Tender documents updated.')
             return redirect(url + '#documents')
+        elif action == 'chase':
+            n = coverage.queue_chase(request, project)
+            if n:
+                log_activity(request, 'chased outstanding quotes', f'{n} subcontractor{"s" if n != 1 else ""}',
+                             project=project, url=url)
+                messages.success(request, f'Reminder going to {n} subcontractor{"s" if n != 1 else ""} still to quote. '
+                                          'Each is chased at most once a day.')
+            else:
+                messages.info(request, 'Everyone still to quote has already been chased today.')
+            return redirect(url + '#coverage')
+        elif action == 'invite_suggested':
+            return _invite_suggested(request, project, url)
 
     packages = list(Package.objects.filter(project=project).select_related('subcontractor', 'trade'))
     open_subs = {p.subcontractor_id for p in packages if p.is_open}
@@ -209,9 +225,45 @@ def _internal(request, project):
     for d in documents:
         cur = d.current
         d.opened_by = sorted(opened.get(cur.file.name, set())) if cur else []
+    settings = TenderSettings.for_org(request.org)
+    rows = coverage.trade_rows(project, target=settings.min_quotes, packages=packages)
+    for r in rows:
+        r.suggestions = coverage.suggest(project, r.trade) if r.thin else []
+    today = timezone.localdate()
+    start_today = timezone.make_aware(datetime.combine(today, time.min))
+    outstanding = [p for p in packages if p.status == Package.ENQUIRY and not p.submitted_at]
+    review = BidReview.objects.filter(project=project).first()
+    due = coverage.quotes_due(project, packages)
     return render(request, 'tenders/internal.html', project_context(
         request, project, 'tender', stats=stats, addenda=addenda, queries=queries, addendum_form=addendum_form,
-        documents=documents, has_packages=bool(packages)))
+        documents=documents, has_packages=bool(packages), rows=rows, target=settings.min_quotes,
+        outstanding=len({p.subcontractor_id for p in outstanding}),
+        to_chase=len({p.subcontractor_id for p in outstanding if not p.chased_at or p.chased_at < start_today}),
+        last_chased=max((p.chased_at for p in packages if p.chased_at), default=None),
+        due_label=coverage.due_label((due - today).days if due else None),
+        site_regions=region_labels(guess_regions(project.site_address)), review=review,
+        gate_required=gate.gate_required(project, review, settings)))
+
+
+def _invite_suggested(request, project, url):
+    """Invite a suggested subcontractor on the same scope and quote date as the others pricing that trade."""
+    trade = get_object_or_404(Trade, pk=posted_id(request, 'trade'))
+    sub = get_object_or_404(Subcontractor.objects.filter(archived_at__isnull=True).exclude(email='')
+                            .exclude(status=Subcontractor.STATUS_STRUCK_OFF),
+                            pk=posted_id(request, 'subcontractor'))
+    same = Package.objects.filter(project=project, trade=trade).exclude(scope='').order_by('created_at').first()
+    if same is None:
+        messages.error(request, f'Invite them from Sub quotes, with the scope for {trade}.')
+        return redirect(url + '#coverage')
+    due = same.quote_due if same.quote_due and same.quote_due >= timezone.localdate() else project.quotes_due
+    if not due or due < timezone.localdate():
+        messages.error(request, f'The quote date for {trade} has passed. Invite {sub} from Sub quotes with a new date.')
+        return redirect(url + '#coverage')
+    if services.invite(request, project, sub, trade, same.scope, due):
+        messages.success(request, f'{sub} invited to price {trade}, on the same scope, due {due:%a} {due.day} {due:%b}.')
+    else:
+        messages.info(request, f'{sub} is already invited for {trade}.')
+    return redirect(url + '#coverage')
 
 
 # ---------------------------------------------------------------------------

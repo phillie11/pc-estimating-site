@@ -1,10 +1,9 @@
 from django import forms
-from django.conf import settings
 from django.utils import timezone
 
 from .access import assignable_users, staff_users
 from .files import validate_upload
-from .models import Activity, Comment, Document, DocumentRevision, Issue, Project, ProjectInvite, ProjectMember, Task
+from .models import Activity, Comment, Issue, Project, ProjectInvite, ProjectMember, Task
 
 
 def style_widgets(form):
@@ -142,40 +141,7 @@ class IssueForm(StyledModelForm):
         return f
 
 
-class DocumentForm(StyledModelForm):
-    file = forms.FileField()
-    revision = forms.CharField(max_length=20, initial='P01')
-    notes = forms.CharField(max_length=300, required=False, label='Revision notes')
-
-    class Meta:
-        model = Document
-        fields = ['title', 'reference', 'category', 'visibility', 'tender_issue']
-
-    def __init__(self, *args, external=False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['file'].help_text = f'Max {settings.MAX_UPLOAD_MB} MB.'
-        if external:
-            del self.fields['visibility']
-            del self.fields['tender_issue']
-
-    def clean_file(self):
-        f = self.cleaned_data['file']
-        validate_upload(f)
-        return f
-
-
-class RevisionForm(forms.ModelForm):
-    make_current = forms.BooleanField(required=False, label='Make this the current revision',
-                                      help_text='Only needed for an older revision: a newer one becomes current anyway.')
-
-    class Meta:
-        model = DocumentRevision
-        fields = ['file', 'revision', 'notes']
-
-    def clean_file(self):
-        f = self.cleaned_data['file']
-        validate_upload(f)
-        return f
+# Document upload forms live in documents/forms.py
 
 
 class ProjectInviteForm(StyledModelForm):
