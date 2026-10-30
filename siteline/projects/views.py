@@ -18,8 +18,8 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required, estimating_required, internal_required
 
 from . import analytics, gantt
-from .access import (can_see_archived, can_see_variations, get_project, is_bidder, is_internal, require_internal,
-                     visible_projects)
+from .access import (can_see_archived, can_see_variations, get_project, is_bidder, is_internal, posted_id,
+                     require_internal, visible_projects)
 from .files import serve
 from .forms import (ActivityForm, AddStaffForm, CommentForm, HandoverForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
                     RevisionForm, TaskForm)
@@ -301,7 +301,7 @@ def project_edit(request, org_slug, pk):
 @admin_required
 def project_delete(request, org_slug, pk):
     """Only for a project with nothing on it, such as a lead added by mistake. Anything else is archived."""
-    project = get_project(request, pk)
+    project = get_project(request, pk, allow_archived_write=True)
     if project.has_records():
         messages.error(request, f'{project.reference} has records on it, so it can only be archived.')
         return redirect('project_edit', org_slug=org_slug, pk=pk)
@@ -321,9 +321,9 @@ def project_archive(request, org_slug, pk):
     """
     Take a project out of every list, the pipeline, workload and plan limits without
     losing its RFIs, variations, RAMS, documents, audit trail or download log.
-    Collaborators lose access; owners and admins can still open and restore it.
+    Collaborators lose access; owners and admins can still open it, read only, and restore it.
     """
-    project = get_project(request, pk)
+    project = get_project(request, pk, allow_archived_write=True)
     if request.POST.get('action') == 'restore':
         if not project.is_archived:
             return redirect(project)
@@ -429,6 +429,12 @@ def project_handover(request, org_slug, pk):
         return redirect(project)
     form = HandoverForm(request.POST or None, instance=project, org=request.org)
     if request.method == 'POST' and form.is_valid():
+        if winning and project.stage in Project.CLOSED_STAGES and not Project.plan_has_room(request.org):
+            # A lost or declined bid doesn't count against the plan; winning it would
+            messages.error(request, f'Your {request.org.plan_config["name"]} plan allows '
+                                    f'{request.org.plan_config["max_active_projects"]} active projects. '
+                                    'Close some or upgrade before winning this one.')
+            return redirect(project)
         p = form.save(commit=False)
         if winning:
             p.stage = Project.STAGE_WON
@@ -585,19 +591,19 @@ def project_team(request, org_slug, pk):
                 messages.success(request, 'Added to the project team.')
                 return redirect('project_team', org_slug=org_slug, pk=pk)
         elif action == 'remove':
-            m = get_object_or_404(ProjectMember, project=project, pk=request.POST.get('member'))
+            m = get_object_or_404(ProjectMember, project=project, pk=posted_id(request, 'member'))
             m.delete()
             log_activity(request, 'removed from project', m.user.full_name, project=project)
             messages.success(request, f'{m.user.full_name} removed from the project.')
             return redirect('project_team', org_slug=org_slug, pk=pk)
         elif action == 'revoke':
-            inv = get_object_or_404(ProjectInvite, project=project, pk=request.POST.get('invite'))
+            inv = get_object_or_404(ProjectInvite, project=project, pk=posted_id(request, 'invite'))
             inv.status = ProjectInvite.STATUS_REVOKED
             inv.save(update_fields=['status'])
             messages.success(request, 'Invite revoked.')
             return redirect('project_team', org_slug=org_slug, pk=pk)
         elif action == 'resend':
-            inv = get_object_or_404(ProjectInvite, project=project, pk=request.POST.get('invite'),
+            inv = get_object_or_404(ProjectInvite, project=project, pk=posted_id(request, 'invite'),
                                     status=ProjectInvite.STATUS_PENDING)
             send_project_invite(request, inv)
             messages.success(request, f'Invite re-sent to {inv.email}.')
@@ -834,7 +840,7 @@ def document_detail(request, org_slug, pk, doc_id):
         if not is_internal(request) and doc.created_by_id != request.user.pk:
             raise PermissionDenied
         if request.POST.get('action') == 'make_current':
-            rev = get_object_or_404(DocumentRevision, document=doc, pk=request.POST.get('revision'))
+            rev = get_object_or_404(DocumentRevision, document=doc, pk=posted_id(request, 'revision'))
             doc.set_current(rev)
             doc.save(update_fields=['updated_at'])
             log_activity(request, 'made current', f'{doc.title} rev {rev.revision}', project=project,

@@ -23,6 +23,7 @@ subcontractor; an unsuccessful or declined bidder loses access.
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 
 from tenancy.models import Membership
@@ -52,6 +53,15 @@ def visible_projects(request, include_archived=False):
     return qs.select_related('owner', 'manager')
 
 
+def openable(request):
+    """
+    Q for rows (activity, notifications) tied to no project or to one this person can open:
+    their sections only, archived ones only for owners and admins.
+    """
+    projects = visible_projects(request, include_archived=can_see_archived(request))
+    return Q(project__isnull=True) | Q(project__in=projects.values('pk'))
+
+
 def portal_projects(request):
     """Projects whose shared content (RFIs, feed) this user may see: bidders' tenders excluded."""
     qs = visible_projects(request)
@@ -60,9 +70,20 @@ def portal_projects(request):
     return qs
 
 
-def get_project(request, pk, allow_bidder=False):
-    """Fetch a project the user may see; sets request.project_member. Owners and admins can open archived ones."""
+SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
+
+
+def get_project(request, pk, allow_bidder=False, allow_archived_write=False):
+    """
+    Fetch a project the user may see; sets request.project_member. Owners and admins can open
+    archived ones, read only: archiving frees a plan slot, so work must not carry on there.
+    Every project view comes through here, so any request that could write (anything but GET
+    and HEAD) to an archived project is refused unless the view says otherwise, which only
+    archive/restore and deleting an empty project do.
+    """
     project = get_object_or_404(visible_projects(request, include_archived=can_see_archived(request)), pk=pk)
+    if project.is_archived and request.method not in SAFE_METHODS and not allow_archived_write:
+        raise PermissionDenied('This project is archived, so it is read only. Restore it to make changes.')
     request.project_member = ProjectMember.objects.filter(project=project, user=request.user) \
         .select_related('subcontractor').first()
     if not is_internal(request) and request.project_member is None:
@@ -70,6 +91,14 @@ def get_project(request, pk, allow_bidder=False):
     if is_bidder(request) and not allow_bidder:
         raise PermissionDenied
     return project
+
+
+def posted_id(request, name):
+    """The id a form posted as `name` (which row to act on); anything but a positive whole number is a 404."""
+    value = request.POST.get(name, '')
+    if not value.isdigit() or not value.isascii():
+        raise Http404
+    return int(value)
 
 
 def can_see_archived(request):

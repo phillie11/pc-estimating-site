@@ -12,8 +12,12 @@ def tenant(request):
         ]
     unread = 0
     if org is not None and membership is not None:
+        from projects.access import openable
+
+        from .context import org_context
         from .models import Notification
-        unread = Notification.all_objects.filter(organization=org, user=request.user, read_at__isnull=True).count()
+        with org_context(org):  # the same alerts the notifications page lists
+            unread = Notification.objects.filter(openable(request), user=request.user, read_at__isnull=True).count()
     # Which half of the system the sidebar shows; project and section pages override it
     section = None
     if membership is not None and membership.is_internal:

@@ -147,6 +147,10 @@ def accept_project_invite(request, token):
     if not invite.is_valid():
         return render(request, 'accounts/invite_invalid.html', status=410)
     org, project = invite.organization, invite.project
+    if project.is_archived:
+        return render(request, 'accounts/invite_invalid.html', {
+            'reason': f'{project.name} has been archived, so it is no longer open to collaborators. '
+                      f'Ask {org.name} to restore it and send a new invite if you still need access.'}, status=410)
 
     def on_accept(user):
         with transaction.atomic(), org_context(org):
