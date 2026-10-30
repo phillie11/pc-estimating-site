@@ -16,7 +16,7 @@ def flag_current(apps, schema_editor):
     """For every document, flag the highest P/C revision (P before C, numerically), or the latest upload if any code is odd."""
     DocumentRevision = apps.get_model('projects', 'DocumentRevision')
     by_doc = {}
-    for r in DocumentRevision.objects.only('pk', 'document_id', 'revision', 'uploaded_at').iterator():
+    for r in DocumentRevision._base_manager.only('pk', 'document_id', 'revision', 'uploaded_at').iterator():
         by_doc.setdefault(r.document_id, []).append(r)
     current = []
     for revisions in by_doc.values():
@@ -26,7 +26,7 @@ def flag_current(apps, schema_editor):
             best = max(revisions, key=lambda r: (r.uploaded_at, r.pk))
         current.append(best.pk)
     for i in range(0, len(current), 500):
-        DocumentRevision.objects.filter(pk__in=current[i:i + 500]).update(is_current=True)
+        DocumentRevision._base_manager.filter(pk__in=current[i:i + 500]).update(is_current=True)
 
 
 class Migration(migrations.Migration):

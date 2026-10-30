@@ -149,11 +149,11 @@ class Organization(models.Model):
 
     def active_project_count(self):
         from projects.models import Project
-        return Project.all_objects.filter(organization=self).exclude(stage__in=Project.CLOSED_STAGES).count()
+        return Project.active_count(self)  # open and not archived
 
     def can_add_project(self):
-        limit = self.plan_config['max_active_projects']
-        return limit is None or self.active_project_count() < limit
+        from projects.models import Project
+        return Project.plan_has_room(self)
 
     def next_project_number(self):
         with transaction.atomic():
