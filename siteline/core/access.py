@@ -4,6 +4,8 @@ Who may see and act on records, for code that reads RecordIndex or declares tran
 Transition predicates get (record, user) with no request, so they check roles here
 rather than through request.membership.
 """
+from django.db.models import Q
+
 from projects.access import is_internal, portal_projects
 from tenancy.models import Membership
 
@@ -79,9 +81,20 @@ def visible_index(request):
     narrower rules than visibility (a subcontractor seeing only their own sub variations)
     must not be read from here for externals until the index carries those rules; see the ADR.
     """
-    qs = RecordIndex.objects.filter(project__in=portal_projects(request))
+    projects = portal_projects(request)
+    qs = RecordIndex.objects.filter(project__in=projects)
     if not is_internal(request):
-        qs = qs.filter(visibility=VIS_SHARED)
+        # Shared rows only, and only of the types their role on that project may see (register_record_type's
+        # external_roles): a subcontractor never gets client variations, nobody external gets early warnings
+        from projects.models import ProjectMember
+
+        from .registry import record_types
+        allowed = Q(pk__in=[])
+        for project_id, role in ProjectMember.objects.filter(user=request.user, project__in=projects) \
+                .values_list('project_id', 'role'):
+            keys = [rt.key for rt in record_types() if rt.visible_to_role(role)]
+            allowed |= Q(project_id=project_id, record_type__in=keys)
+        qs = qs.filter(allowed, visibility=VIS_SHARED)
     return qs
 
 

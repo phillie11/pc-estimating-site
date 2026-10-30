@@ -2,21 +2,28 @@
 Client variation status changes. Registered in VariationsConfig.ready(); views call
 core.workflow.apply_transition(vo, name, user, **params).
 
-  DRAFT --submit--> SUBMITTED --approve--> APPROVED
-                              --reject---> REJECTED
+  DRAFT --submit--> SUBMITTED --approve / approve_on_behalf--> APPROVED
+                              --reject  / reject_on_behalf---> REJECTED
   DRAFT / SUBMITTED --withdraw--> WITHDRAWN
 
 Who may:
-  submit, withdraw   staff of the organisation.
-  approve, reject    the client on the project (a ProjectMember with the client role), in their
-                     portal. Owners and admins may also record a decision the client gave by email
-                     or verbally; the view makes them say how in the notes. Nobody else: not
-                     project staff, consultants or subcontractors.
+  submit, withdraw    staff of the organisation.
+  approve, reject     the client on the project (a ProjectMember with the client role), in their portal.
+  *_on_behalf         owners and admins recording a decision the client gave elsewhere. The view
+                      requires a note and the client's email or letter as an evidence file; the audit
+                      entry is named after the transition and noted "Recorded on behalf of client",
+                      and the client is told it was recorded.
+  Nobody else: not project staff, consultants or subcontractors.
+
+Submitting sets the respond-by date (due_date): today plus the contract's client_response_days
+(14 with no contract). Staff can change it on the variation afterwards.
 
 Submitting shares the variation with the project's clients and consultants (drafts are
 internal) and passes the ball to the client: the contract's administrator when that is a
 client on the project, otherwise the first client invited. Deciding or withdrawing clears it.
 """
+from datetime import timedelta
+
 from django.utils import timezone
 
 from core.access import is_admin, is_staff, record_staff
@@ -46,6 +53,12 @@ def may_decide(vo, user):
     return is_project_client(vo, user) or records_client_decision(vo, user)
 
 
+def respond_days(vo):
+    from contracts.models import DEFAULT_CLIENT_RESPONSE_DAYS, MainContract
+    days = MainContract.objects.filter(project_id=vo.project_id).values_list('client_response_days', flat=True).first()
+    return days or DEFAULT_CLIENT_RESPONSE_DAYS
+
+
 def client_ball(vo, user=None):
     """Who has the ball while the client decides: their contract administrator if a client, else the first client."""
     from contracts.models import MainContract
@@ -61,6 +74,7 @@ def client_ball(vo, user=None):
 def _submitted(vo, user):
     vo.submitted_at = timezone.now()
     vo.visibility = VIS_SHARED
+    vo.due_date = timezone.localdate() + timedelta(days=respond_days(vo))
 
 
 def _decided(vo, user, approved_value=None, client_reference='', decision_notes=''):
@@ -71,15 +85,31 @@ def _decided(vo, user, approved_value=None, client_reference='', decision_notes=
     vo.client_reference = client_reference or vo.client_reference
     vo.decision_notes = decision_notes
     vo.decided_at, vo.decided_by = timezone.now(), user
+    vo.decision_recorded_on_behalf = False
+
+
+def _decided_on_behalf(vo, user, evidence=None, **decision):
+    _decided(vo, user, **decision)
+    vo.decision_recorded_on_behalf = True
+    vo.decision_evidence = evidence
+
+
+ON_BEHALF_NOTE = 'Recorded on behalf of client'
 
 
 TRANSITIONS = [
     Transition('submit', source=(Variation.STATUS_DRAFT,), target=Variation.STATUS_SUBMITTED, label='submit',
                allowed=record_staff, sets_ball_in_court=client_ball, on_apply=_submitted),
     Transition('approve', source=(Variation.STATUS_SUBMITTED,), target=Variation.STATUS_APPROVED, label='approve',
-               allowed=may_decide, sets_ball_in_court=None, on_apply=_decided),
+               allowed=is_project_client, sets_ball_in_court=None, on_apply=_decided),
     Transition('reject', source=(Variation.STATUS_SUBMITTED,), target=Variation.STATUS_REJECTED, label='reject',
-               allowed=may_decide, sets_ball_in_court=None, on_apply=_decided),
+               allowed=is_project_client, sets_ball_in_court=None, on_apply=_decided),
+    Transition('approve_on_behalf', source=(Variation.STATUS_SUBMITTED,), target=Variation.STATUS_APPROVED,
+               label='record the approval of', allowed=records_client_decision, sets_ball_in_court=None,
+               on_apply=_decided_on_behalf),
+    Transition('reject_on_behalf', source=(Variation.STATUS_SUBMITTED,), target=Variation.STATUS_REJECTED,
+               label='record the rejection of', allowed=records_client_decision, sets_ball_in_court=None,
+               on_apply=_decided_on_behalf),
     Transition('withdraw', source=(Variation.STATUS_DRAFT, Variation.STATUS_SUBMITTED), target=Variation.STATUS_WITHDRAWN,
                label='withdraw', allowed=record_staff, sets_ball_in_court=None),
 ]
@@ -87,4 +117,4 @@ TRANSITIONS = [
 # Audited on top of the RecordBase fields (title, status, visibility, due date, ball in court...)
 AUDIT_FIELDS = ('description', 'cause', 'value', 'approved_value', 'time_impact_days', 'eot_days_requested',
                 'eot_days_granted', 'quotation_due', 'proceed_at_risk', 'client_reference', 'rfi', 'attachment',
-                'decision_notes')
+                'decision_notes', 'decision_recorded_on_behalf', 'decision_evidence')

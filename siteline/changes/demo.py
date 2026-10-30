@@ -43,7 +43,7 @@ def seed(*, leeds, pm, client):
                                   lads_rate=Decimal('4500'), valuation_day=28,
                                   amendments='Client schedule of amendments rev B: pay less notice 7 days; '
                                              'no fluctuations; design portion for bar joinery only.')
-    leeds_contract.apply_preset()
+    leeds_contract.apply_preset(creating=True)
     leeds_contract.pay_less_notice_days = 7  # as amended
     leeds_contract.save()
 
@@ -52,6 +52,7 @@ def seed(*, leeds, pm, client):
     for vo in Variation.objects.filter(project=leeds):
         if vo.status == Variation.STATUS_SUBMITTED:
             vo.ball_in_court_user = client
+            vo.due_date = timezone.localdate(vo.submitted_at) + timedelta(days=leeds_contract.client_response_days)
             vo.save(actor=pm, audit_action='reassigned')
         if vo.rfi_id:
             sync_rfi_link(vo, pm)
@@ -86,7 +87,7 @@ def seed(*, leeds, pm, client):
     nec = MainContract(project=salford, form='NEC4_ECC', nec_main_option='A', lads_rate=Decimal('1500'),
                        retention_percent=Decimal('3'), defects_period_months=12, valuation_day=25,
                        amendments='Z1: Contractor design of raised access floor. X7 delay damages, X16 retention.')
-    nec.apply_preset()
+    nec.apply_preset(creating=True)
     nec.save()
 
     ew = EarlyWarning(project=salford, title='Landlord approval of riser penetrations', ball_in_court_user=pm,

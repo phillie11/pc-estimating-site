@@ -13,11 +13,11 @@
       <h2 style="margin:8px 0 12px">{{ vo.title }}</h2>
       <div class="quote">{{ vo.description }}</div>
       {% if vo.attachment %}<p style="margin-top:10px"><a class="btn sm" href="{% url 'variation_attachment' org.slug project.pk vo.pk %}">{% icon 'download' %} Quotation / attachment</a></p>{% endif %}
-      {% if vo.decided_at %}<hr><h3>Decision</h3><p><strong>{{ vo.get_status_display }}</strong> by {{ vo.decided_by }} on {{ vo.decided_at|date:"j M Y" }}{% if vo.approved_value is not None %} at <span class="mono">{{ vo.approved_value|money:currency }}</span>{% endif %}.</p>{% if vo.decision_notes %}<div class="quote">{{ vo.decision_notes }}</div>{% endif %}{% endif %}
+      {% if vo.decided_at %}<hr><h3>Decision</h3><p><strong>{{ vo.get_status_display }}</strong> by {{ vo.decided_by }} on {{ vo.decided_at|date:"j M Y" }}{% if vo.approved_value is not None %} at <span class="mono">{{ vo.approved_value|money:currency }}</span>{% endif %}.</p>{% if vo.decision_recorded_on_behalf %}<p class="small">{% badge 'Recorded on behalf of the client' 'warn' %}{% if vo.decision_evidence %} <a href="{% url 'variation_evidence' org.slug project.pk vo.pk %}">The client's decision</a>{% endif %}</p>{% endif %}{% if vo.decision_notes %}<div class="quote">{{ vo.decision_notes }}</div>{% endif %}{% endif %}
     </div></div>
     {% if can_decide or is_org_admin and vo.status == 'SUBMITTED' %}<div class="card" style="border:2px solid var(--accent)"><div class="card-head"><h2>{% if can_decide %}Your decision{% else %}Record client decision{% endif %}</h2></div><div class="card-body">
-      {% if can_decide %}<p class="small dim">Approving instructs the contractor to carry out this variation at the approved value. Rejecting tells them not to. Either way they are told straight away.</p>{% else %}<p class="small dim">Admins only. Use this when the client decided by email or verbally, and record how in the notes. It's logged under your name.</p>{% endif %}
-      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="decide">{% with form=decision_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Confirm decision</button></div></form>
+      {% if can_decide %}<p class="small dim">Your decision is recorded here and the contractor is told straight away. What it means for the works, the price and the programme depends on your contract.</p>{% else %}<p class="small dim">Owners and admins only. Use this when the client gave their decision by email or letter: say how in the notes and attach it. It's logged under your name as recorded on behalf of the client, and the client is told.</p>{% endif %}
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="decide">{% with form=decision_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Confirm decision</button></div></form>
     </div></div>{% endif %}
     {% include "partials/comments.html" %}
   </div>
@@ -35,6 +35,7 @@
     {% if is_internal and sub_variations %}<dt>Recovers sub variations</dt><dd>{% for sv in sub_variations %}<a href="{{ sv.get_absolute_url }}">{{ sv.reference }}</a> ({{ sv.subcontractor }}){% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
     <dt>Raised</dt><dd>{{ vo.created_at|date:"j M Y" }} by {{ vo.created_by|default:"—" }}</dd>
     {% if vo.submitted_at %}<dt>Submitted</dt><dd>{{ vo.submitted_at|date:"j M Y" }}</dd>{% endif %}
+    {% if vo.due_date and vo.status == 'SUBMITTED' %}<dt>Respond by</dt><dd class="{% if vo.is_overdue %}overdue{% endif %}">{{ vo.due_date|date:"j M Y" }}{% if vo.is_overdue %} (overdue){% endif %}</dd>{% endif %}
     {% if is_internal and vo.ball_in_court_user and vo.status == 'SUBMITTED' %}<dt>Waiting on</dt><dd>{{ vo.ball_in_court_user }}</dd>{% endif %}
   </dl></div></div>
 </div>

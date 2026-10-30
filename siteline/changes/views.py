@@ -234,12 +234,20 @@ def change_event_edit(request, org_slug, pk, ce_id):
 
 
 def raise_variation(ce, actor):
-    """Draft the client variation this change event becomes, priced at its revenue, linked both ways."""
+    """
+    Draft the client variation this change event becomes, priced at its revenue, linked both ways.
+    Returns (variation, created). The change event's row is locked first, so two presses at once
+    (a double click, two tabs) can't both make one: the second waits, then finds the first.
+    """
     from variations.models import Variation
     from variations.views import sync_rfi_link
-    rfi_idx = next(iter(came_from(ce, 'rfis.rfi')), None)
-    revenue = ce.revenue_total
     with transaction.atomic():
+        list(ChangeEvent.objects.select_for_update().filter(pk=ce.pk).order_by().values_list('pk'))
+        existing = led_to(ce, 'variations.variation')
+        if existing:
+            return Variation.objects.get(pk=existing[0].object_id), False
+        rfi_idx = next(iter(came_from(ce, 'rfis.rfi')), None)
+        revenue = ce.revenue_total
         vo = Variation(project=ce.project, title=ce.title[:200], cause=CAUSE_FOR_ORIGIN.get(ce.origin, 'OTHER'),
                        # The client will read this once it's submitted: no internal refs (the link records it)
                        description=ce.description, value=revenue or None,
@@ -247,7 +255,7 @@ def raise_variation(ce, actor):
         vo.save(actor=actor)
         set_source(vo, ce, 'changes.changeevent', actor=actor)
         sync_rfi_link(vo, actor)
-    return vo
+    return vo, True
 
 
 @internal_required
@@ -285,11 +293,10 @@ def change_event_detail(request, org_slug, pk, ce_id):
                     line.delete()
                     ce.save(actor=request.user, audit_action='priced', audit_note=note)
             elif action == 'raise_variation':
-                existing = led_to(ce, 'variations.variation')
-                if existing:
-                    messages.error(request, f'{ce.reference} already became {existing[0].ref}.')
+                vo, created = raise_variation(ce, request.user)
+                if not created:
+                    messages.error(request, f'{ce.reference} already became {vo.reference}.')
                 else:
-                    vo = raise_variation(ce, request.user)
                     log_activity(request, 'drafted', f'{vo.reference} from {ce.reference}', project=project,
                                  url=vo.get_absolute_url(), internal_only=True)
                     messages.success(request, f'Draft {vo.reference} created from {ce.reference}. Check it, then '

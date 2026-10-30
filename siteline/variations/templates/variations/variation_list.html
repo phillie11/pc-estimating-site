@@ -12,11 +12,12 @@
   <a class="chip {% if not status %}on{% endif %}" href="?">All</a>
   {% for code, label in status_choices %}<a class="chip {% if status == code %}on{% endif %}" href="?status={{ code }}">{{ label }}</a>{% endfor %}
 </div>
-<div class="card">{% if variations %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Variation</th><th>Status</th><th class="num">Quoted</th><th class="num">Approved</th><th>Submitted</th></tr></thead><tbody>
+<div class="card">{% if variations %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Variation</th><th>Status</th><th class="num">Quoted</th><th class="num">Approved</th><th>Submitted</th><th>Respond by</th></tr></thead><tbody>
 {% for v in variations %}<tr><td class="ref">{{ v.reference }}</td>
   <td><a class="rowlink" href="{{ v.get_absolute_url }}">{{ v.title }}</a><span class="sub">{{ v.get_cause_display }}{% if v.client_reference %} · {{ v.client_reference }}{% endif %}{% if v.proceed_at_risk and v.status != 'APPROVED' %} · <span class="overdue">at risk</span>{% endif %}</span></td>
   <td>{% badge v.get_status_display v.status_tone %}</td><td class="num">{{ v.value|money:currency }}</td><td class="num">{{ v.approved_value|money:currency }}</td>
-  <td class="small nowrap">{{ v.submitted_at|date:"j M Y"|default:"—" }}</td></tr>{% endfor %}
+  <td class="small nowrap">{{ v.submitted_at|date:"j M Y"|default:"—" }}</td>
+  <td class="small nowrap {% if v.is_overdue %}overdue{% endif %}">{% if v.status == 'SUBMITTED' and v.due_date %}{{ v.due_date|date:"j M Y" }}{% if v.is_overdue %} overdue{% endif %}{% else %}—{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>{% elif status %}<div class="empty"><h3>Nothing with this status</h3><p>No variation is {{ status|lower }} right now. <a href="?">Show all variations</a>.</p></div>
 {% else %}<div class="empty"><h3>No variations</h3>{% if is_internal %}<p>Draft one, then submit it. Clients on the project can approve it from their portal.</p>{% else %}<p>When the contractor submits a variation for your approval it will appear here, and you'll get an email.</p>{% endif %}</div>{% endif %}</div>
 {% endblock %}

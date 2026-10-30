@@ -22,7 +22,7 @@ from tenancy.permissions import internal_required
 
 from .forms import DecisionForm, VariationForm
 from .models import Variation
-from .workflow import is_project_client, may_decide
+from .workflow import ON_BEHALF_NOTE, is_project_client, may_decide, records_client_decision
 
 
 def _visible(request, project):
@@ -127,8 +127,9 @@ def variation_detail(request, org_slug, pk, vo_id):
     vo = get_object_or_404(_visible(request, project), pk=vo_id)
     internal = is_internal(request)
     can_decide = vo.status == Variation.STATUS_SUBMITTED and is_project_client(vo, request.user)
+    on_behalf = not can_decide and records_client_decision(vo, request.user)
     decision_form = DecisionForm(initial={'client_reference': vo.client_reference,
-                                          'eot_days_granted': vo.eot_days_requested})
+                                          'eot_days_granted': vo.eot_days_requested}, on_behalf=on_behalf)
     if request.method == 'POST':
         action = request.POST.get('action')
         try:
@@ -144,9 +145,7 @@ def variation_detail(request, org_slug, pk, vo_id):
             elif action == 'decide':
                 if vo.status != Variation.STATUS_SUBMITTED or not may_decide(vo, request.user):
                     raise PermissionDenied
-                decision_form = DecisionForm(request.POST)
-                if decision_form.is_valid() and not can_decide and not decision_form.cleaned_data['decision_notes'].strip():
-                    decision_form.add_error('decision_notes', 'Say how the client gave this decision (e.g. email from J. Smith, 3 Nov).')
+                decision_form = DecisionForm(request.POST, request.FILES, on_behalf=on_behalf)
                 if not decision_form.is_valid():
                     return render(request, 'variations/variation_detail.html',
                                   _ctx(request, project, vo, decision_form, can_decide))
@@ -154,11 +153,19 @@ def variation_detail(request, org_slug, pk, vo_id):
                 approve = d['decision'] == Variation.STATUS_APPROVED
                 if approve and d['eot_days_granted'] is not None:
                     vo.eot_days_granted = d['eot_days_granted']
-                apply_transition(vo, 'approve' if approve else 'reject', request.user, note=d['decision_notes'][:200],
-                                 approved_value=d['approved_value'], client_reference=d['client_reference'],
-                                 decision_notes=d['decision_notes'])
-                log_activity(request, 'approved' if approve else 'rejected', f'{vo.reference} {vo.title}',
-                             project=project, url=vo.get_absolute_url(), internal_only=True)
+                decision = dict(approved_value=d['approved_value'], client_reference=d['client_reference'],
+                                decision_notes=d['decision_notes'])
+                if on_behalf:
+                    apply_transition(vo, 'approve_on_behalf' if approve else 'reject_on_behalf', request.user,
+                                     note=f"{ON_BEHALF_NOTE}: {d['decision_notes']}"[:500], evidence=d['evidence'],
+                                     **decision)
+                    _tell_clients_recorded(request, project, vo)
+                else:
+                    apply_transition(vo, 'approve' if approve else 'reject', request.user,
+                                     note=d['decision_notes'][:200], **decision)
+                verb = 'approved' if approve else 'rejected'
+                log_activity(request, f'recorded the client as having {verb}' if on_behalf else verb,
+                             f'{vo.reference} {vo.title}', project=project, url=vo.get_absolute_url(), internal_only=True)
                 if vo.created_by and vo.created_by != request.user:
                     notify.send(vo.created_by.email, f'{vo.reference} {vo.get_status_display().lower()}', 'variation_decided', {
                         'vo': vo, 'project': project, 'actor': request.user, 'link': notify.absolute(vo.get_absolute_url()),
@@ -176,6 +183,15 @@ def variation_detail(request, org_slug, pk, vo_id):
     return render(request, 'variations/variation_detail.html', _ctx(request, project, vo, decision_form, can_decide))
 
 
+def _tell_clients_recorded(request, project, vo):
+    """An owner or admin recorded the client's decision for them: every client on the project is told."""
+    clients = [m.user for m in ProjectMember.objects.filter(project=project, role=ProjectMember.ROLE_CLIENT)
+               .select_related('user')]
+    verb = 'approval' if vo.status == Variation.STATUS_APPROVED else 'rejection'
+    notify.alert(clients, f'{request.user.full_name} recorded your {verb} of {vo.reference} {vo.title}',
+                 vo.get_absolute_url(), project=project, actor=request.user, org=request.org)
+
+
 def _ctx(request, project, vo, decision_form, can_decide):
     internal = is_internal(request)
     extra = {}
@@ -186,6 +202,13 @@ def _ctx(request, project, vo, decision_form, can_decide):
     return commercial_context(request, project, 'variations', vo=vo, decision_form=decision_form,
                               can_decide=can_decide, comments=comments_for(request, vo),
                               comment_form=CommentForm(external=not internal), **extra)
+
+
+def variation_evidence(request, org_slug, pk, vo_id):
+    """The client's email or letter an admin attached when recording their decision. Whoever can see the VO."""
+    project = get_project(request, pk)
+    vo = get_object_or_404(_visible(request, project), pk=vo_id)
+    return serve(request, vo.decision_evidence, project=project, label=f"{vo.reference} client's decision")
 
 
 def variation_attachment(request, org_slug, pk, vo_id):

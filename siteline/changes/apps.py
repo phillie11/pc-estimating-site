@@ -14,7 +14,7 @@ class ChangesConfig(AppConfig):
                                EARLY_WARNING_TRANSITIONS)
         register_record_type(EarlyWarning, prefix='EW', transitions=EARLY_WARNING_TRANSITIONS,
                              open_statuses=(EarlyWarning.STATUS_OPEN,), draft_statuses=(EarlyWarning.STATUS_OPEN,),
-                             audit_fields=EARLY_WARNING_AUDIT)
+                             audit_fields=EARLY_WARNING_AUDIT, external_roles=())
         register_record_type(ChangeEvent, prefix='CE', transitions=CHANGE_EVENT_TRANSITIONS,
                              open_statuses=ChangeEvent.LIVE_STATUSES, draft_statuses=(ChangeEvent.STATUS_IDENTIFIED,),
-                             audit_fields=CHANGE_EVENT_AUDIT)
+                             audit_fields=CHANGE_EVENT_AUDIT, external_roles=())

@@ -200,6 +200,33 @@ class ChainTests(ChangeTestBase):
         self.assertNotContains(r, c.ref)
         self.assertNotContains(r, 'Commercial')
 
+    def test_raising_twice_returns_the_first_variation(self):
+        # Regression: two presses (or two tabs) each made a VO; the CE row is now locked and re-checked
+        from ..views import raise_variation
+        c = self.ce()
+        with org_context(self.org_a):
+            first, created = raise_variation(c, self.pat)
+            again, created_again = raise_variation(ChangeEvent.objects.get(pk=c.pk), self.pat)
+            self.assertEqual((created, created_again, again.pk), (True, False, first.pk))
+            self.assertEqual(Variation.objects.filter(project=self.pa).count(), 1)
+
+    def test_sub_variation_decision_drafts_an_audited_linked_variation(self):
+        # Regression: the client variation made from an approved sub variation had no audit actor and no link
+        c = self.ce()
+        with org_context(self.org_a):
+            sv = SubVariation.objects.create(project=self.pa, subcontractor=self.subco, title='Extra shelving',
+                                             description='x', value=Decimal('1200'), change_event=c)
+        self.login(self.pat)
+        r = self.client.post(self.url('subvariation_detail', self.pa.pk, sv.pk), {
+            'action': 'decide', 'decision': 'APPROVED', 'approved_value': '1100', 'raise_client_variation': 'on'})
+        self.assertEqual(r.status_code, 302)
+        with org_context(self.org_a):
+            vo = SubVariation.objects.get(pk=sv.pk).client_variation
+            idx = RecordIndex.objects.get(ref=vo.ref, project=self.pa)
+            created = AuditEntry.objects.get(record_idx=idx, action='created')
+            self.assertEqual((created.actor, vo.created_by, vo.value), (self.pat, self.pat, Decimal('1100.00')))
+            self.assertEqual([i.ref for i in came_from(vo, 'changes.changeevent')], [c.ref])
+
     def test_sub_variation_tied_and_untied(self):
         c = self.ce()
         with org_context(self.org_a):

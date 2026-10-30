@@ -14,10 +14,10 @@ from tenancy.context import org_context
 # core and RFIs stay where they are (already on the record base); only variations move
 STAY = [('core', '0002_audit_actor_name_retention'), ('rfis', '0005_remove_rfi_is_shared')]
 BEFORE = [('variations', '0002_alter_variation_project'), *STAY]
-AFTER = [('variations', '0005_commercial_fields'), *STAY]
+AFTER = [('variations', '0007_backfill_respond_by'), *STAY]  # latest, so the live model below matches
 
 
-class VariationMigrationTests(TransactionTestCase):
+class MigrateMixin:
     def migrate(self, targets):
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()
@@ -28,6 +28,9 @@ class VariationMigrationTests(TransactionTestCase):
         executor = MigrationExecutor(connection)
         self.migrate(executor.loader.graph.leaf_nodes())  # leave the schema as every other test expects
         super().tearDown()
+
+
+class VariationMigrationTests(MigrateMixin, TransactionTestCase):
 
     def seed(self, apps):
         Organization = apps.get_model('tenancy', 'Organization')
@@ -126,3 +129,45 @@ class VariationMigrationTests(TransactionTestCase):
         apps = self.migrate(AFTER)
         self.assertFalse(apps.get_model('core', 'RecordIndex').objects.exists())
         self.migrate(BEFORE)
+
+
+class RespondByBackfillTests(MigrateMixin, TransactionTestCase):
+    """variations 0007: submitted variations get due_date = submitted + 14 days (and their index row); reversible."""
+    BEFORE = [('variations', '0006_decision_evidence'), *STAY]
+    AFTER = [('variations', '0007_backfill_respond_by'), *STAY]
+
+    def test_forward_and_backward(self):
+        import datetime
+
+        old = self.migrate(self.BEFORE)
+        Organization, Project = old.get_model('tenancy', 'Organization'), old.get_model('projects', 'Project')
+        Variation, RecordIndex = old.get_model('variations', 'Variation'), old.get_model('core', 'RecordIndex')
+        ContentType = old.get_model('contenttypes', 'ContentType')
+        org = Organization.objects.create(name='Alpha', slug='alpha')
+        p = Project.objects.create(organization=org, number=1, name='Job', stage='LIVE')
+        ct, _ = ContentType.objects.get_or_create(app_label='variations', model='variation')
+        sent = datetime.datetime(2026, 10, 1, 9, 0, tzinfo=datetime.timezone.utc)
+        agreed = datetime.date(2026, 10, 5)
+        rows = {}
+        for n, status, submitted, due in [(1, 'SUBMITTED', sent, None), (2, 'SUBMITTED', sent, agreed),
+                                          (3, 'DRAFT', None, None), (4, 'APPROVED', sent, None)]:
+            v = Variation.objects.create(organization=org, project=p, number=n, ref=f'VO-00{n}', title=f'V{n}',
+                                         description='x', status=status, submitted_at=submitted, due_date=due,
+                                         visibility='SHARED')
+            RecordIndex.objects.create(organization=org, content_type=ct, object_id=v.pk,
+                                       record_type='variations.variation', project=p, ref=v.ref, title=v.title,
+                                       status=status, visibility='SHARED', due_date=due, created_at=sent,
+                                       updated_at=sent)
+            rows[n] = v.pk
+
+        new = self.migrate(self.AFTER)
+        due = dict(new.get_model('variations', 'Variation').objects.values_list('number', 'due_date'))
+        self.assertEqual(due, {1: datetime.date(2026, 10, 15), 2: agreed, 3: None, 4: None})
+        idx = dict(new.get_model('core', 'RecordIndex').objects.values_list('object_id', 'due_date'))
+        self.assertEqual(idx[rows[1]], datetime.date(2026, 10, 15))
+
+        back = self.migrate(self.BEFORE)
+        due = dict(back.get_model('variations', 'Variation').objects.values_list('number', 'due_date'))
+        self.assertEqual(due, {1: None, 2: agreed, 3: None, 4: None})
+        idx = dict(back.get_model('core', 'RecordIndex').objects.values_list('object_id', 'due_date'))
+        self.assertIsNone(idx[rows[1]])

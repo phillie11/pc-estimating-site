@@ -6,6 +6,10 @@ Every RecordBase subclass registers itself from its AppConfig.ready():
     register_record_type(RFI, prefix='RFI', transitions=TRANSITIONS, open_statuses=(RFI.STATUS_OPEN,),
                          audit_fields=('question', 'response', ...))
 
+external_roles narrows which external project roles see a shared record of the type through
+RecordIndex (core.access.visible_index): ('CLIENT', 'CONSULTANT') for client variations; () for
+a type externals never see. Left as None, every external role on the project sees shared rows.
+
 RecordBase.save() looks the type up here for its ref prefix, which statuses still
 need the ball-in-court person to act ("Needs me"), and which fields are audited.
 An unregistered RecordBase subclass refuses to save.
@@ -27,6 +31,12 @@ class RecordType:
     open_statuses: tuple = ()  # statuses where the ball-in-court person has something to do
     audit_fields: tuple = BASE_AUDIT_FIELDS
     draft_statuses: tuple = ()  # not yet issued: staff may delete their own (core.access.can_soft_delete)
+    # Which external project roles (ProjectMember.ROLE_*) may see shared records of this type through the
+    # index. None: every external role on the project (RFIs). () : no externals at all, even if shared.
+    external_roles: tuple | None = None
+
+    def visible_to_role(self, role):
+        return self.external_roles is None or role in self.external_roles
 
     @property
     def key(self):
@@ -44,7 +54,8 @@ class RecordType:
 _registry = {}
 
 
-def register_record_type(model, *, prefix, transitions=(), open_statuses=(), audit_fields=(), draft_statuses=()):
+def register_record_type(model, *, prefix, transitions=(), open_statuses=(), audit_fields=(), draft_statuses=(),
+                         external_roles=None):
     from .models import RecordBase
     if not (isinstance(model, type) and issubclass(model, RecordBase)):
         raise ImproperlyConfigured(f'{model!r} must subclass core.models.RecordBase to be registered.')
@@ -63,7 +74,8 @@ def register_record_type(model, *, prefix, transitions=(), open_statuses=(), aud
         model._meta.get_field(name)  # FieldDoesNotExist now rather than on the first save
     rt = RecordType(model=model, prefix=prefix, transitions=by_name, open_statuses=tuple(open_statuses),
                     audit_fields=tuple(dict.fromkeys((*BASE_AUDIT_FIELDS, *audit_fields))),
-                    draft_statuses=tuple(draft_statuses))
+                    draft_statuses=tuple(draft_statuses),
+                    external_roles=None if external_roles is None else tuple(external_roles))
     _registry[model] = rt
     return rt
 

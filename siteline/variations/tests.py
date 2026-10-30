@@ -4,7 +4,11 @@ them (only the client approves), visibility, the RFI link, and tenancy.
 """
 from decimal import Decimal
 
+from datetime import timedelta
+
 from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from changes.links import came_from
 from changes.tests.base import CommercialTestBase
@@ -15,6 +19,7 @@ from core.models import AuditEntry, RecordIndex
 from core.workflow import apply_transition
 from rfis.models import RFI
 from tenancy.context import TenantContextMissing, org_context
+from tenancy.models import Notification
 
 from .models import Variation
 
@@ -125,16 +130,72 @@ class TransitionTests(VariationTestBase):
             v = Variation.objects.get(pk=v.pk)
         self.assertEqual((v.status, v.approved_value), ('REJECTED', None))
 
-    def test_admin_records_client_decision_only_with_notes(self):
+    def evidence(self, name='client-email.pdf', body=b'%PDF-1.4 approved by email'):
+        return SimpleUploadedFile(name, body, content_type='application/pdf')
+
+    def test_admin_records_client_decision_only_with_notes_and_evidence(self):
         v = self.submitted()
         self.login(self.adam)
+        for data in ({'decision': 'APPROVED'},                                           # neither
+                     {'decision': 'APPROVED', 'decision_notes': 'Email from C. Client'},    # no evidence
+                     {'decision': 'APPROVED', 'evidence': self.evidence()},                 # no note
+                     {'decision': 'APPROVED', 'decision_notes': 'x', 'evidence': self.evidence('run.exe')}):  # blocked
+            r = self.client.post(self.detail(v), {'action': 'decide', **data})
+            self.assertEqual(r.status_code, 200, data)
+            with org_context(self.org_a):
+                self.assertEqual(Variation.objects.get(pk=v.pk).status, 'SUBMITTED')
+        self.assertContains(r, '.exe files are not allowed')
+        r = self.client.post(self.detail(v), {'action': 'decide', 'decision': 'APPROVED',
+                                              'decision_notes': 'Email from C. Client, 3 Nov', 'evidence': self.evidence()})
+        self.assertEqual(r.status_code, 302)
+        with org_context(self.org_a):
+            v = Variation.objects.get(pk=v.pk)
+            idx = RecordIndex.objects.get(ref=v.ref, project=self.pa)
+            entry = AuditEntry.objects.filter(record_idx=idx).order_by('pk').last()
+            self.assertTrue(Notification.objects.filter(user=self.carla, title__contains='recorded your approval').exists())
+        self.assertEqual((v.status, v.decided_by, v.decision_recorded_on_behalf), ('APPROVED', self.adam, True))
+        self.assertTrue(v.decision_evidence.name.endswith('.pdf'))
+        self.assertEqual(entry.action, 'approve_on_behalf')
+        self.assertIn('Recorded on behalf of client', entry.note)
+        # The client can see it was recorded for them, and open the evidence
+        self.client.logout()
+        self.login(self.carla)
+        page = self.client.get(self.detail(v))
+        self.assertContains(page, 'Recorded on behalf of the client')
+        self.assertEqual(self.client.get(self.url('variation_evidence', self.pa.pk, v.pk)).status_code, 200)
+        self.assertEqual(self.status_for(self.sid, self.url('variation_evidence', self.pa.pk, v.pk)), 403)
+
+    def test_admin_records_a_rejection(self):
+        v = self.submitted()
+        self.login(self.alice)
+        self.client.post(self.detail(v), {'action': 'decide', 'decision': 'REJECTED', 'decision_notes': 'Letter 4 Nov',
+                                          'evidence': self.evidence('letter.eml', b'From: client')})
+        with org_context(self.org_a):
+            v = Variation.objects.get(pk=v.pk)
+        self.assertEqual((v.status, v.decision_recorded_on_behalf), ('REJECTED', True))
+
+    def test_client_decision_needs_no_evidence_and_is_not_on_behalf(self):
+        v = self.submitted()
+        self.login(self.carla)
         self.client.post(self.detail(v), {'action': 'decide', 'decision': 'APPROVED'})
         with org_context(self.org_a):
-            self.assertEqual(Variation.objects.get(pk=v.pk).status, 'SUBMITTED')
-        self.client.post(self.detail(v), {'action': 'decide', 'decision': 'APPROVED',
-                                          'decision_notes': 'Email from C. Client, 3 Nov'})
+            v = Variation.objects.get(pk=v.pk)
+        self.assertEqual((v.status, v.decision_recorded_on_behalf), ('APPROVED', False))
+
+    def test_admins_cannot_use_the_clients_own_transitions(self):
+        v = self.submitted()
         with org_context(self.org_a):
-            self.assertEqual(Variation.objects.get(pk=v.pk).status, 'APPROVED')
+            with self.assertRaises(TransitionForbidden):
+                apply_transition(v, 'approve', self.adam)
+            with self.assertRaises(TransitionForbidden):
+                apply_transition(v, 'approve_on_behalf', self.carla)
+
+    def test_client_card_does_not_state_a_contractual_effect(self):
+        v = self.submitted()
+        self.login(self.carla)
+        r = self.client.get(self.detail(v))
+        self.assertNotContains(r, 'instructs the contractor')
+        self.assertContains(r, 'depends on your contract')
 
     def test_predicates_directly(self):
         v = self.submitted()
@@ -230,3 +291,76 @@ class VisibilityTests(VariationTestBase):
             self.assertFalse(Variation.objects.filter(pk=v.pk).exists())
         with self.assertRaises(TenantContextMissing):
             Variation.objects.count()
+
+
+class RespondByTests(VariationTestBase):
+    def test_submit_sets_respond_by_from_the_contract(self):
+        today = timezone.localdate()
+        v = self.submitted()
+        self.assertEqual(v.due_date, today + timedelta(days=14))  # no contract: the default
+        with org_context(self.org_a):
+            MainContract.objects.create(project=self.pa, form='JCT_IC', client_response_days=10)
+            self.assertEqual(RecordIndex.objects.get(ref=v.ref, project=self.pa).due_date, today + timedelta(days=14))
+        v2 = self.submitted()
+        self.assertEqual(v2.due_date, today + timedelta(days=10))
+
+    def test_staff_can_change_it_and_overdue_shows_red(self):
+        v = self.submitted(title='Late decision')
+        self.login(self.pat)
+        past = timezone.localdate() - timedelta(days=2)
+        r = self.client.post(self.url('variation_edit', self.pa.pk, v.pk), {
+            'title': 'Late decision', 'cause': 'OTHER', 'description': 'x', 'value': '1000', 'due_date': past.isoformat(),
+            'version': v.version})
+        self.assertEqual(r.status_code, 302)
+        with org_context(self.org_a):
+            v = Variation.objects.get(pk=v.pk)
+            self.assertEqual(RecordIndex.objects.get(ref=v.ref, project=self.pa).due_date, past)
+        self.assertTrue(v.is_overdue)
+        self.assertContains(self.client.get(self.url('variation_list', self.pa.pk)), 'overdue">')
+        self.assertContains(self.client.get(self.detail(v)), '(overdue)')
+
+    def test_drafts_have_no_respond_by_field(self):
+        v = self.vo()
+        self.login(self.pat)
+        self.assertNotContains(self.client.get(self.url('variation_edit', self.pa.pk, v.pk)), 'Client to respond by')
+
+    def test_decided_variations_are_not_overdue(self):
+        v = self.submitted()
+        with org_context(self.org_a):
+            v.due_date = timezone.localdate() - timedelta(days=5)
+            v.save(actor=self.pat)
+            apply_transition(v, 'approve', self.carla)
+        self.assertFalse(v.is_overdue)
+
+
+class ExternalIndexTests(VariationTestBase):
+    def test_subcontractors_and_bidders_never_get_variation_index_rows(self):
+        # Regression: shared VO rows were returned to subcontractors by core.access.visible_index
+        v = self.submitted()
+        with org_context(self.org_a):
+            from rfis.models import RFI
+            rfi = RFI(project=self.pa, title='Shared question', question='?')
+            rfi.save(actor=self.pat)
+            for who in (self.sid, self.bea):
+                refs = set(visible_index(self.request_for(who)).values_list('ref', flat=True))
+                self.assertNotIn(v.ref, refs, who)
+            self.assertIn(rfi.ref, set(visible_index(self.request_for(self.sid)).values_list('ref', flat=True)))
+            for who in (self.carla, self.connie):
+                self.assertIn(v.ref, set(visible_index(self.request_for(who)).values_list('ref', flat=True)), who)
+            v.ball_in_court_user = self.sid
+            v.save(actor=self.pat)
+            self.assertEqual(list(needs_me(self.request_for(self.sid))), [])
+
+    def test_role_is_per_project(self):
+        # Sid is a subcontractor on pa but a client on another job: he sees that job's VOs only
+        from projects.models import Project, ProjectMember
+        with org_context(self.org_a):
+            other = Project.objects.create(name='Other job', stage=Project.STAGE_LIVE)
+            ProjectMember.objects.create(project=other, user=self.sid, role=ProjectMember.ROLE_CLIENT)
+        on_pa = self.submitted()
+        on_other = self.vo(project=other)
+        with org_context(self.org_a):
+            apply_transition(on_other, 'submit', self.pat)
+            rows = set(visible_index(self.request_for(self.sid)).values_list('project_id', 'ref'))
+        self.assertIn((other.pk, on_other.ref), rows)
+        self.assertNotIn((self.pa.pk, on_pa.ref), rows)

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import VIS_SHARED, RecordBase
 from projects.models import upload_variation
@@ -55,6 +56,9 @@ class Variation(RecordBase):
     decided_at = models.DateTimeField(null=True, blank=True)
     decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     decision_notes = models.TextField(blank=True)
+    # Set when an owner or admin recorded the client's decision for them, with the client's email or letter as proof
+    decision_recorded_on_behalf = models.BooleanField('Recorded on behalf of the client', default=False)
+    decision_evidence = models.FileField("Client's decision (evidence)", upload_to=upload_variation, blank=True)
 
     class Meta(RecordBase.Meta):
         ordering = ['-number']
@@ -73,6 +77,11 @@ class Variation(RecordBase):
     @property
     def status_tone(self):
         return {'DRAFT': 'muted', 'SUBMITTED': 'accent', 'APPROVED': 'good', 'REJECTED': 'bad', 'WITHDRAWN': 'muted'}[self.status]
+
+    @property
+    def is_overdue(self):
+        """Waiting on the client past its respond-by date (RecordBase.due_date, set on submit)."""
+        return self.status == self.STATUS_SUBMITTED and self.due_date is not None and self.due_date < timezone.localdate()
 
     @property
     def client_can_see(self):

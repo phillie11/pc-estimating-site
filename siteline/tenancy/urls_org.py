@@ -76,6 +76,7 @@ urlpatterns = [
     path(P + 'variations/<int:vo_id>/', variations.variation_detail, name='variation_detail'),
     path(P + 'variations/<int:vo_id>/edit/', variations.variation_edit, name='variation_edit'),
     path(P + 'variations/<int:vo_id>/file/', variations.variation_attachment, name='variation_attachment'),
+    path(P + 'variations/<int:vo_id>/evidence/', variations.variation_evidence, name='variation_evidence'),
 
     path(P + 'packages/', directory.package_list, name='package_list'),
     path(P + 'rams/', delivery.rams_list, name='rams_list'),
