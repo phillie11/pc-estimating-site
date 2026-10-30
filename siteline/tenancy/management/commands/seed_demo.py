@@ -249,15 +249,15 @@ class Command(BaseCommand):
                                      description='Client instruction on site walk 2 Oct: upgrade private dining ceiling to '
                                                  '40dB acoustic MF ceiling with plasterboard finish.',
                                      value=Decimal('18450'), time_impact_days=2, status=Variation.STATUS_SUBMITTED,
-                                     raised_by=pm, submitted_at=now - timedelta(days=3))
+                                     created_by=pm, submitted_at=now - timedelta(days=3))
             Variation.objects.create(project=leeds, title='Replace rotten joists found during strip-out', cause='SITE_CONDITION',
                                      description='14 no. joists in rear store found rotten. Replace like for like.',
                                      value=Decimal('6200'), approved_value=Decimal('5900'), status=Variation.STATUS_APPROVED,
-                                     raised_by=pm, submitted_at=now - timedelta(days=20), decided_at=now - timedelta(days=16),
+                                     created_by=pm, submitted_at=now - timedelta(days=20), decided_at=now - timedelta(days=16),
                                      decided_by=client, client_reference='NLG-PO-4471')
             Variation.objects.create(project=leeds, title='Bar back veneer change (if eucalyptus)', cause='SPEC_CHANGE', rfi=r1,
                                      description='Price difference if smoked eucalyptus is confirmed.', value=Decimal('7300'),
-                                     raised_by=pm, proceed_at_risk=False)
+                                     created_by=pm, proceed_at_risk=False)
 
             # Leeds programme: started four weeks ago, 73 days on site
             def act(name, start, days, progress=0, after=None, who='', milestone=False, shared=True):
@@ -337,6 +337,10 @@ class Command(BaseCommand):
                                                   ('submitted for approval', 'VO-001 Additional acoustic ceiling', pm, True),
                                                   ('moved to Submitted', 'Aparthotel refurb, Hammersmith', est, True)]:
                 log_activity(actor, verb, target, project=None if 'Aparthotel' in target else leeds, internal_only=internal)
+
+            # Commercial: contracts (Leeds on JCT IC, Salford on NEC4 Option A), early warnings, change events
+            from changes.demo import seed as seed_commercial
+            seed_commercial(leeds=leeds, pm=pm, client=client)
 
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')

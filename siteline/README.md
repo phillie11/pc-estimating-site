@@ -28,7 +28,8 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 | **Projects** | One record from first lead to completion. Overview with commercial position (contract sum + approved variations = forecast final account). **Archived, not deleted:** once a project has anything on it (documents, RFIs, variations, RAMS, packages, snags, tasks, programme, downloads) an owner or admin can only archive it. See [Archiving](#archiving-instead-of-deleting). |
 | **Client & subcontractor portal** | Invite external people per project by email. They get free logins and only see what's shared with them. |
 | **RFIs** | Numbered per project (RFI-001), ball-in-court assignment, due dates, responses, threaded comments, internal notes, CSV register. Company-wide RFI register. |
-| **Variations** | Draft → submit to client → client approves or rejects in the portal (with PO ref). Linked to RFIs. CSV export. |
+| **Variations** | Draft → submit to client → client approves or rejects in the portal (with PO ref). Linked to RFIs and change events. Extension of time requested and granted. CSV export. |
+| **Commercial tab (staff only)** | Contract set-up per job (JCT MW/MWD/IC/ICD/DB/SBC 2016 or 2024, NEC4 ECC Options A–F, bespoke): damages, retention and release, defects period, payment terms pre-filled from the form's standard terms (advisory: check your contract), the client's contract administrator. Words follow the form (`contracts/vocabulary.py`). Change register: early warnings (EW-001) and change events (CE-001) priced as cost and revenue lines, linked to the RFI or early warning they came from, the client variation they become and the sub variations they create. Advisory NEC4 clocks (8-week notification time bar, 3-week quotation, 2-week reply, deemed acceptance) and a JCT notice-of-delay prompt. Company-wide change register at `/changes/`. |
 | **Snags & tasks** | Assign to staff or subcontractors; subs mark snags "ready for inspection" from their phone. |
 | **Documents** | Revision-controlled drawings, specs, RAMS. The current revision is the highest one (P01 → P10 → C01 → C02), not the last uploaded: filing an old P03 after C01 doesn't replace it unless you tick "make current". Internal or shared per document. Externals can upload (e.g. RAMS). |
 | **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. A subcontractor with quotes, RAMS or variations on file is archived rather than deleted. |
@@ -363,7 +364,9 @@ billing/      Stripe checkout, portal, webhook
 projects/     projects, pipeline, team & portal invites, tasks, snags, documents, comments, access rules
 core/         shared record base: numbering, record index, links, audit trail, transitions (docs/adr/0001)
 rfis/         RFI register (the first record type on core)
-variations/   variations & client approval
+variations/   variations & client approval (on core.RecordBase)
+contracts/    main contract set-up per project, standard terms (presets.py), contract vocabulary, the Commercial tab
+changes/      early warnings, change events, change registers, advisory contract clocks (clocks.py), Needs-me items (actions.py)
 directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
 delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
