@@ -1,7 +1,7 @@
 """Tender analytics: how bids convert, by sector, client, size, source and estimator."""
 from collections import defaultdict
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from .models import Project
 
@@ -116,7 +116,9 @@ def tender_analytics(projects, period='12', today=None):
 
     sector_labels = dict(Project.SECTOR_CHOICES)
     band_order = [label for _, label in VALUE_BANDS] + ['No value']
+    discipline = bid_discipline(decided, bids)
     return {
+        **discipline,
         'period': period,
         'total': total,
         'declined': declined,
@@ -135,4 +137,61 @@ def tender_analytics(projects, period='12', today=None):
         'by_owner': _breakdown(bids, lambda p: p.owner.full_name if p.owner else ''),
         'recent_losses': sorted((p for p in bids if p.stage == Project.STAGE_LOST),
                                 key=lambda p: p.decided_at, reverse=True)[:8],
+    }
+
+
+NOT_SCORED = 'Not scored'
+NOT_RECORDED = 'Not recorded'
+
+
+class Share:
+    __slots__ = ('label', 'count', 'pct')
+
+    def __init__(self, label, count, total):
+        self.label, self.count = label, count
+        self.pct = round(100 * count / total) if total else 0
+
+
+def _counts(labels, order):
+    total = len(labels)
+    tally = {}
+    for label in labels:
+        tally[label] = tally.get(label, 0) + 1
+    rows = [Share(label, tally[label], total) for label in order if label in tally]
+    return sorted(rows, key=lambda c: (-c.count, order.index(c.label)))
+
+
+def bid_discipline(decided, bids):
+    """
+    From the bid/no-bid and loss reviews (tenders.BidReview): win rate by score band, why we
+    decline, why we lose and by how much. Each project's review is attached as `p.review`.
+    """
+    from tenders.models import BidReview
+    from tenders.scoring import DECLINE_REASONS, LOSS_REASONS, RESULT_CHOICES
+    reviews = {r.project_id: r for r in BidReview.objects.filter(project_id__in=[p.pk for p in decided])}
+    for p in decided:
+        p.review = reviews.get(p.pk)
+    result_labels = dict(RESULT_CHOICES)
+    score_order = [label for _, label in RESULT_CHOICES] + [NOT_SCORED]
+    by_score = _breakdown(bids, lambda p: result_labels.get(p.review.result) if p.review and p.review.result
+                          else NOT_SCORED, order=score_order)
+    declined = [p for p in decided if p.stage == Project.STAGE_DECLINED]
+    decline_labels = dict(DECLINE_REASONS)
+    decline_reasons = _counts([decline_labels.get(p.review.decline_reason, NOT_RECORDED) if p.review else NOT_RECORDED
+                               for p in declined], [label for _, label in DECLINE_REASONS] + [NOT_RECORDED])
+    lost = sorted((p for p in bids if p.stage == Project.STAGE_LOST), key=lambda p: p.decided_at, reverse=True)
+    loss_labels = dict(LOSS_REASONS)
+    loss_reasons = _counts([loss_labels.get(p.review.loss_reason, NOT_RECORDED) if p.review else NOT_RECORDED
+                            for p in lost], [label for _, label in LOSS_REASONS] + [NOT_RECORDED])
+    gaps = [p.review.gap_pct for p in lost if p.review and p.review.gap_pct is not None]
+    return {
+        'by_score': by_score,
+        'scored_bids': sum(r.bids for r in by_score if r.label != NOT_SCORED),
+        'decline_reasons': decline_reasons,
+        'loss_reasons': loss_reasons,
+        'loss_reviews': lost[:10],
+        'losses_reviewed': sum(1 for p in lost if p.review and p.review.loss_reason),
+        'losses_total': len(lost),
+        'avg_price_gap': (sum(gaps) / len(gaps)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if gaps else None,
+        'price_gaps_known': len(gaps),
     }

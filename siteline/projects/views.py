@@ -195,10 +195,13 @@ def project_create(request, org_slug):
         else:
             p = form.save(commit=False)
             p.created_by = request.user
+            target = p.stage
+            if p.stage in Project.ESTIMATING_STAGES and p.stage != Project.STAGE_LEAD:
+                p.stage = Project.STAGE_LEAD  # it starts as a lead, then goes through the bid/no-bid step
             p.save()
             log_activity(request, 'created project', p.name, project=p, url=p.get_absolute_url())
             messages.success(request, f'{p.reference} created.')
-            return redirect(p)
+            return redirect(_bid_step(p, p.stage, target) or p)
     return render(request, 'projects/project_form.html', {'form': form})
 
 
@@ -287,6 +290,13 @@ def project_edit(request, org_slug, pk):
             p.save()
             messages.info(request, 'Saved. Complete the handover to move it to the projects team.')
             return redirect('project_handover', org_slug=org_slug, pk=pk)
+        step = _bid_step(p, old_stage, p.stage)
+        if step:
+            # Bidding, declining or losing goes through its own questions first, like a win
+            p.stage = old_stage
+            p.save()
+            messages.info(request, 'Saved. Answer the questions below to change the stage.')
+            return redirect(step)
         p.save()
         if p.stage != old_stage:
             log_activity(request, f'moved to {p.get_stage_display()}', p.name, project=p, url=p.get_absolute_url())
@@ -397,6 +407,9 @@ def project_stage(request, org_slug, pk):
     allowed = request.membership.can_estimate if stage in Project.ESTIMATING_STAGES else request.membership.can_deliver
     if not allowed:
         return refuse('That stage belongs to the other team.', 403)
+    step = _bid_step(project, project.stage, stage)
+    if step:
+        return JsonResponse({'ok': True, 'redirect': step}) if is_json else redirect(step)
     if project.stage != stage:
         project.stage = stage
         project.save()
@@ -412,6 +425,12 @@ def project_stage(request, org_slug, pk):
 
 def _crosses_to_delivery(old, new):
     return old in Project.ESTIMATING_STAGES and new not in Project.ESTIMATING_STAGES
+
+
+def _bid_step(project, old, new):
+    """The bid/no-bid gate, decline reason or loss review a move must go through first (tenders.gate), or None."""
+    from tenders.gate import intercept
+    return intercept(project, old, new)
 
 
 @internal_required

@@ -236,7 +236,11 @@ class DecisionTests(TenderBase):
         self.assertFalse(ProjectMember.all_objects.filter(project=self.bid, user=self.dry_a).exists())
 
     def test_losing_the_main_tender_closes_every_package(self):
-        self.client.post(self.url('project_stage', self.org_a, self.bid.pk), {'stage': Project.STAGE_LOST})
+        r = self.client.post(self.url('project_stage', self.org_a, self.bid.pk), {'stage': Project.STAGE_LOST})
+        # Losing goes through the loss review first (tenders.gate), which then closes the packages
+        self.assertRedirects(r, self.url('bid_lost', self.org_a, self.bid.pk))
+        self.assertTrue(Package.all_objects.filter(project=self.bid, status__in=Package.OPEN_STATUSES).exists())
+        self.client.post(r.url, {'loss_reason': 'PRICE', 'our_price': '100000'})
         self.assertFalse(Package.all_objects.filter(project=self.bid, status__in=Package.OPEN_STATUSES).exists())
         self.assertFalse(ProjectMember.all_objects.filter(project=self.bid, role=ProjectMember.ROLE_BIDDER).exists())
 

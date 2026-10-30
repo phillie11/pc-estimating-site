@@ -1,0 +1,15 @@
+{% extends "app.html" %}
+{% block title %}Estimating settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">Owners and admins</div><h1>Estimating settings</h1></div></div>
+<div class="grid split">
+  <div class="card"><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">Save</button></div></form>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>How these are used</h2></div><div class="card-body small">
+    <p><strong>Bid/no-bid check.</strong> Moving a lead to Tendering asks six weighted questions and gives a Go, Review or No-go. At or above this value (the tender value, or the client's budget if there's no value yet) the questions must be answered; below it the estimator can skip them.</p>
+    <p style="margin:0"><strong>Quotes wanted per trade.</strong> On each tender's coverage board, and the <a href="{% url 'tender_coverage' org.slug %}">company-wide one</a>, a trade with fewer quotes in than this is shown red.</p>
+  </div></div>
+</div>
+{% endblock %}
