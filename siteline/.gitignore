@@ -5,3 +5,4 @@ db.sqlite3
 private_media/
 staticfiles/
 .venv/
+.coverage

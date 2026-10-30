@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Nothing in CI needs to write to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: siteline
+
+jobs:
+  test:
+    name: Tests (${{ matrix.db }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres]
+
+    services:
+      postgres:
+        # An empty image means the service is not started (the sqlite leg).
+        image: ${{ matrix.db == 'postgres' && 'postgres:16' || '' }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: siteline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # config/settings.py: anything other than mysql/postgres falls back to SQLite.
+      DB_ENGINE: ${{ matrix.db }}
+      DB_NAME: siteline
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DEBUG: '1'
+      SECRET_KEY: ci-only-not-a-secret
+      PYTHONUNBUFFERED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            siteline/requirements.txt
+            siteline/requirements-dev.txt
+
+      # mysqlclient is only used on PythonAnywhere (DB_ENGINE=mysql). It ships no
+      # Linux wheels, so installing it means compiling against libmysqlclient-dev
+      # from apt on every run. Neither leg here imports it, so we drop that one line
+      # rather than add an apt step that can fail for reasons unrelated to our code.
+      # The security job still audits the mysqlclient pin.
+      - name: Install dependencies
+        run: |
+          grep -viE '^[[:space:]]*mysqlclient([^A-Za-z0-9_.-]|$)' requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
+          python -m pip install --upgrade pip
+          python -m pip install -r "$RUNNER_TEMP/requirements-ci.txt" -r requirements-dev.txt
+
+      - name: Use a temporary MEDIA_ROOT
+        run: echo "MEDIA_ROOT=$(mktemp -d)" >> "$GITHUB_ENV"
+
+      - name: Django system checks
+        run: python manage.py check
+
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run tests with coverage
+        run: python -m coverage run manage.py test --noinput
+
+      - name: Coverage report
+        if: ${{ !cancelled() }}
+        run: |
+          python -m coverage report
+          {
+            echo "### Coverage (${{ matrix.db }})"
+            python -m coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: siteline/requirements-dev.txt
+
+      - name: Install scanners
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      # Non-blocking for now: the current pins (Django 5.1.4, Pillow 11.0.0,
+      # python-dotenv 1.0.1) have known advisories. Remove continue-on-error once fixed.
+      - name: pip-audit (full dependency tree, without mysqlclient)
+        id: audit_tree
+        continue-on-error: true
+        run: |
+          grep -viE '^[[:space:]]*mysqlclient([^A-Za-z0-9_.-]|$)' requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
+          pip-audit --progress-spinner off -r "$RUNNER_TEMP/requirements-ci.txt" -r requirements-dev.txt
+
+      # Checks every pin in requirements.txt, mysqlclient included, without building it.
+      - name: pip-audit (all pinned requirements, no build)
+        id: audit_pins
+        continue-on-error: true
+        run: pip-audit --progress-spinner off -r requirements.txt --no-deps --disable-pip
+
+      # Non-blocking for now: two medium findings (B308/B703, mark_safe in
+      # tenancy/templatetags/ui.py) on a constant SVG lookup.
+      - name: Bandit (medium severity and above)
+        id: bandit
+        continue-on-error: true
+        working-directory: .
+        run: bandit -r siteline -ll
+
+      - name: Summarise non-blocking findings
+        if: ${{ !cancelled() }}
+        run: |
+          for r in "pip-audit tree:${{ steps.audit_tree.outcome }}" \
+                   "pip-audit pins:${{ steps.audit_pins.outcome }}" \
+                   "bandit:${{ steps.bandit.outcome }}"; do
+            name="${r%%:*}"; outcome="${r##*:}"
+            if [ "$outcome" != "success" ]; then
+              echo "::warning title=Security scan::$name reported findings (non-blocking, see step log)"
+            fi
+            echo "- $name: $outcome" >> "$GITHUB_STEP_SUMMARY"
+          done

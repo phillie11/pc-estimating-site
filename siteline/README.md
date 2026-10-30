@@ -90,6 +90,24 @@ Open http://localhost:8000/login/. Demo logins (password `DemoPass!2026`):
 
 Emails print to the console while `EMAIL_BACKEND` is unset.
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`:
+
+- **Tests**, on Python 3.13 against SQLite and PostgreSQL 16: `manage.py check`, `manage.py makemigrations --check --dry-run` (fails if a model change has no migration), then the full test suite under `coverage`, with the report printed in the log and the job summary. There is no coverage threshold yet. `mysqlclient` is left out of these installs because it has to be compiled and neither database uses it.
+- **Security scan**: `pip-audit` on `requirements.txt` and `requirements-dev.txt`, and `bandit -r siteline -ll`. This is non-blocking for now (`continue-on-error`) while the existing findings are fixed. Findings show up as warnings on the run.
+
+Dependabot (`.github/dependabot.yml`) opens weekly update PRs for the pip requirements and for the GitHub Actions, which are pinned to commit SHAs. The `@claude` workflow (`.github/workflows/claude.yml`) only runs for repository owners, members and collaborators.
+
+To run the same checks locally:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+DEBUG=1 MEDIA_ROOT=$(mktemp -d) python -m coverage run manage.py test && python -m coverage report
+pip-audit -r requirements.txt --no-deps --disable-pip   # checks the pins without building mysqlclient
+bandit -r . -ll --exclude ./.venv
+```
+
 ## Deploy on PythonAnywhere
 
 You need a **paid plan** (Hacker or above) for a custom domain and unrestricted SMTP. MySQL is included.
