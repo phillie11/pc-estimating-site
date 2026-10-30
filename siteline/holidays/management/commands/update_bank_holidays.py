@@ -11,6 +11,7 @@ Run it once a year, and whenever a special bank holiday is announced.
 import json
 import os
 import tempfile
+import urllib.parse
 import urllib.request
 
 from django.core.management.base import BaseCommand, CommandError
@@ -21,8 +22,12 @@ URL = 'https://www.gov.uk/bank-holidays.json'
 
 
 def fetch(url=URL, timeout=20):
+    # --url can point elsewhere (a mirror, a test server), but only over https: urlopen would
+    # otherwise also read file:// and other schemes from the machine it runs on
+    if urllib.parse.urlsplit(url).scheme != 'https':
+        raise ValueError('only https:// addresses are allowed')
     req = urllib.request.Request(url, headers={'Accept': 'application/json', 'User-Agent': 'Siteline bank holidays'})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - fixed https URL
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
         return json.loads(resp.read().decode('utf-8'))
 
 

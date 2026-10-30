@@ -142,3 +142,12 @@ class UpdateCommandTests(SimpleTestCase):
                 self.assertRaises(CommandError):
             call_command('update_bank_holidays', stdout=StringIO())
         self.assertEqual(self.file.read_bytes(), before)
+
+
+class FetchSchemeTests(SimpleTestCase):
+    def test_only_https_addresses_are_fetched(self):
+        for url in ('file:///etc/passwd', 'http://www.gov.uk/bank-holidays.json', 'ftp://example.com/x.json'):
+            with self.subTest(url=url), mock.patch('urllib.request.urlopen') as urlopen:
+                with self.assertRaises(CommandError):
+                    call_command('update_bank_holidays', '--dry-run', '--url', url, stdout=StringIO())
+                urlopen.assert_not_called()
