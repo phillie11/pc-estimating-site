@@ -49,14 +49,15 @@ def sections_for(items, today=None):
 
 
 def unsubscribe_token(user):
-    return signing.dumps({'u': user.pk}, salt=UNSUBSCRIBE_SALT, compress=True)
+    # No timestamp: the same link for a person every time, and old emails' links keep working
+    return signing.Signer(salt=UNSUBSCRIBE_SALT).sign_object({'u': user.pk}, compress=True)
 
 
 def user_from_token(token):
     """The user a signed unsubscribe token was made for, or None if it was tampered with."""
     from django.contrib.auth import get_user_model
     try:
-        data = signing.loads(token, salt=UNSUBSCRIBE_SALT)
+        data = signing.Signer(salt=UNSUBSCRIBE_SALT).unsign_object(token)
     except signing.BadSignature:
         return None
     return get_user_model().objects.filter(pk=data.get('u'), is_active=True).first()

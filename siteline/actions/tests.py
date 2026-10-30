@@ -250,7 +250,8 @@ class ProviderAccessTests(Base):
         other = make_user('other@alpha.test', 'Other PM')
         with org_context(self.a.org):
             Membership.objects.create(organization=self.a.org, user=other, role=Membership.ROLE_MEMBER)
-        self.assertEqual(self.a.titles(other), set())
+        # Staff in both sections get the company-wide tender coverage alert, but nothing from the job
+        self.assertEqual(self.a.titles(other), {'Thin quote cover on Alpha bid'})
         with org_context(self.a.org):
             ProjectMember.objects.create(project=self.a.job, user=other, role=ProjectMember.ROLE_SITE)
         self.assertIn('Alpha job rams to review', self.a.titles(other))
@@ -266,7 +267,8 @@ class ProviderAccessTests(Base):
             r.save(actor=self.a.pm)
             Task.objects.create(project=self.a.job, title='Live job task for estimator', assignee=self.a.est)
             Task.objects.create(project=self.a.bid, title='Bid task for estimator', assignee=self.a.est)
-        self.assertEqual(self.a.titles(self.a.est), {'Bid task for estimator'})
+        # Their bid's task and its quote-cover alert; nothing from the live job
+        self.assertEqual(self.a.titles(self.a.est), {'Bid task for estimator', 'Thin quote cover on Alpha bid'})
 
     def test_removed_from_project_loses_its_items(self):
         with org_context(self.a.org):
@@ -330,7 +332,9 @@ class CrossProviderTenancyTests(Base):
 class NeedsMePageTests(Base):
     def test_each_role(self):
         expect = {
-            self.a.owner: (200, None), self.a.pm: (200, 'Alpha job sub claim'), self.a.est: (200, None),
+            # Owners and estimators all get the bid's coverage alert (company-wide, by owner decision)
+            self.a.owner: (200, 'Thin quote cover on Alpha bid'), self.a.pm: (200, 'Alpha job sub claim'),
+            self.a.est: (200, 'Thin quote cover on Alpha bid'),
             self.a.client: (200, 'Alpha job extra ceiling'), self.a.consultant: (200, None),
             self.a.sub: (200, 'Alpha job rams to revise'), self.a.bidder: (200, 'Alpha revised layout'),
         }
@@ -767,13 +771,21 @@ class HookProviderTests(Base):
     """Hooks into apps on other branches list nothing until the module exists, then plug straight in."""
 
     def test_missing_modules_list_nothing(self):
+        from .providers import HookProvider
         kinds = {p.kind for p in registry.providers()}
         self.assertTrue({'coverage_alert', 'change', 'transmittal'} <= kinds)
-        for kind in ('coverage_alert', 'change', 'transmittal'):
-            p = next(p for p in registry.providers() if p.kind == kind)
+        for path, takes in (('zz_not_merged_yet.actions.items', 'request'), ('tenders.zz_not_here.alerts', 'request'),
+                            ('zz_not_merged_yet.models.pending', 'user'), ('tenders.actions.zz_no_such_function', 'request')):
+            hook = HookProvider('zz', 'Test', path, takes=takes)
             for user in (self.a.owner, self.a.client):
                 with org_context(self.a.org):
-                    self.assertEqual(p.items(actions.request_for(user, self.a.membership(user))), [])
+                    self.assertEqual(hook.items(actions.request_for(user, self.a.membership(user))), [], path)
+
+    def test_dicts_with_extra_keys_keep_only_item_fields_and_the_providers_kind(self):
+        from .providers import HookProvider
+        item = HookProvider('zz', 'Test', 'x.y')._coerce(
+            {'kind': 'tenders.thin_coverage', 'title': 'T', 'url': '/t', 'owner': self.a.est, 'trades': ['Joinery']})
+        self.assertEqual((item.kind, item.title, item.url), ('zz', 'T', '/t'))
 
     def test_a_hook_that_exists_is_used_and_access_filtered(self):
         import sys
@@ -848,3 +860,96 @@ class SeedDemoTests(TestCase):
             self.assertIn('task', kinds('estimator@demo.test'))
             self.assertIn('task', kinds('owner@demo.test'))
             self.assertIn('addendum', kinds('sub@demo.test'))
+
+
+class LiveHookTests(Base):
+    """The merged hooks: tender coverage alerts and transmittals to acknowledge."""
+
+    def items_of(self, world, user, kind):
+        with org_context(world.org):
+            return [i for i in actions.for_user(actions.request_for(user, world.membership(user))) if i.kind == kind]
+
+    def test_coverage_alerts_go_to_every_estimator_and_nobody_else(self):
+        late_staff = make_user('both@alpha.test', 'Both Sections')
+        with org_context(self.a.org):
+            Membership.objects.create(organization=self.a.org, user=late_staff, role=Membership.ROLE_MEMBER)
+        for user in (self.a.owner, self.a.est, late_staff):  # company-wide: not only the bid lead
+            alerts = self.items_of(self.a, user, 'coverage_alert')
+            self.assertEqual([i.title for i in alerts], ['Thin quote cover on Alpha bid'], user)
+            self.assertEqual(alerts[0].url, reverse('tender', args=[self.a.org.slug, self.a.bid.pk]) + '#coverage')
+            self.assertEqual(alerts[0].due, self.a.package.quote_due)
+            self.assertIn('Joinery', alerts[0].detail)
+        for user in (self.a.pm, self.a.client, self.a.consultant, self.a.sub, self.a.bidder):
+            self.assertEqual(self.items_of(self.a, user, 'coverage_alert'), [], user)
+        for user in (self.a.owner, self.a.est):
+            self.assertFalse([i for i in self.items_of(self.a, user, 'coverage_alert') if 'Bravo' in i.title])
+
+    def test_bidder_never_sees_coverage_on_their_own_tender_page_list(self):
+        self.login(self.a.bidder)
+        r = self.client.get(self.url('needs_me', self.a))
+        self.assertNotContains(r, 'Thin quote cover')
+        self.login(self.a.est)
+        self.assertContains(self.client.get(self.url('needs_me', self.a)), 'Thin quote cover on Alpha bid')
+        self.login(self.b.est)
+        self.assertNotContains(self.client.get(self.url('needs_me', self.b)), 'Alpha bid')
+
+    def issue(self, world, users=(), companies=(), due=None, title='Joinery drawings for construction'):
+        from documents import services
+        from documents.models import Transmittal, check_number
+        from projects.models import Document, DocumentRevision
+        with org_context(world.org):
+            number = 'SLN-ABC-ZZ-02-DR-A-1001'
+            d = Document(project=world.job, title='GA plan', created_by=world.pm)
+            d.set_number(number, check_number(world.job, number)[1])
+            d.save()
+            rev = d.add_revision(DocumentRevision(revision='P01', file=pdf(), original_name='P01.pdf', size=10,
+                                                  uploaded_by=world.pm))
+            t = Transmittal(project=world.job, title=title, purpose=Transmittal.PURPOSE_CONSTRUCTION, due_date=due)
+            t.save(actor=world.pm)
+            services.set_items(t, [rev])
+            services.set_recipients(t, list(users), list(companies))
+            services.issue(world.pm, t)
+            return Transmittal.objects.get(pk=t.pk)
+
+    def test_transmittals_appear_for_their_recipients_once_with_ref_url_and_due(self):
+        due = timezone.localdate() + timedelta(days=2)
+        t = self.issue(self.a, users=[self.a.client], companies=[self.a.joinery], due=due)
+        for user in (self.a.client, self.a.sub):
+            got = self.items_of(self.a, user, 'transmittal')
+            self.assertEqual(len(got), 1, user)
+            item = got[0]
+            self.assertEqual((item.title, item.ref, item.url, item.due, item.project),
+                             (t.title, 'TR-001', t.get_absolute_url(), due, self.a.job))
+            self.assertEqual(item.status_label, 'To acknowledge')
+            # Not listed a second time from the record index (the client is the ball in court)
+            with org_context(self.a.org):
+                every = actions.for_user(actions.request_for(user, self.a.membership(user)))
+            self.assertEqual(len([i for i in every if i.ref == 'TR-001']), 1)
+        for user in (self.a.consultant, self.a.bidder, self.a.est, self.a.owner):
+            self.assertEqual(self.items_of(self.a, user, 'transmittal'), [], user)
+        self.assertEqual(self.items_of(self.b, self.b.client, 'transmittal'), [])
+        self.login(self.b.client)
+        self.assertNotContains(self.client.get(self.url('needs_me', self.b)), 'Joinery drawings')
+
+    def test_staff_recipients_get_them_too_and_acknowledging_clears_it(self):
+        from documents import services
+        t = self.issue(self.a, users=[self.a.pm])
+        self.assertEqual([i.ref for i in self.items_of(self.a, self.a.pm, 'transmittal')], ['TR-001'])
+        with org_context(self.a.org):
+            services.acknowledge(self.a.pm, t)
+        self.assertEqual(self.items_of(self.a, self.a.pm, 'transmittal'), [])
+
+    def test_transmittal_on_an_archived_project_is_dropped(self):
+        self.issue(self.a, users=[self.a.client])
+        with org_context(self.a.org):
+            Project.objects.filter(pk=self.a.job.pk).update(archived_at=timezone.now())
+        self.assertEqual(self.items_of(self.a, self.a.client, 'transmittal'), [])
+
+    def test_digest_includes_both(self):
+        self.issue(self.a, users=[self.a.client], due=timezone.localdate() + timedelta(days=1))
+        call_command('send_reminders', stdout=io.StringIO())
+        by = {m.to[0]: m.body for m in mail.outbox}
+        self.assertIn('TR-001 Joinery drawings for construction', by['client@alpha.test'])
+        self.assertIn('Thin quote cover on Alpha bid', by['est@alpha.test'])
+        self.assertNotIn('Thin quote cover', by.get('bid@alpha.test', ''))
+        self.assertNotIn('Thin quote cover', by.get('client@alpha.test', ''))

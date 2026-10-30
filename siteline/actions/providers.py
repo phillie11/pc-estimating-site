@@ -270,15 +270,18 @@ class TaskProvider:
 
 class HookProvider:
     """
-    Items from another app's function, found by dotted path, so modules being built on other
-    branches plug in without this app importing them. While the module doesn't exist yet the
-    provider lists nothing. Results may be Items, dicts of Item fields, or model rows (title,
-    ref/reference, project, due_date, get_absolute_url). Rows on projects this person can't
-    open through the portal (portal_projects) are dropped, whatever the hook returned.
+    Items from another app's function, found by dotted path, so modules built on other
+    branches plug in without this app importing them at load time. While the module doesn't
+    exist the provider lists nothing. Results may be Items, dicts (keys that aren't Item
+    fields, such as a coverage alert's owner and trades, are dropped), or model rows mapped
+    by `mapper` (default: title, ref/reference, project, due_date, get_absolute_url). The
+    item's kind is always the provider's own. Rows on projects this person can't open
+    through the portal (portal_projects) are dropped, whatever the hook returned.
     """
 
-    def __init__(self, kind, label, path, takes='request', staff=None, covers=()):
-        self.kind, self.label, self.path, self.takes, self.staff, self.covers = kind, label, path, takes, staff, covers
+    def __init__(self, kind, label, path, takes='request', staff=None, covers=(), action='', mapper=None):
+        self.kind, self.label, self.path, self.takes, self.staff = kind, label, path, takes, staff
+        self.covers, self.action, self.mapper = covers, action, mapper
 
     def resolve(self):
         import importlib
@@ -299,20 +302,32 @@ class HookProvider:
         if fn is None:
             return []
         rows = fn(request.user) if self.takes == 'user' else fn(request)
-        allowed = set(_portal(request).values_list('pk', flat=True))
+        allowed = None
         out = []
         for row in rows or ():
             item = self._coerce(row)
-            if item is not None and (item.project is None or item.project.pk in allowed):
-                out.append(item)
+            if item is None:
+                continue
+            if item.project is not None:
+                if allowed is None:
+                    allowed = set(_portal(request).values_list('pk', flat=True))
+                if item.project.pk not in allowed:
+                    continue
+            item.kind = self.kind
+            item.action = item.action or self.action
+            item.status_label = item.status_label or self.label
+            out.append(item)
         return out
 
     def _coerce(self, row):
+        import dataclasses
         if isinstance(row, Item):
-            row.kind = row.kind or self.kind
             return row
         if isinstance(row, dict):
-            return Item(**{'kind': self.kind, **row})
+            known = {f.name for f in dataclasses.fields(Item)}
+            return Item(**{**{k: v for k, v in row.items() if k in known}, 'kind': self.kind})
+        if self.mapper is not None:
+            return self.mapper(self, row)
         url = row.get_absolute_url() if hasattr(row, 'get_absolute_url') else ''
         if not url:
             return None
@@ -324,12 +339,24 @@ class HookProvider:
                     tone=getattr(row, 'status_tone', 'accent'), key=f'{self.kind}:{getattr(row, "pk", "")}')
 
 
-# Hooks into modules on other branches; each lists nothing until its module exists
+def transmittal_item(provider, t):
+    """A transmittal waiting on this person to acknowledge receipt (documents.models.Transmittal)."""
+    return Item(kind=provider.kind, title=t.title, url=t.get_absolute_url(), ref=t.ref, project=t.project,
+                due=t.due_date, action='Check what was sent and confirm you have received it',
+                status_label='To acknowledge', tone='warn', detail=t.get_purpose_display(), key=f'tr:{t.pk}')
+
+
+# Hooks into modules owned by other parts of the product; each lists nothing until its module exists
 HOOKS = [
-    lambda: HookProvider('coverage_alert', 'Tender coverage', 'tenders.actions.coverage_alerts', staff=True),
+    # Every estimator gets every coverage alert, company-wide (product owner, 30 Oct 2026);
+    # coverage_alerts itself returns [] for anyone who doesn't work in estimating
+    lambda: HookProvider('coverage_alert', 'Tenders short of quotes', 'tenders.actions.coverage_alerts', staff=True,
+                         action='Chase more quotes before they are due'),
     lambda: HookProvider('change', 'Early warnings and compensation events', 'changes.actions.items'),
+    # Staff and externals alike: whoever a transmittal went to. It covers the index rows for
+    # transmittals so the first pending recipient (the ball in court) doesn't see it twice.
     lambda: HookProvider('transmittal', 'Documents to acknowledge', 'documents.models.pending_acknowledgements',
-                         takes='user', staff=False),
+                         takes='user', covers=('documents.transmittal',), mapper=transmittal_item),
 ]
 
 BUILT_IN = [RecordsProvider, ClientVariationProvider, RamsReviseProvider, RamsReviewProvider, SubVariationProvider,
