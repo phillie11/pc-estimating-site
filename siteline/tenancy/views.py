@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from directory.models import Subcontractor
-from projects.access import is_internal, portal_projects, visible_projects
+from projects.access import is_internal, openable, portal_projects, visible_projects
 from projects.models import Issue, Project, Task
 from rfis.models import RFI
 from variations.models import Variation
@@ -262,7 +262,9 @@ def org_locked(request, org_slug):
 
 def activity(request, org_slug):
     qs = ActivityEvent.objects.select_related('actor', 'project')
-    if not is_internal(request):
+    if is_internal(request):
+        qs = qs.filter(openable(request))
+    else:
         qs = qs.filter(project__in=portal_projects(request), internal_only=False)
     return render(request, 'tenancy/activity.html', {'activity': qs[:200]})
 
@@ -272,7 +274,7 @@ def activity(request, org_slug):
 # ---------------------------------------------------------------------------
 
 def notifications(request, org_slug):
-    items = Notification.objects.filter(user=request.user).select_related('actor', 'project')
+    items = Notification.objects.filter(openable(request), user=request.user).select_related('actor', 'project')
     if request.method == 'POST' and request.POST.get('action') == 'read_all':
         items.filter(read_at__isnull=True).update(read_at=timezone.now())
         return redirect('notifications', org_slug=org_slug)
@@ -283,7 +285,7 @@ def notifications(request, org_slug):
 
 
 def notification_open(request, org_slug, pk):
-    n = get_object_or_404(Notification, user=request.user, pk=pk)
+    n = get_object_or_404(Notification.objects.filter(openable(request)), user=request.user, pk=pk)
     if n.read_at is None:
         n.read_at = timezone.now()
         n.save(update_fields=['read_at'])

@@ -858,3 +858,76 @@ class HandoverPlanLimitTests(Base):
         self.client.post(self.url('project_handover', self.org_a, lost.pk), handover)
         lost.refresh_from_db()
         self.assertEqual(lost.stage, Project.STAGE_WON)
+
+
+class ArchivedVisibilityTests(Base):
+    """Archived projects stay out of the feed, the bell and invite links for people who can't open them."""
+
+    def setUp(self):
+        super().setUp()
+        from tenancy.models import log_activity
+        self.staff = make_user('staff@a.test', 'Stan Staff')
+        self.estimator = make_user('est@a.test', 'Esme Estimator')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=self.staff, role=Membership.ROLE_MEMBER)
+            Membership.objects.create(organization=self.org_a, user=self.estimator, role=Membership.ROLE_MEMBER,
+                                      area=Membership.AREA_ESTIMATING)
+            self.bid = Project.objects.create(name='Shopfit bid', stage=Project.STAGE_TENDERING)
+            log_activity(self.alice, 'priced', 'Bid event', project=self.bid)
+            log_activity(self.alice, 'programmed', 'Live job event', project=self.pa)
+            log_activity(self.alice, 'joined the team', 'Company event')
+
+    def feed(self, user):
+        self.login(user)
+        return self.client.get(self.url('activity', self.org_a)).content.decode()
+
+    def test_activity_feed_follows_what_each_person_can_open(self):
+        feed = self.feed(self.estimator)  # estimating only: the live job belongs to the projects team
+        self.assertIn('Bid event', feed)
+        self.assertIn('Company event', feed)
+        self.assertNotIn('Live job event', feed)
+        self.bid.archive(self.alice)
+        feed = self.feed(self.staff)
+        self.assertNotIn('Bid event', feed)
+        self.assertIn('Live job event', feed)
+        self.assertIn('Bid event', self.feed(self.alice))  # owners and admins can still open it
+
+    def test_notifications_for_archived_projects_are_hidden_from_people_who_cannot_open_them(self):
+        from tenancy.models import Notification
+        with org_context(self.org_a):
+            n = Notification.objects.create(user=self.staff, project=self.bid, title='Quote in for shopfit', url='/x/')
+            Notification.objects.create(user=self.alice, project=self.bid, title='Owner alert', url='/x/')
+        self.bid.archive(self.alice)
+        self.login(self.staff)
+        r = self.client.get(self.url('notifications', self.org_a))
+        self.assertNotContains(r, 'Quote in for shopfit')
+        self.assertEqual(r.context['unread_notifications'], 0)
+        self.assertEqual(self.client.get(self.url('notification_open', self.org_a, n.pk)).status_code, 404)
+        self.login(self.alice)
+        r = self.client.get(self.url('notifications', self.org_a))
+        self.assertContains(r, 'Owner alert')
+        self.assertEqual(r.context['unread_notifications'], 1)
+
+    def test_invite_to_an_archived_project_cannot_be_accepted(self):
+        from django.urls import reverse
+        from projects.models import ProjectInvite
+        with org_context(self.org_a):
+            inv = ProjectInvite.objects.create(project=self.pa, email='late@c.test', role=ProjectMember.ROLE_CLIENT)
+        self.pa.archive(self.alice)
+        url = reverse('accept_project_invite', args=[inv.token])
+        r = self.client.post(url, {'full_name': 'Late Client', 'password': 'Correct-Horse-9'})
+        self.assertContains(r, 'archived', status_code=410)
+        self.assertFalse(ProjectMember.all_objects.filter(project=self.pa, user__email='late@c.test').exists())
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, ProjectInvite.STATUS_PENDING)
+
+    def test_archiving_notifies_nobody(self):
+        from django.core import mail
+        from tenancy.models import Notification
+        with org_context(self.org_a):
+            ProjectMember.objects.create(project=self.pa, user=self.staff, role=ProjectMember.ROLE_PM)
+        before = Notification.all_objects.count()
+        self.login(self.alice)
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk))
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        self.assertEqual((Notification.all_objects.count(), mail.outbox), (before, []))

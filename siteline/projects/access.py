@@ -52,6 +52,15 @@ def visible_projects(request, include_archived=False):
     return qs.select_related('owner', 'manager')
 
 
+def openable(request):
+    """
+    Q for rows (activity, notifications) tied to no project or to one this person can open:
+    their sections only, archived ones only for owners and admins.
+    """
+    projects = visible_projects(request, include_archived=can_see_archived(request))
+    return Q(project__isnull=True) | Q(project__in=projects.values('pk'))
+
+
 def portal_projects(request):
     """Projects whose shared content (RFIs, feed) this user may see: bidders' tenders excluded."""
     qs = visible_projects(request)
