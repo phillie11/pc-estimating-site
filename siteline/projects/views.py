@@ -189,16 +189,20 @@ def project_create(request, org_slug):
                'manager': None if stage in Project.ESTIMATING_STAGES else request.user}
     form = ProjectForm(request.POST or None, org=org, membership=request.membership, initial=initial)
     if request.method == 'POST' and form.is_valid():
-        if form.cleaned_data['stage'] not in Project.CLOSED_STAGES and not Project.plan_has_room(org):
+        target = form.cleaned_data['stage']
+        # A bid created into Tendering, Submitted, Lost or Declined is saved as a lead first, then goes
+        # through its bid/no-bid step; the plan check is on the stage actually saved
+        saved = Project.STAGE_LEAD if target in Project.ESTIMATING_STAGES else target
+        if saved not in Project.CLOSED_STAGES and not Project.plan_has_room(org):
             messages.error(request, f'Your {org.plan_config["name"]} plan allows {org.plan_config["max_active_projects"]} '
                                     'active projects. Close some or upgrade.')
         else:
             p = form.save(commit=False)
-            p.created_by = request.user
+            p.created_by, p.stage = request.user, saved
             p.save()
             log_activity(request, 'created project', p.name, project=p, url=p.get_absolute_url())
             messages.success(request, f'{p.reference} created.')
-            return redirect(p)
+            return redirect(_bid_step(p, p.stage, target) or p)
     return render(request, 'projects/project_form.html', {'form': form})
 
 
@@ -287,6 +291,13 @@ def project_edit(request, org_slug, pk):
             p.save()
             messages.info(request, 'Saved. Complete the handover to move it to the projects team.')
             return redirect('project_handover', org_slug=org_slug, pk=pk)
+        step = _bid_step(p, old_stage, p.stage)
+        if step:
+            # Bidding, declining or losing goes through its own questions first, like a win
+            p.stage = old_stage
+            p.save()
+            messages.info(request, 'Saved. One more step: answer the questions on this page.')
+            return redirect(step)
         p.save()
         if p.stage != old_stage:
             log_activity(request, f'moved to {p.get_stage_display()}', p.name, project=p, url=p.get_absolute_url())
@@ -397,6 +408,9 @@ def project_stage(request, org_slug, pk):
     allowed = request.membership.can_estimate if stage in Project.ESTIMATING_STAGES else request.membership.can_deliver
     if not allowed:
         return refuse('That stage belongs to the other team.', 403)
+    step = _bid_step(project, project.stage, stage)
+    if step:
+        return JsonResponse({'ok': True, 'redirect': step}) if is_json else redirect(step)
     if project.stage != stage:
         project.stage = stage
         project.save()
@@ -412,6 +426,12 @@ def project_stage(request, org_slug, pk):
 
 def _crosses_to_delivery(old, new):
     return old in Project.ESTIMATING_STAGES and new not in Project.ESTIMATING_STAGES
+
+
+def _bid_step(project, old, new):
+    """The bid/no-bid gate, decline reason or loss review a move must go through first (tenders.gate), or None."""
+    from tenders.gate import intercept
+    return intercept(project, old, new)
 
 
 @internal_required
@@ -436,10 +456,14 @@ def project_handover(request, org_slug, pk):
                                     'Close some or upgrade before winning this one.')
             return redirect(project)
         p = form.save(commit=False)
+        direct = winning and project.stage == Project.STAGE_LEAD
         if winning:
             p.stage = Project.STAGE_WON
         p.handed_over_at, p.handed_over_by = timezone.now(), request.user
         p.save()
+        if direct:  # won straight from a lead: outside the bid/no-bid gate, but recorded for analytics
+            from tenders.gate import record_direct_award
+            record_direct_award(p, request.user)
         notify.alert([p.manager], f'Handed over to you: {p.name}', p.get_absolute_url(), project=p, actor=request.user,
                      org=request.org)
         log_activity(request, 'handed over to', f'{p.manager.full_name}: {p.name}', project=p, url=p.get_absolute_url())

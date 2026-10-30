@@ -1,0 +1,8 @@
+<div class="card">
+  <div class="card-head"><h2>{{ title }}</h2>{% if total %}<span class="small dim">{{ total }} bid{{ total|pluralize }}</span>{% endif %}</div>
+  {% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Reason</th><th class="num">Bids</th><th>Share</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td>{{ r.label }}</td><td class="num">{{ r.count }}</td>
+      <td style="min-width:120px"><div class="rate"><span class="meter"><span style="width:{{ r.pct }}%"></span></span><span class="mono">{{ r.pct }}%</span></div></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty left">{{ empty }}</div>{% endif %}
+</div>

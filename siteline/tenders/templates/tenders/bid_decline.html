@@ -1,0 +1,20 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Decline to bid: {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <div class="crumbs"><a href="{{ project.get_absolute_url }}">{{ project.reference }}</a> / Decline</div>
+  <h1>{% if project.stage == 'DECLINED' %}Why we declined{% else %}Decline to bid{% endif %}</h1>
+  <p class="dim" style="margin:4px 0 0">{{ project.name }}{% if project.client_name %} · {{ project.client_name }}{% endif %}</p>
+</div></div>
+<div class="grid split">
+  <div class="card"><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">{% if project.stage == 'DECLINED' %}Save reason{% else %}Decline this bid{% endif %}</button><a class="btn ghost" href="{{ project.get_absolute_url }}">Cancel</a></div></form>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>What happens next</h2></div><div class="card-body small">
+    <p>The bid moves to <strong>Declined to bid</strong> and stops counting against your plan's active projects.</p>
+    {% if open_packages %}<p><strong>{{ open_packages }} subcontractor invitation{{ open_packages|pluralize }}</strong> still open will be closed, and those subcontractors are told the job isn't going ahead with you and lose access to the tender.</p>{% endif %}
+    <p style="margin:0">The reason shows in tender analytics under <em>Why we decline</em>, so you can see where bids are being turned away.</p>
+  </div></div>
+</div>
+{% endblock %}
