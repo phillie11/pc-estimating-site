@@ -1,5 +1,6 @@
 {% extends "project_base.html" %}
 {% block project_content %}
+{% include "commercial/_subnav.html" %}
 <div class="card" style="max-width:900px"><div class="card-head"><h2>{% if vo %}Edit {{ vo.reference }}{% else %}New variation{% endif %}</h2></div><div class="card-body">
 <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}
 <div class="form-actions"><button class="btn primary">Save{% if not vo %} draft{% endif %}</button><a class="btn ghost" href="{% url 'variation_list' org.slug project.pk %}">Cancel</a></div></form>

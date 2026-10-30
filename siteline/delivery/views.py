@@ -182,13 +182,23 @@ def subvariation_detail(request, org_slug, pk, sv_id):
                 v.approved_value = (d['approved_value'] if d['approved_value'] is not None else v.value) \
                     if v.status == SubVariation.APPROVED else None
                 v.decision_notes, v.decided_by, v.decided_at = d['decision_notes'], request.user, timezone.now()
-                if v.status == SubVariation.APPROVED and d['raise_client_variation'] and not v.client_variation_id:
-                    v.client_variation = Variation.objects.create(
-                        project=project, title=v.title, description=f'{v.description}\n\n(From {v.reference}, {v.subcontractor})',
-                        cause='CLIENT_INSTRUCTION' if v.reason == 'INSTRUCTION' else 'DESIGN_CHANGE' if v.reason == 'DESIGN'
-                        else 'SITE_CONDITION' if v.reason == 'SITE' else 'OTHER',
-                        value=v.approved_value, time_impact_days=v.time_impact_days, raised_by=request.user)
-                v.save()
+                with transaction.atomic():
+                    if v.status == SubVariation.APPROVED and d['raise_client_variation'] and not v.client_variation_id:
+                        vo = Variation(
+                            # The client reads the description once it's submitted: no subcontractor or SV ref
+                            # there. Where it came from stays internal (source_note, sub_variations FK, links).
+                            project=project, title=v.title, description=v.description,
+                            source_note=f'From {v.reference}, {v.subcontractor}'[:300],
+                            cause='CLIENT_INSTRUCTION' if v.reason == 'INSTRUCTION' else 'DESIGN_CHANGE' if v.reason == 'DESIGN'
+                            else 'SITE_CONDITION' if v.reason == 'SITE' else 'OTHER',
+                            value=v.approved_value, time_impact_days=v.time_impact_days)
+                        vo.save(actor=request.user)  # numbered, indexed and audited under the decider's name
+                        if v.change_event_id:
+                            # The draft VO came from the same change event as the sub variation
+                            from changes.links import set_source
+                            set_source(vo, v.change_event, 'changes.changeevent', actor=request.user)
+                        v.client_variation = vo
+                    v.save()
                 verb = 'approved' if v.status == SubVariation.APPROVED else 'rejected'
                 notify.alert(sub_users(project, v.subcontractor_id), f'{v.reference} {verb}: {v.title}', v.get_absolute_url(),
                              project=project, actor=request.user, org=request.org)
