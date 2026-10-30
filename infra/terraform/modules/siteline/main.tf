@@ -240,6 +240,9 @@ module "app" {
       EMAIL_USE_TLS      = "1"
       DEFAULT_FROM_EMAIL = local.from_email
 
+      # With a worker running, emails go through the outbox; without one, they're sent during the request
+      EMAIL_SYNC = var.worker_desired_count > 0 ? "0" : "1"
+
       STRIPE_PRICE_STARTER  = var.stripe_price_starter
       STRIPE_PRICE_TEAM     = var.stripe_price_team
       STRIPE_PRICE_BUSINESS = var.stripe_price_business

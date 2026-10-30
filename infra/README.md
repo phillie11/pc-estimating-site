@@ -20,6 +20,7 @@ Internet ──HTTPS──> Load balancer (ALB) ──> web: 2 x gunicorn contai
                          │                                  ├──> SES: outgoing email
                          │                                  └──> Stripe
  Scheduled: send_reminders 06:00 UTC daily, check_file_scans hourly (EventBridge Scheduler -> one-off containers)
+ Worker: 1 x run_worker container (once switched on) sends queued emails from the database, with retries
 ```
 
 - Containers sit in public subnets with their own addresses, so there is no NAT gateway (saves about £30 a month per copy). Only the load balancer can reach them, and only they can reach the database.
@@ -361,7 +362,8 @@ Start every session with the step 2 lines.
 | Change a setting in `terraform.tfvars` | `cd infra\terraform\envs\prod`, `terraform plan`, `terraform apply`, then deploy again so the app sees it |
 | Change a Stripe key | Secrets Manager (step 12), then deploy again |
 | Restore the database to a moment in time | RDS console → `siteline-prod` → **Actions → Restore to point in time**. It makes a *new* database; ask an engineer to swap it in. |
-| Turn the background worker on (once the app has one) | `worker_desired_count = 1` in `terraform.tfvars`, `terraform apply` |
+| Turn the background worker on | Once a deploy includes the `jobs` app (`manage.py run_worker`; check with `.\infra\scripts\run-command.ps1 staging jobs_status`): `worker_desired_count = 1` in `terraform.tfvars`, `terraform apply`, then deploy again. That also sets `EMAIL_SYNC=0`, so emails are sent by the worker, with retries, instead of during the request. Do staging first and check an invite email arrives and `jobs_status` shows it sent; then prod, any time before or at the switch-over. Back to `0` puts email back in the request. |
+| See the job queue | `.\infra\scripts\run-command.ps1 prod jobs_status`, or **Jobs** and **Outbox emails** in the platform admin |
 | Pause staging to save money | In the staging `terraform.tfvars` set `web_desired_count = 0`, `terraform apply`. The database and load balancer still cost about £1 a day. Remove staging completely with `terraform destroy` in `infra\terraform\envs\staging`. |
 
 Never run `terraform destroy` in the prod folder. Prod's database and load balancer are protected against it.
@@ -382,6 +384,7 @@ Estimates for London (`eu-west-2`) at late-2026 list prices, in US dollars as AW
 |---|---:|---:|---|
 | Web containers (Fargate: 0.5 vCPU, 1 GB each; prod 2, staging 1) | $41.50 | $20.75 | step 11 / 18 |
 | Scheduled jobs (a minute or two each hour) | $0.50 | $0.50 | same |
+| Worker container (Fargate: 0.25 vCPU, 0.5 GB) plus its public IP; not in the totals below | $14 | $14 | `worker_desired_count = 1` |
 | Load balancer (fixed hourly charge + light traffic) | $25 | $22 | same |
 | Public IP addresses (load balancer 2, plus 1 per container) | $14.60 | $11 | same |
 | Database (prod db.t4g.small, staging db.t4g.micro, 20 GB, backups) | $30 | $16 | same |

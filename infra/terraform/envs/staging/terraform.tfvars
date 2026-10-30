@@ -25,4 +25,4 @@ stripe_price_team     = ""
 stripe_price_business = ""
 
 web_desired_count    = 1
-worker_desired_count = 0 # the background worker does not exist in the app yet
+worker_desired_count = 0 # set 1 once a deploy includes the jobs app (run_worker); see infra/README.md "Turn the background worker on"

@@ -86,6 +86,28 @@ This is the part to keep intact as you add features.
 DEBUG=1 python manage.py test
 ```
 
+## Background jobs and email
+
+Slow or unreliable work (sending email, for now) runs in the background from a queue kept in the app's own database. There is no Redis or Celery, and it works the same on SQLite, MySQL (PythonAnywhere) and PostgreSQL (AWS). The design and its trade-offs are in the docstring of `jobs/__init__.py`.
+
+- **Writing a task.** In any app's `tasks.py`:
+  ```python
+  import jobs
+
+  @jobs.task(name='rfis.chase_overdue', max_attempts=3)
+  def chase_overdue(payload):
+      rfi = RFI.objects.get(pk=payload['rfi_id'])   # runs inside org_context(the job's organisation)
+      ...
+
+  jobs.enqueue('rfis.chase_overdue', {'rfi_id': rfi.pk}, org=rfi.organization)
+  ```
+  Pass ids in the payload (it is JSON), not model instances. `enqueue()` writes the job in the caller's transaction, so it only exists if the request's changes commit. With `idempotency_key='...'`, a second enqueue with the same key returns the first job. A task runs with its job's organisation current, so `TenantModel.objects` works as in a request. A job with no organisation has none, and tenant queries in it fail closed. Only a task registered with `cross_company=True` runs inside `unscoped()`.
+- **Delivery is at least once.** A failed job is retried with exponential backoff (30 seconds, doubling, up to an hour) and marked *dead* after `max_attempts` (5 unless the task says otherwise). A job whose worker died is retried after `JOBS_LOCK_TIMEOUT` (15 minutes). So a task can run twice: make a second run harmless.
+- **Running jobs.** `python manage.py run_worker` runs until stopped; SIGTERM or Ctrl-C finish the current job first. `--burst` runs whatever is due and exits, `--once` runs one job. `python manage.py jobs_status` shows the queue, overdue jobs and recent dead ones. The platform admin (superusers only) has **Jobs** and **Outbox emails** pages with *Run again* and *Send again* actions. Finished jobs and sent emails are deleted after `JOBS_KEEP_DAYS` (30).
+- **Email.** `tenancy.notify.send()` (every notification, invite and digest) renders the email in the request and stores it as an `OutboxEmail`. With `EMAIL_SYNC=0` the worker sends it, with retries, so a slow mail server never holds up a page. With `EMAIL_SYNC=1`, the default, it is sent during the request as before, and only a failed send is handed to the worker to retry. Set `EMAIL_SYNC=0` only where a worker is running, or emails wait in the outbox until one does. On AWS that happens by itself: Terraform sets `EMAIL_SYNC=0` whenever `worker_desired_count` is above 0.
+- **Password reset emails** are not queued. Django's reset form sends them itself, during the request: the person is waiting on the page for that email, it has no organisation, and a failure should show at once.
+- **Local development and tests.** Leave `EMAIL_SYNC=1` and no worker is needed; emails print to the console. `JOBS_RUN_INLINE=1` runs every job in the web process as soon as its transaction commits. Tests keep the default, so `django.core.mail.outbox` fills as before; `jobs/tests.py` and `jobs/test_outbox.py` (31 tests) cover the queue and the worker path with `override_settings(EMAIL_SYNC=False)`.
+
 ## Run it locally
 
 ```bash
@@ -198,9 +220,12 @@ Only the webhook changes a company's subscription status, so a customer can't un
 | Time (UTC) | Command |
 |---|---|
 | 06:00 daily | `cd ~/siteline && .venv/bin/python manage.py send_reminders` |
+| Always-on task (*Tasks* tab → *Always-on tasks*) | `cd ~/siteline && .venv/bin/python manage.py run_worker` |
 | 02:00 daily | `mysqldump -u yourusername -h yourusername.mysql.pythonanywhere-services.com --set-gtid-purged=OFF 'yourusername$siteline' \| gzip > ~/backups/siteline-$(date +\%a).sql.gz` |
 
 Create `~/backups` first. The backup keeps a rolling seven days. Copy them off-site too, and back up `~/siteline-files`.
+
+The always-on task is the background worker (see [Background jobs and email](#background-jobs-and-email)). Once its log shows `Worker ... started`, add `EMAIL_SYNC=0` to `.env` and reload the web app, so emails are sent by the worker instead of during requests. Without an always-on task, leave `EMAIL_SYNC=1`; an hourly `manage.py run_worker --burst` task then still retries any email that failed.
 
 ### 9. Cloud file storage and virus scanning (AWS S3 London)
 
@@ -319,6 +344,7 @@ variations/   variations & client approval
 directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
 delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
+jobs/         background job queue and worker (run_worker, jobs_status), email outbox
 templates/    shared templates; app-specific ones live in each app
 static/       app.css (single stylesheet; --accent is set from each company's brand colour, --accent-ink to white or near-black, whichever contrasts more), app.js
 ```

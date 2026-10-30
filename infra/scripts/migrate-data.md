@@ -121,7 +121,7 @@ If anything went wrong, ask an engineer before the real move, with the error tex
 
 ### On the day
 
-1. **Freeze PythonAnywhere.** Web tab → **Disable** the web app. Tasks tab → disable the `send_reminders` and `check_file_scans` tasks (keep the backup task). Nobody can now change data. Stripe holds back webhooks it can't deliver and retries them for up to three days, so payments aren't lost.
+1. **Freeze PythonAnywhere.** Web tab → **Disable** the web app. Tasks tab → disable the `send_reminders` and `check_file_scans` tasks (keep the backup task). If there is a `run_worker` always-on task, run `python manage.py run_worker --burst` in a Bash console first so queued emails go out, then disable it too. Emails still queued are copied with the data and sent by the AWS worker. Nobody can now change data. Stripe holds back webhooks it can't deliver and retries them for up to three days, so payments aren't lost.
 
 2. **Final safety copy** of MySQL (step 1.3 again, with a new file name).
 
