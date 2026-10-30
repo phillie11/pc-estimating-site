@@ -181,9 +181,9 @@ TWO_FACTOR_PENDING_SECONDS = 300   # time allowed between the password and the c
 # Billing, team and role changes, exports and archiving/deleting need a password or code this recently
 STEP_UP_SECONDS = 600
 
-# Cache: the app's own database, so rate limits are shared by every web process and server with no
-# Redis. The table is made by security/migrations/0002 (the same as `manage.py createcachetable`).
-# CACHE_BACKEND=locmem is only for local experiments (check --deploy warns, security.W002).
+# Cache: the app's own database, shared by every web process and server with no Redis (table made
+# by security/migrations/0002, the same as `manage.py createcachetable`). Rate limits don't use it:
+# their counters are rows in their own table (security.RateLimitCounter), which is never culled.
 if env('CACHE_BACKEND', 'database') == 'locmem':
     CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 else:

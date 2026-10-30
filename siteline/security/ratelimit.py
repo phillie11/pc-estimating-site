@@ -1,23 +1,32 @@
 """
-A small fixed-window rate limiter on Django's cache. No Redis: the cache is the app's own
-database (CACHES in settings.py, table created by security/migrations/0002), so every web
-process and server shares the same counts on PythonAnywhere and on AWS alike.
+A small fixed-window rate limiter. No Redis and no cache: counts are rows in the app's own
+database (security.models.RateLimitCounter), so every web process and server shares them, on
+SQLite, MySQL (PythonAnywhere) and PostgreSQL (AWS) alike.
 
     from security.ratelimit import hit
     if not hit('signup', ip, limit=10, window=3600):
         ...  # over the limit
 
+Each hit is one atomic `UPDATE ... SET count = count + 1`. The first hit in a window inserts the
+row inside a savepoint, and an insert that loses a race (IntegrityError) falls back to the update,
+so no transaction is left aborted on PostgreSQL and no count is lost. A table of its own is never
+culled the way a cache is, so a flood of other keys can't reset a limit. IPv6 addresses are
+counted per /64, the block one customer line or host normally gets, so cycling addresses inside
+it doesn't buy fresh limits. The durable lock on wrong two-factor codes is separate again
+(TwoFactorDevice.failed_attempts).
+
 The middleware (security.middleware.RateLimitMiddleware) applies the limits in RULES to the
-routes that need them, so views don't have to. Counting is best-effort: two requests landing at
-the same instant can both be let through at the edge of a limit, which is fine for slowing down
-abuse (the limits are for scripts, not for people) but is not an exact quota.
+routes that need them, so views don't have to.
 """
 import hashlib
+import ipaddress
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone as dt_timezone
 from typing import Callable, Optional
 
-from django.core.cache import cache
+from django.db import IntegrityError, transaction
+from django.db.models import F
 
 
 def _key(scope, ident, window, now):
@@ -28,16 +37,23 @@ def _key(scope, ident, window, now):
 
 def hit(scope, ident, limit, window, now=None):
     """Count one request. True if it's within `limit` per `window` seconds."""
+    from .models import RateLimitCounter
+
     now = time.time() if now is None else now
     key, ttl = _key(scope, ident, window, now)
-    timeout = int(ttl) + 1
-    if cache.add(key, 1, timeout=timeout):
-        return 1 <= limit
-    try:
-        count = cache.incr(key)
-    except ValueError:  # expired between add() and incr()
-        cache.add(key, 1, timeout=timeout)
-        count = 1
+    counters = RateLimitCounter.objects
+    with transaction.atomic():
+        if not counters.filter(key=key).update(count=F('count') + 1):
+            try:
+                with transaction.atomic():  # savepoint: a duplicate key mustn't abort the outer transaction
+                    counters.create(key=key, count=1,
+                                    expires_at=datetime.fromtimestamp(now + ttl, tz=dt_timezone.utc))
+            except IntegrityError:  # another request started this window first
+                counters.filter(key=key).update(count=F('count') + 1)
+            else:
+                # A new window has started: clear out finished ones
+                counters.filter(expires_at__lt=datetime.fromtimestamp(now, tz=dt_timezone.utc)).delete()
+        count = counters.filter(key=key).values_list('count', flat=True).first() or 1
     return count <= limit
 
 
@@ -94,7 +110,21 @@ RULES = (
 )
 
 
+def ip_bucket(ip):
+    """An IPv4 address as it is; an IPv6 address as its /64 network."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if addr.version == 6:
+        if addr.ipv4_mapped is not None:  # ::ffff:1.2.3.4 is just an IPv4 address
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network(f'{addr}/64', strict=False))
+    return str(addr)
+
+
 def identity(request, by, client_ip):
+    client_ip = ip_bucket(client_ip)
     if by == 'ip':
         return client_ip
     if by == 'user':

@@ -139,7 +139,7 @@ class RateLimitMiddleware:
                 continue
             if rule.when is not None and not rule.when(request):
                 continue
-            ip = ip or client_ip(request)
+            ip = ip or client_ip(request) or 'unknown'
             ident = ratelimit.identity(request, rule.by, ip)
             if ident is None:
                 continue
@@ -201,6 +201,9 @@ STEP_UP = {
     'member_update': _post,   # role, area, removal
     'invite_revoke': _post,
     'two_factor_reset_member': _post,
+    'project_team': lambda r: r.method == 'POST' and ratelimit.is_invite(r),  # inviting external collaborators
+    # Company settings (name, logo, brand colour, contract defaults)
+    'org_settings': _post,
     # Danger zone: archive, restore and delete
     'project_archive': _post,
     'project_delete': _post,

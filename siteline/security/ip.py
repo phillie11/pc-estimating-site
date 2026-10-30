@@ -24,6 +24,10 @@ def _valid(value):
 
 
 def client_ip(request):
+    """
+    The address, or None if there isn't a valid one (force_login()'s bare request, a broken proxy).
+    django-axes stores it in a GenericIPAddressField, so it must never be a placeholder string.
+    """
     header = (getattr(settings, 'CLIENT_IP_HEADER', '') or '').strip()
     if header:
         raw = request.META.get('HTTP_' + header.upper().replace('-', '_'), '')
@@ -34,4 +38,4 @@ def client_ip(request):
                 ip = _valid(parts[-count] if len(parts) >= count else parts[0])
                 if ip:
                     return ip
-    return _valid(request.META.get('REMOTE_ADDR', '') or '') or 'unknown'
+    return _valid(request.META.get('REMOTE_ADDR', '') or '')

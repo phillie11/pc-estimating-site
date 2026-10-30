@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
-from security import twofactor
+from security import totp, twofactor
 from security.models import RecoveryCode, TwoFactorDevice
 from tenancy.context import org_context
 from tenancy.models import ActivityEvent
@@ -30,9 +30,8 @@ class EnrolmentTests(SecurityTestBase):
         r = self.client.get(reverse('two_factor_setup'))
         self.assertEqual(r.status_code, 200)
         self.assertIn('no-store', r['Cache-Control'])
-        device = TwoFactorDevice.objects.get(user=self.staff)
-        self.assertFalse(device.is_confirmed)
-        self.assertContains(r, device.secret[:4])  # the key for typing in by hand
+        secret = r.context['secret'].replace(' ', '')
+        self.assertContains(r, secret[:4])  # the key for typing in by hand
         self.assertContains(r, reverse('two_factor_qr'))
 
         qr = self.client.get(reverse('two_factor_qr'))
@@ -41,16 +40,17 @@ class EnrolmentTests(SecurityTestBase):
         self.assertTrue(qr.content.startswith(b'<svg'))
         self.assertNotIn(b'http', qr.content.replace(b'http://www.w3.org/2000/svg', b''))  # drawn here, no service
 
-        # A reload keeps the same secret, so a code already scanned still works
-        self.client.get(reverse('two_factor_setup'))
-        self.assertEqual(TwoFactorDevice.objects.get(user=self.staff).secret, device.secret)
+        # A reload in the same session keeps the same secret, so a code already scanned still works
+        r = self.client.get(reverse('two_factor_setup'))
+        self.assertEqual(r.context['secret'].replace(' ', ''), secret)
 
-        r = self.client.post(reverse('two_factor_setup'), {'code': '000000'})
+        r = self.client.post(reverse('two_factor_setup'), {'code': '000000' if totp.code_at(secret) != '000000' else '111111'})
         self.assertContains(r, "didn&#x27;t match")
-        r = self.client.post(reverse('two_factor_setup'), {'code': code_for(device)})
+        r = self.client.post(reverse('two_factor_setup'), {'code': totp.code_at(secret)})
         self.assertRedirects(r, reverse('two_factor_codes'), fetch_redirect_response=False)
-        device.refresh_from_db()
+        device = TwoFactorDevice.objects.get(user=self.staff)
         self.assertTrue(device.is_confirmed)
+        self.assertEqual(device.secret, secret)
 
         codes = self.client.get(reverse('two_factor_codes'))
         self.assertIn('no-store', codes['Cache-Control'])
@@ -301,9 +301,8 @@ class EnforcementTests(SecurityTestBase):
 
     def test_after_setup_owner_carries_on(self):
         self.login(self.owner)
-        self.client.get(reverse('two_factor_setup'))
-        device = TwoFactorDevice.objects.get(user=self.owner)
-        r = self.client.post(reverse('two_factor_setup'), {'code': code_for(device), 'next': self.url('dashboard')})
+        secret = self.client.get(reverse('two_factor_setup')).context['secret'].replace(' ', '')
+        r = self.client.post(reverse('two_factor_setup'), {'code': totp.code_at(secret), 'next': self.url('dashboard')})
         self.assertRedirects(r, f"{reverse('two_factor_codes')}?next=%2F{self.org.slug}%2F",
                              fetch_redirect_response=False)
         codes = self.client.get(r.url)
@@ -362,7 +361,7 @@ class OwnerResetTests(SecurityTestBase):
             ev = ActivityEvent.objects.get(verb='reset two-factor sign-in for')
         self.assertEqual((ev.actor, ev.target, ev.internal_only), (self.owner, 'Sam Staff', True))
         self.assertEqual(mail.outbox[-1].to, [self.staff.email])
-        self.assertIn('reset your two-factor sign-in', mail.outbox[-1].body)
+        self.assertIn('Your two-factor sign-in was reset', mail.outbox[-1].body)
 
     def test_only_owners_can_reset(self):
         self.enrol(self.staff)

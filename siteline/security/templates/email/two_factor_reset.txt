@@ -1,10 +1,10 @@
 Hi {{ user.get_short_name }},
 
-{{ actor.full_name }} has reset your two-factor sign-in for {{ PRODUCT_NAME }}. Your old authenticator code and recovery codes no longer work.
+Your two-factor sign-in was reset by {{ actor.full_name }}, an owner of {{ org.name }} on {{ PRODUCT_NAME }}. Your old authenticator codes and recovery codes no longer work.
 
-Next time you sign in you can set it up again with your phone:
+If this wasn't expected, contact {{ actor.full_name }} or another owner at {{ org.name }} straight away, and change your password. Until two-factor is set up again, the next person to sign in with your password is asked to set it up with their own phone.
+
+If you did ask for it, sign in and set it up again with your phone:
 {{ link }}
-
-If you didn't ask for this, tell {{ actor.full_name }} or another owner at {{ org.name }} straight away.
 
 — {{ PRODUCT_NAME }}
