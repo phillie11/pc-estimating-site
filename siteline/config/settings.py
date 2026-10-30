@@ -122,6 +122,7 @@ elif env('DB_ENGINE') == 'postgres':
             'PASSWORD': env('DB_PASSWORD'),
             'HOST': env('DB_HOST'),
             'PORT': env('DB_PORT', '5432'),
+            'OPTIONS': {'sslmode': env('DB_SSLMODE', 'prefer')},  # AWS RDS: DB_SSLMODE=require
         }
     }
 else:
