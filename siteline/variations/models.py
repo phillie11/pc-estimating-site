@@ -58,6 +58,9 @@ class Variation(RecordBase):
     decision_notes = models.TextField(blank=True)
     # Set when an owner or admin recorded the client's decision for them, with the client's email or letter as proof
     decision_recorded_on_behalf = models.BooleanField('Recorded on behalf of the client', default=False)
+    # Internal only: where it came from when Siteline drafted it (e.g. "From SV-002, Lund Joinery Ltd").
+    # Never put in description, which the client reads once it is submitted.
+    source_note = models.CharField('Came from (internal)', max_length=300, blank=True, editable=False)
     decision_evidence = models.FileField("Client's decision (evidence)", upload_to=upload_variation, blank=True)
 
     class Meta(RecordBase.Meta):

@@ -227,6 +227,27 @@ class ChainTests(ChangeTestBase):
             self.assertEqual((created.actor, vo.created_by, vo.value), (self.pat, self.pat, Decimal('1100.00')))
             self.assertEqual([i.ref for i in came_from(vo, 'changes.changeevent')], [c.ref])
 
+    def test_client_never_sees_the_subcontractor_behind_a_variation(self):
+        # Regression: the drafted VO's description carried "(From SV-001, Sid Joinery)" to the client
+        with org_context(self.org_a):
+            sv = SubVariation.objects.create(project=self.pa, subcontractor=self.subco, title='Extra shelving',
+                                             description='Two more oak shelves.', value=Decimal('1200'))
+        self.login(self.pat)
+        self.client.post(self.url('subvariation_detail', self.pa.pk, sv.pk), {
+            'action': 'decide', 'decision': 'APPROVED', 'raise_client_variation': 'on'})
+        with org_context(self.org_a):
+            vo = SubVariation.objects.get(pk=sv.pk).client_variation
+            self.assertEqual((vo.description, vo.source_note), ('Two more oak shelves.', f'From {sv.reference}, Sid Joinery'))
+            apply_transition(vo, 'submit', self.pat)
+        self.assertContains(self.client.get(vo.get_absolute_url()), 'Sid Joinery')  # staff still see where it came from
+        self.client.logout()
+        self.login(self.carla)
+        for url in (vo.get_absolute_url(), self.url('variation_list', self.pa.pk),
+                    self.url('variation_list', self.pa.pk) + '?export=csv'):
+            r = self.client.get(url)
+            self.assertNotContains(r, 'Sid Joinery')
+            self.assertNotContains(r, sv.reference)
+
     def test_sub_variation_tied_and_untied(self):
         c = self.ce()
         with org_context(self.org_a):

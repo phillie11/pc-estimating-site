@@ -185,7 +185,10 @@ def subvariation_detail(request, org_slug, pk, sv_id):
                 with transaction.atomic():
                     if v.status == SubVariation.APPROVED and d['raise_client_variation'] and not v.client_variation_id:
                         vo = Variation(
-                            project=project, title=v.title, description=f'{v.description}\n\n(From {v.reference}, {v.subcontractor})',
+                            # The client reads the description once it's submitted: no subcontractor or SV ref
+                            # there. Where it came from stays internal (source_note, sub_variations FK, links).
+                            project=project, title=v.title, description=v.description,
+                            source_note=f'From {v.reference}, {v.subcontractor}'[:300],
                             cause='CLIENT_INSTRUCTION' if v.reason == 'INSTRUCTION' else 'DESIGN_CHANGE' if v.reason == 'DESIGN'
                             else 'SITE_CONDITION' if v.reason == 'SITE' else 'OTHER',
                             value=v.approved_value, time_impact_days=v.time_impact_days)

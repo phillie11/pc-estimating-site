@@ -32,6 +32,7 @@
     {% if vo.client_reference %}<dt>Client ref</dt><dd class="mono">{{ vo.client_reference }}</dd>{% endif %}
     {% if vo.rfi and is_internal or vo.rfi and vo.rfi.is_shared %}<dt>From RFI</dt><dd><a href="{{ vo.rfi.get_absolute_url }}">{{ vo.rfi.reference }}</a></dd>{% endif %}
     {% if is_internal and change_events %}<dt>From change event</dt><dd>{% for idx in change_events %}<a href="{{ idx.url }}">{{ idx.ref }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    {% if is_internal and vo.source_note %}<dt>Came from</dt><dd>{{ vo.source_note }} <span class="small dim">(internal)</span></dd>{% endif %}
     {% if is_internal and sub_variations %}<dt>Recovers sub variations</dt><dd>{% for sv in sub_variations %}<a href="{{ sv.get_absolute_url }}">{{ sv.reference }}</a> ({{ sv.subcontractor }}){% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
     <dt>Raised</dt><dd>{{ vo.created_at|date:"j M Y" }} by {{ vo.created_by|default:"—" }}</dd>
     {% if vo.submitted_at %}<dt>Submitted</dt><dd>{{ vo.submitted_at|date:"j M Y" }}</dd>{% endif %}

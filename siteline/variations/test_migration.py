@@ -14,7 +14,7 @@ from tenancy.context import org_context
 # core and RFIs stay where they are (already on the record base); only variations move
 STAY = [('core', '0002_audit_actor_name_retention'), ('rfis', '0005_remove_rfi_is_shared')]
 BEFORE = [('variations', '0002_alter_variation_project'), *STAY]
-AFTER = [('variations', '0007_backfill_respond_by'), *STAY]  # latest, so the live model below matches
+AFTER = [('variations', '0009_strip_sub_variation_source'), *STAY]  # latest, so the live model below matches
 
 
 class MigrateMixin:
@@ -171,3 +171,40 @@ class RespondByBackfillTests(MigrateMixin, TransactionTestCase):
         self.assertEqual(due, {1: None, 2: agreed, 3: None, 4: None})
         idx = dict(back.get_model('core', 'RecordIndex').objects.values_list('object_id', 'due_date'))
         self.assertIsNone(idx[rows[1]])
+
+
+class StripSubVariationSourceTests(MigrateMixin, TransactionTestCase):
+    """variations 0009: the auto-added "(From SV-nnn, sub)" leaves client-visible descriptions; reversible."""
+    BEFORE = [('variations', '0008_variation_source_note'), ('delivery', '0003_subvariation_change_event'), *STAY]
+    AFTER = [('variations', '0009_strip_sub_variation_source'), ('delivery', '0003_subvariation_change_event'), *STAY]
+
+    def test_forward_and_backward(self):
+        old = self.migrate(self.BEFORE)
+        Organization, Project = old.get_model('tenancy', 'Organization'), old.get_model('projects', 'Project')
+        Variation, SubVariation = old.get_model('variations', 'Variation'), old.get_model('delivery', 'SubVariation')
+        Subcontractor = old.get_model('directory', 'Subcontractor')
+        org = Organization.objects.create(name='Alpha', slug='alpha')
+        p = Project.objects.create(organization=org, number=1, name='Job', stage='LIVE')
+        sub = Subcontractor.objects.create(organization=org, company_name='Lund Joinery Ltd')
+        texts = {
+            1: 'Two extra shelves.\n\n(From SV-002, Lund Joinery Ltd)',     # auto-added, SV linked: stripped
+            2: 'Re-veneer.\n\n(From SV-009, Lund Joinery Ltd)',              # names an SV not linked to it: kept
+            3: 'Typed by hand (From SV-002, Lund Joinery Ltd) in the middle',  # not the added suffix: kept
+            4: 'Plain description.',
+        }
+        vos = {n: Variation.objects.create(organization=org, project=p, number=n, ref=f'VO-00{n}', title=f'V{n}',
+                                           description=t, status='SUBMITTED', visibility='SHARED')
+               for n, t in texts.items()}
+        for number, vo in ((2, vos[1]), (3, vos[2]), (4, vos[3])):
+            SubVariation.objects.create(organization=org, project=p, subcontractor=sub, number=number, title='x',
+                                        description='x', value='1.00', status='APPROVED', client_variation=vo)
+
+        new = self.migrate(self.AFTER)
+        got = {v.number: (v.description, v.source_note) for v in new.get_model('variations', 'Variation').objects.all()}
+        self.assertEqual(got[1], ('Two extra shelves.', 'From SV-002, Lund Joinery Ltd'))
+        for n in (2, 3, 4):
+            self.assertEqual(got[n], (texts[n], ''), n)
+
+        back = self.migrate(self.BEFORE)
+        got = dict(back.get_model('variations', 'Variation').objects.values_list('number', 'description'))
+        self.assertEqual(got, texts)
