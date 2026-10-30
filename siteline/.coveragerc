@@ -1,0 +1,13 @@
+[run]
+branch = True
+source = .
+omit =
+    manage.py
+    config/asgi.py
+    config/wsgi.py
+    */migrations/*
+    .venv/*
+
+[report]
+show_missing = True
+skip_covered = False
