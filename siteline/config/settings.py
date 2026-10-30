@@ -205,7 +205,9 @@ LANGUAGE_CODE = 'en-gb'
 TIME_ZONE = 'Europe/London'
 USE_I18N = True
 USE_TZ = True
-USE_THOUSAND_SEPARATOR = True
+# Off: with it on, every {{ obj.pk }} from 1,000 up rendered as "1,000" and broke form ids and
+# data attributes. Money is grouped by its own filters in tenancy/templatetags/ui.py.
+USE_THOUSAND_SEPARATOR = False
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'

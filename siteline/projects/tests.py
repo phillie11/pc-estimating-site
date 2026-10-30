@@ -739,6 +739,15 @@ class PipelineMoveTests(Base):
         self.assertContains(r, '<option value="SUBMITTED">Submitted</option>')
         self.assertContains(r, '(hand over)</option>')
 
+    def test_ids_from_1000_up_render_without_a_comma(self):
+        with org_context(self.org_a):
+            big = Project.objects.create(pk=12345, name='Big job', stage=Project.STAGE_TENDERING)
+        r = self.client.get(self.url('pipeline', self.org_a))
+        self.assertContains(r, 'data-id="12345"')
+        self.assertContains(r, '<select id="move-12345"')
+        self.assertNotContains(r, '12,345')
+        self.assertEqual(big.pk, 12345)
+
     def test_move_form_changes_stage_and_returns_to_pipeline(self):
         r = self.client.post(self.move, {'stage': Project.STAGE_SUBMITTED, 'next': 'pipeline'})
         self.assertRedirects(r, self.url('pipeline', self.org_a), fetch_redirect_response=False)
