@@ -80,7 +80,7 @@ This is the part to keep intact as you add features.
 7. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
 8. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
 
-`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `tenancy/test_fail_closed.py` adds 23 for the fail-closed rule, the bulk-write guard, the admin and every management command run against two companies; `projects/tests.py` adds 17 more for programmes, workload and analytics, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
+`tenancy/tests.py` covers all of this (45 tests, including regression tests from an independent access-control review; `tenancy/test_fail_closed.py` adds 30 for the fail-closed rule, combined querysets and subqueries, the bulk-write guard, the admin and every management command run against two companies; `projects/tests.py` adds 65 more for programmes, workload, analytics, files and archived projects, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
 
 ```bash
 DEBUG=1 python manage.py test
