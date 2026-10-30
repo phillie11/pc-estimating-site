@@ -1,0 +1,49 @@
+# Deploy Siteline to AWS. Manual only: Actions tab -> "Deploy Siteline to AWS" -> Run workflow.
+# Never runs on push. Signs in to AWS with GitHub OpenID Connect (no stored AWS keys): the IAM role
+# made by Terraform only trusts jobs from this repository running in the matching GitHub environment.
+# Set-up (once, see infra/README.md "Deploying from GitHub"): create GitHub environments "staging" and
+# "prod" (limit "prod" to the main branch and add yourself as a required reviewer), and in each set the
+# variable AWS_DEPLOY_ROLE_ARN to the github_deploy_role_arn output of that environment's terraform.
+name: Deploy Siteline to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        type: choice
+        options: [staging, prod]
+        default: staging
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # prod only ever deploys the main branch
+    if: inputs.environment == 'staging' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Sign in to AWS
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-2
+          role-session-name: siteline-deploy-${{ inputs.environment }}-${{ github.run_id }}
+
+      - name: Build, migrate and roll out
+        run: bash infra/scripts/deploy.sh "$TARGET_ENV"
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
