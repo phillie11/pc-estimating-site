@@ -31,7 +31,7 @@ def send(to, subject, template, context, org=None, reply_to=None):
             queue_email(prefix + subject, body, recipients, org=org,
                         reply_to=[reply_to] if isinstance(reply_to, str) else reply_to)
     except Exception:  # noqa: BLE001 - email must never break a request
-        logger.exception('Email to %s failed (%s)', recipients, subject)
+        logger.exception('Queueing an email failed (%s, %s recipient(s))', subject, len(recipients))
 
 
 def alert(users, title, url, project=None, actor=None, org=None, email=True):

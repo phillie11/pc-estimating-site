@@ -10,5 +10,5 @@ class JobsConfig(AppConfig):
         # worker can run them. The email outbox's task lives in jobs/outbox.py.
         from django.utils.module_loading import autodiscover_modules
 
-        from . import outbox  # noqa: F401
+        from . import checks, outbox  # noqa: F401
         autodiscover_modules('tasks')

@@ -20,7 +20,8 @@ Internet ──HTTPS──> Load balancer (ALB) ──> web: 2 x gunicorn contai
                          │                                  ├──> SES: outgoing email
                          │                                  └──> Stripe
  Scheduled: send_reminders 06:00 UTC daily, check_file_scans hourly (EventBridge Scheduler -> one-off containers)
- Worker: 1 x run_worker container (once switched on) sends queued emails from the database, with retries
+ Worker: 1 x run_worker container (once switched on) sends queued emails from the database, with retries;
+         until then an hourly scheduled run_worker --burst retries failed emails
 ```
 
 - Containers sit in public subnets with their own addresses, so there is no NAT gateway (saves about £30 a month per copy). Only the load balancer can reach them, and only they can reach the database.

@@ -23,7 +23,7 @@ from django.utils import timezone
 import jobs
 
 from .models import Job, OutboxEmail
-from .runner import backoff
+from .runner import backoff, scrub
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,9 @@ def queue_email(subject, body, to, org=None, reply_to=None, from_email=None):
         try:
             deliver(email)
             return email
-        except Exception:  # noqa: BLE001 - the worker retries it
-            logger.exception('Email to %s failed (%s); queued for retry', email.to, subject)
+        except Exception as exc:  # noqa: BLE001 - the worker retries it
+            # The id, not the address: logs shouldn't collect people's addresses (the admin has them)
+            logger.warning('Email %s failed; queued for retry: %s', email.pk, scrub(repr(exc)))
             run_after = timezone.now() + timedelta(seconds=backoff(1))
             jobs.enqueue(TASK, {'id': email.pk}, org=org, run_after=run_after, idempotency_key=email.job_key)
             return email
@@ -49,15 +50,25 @@ def queue_email(subject, body, to, org=None, reply_to=None, from_email=None):
 
 
 def deliver(email):
-    """Send one stored email unless it has already gone. Raises if the mail server refuses it."""
+    """
+    Send one stored email unless it has already gone. Raises if the mail server refuses it, so the
+    job retries. An email that can never be sent (a newline in a header, a malformed address:
+    Django raises BadHeaderError / ValueError) is marked failed at once instead.
+    """
     if email.status == OutboxEmail.SENT:
         return
-    msg = EmailMessage(email.subject, email.body, email.from_email, email.to, reply_to=email.reply_to or None)
     try:
+        msg = EmailMessage(email.subject, email.body, email.from_email, email.to, reply_to=email.reply_to or None)
         msg.send()
+    except ValueError as exc:  # includes BadHeaderError: retrying won't help
+        OutboxEmail.objects.filter(pk=email.pk).update(status=OutboxEmail.FAILED, attempts=F('attempts') + 1,
+                                                       last_error=scrub(traceback.format_exc())[-2000:])
+        email.status = OutboxEmail.FAILED
+        logger.error('Email %s can never be sent, not retrying: %s', email.pk, scrub(repr(exc)))
+        return
     except Exception:
         OutboxEmail.objects.filter(pk=email.pk).update(attempts=F('attempts') + 1,
-                                                       last_error=traceback.format_exc()[-2000:])
+                                                       last_error=scrub(traceback.format_exc())[-2000:])
         raise
     email.status, email.sent_at = OutboxEmail.SENT, timezone.now()
     OutboxEmail.objects.filter(pk=email.pk).update(status=email.status, sent_at=email.sent_at,

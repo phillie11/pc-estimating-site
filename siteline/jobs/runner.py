@@ -7,14 +7,17 @@ claiming is safe across processes and machines.
 import logging
 import os
 import random
+import re
 import socket
 import time
 import traceback
+import uuid
+from contextlib import nullcontext
 from datetime import timedelta
 
 from django.conf import settings
 from django.db import DatabaseError, close_old_connections, connection, transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from tenancy.context import org_context, unscoped
@@ -31,7 +34,20 @@ def backoff(attempt):
     return delay + random.uniform(0, delay / 10)  # noqa: S311 - jitter, not security
 
 
+EMAIL_ADDRESS = re.compile(r'[\w.+-]+@[\w-]+(\.[\w-]+)+')
+
+
+def scrub(text):
+    """Mask email addresses, so stored errors and logs don't collect people's addresses (SMTP errors quote them)."""
+    return EMAIL_ADDRESS.sub('<email>', text)
+
+
 class Worker:
+    # Pauses before retrying a failed write of a job's result. Giving up leaves the job "running" until
+    # its lock times out, and then it runs again (a duplicate email), so ride out a short outage. Under
+    # ECS's 30-second stopTimeout in total.
+    db_retry_delays = (1, 5, 15)
+
     def __init__(self, worker_id=None):
         self.id = worker_id or f'{socket.gethostname()}:{os.getpid()}'[:100]
         self.stopping = False  # set by the SIGTERM handler; the loop stops after the current job
@@ -81,11 +97,22 @@ class Worker:
         return recovered
 
     def prune(self):
-        """Delete finished jobs and sent emails after JOBS_KEEP_DAYS (they hold names and email bodies)."""
-        cutoff = timezone.now() - timedelta(days=settings.JOBS_KEEP_DAYS)
-        jobs, _ = Job.objects.filter(status=Job.DONE, finished_at__lt=cutoff).delete()
-        emails, _ = OutboxEmail.objects.filter(status=OutboxEmail.SENT, sent_at__lt=cutoff).delete()
-        return jobs, emails
+        """
+        Retention. Sent emails lose their body after JOBS_EMAIL_BODY_DAYS (it holds invite links that
+        still work) but keep who/what/when. Done jobs and sent emails go after JOBS_KEEP_DAYS; dead jobs
+        and failed emails, kept longer for someone to look at, after JOBS_KEEP_FAILED_DAYS.
+        Returns (jobs deleted, emails deleted, bodies blanked).
+        """
+        now = timezone.now()
+        keep, keep_failed = now - timedelta(days=settings.JOBS_KEEP_DAYS), now - timedelta(days=settings.JOBS_KEEP_FAILED_DAYS)
+        jobs, _ = Job.objects.filter(Q(status=Job.DONE, finished_at__lt=keep) |
+                                     Q(status=Job.DEAD, finished_at__lt=keep_failed)).delete()
+        emails, _ = OutboxEmail.objects.filter(Q(status=OutboxEmail.SENT, sent_at__lt=keep) |
+                                               Q(status=OutboxEmail.FAILED, created_at__lt=keep_failed)).delete()
+        blanked = OutboxEmail.objects.filter(
+            status=OutboxEmail.SENT, sent_at__lt=now - timedelta(days=settings.JOBS_EMAIL_BODY_DAYS)).exclude(
+            body='').update(body='')
+        return jobs, emails, blanked
 
     # --- running ------------------------------------------------------------------
 
@@ -102,33 +129,49 @@ class Worker:
         try:
             if t is None:  # e.g. a newer web container queued a task this older worker doesn't know yet
                 raise LookupError(f'No task is registered as {job.name!r}')
-            with self.scope(job, t):
+            with self.scope(job, t), (transaction.atomic() if t.atomic else nullcontext()):
                 t.fn(job.payload)
         except Exception as exc:  # noqa: BLE001 - any task error is recorded and retried
             self._failed(job, t, exc)
             return False
-        now = timezone.now()
-        # Only if we still hold the lock: if it was recovered as stale meanwhile, the job's new owner decides
-        Job.objects.filter(pk=job.pk, locked_by=self.id).update(
-            status=Job.DONE, locked_at=None, locked_by='', last_error='', updated_at=now, finished_at=now)
-        logger.info('Job %s %s done (attempt %s)', job.pk, job.name, job.attempts)
+        if self._record(job, status=Job.DONE, locked_at=None, locked_by='', last_error='', finished_at=timezone.now()):
+            logger.info('Job %s %s done (attempt %s)', job.pk, job.name, job.attempts)
+        else:
+            logger.warning('Job %s %s finished after its lock was taken over; the new owner decides', job.pk, job.name)
         return True
+
+    def _record(self, job, **fields):
+        """
+        Write a claimed job's new state, only while we still hold its lock (if it was recovered as stale
+        meanwhile, its new owner decides). Returns the number of rows changed: 0 means the lock was lost.
+        Retries through a short database outage (db_retry_delays), then raises DatabaseError.
+        """
+        for delay in (*self.db_retry_delays, None):
+            try:
+                return Job.objects.filter(pk=job.pk, locked_by=self.id).update(updated_at=timezone.now(), **fields)
+            except DatabaseError:
+                if delay is None:
+                    raise
+                logger.warning('Could not record the result of job %s; retrying in %ss', job.pk, delay, exc_info=True)
+                self.reset_connection()
+                time.sleep(delay)  # not self.sleep(): SIGTERM must not skip recording the result
 
     def _failed(self, job, t, exc):
         now = timezone.now()
-        error = ''.join(traceback.format_exception(exc))[-5000:]
+        error = scrub(''.join(traceback.format_exception(exc)))[-5000:]
         dead = job.attempts >= job.max_attempts
         run_after = now if dead else now + timedelta(seconds=backoff(job.attempts))
-        Job.objects.filter(pk=job.pk, locked_by=self.id).update(
-            status=Job.DEAD if dead else Job.FAILED, run_after=run_after, locked_at=None, locked_by='',
-            last_error=error, updated_at=now, finished_at=now if dead else None)
+        if not self._record(job, status=Job.DEAD if dead else Job.FAILED, run_after=run_after, locked_at=None,
+                            locked_by='', last_error=error, finished_at=now if dead else None):
+            logger.warning('Job %s %s failed after its lock was taken over; the new owner decides', job.pk, job.name)
+            return
         if dead:
-            logger.error('Job %s %s is dead after %s attempts: %s', job.pk, job.name, job.attempts, exc)
+            logger.error('Job %s %s is dead after %s attempts: %s', job.pk, job.name, job.attempts, scrub(repr(exc)))
             job.status, job.last_error = Job.DEAD, error
             self._on_dead(job, t)
         else:
             logger.warning('Job %s %s failed (attempt %s of %s), retrying at %s: %s',
-                           job.pk, job.name, job.attempts, job.max_attempts, run_after, exc)
+                           job.pk, job.name, job.attempts, job.max_attempts, run_after, scrub(repr(exc)))
 
     def _on_dead(self, job, t):
         if t is None or t.on_dead is None:
@@ -159,16 +202,20 @@ class Worker:
                     self.prune()
                     next_prune = time.monotonic() + 3600
                 job = self.claim()
+                if job is not None:
+                    ran += 1
+                    self.run(job)
             except DatabaseError:
+                # The database went away (restart, failover, network). A job whose result couldn't be
+                # recorded stays "running" and is retried once its lock times out. --once / --burst
+                # exit with the error; the long-running worker waits and carries on.
                 if once or burst:
                     raise
                 logger.exception('Database error in the worker loop; retrying in %ss', poll)
-                connection.close()
+                self.reset_connection()
                 self.sleep(poll)
                 continue
             if job is not None:
-                self.run(job)
-                ran += 1
                 if once or (max_jobs and ran >= max_jobs):
                     break
                 continue
@@ -176,6 +223,11 @@ class Worker:
                 break
             self.sleep(poll)
         return ran
+
+    @staticmethod
+    def reset_connection():
+        if not connection.in_atomic_block:  # (tests run the worker inside a transaction)
+            connection.close()  # the next query reconnects
 
     def sleep(self, seconds):
         """Sleep in short steps so SIGTERM ends an idle worker straight away."""
@@ -186,7 +238,7 @@ class Worker:
 
 def run_inline(job_id):
     """JOBS_RUN_INLINE: run a just-committed job in this process. Errors are recorded, never raised."""
-    worker = Worker(f'inline:{os.getpid()}')
+    worker = Worker(f'inline:{os.getpid()}:{uuid.uuid4().hex[:8]}')  # unique per call: web servers run threads
     try:
         job = worker.claim(job_id)
         if job is not None:

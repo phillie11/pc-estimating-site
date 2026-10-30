@@ -56,3 +56,8 @@ output "ses_configuration_set" {
 output "transfer_bucket" {
   value = module.app.transfer_bucket
 }
+
+output "scheduled_job_names" {
+  description = "The scheduled manage.py commands (EventBridge Scheduler)"
+  value       = module.app.scheduled_job_names
+}

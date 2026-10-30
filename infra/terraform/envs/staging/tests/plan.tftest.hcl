@@ -64,3 +64,30 @@ run "applies" {
     error_message = "Expected the certificate and email DNS records."
   }
 }
+
+# Without a worker service, an hourly `run_worker --burst` retries failed emails; with one, it isn't needed
+run "no_worker_schedules_a_burst" {
+  command = plan
+
+  variables {
+    worker_desired_count = 0
+  }
+
+  assert {
+    condition     = contains(module.siteline.scheduled_job_names, "run-worker-burst")
+    error_message = "With worker_desired_count = 0 there should be an hourly run_worker --burst schedule."
+  }
+}
+
+run "worker_replaces_the_burst" {
+  command = plan
+
+  variables {
+    worker_desired_count = 1
+  }
+
+  assert {
+    condition     = !contains(module.siteline.scheduled_job_names, "run-worker-burst")
+    error_message = "With a worker service running, the hourly burst should not be scheduled."
+  }
+}

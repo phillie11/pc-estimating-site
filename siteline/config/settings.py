@@ -229,6 +229,9 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', f'{PRODUCT_NAME} <no-reply@example.com>')
+# Seconds per SMTP operation. Without it a mail server that stops answering hangs the worker for
+# good. Keep it well under JOBS_LOCK_TIMEOUT (system check jobs.W001).
+EMAIL_TIMEOUT = int(env('EMAIL_TIMEOUT', '30'))
 # 1: send each email during the request, as before (the worker only retries failures).
 # 0: queue it in the outbox for `manage.py run_worker`. Only set 0 where a worker is running.
 EMAIL_SYNC = env_bool('EMAIL_SYNC', True)
@@ -242,6 +245,8 @@ JOBS_BACKOFF_MAX = int(env('JOBS_BACKOFF_MAX', '3600'))
 JOBS_LOCK_TIMEOUT = int(env('JOBS_LOCK_TIMEOUT', '900'))    # a running job older than this is assumed lost
 JOBS_POLL_SECONDS = float(env('JOBS_POLL_SECONDS', '5'))
 JOBS_KEEP_DAYS = int(env('JOBS_KEEP_DAYS', '30'))           # finished jobs and sent emails are deleted after this
+JOBS_KEEP_FAILED_DAYS = int(env('JOBS_KEEP_FAILED_DAYS', '90'))  # dead jobs and failed emails
+JOBS_EMAIL_BODY_DAYS = int(env('JOBS_EMAIL_BODY_DAYS', '7'))  # sent emails' bodies (live invite links) are blanked
 
 # Stripe
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', '')

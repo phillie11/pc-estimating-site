@@ -249,16 +249,25 @@ class WorkerTests(JobTestCase):
         self.assertEqual(Job.objects.filter(status=Job.QUEUED).count(), 1)  # left for the next worker
         self.assertEqual(signal.getsignal(signal.SIGTERM), before)
 
-    @override_settings(JOBS_KEEP_DAYS=30)
-    def test_prune_deletes_old_finished_jobs_and_sent_emails(self):
-        old = timezone.now() - timedelta(days=31)
-        Job.objects.create(name='test.record', status=Job.DONE, finished_at=old)
-        Job.objects.create(name='test.record', status=Job.DEAD, finished_at=old)
-        Job.objects.create(name='test.record', status=Job.DONE, finished_at=timezone.now())
-        OutboxEmail.objects.create(to=['a@x.test'], subject='s', body='b', status=OutboxEmail.SENT, sent_at=old)
-        OutboxEmail.objects.create(to=['a@x.test'], subject='s', body='b', status=OutboxEmail.FAILED)
-        self.assertEqual(Worker().prune(), (1, 1))
-        self.assertEqual(Job.objects.count(), 2)
+    @override_settings(JOBS_KEEP_DAYS=30, JOBS_KEEP_FAILED_DAYS=90, JOBS_EMAIL_BODY_DAYS=7)
+    def test_prune_retention(self):
+        now = timezone.now()
+        days = lambda n: now - timedelta(days=n)  # noqa: E731
+        for status, finished in ((Job.DONE, days(31)), (Job.DEAD, days(91)),  # deleted
+                                 (Job.DONE, now), (Job.DEAD, days(31))):  # kept: dead ones are kept longer
+            Job.objects.create(name='test.record', status=status, finished_at=finished)
+        email = lambda **kw: OutboxEmail.objects.create(to=['a@x.test'], subject='Invite', body='/invite/abc/', **kw)  # noqa: E731
+        email(status=OutboxEmail.SENT, sent_at=days(31))  # deleted
+        old_failed = email(status=OutboxEmail.FAILED)
+        OutboxEmail.objects.filter(pk=old_failed.pk).update(created_at=days(91))  # deleted
+        failed = email(status=OutboxEmail.FAILED)  # kept, body and all, for "Send again"
+        week_old = email(status=OutboxEmail.SENT, sent_at=days(8))  # kept, body blanked
+        fresh = email(status=OutboxEmail.SENT, sent_at=now)
+        self.assertEqual(Worker().prune(), (2, 2, 1))
+        self.assertEqual(sorted(Job.objects.values_list('status', flat=True)), [Job.DEAD, Job.DONE])
+        bodies = dict(OutboxEmail.objects.values_list('pk', 'body'))
+        self.assertEqual(bodies, {failed.pk: '/invite/abc/', week_old.pk: '', fresh.pk: '/invite/abc/'})
+        self.assertEqual(OutboxEmail.objects.get(pk=week_old.pk).subject, 'Invite')
 
     def test_jobs_status(self):
         jobs.enqueue('test.record', run_after=timezone.now() - timedelta(hours=2))
