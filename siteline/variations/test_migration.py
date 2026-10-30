@@ -12,7 +12,8 @@ from django.test import TransactionTestCase
 from tenancy.context import org_context
 
 # core and RFIs stay where they are (already on the record base); only variations move
-STAY = [('core', '0002_audit_actor_name_retention'), ('rfis', '0005_remove_rfi_is_shared')]
+STAY = [('core', '0002_audit_actor_name_retention'), ('rfis', '0005_remove_rfi_is_shared'),
+        ('directory', '0006_regions_from_text')]  # keeps the historical Subcontractor in step with the database
 BEFORE = [('variations', '0002_alter_variation_project'), *STAY]
 AFTER = [('variations', '0009_strip_sub_variation_source'), *STAY]  # latest, so the live model below matches
 
