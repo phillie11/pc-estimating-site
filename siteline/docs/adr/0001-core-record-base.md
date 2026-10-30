@@ -83,7 +83,7 @@ RFI status changes now go through `rfis/workflow.py`: `respond`, `respond_and_cl
 
 One type per change, each with the same three-step migration as RFIs and a forward/backward test copied from `core/tests/test_rfi_migration.py`:
 
-1. **Client variations (`variations.Variation`, `VO-`).** Already has `title`, `status`, `project`, `number`. Rename `raised_by → created_by`; add `visibility`: drafts are `INTERNAL` (the data migration sets drafts internal and everything else shared), and the `submit` transition's `on_apply` sets it to `SHARED` (recommended default, pending owner confirmation). Transitions: `submit` (staff), `approve` / `reject` (client, via `can_decide_variations` rules moved into a predicate), `withdraw`. Ball in court: the client while submitted. Replace the `Variation.rfi` FK with a `RecordLink(DERIVED_FROM)` in a later step, keeping the FK until every reader uses links.
+1. **Client variations (`variations.Variation`, `VO-`).** Already has `title`, `status`, `project`, `number`. Rename `raised_by → created_by`; add `visibility`: drafts are `INTERNAL` (the data migration sets drafts internal and everything else shared), and the `submit` transition's `on_apply` sets it to `SHARED` (confirmed by the product owner). Transitions: `submit` (staff), `approve` / `reject` (client, via `can_decide_variations` rules moved into a predicate), `withdraw`. Ball in court: the client while submitted. Replace the `Variation.rfi` FK with a `RecordLink(DERIVED_FROM)` in a later step, keeping the FK until every reader uses links.
 2. **Subcontractor variations (`delivery.SubVariation`, `SV-`).** Ball-in-court company = the subcontractor. Their visibility rule (a subcontractor sees only their own) is narrower than `visibility`, so before externals read them from the index, add an audience column to `RecordIndex` (e.g. `audience_company`) and teach `core.access.visible_index` about it.
 3. **RAMS (`delivery.Rams`, `RAMS-`).** Numbered per project but revised (`unique (project, number, revision)`). Either each revision is a record sharing a number (sequence taken only for revision 1), or the RAMS is the record and revisions are child rows. Prefer the second; decide before migrating.
 4. **Snags (`projects.Issue`, `IS-`).** `assignee → ball_in_court_user`, `created_by` already matches. Visibility today is "assigned to them" for externals, so the same audience work as step 2 applies.
@@ -91,7 +91,7 @@ One type per change, each with the same three-step migration as RFIs and a forwa
 
 After the last one, remove `save_with_number`.
 
-## Recommended defaults, pending owner confirmation
+## Defaults (confirmed by the product owner, 30 Oct 2026)
 
 These are implemented so work can carry on, but the product owner hasn't confirmed them. Each lives in one place so it is a small change either way.
 
