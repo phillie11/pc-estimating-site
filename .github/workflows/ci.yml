@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        db: [sqlite, postgres]
+        db: [sqlite, postgres, mysql]
 
     services:
       postgres:
@@ -42,15 +42,37 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      mysql:
+        # Production (PythonAnywhere) runs MySQL 8.0. The image defaults already match
+        # what config/settings.py expects: utf8mb4 / utf8mb4_0900_ai_ci and a strict
+        # sql_mode (settings.py also sets STRICT_TRANS_TABLES per connection). Service
+        # containers cannot take server flags, so the "Check MySQL server" step below
+        # asserts those defaults instead of assuming them.
+        image: ${{ matrix.db == 'mysql' && 'mysql:8.0' || '' }}
+        env:
+          # root, because the test runner needs CREATE/DROP DATABASE for test_siteline.
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: siteline
+        ports:
+          - 3306:3306
+        # -h 127.0.0.1 forces TCP: the entrypoint's temporary init server listens on
+        # the socket only, so a socket ping would report healthy too early.
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pmysql --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
 
     env:
       # config/settings.py: anything other than mysql/postgres falls back to SQLite.
       DB_ENGINE: ${{ matrix.db }}
       DB_NAME: siteline
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_HOST: localhost
-      DB_PORT: '5432'
+      DB_USER: ${{ matrix.db == 'mysql' && 'root' || 'postgres' }}
+      DB_PASSWORD: ${{ matrix.db == 'mysql' && 'mysql' || 'postgres' }}
+      # 127.0.0.1, not localhost, for MySQL: libmysqlclient treats "localhost" as
+      # "use the Unix socket", and the server is only reachable over TCP here.
+      DB_HOST: ${{ matrix.db == 'mysql' && '127.0.0.1' || 'localhost' }}
+      DB_PORT: ${{ matrix.db == 'mysql' && '3306' || '5432' }}
       DEBUG: '1'
       SECRET_KEY: ci-only-not-a-secret
       PYTHONUNBUFFERED: '1'
@@ -70,22 +92,69 @@ jobs:
             siteline/requirements.txt
             siteline/requirements-dev.txt
 
-      # mysqlclient is only used on PythonAnywhere (DB_ENGINE=mysql). It ships no
-      # Linux wheels, so installing it means compiling against libmysqlclient-dev
-      # from apt on every run. Neither leg here imports it, so we drop that one line
-      # rather than add an apt step that can fail for reasons unrelated to our code.
+      # mysqlclient (DB_ENGINE=mysql, PythonAnywhere) ships no Linux wheels, so it is
+      # compiled against libmysqlclient-dev. Only the mysql leg needs it; the sqlite
+      # and postgres legs drop that one line and skip the apt step.
+      - name: Install MySQL client headers
+        if: ${{ matrix.db == 'mysql' }}
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+            pkg-config default-libmysqlclient-dev build-essential
+
+      - name: Install dependencies (mysql)
+        if: ${{ matrix.db == 'mysql' }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -c "import MySQLdb; print('mysqlclient', MySQLdb.version_info)"
+
       # The security job still audits the mysqlclient pin.
       - name: Install dependencies
+        if: ${{ matrix.db != 'mysql' }}
         run: |
           grep -viE '^[[:space:]]*mysqlclient([^A-Za-z0-9_.-]|$)' requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
           python -m pip install --upgrade pip
           python -m pip install -r "$RUNNER_TEMP/requirements-ci.txt" -r requirements-dev.txt
+
+      # Fails fast, with a readable message, if the image defaults ever drift from
+      # what production relies on. Uses the Python driver, so no mysql CLI is needed.
+      - name: Check MySQL server
+        if: ${{ matrix.db == 'mysql' }}
+        shell: python
+        run: |
+          import os, sys, MySQLdb
+          conn = MySQLdb.connect(host=os.environ["DB_HOST"], port=int(os.environ["DB_PORT"]),
+                                 user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"])
+          cur = conn.cursor()
+          cur.execute("SELECT VERSION(), @@character_set_server, @@collation_server, @@GLOBAL.sql_mode")
+          version, charset, collation, sql_mode = cur.fetchone()
+          print(f"MySQL {version}\ncharacter_set_server={charset}\ncollation_server={collation}\nsql_mode={sql_mode}")
+          errors = []
+          if not version.startswith("8.0."):
+              errors.append(f"expected MySQL 8.0, got {version}")
+          if charset != "utf8mb4":
+              errors.append(f"expected character_set_server=utf8mb4, got {charset}")
+          if "STRICT_TRANS_TABLES" not in sql_mode.split(","):
+              errors.append(f"expected STRICT_TRANS_TABLES in the server sql_mode, got {sql_mode}")
+          for e in errors:
+              print(f"::error title=MySQL server::{e}")
+          sys.exit(1 if errors else 0)
 
       - name: Use a temporary MEDIA_ROOT
         run: echo "MEDIA_ROOT=$(mktemp -d)" >> "$GITHUB_ENV"
 
       - name: Django system checks
         run: python manage.py check
+
+      # Database-tagged checks (mysql.W002 strict mode, MySQL field limits) only run
+      # with --database. Errors fail the job; warnings are printed. Known warning:
+      # mysql.W003 on projects.FileScan.path (unique, max_length=500). That is 2000
+      # bytes in utf8mb4, inside InnoDB's 3072-byte index limit for the DYNAMIC row
+      # format (the 8.0 default), and the migrations below prove it applies.
+      - name: Django database checks (mysql)
+        if: ${{ matrix.db == 'mysql' }}
+        run: python manage.py check --database default
 
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
