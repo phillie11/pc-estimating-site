@@ -1,0 +1,19 @@
+{% load ui %}<style>
+  .docs .btn, .docs .chip, .docs select, .docs input[type=text], .docs input[type=search], .docs input[type=file] { min-height: 44px; }
+  .docs .chip { display: inline-flex; align-items: center; }
+  .docs input[type=checkbox] { width: 22px; height: 22px; }
+  .docs .grid-in { width: 100%; min-width: 110px; }
+  .docs .parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 0; }
+  .docs .parts dt { font-size: 11.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }
+  .docs .parts dd { margin: 0; font-family: var(--mono, monospace); }
+  .docs .warnlist { margin: 6px 0 0; padding-left: 18px; }
+  .docs .filterbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 1rem; }
+  .docs .filterbar select, .docs .filterbar input[type=search] { max-width: 200px; }
+  @media (max-width: 520px) { .docs .filterbar select, .docs .filterbar input[type=search] { max-width: none; width: 100%; } }
+</style>
+<nav class="filters" aria-label="Documents">
+  <a class="chip {% if docs_section == 'register' %}on{% endif %}" href="{% url 'document_list' org.slug project.pk %}">Drawing register</a>
+  <a class="chip {% if docs_section == 'transmittals' %}on{% endif %}" href="{% url 'transmittal_list' org.slug project.pk %}">Transmittals{% if transmittals_waiting %} <span class="n">{{ transmittals_waiting }}</span>{% endif %}</a>
+  {% if is_internal %}<a class="chip {% if docs_section == 'bulk' %}on{% endif %}" href="{% url 'bulk_upload' org.slug project.pk %}">Bulk upload</a>
+  <a class="chip {% if docs_section == 'settings' %}on{% endif %}" href="{% url 'register_settings' org.slug project.pk %}">Naming &amp; recipients</a>{% endif %}
+</nav>

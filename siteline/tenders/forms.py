@@ -5,7 +5,8 @@ from directory.models import Package, Subcontractor, Trade
 from projects.files import validate_upload
 from projects.forms import StyledModelForm, style_widgets
 
-from .models import Addendum, TenderQuery
+from . import scoring
+from .models import Addendum, BidReview, TenderQuery, TenderSettings
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -107,6 +108,128 @@ class AnswerForm(StyledModelForm):
         if not a:
             raise forms.ValidationError('Write the answer.')
         return a
+
+
+class BidGateForm(StyledModelForm):
+    """Intake details and the six bid/no-bid questions (tenders.scoring.QUESTIONS)."""
+    class Meta:
+        model = BidReview
+        fields = ['contract_form', 'amendments', 'bidders', 'client_budget', 'decision_note']
+        widgets = {'amendments': forms.Textarea(attrs={'rows': 3}), 'decision_note': forms.Textarea(attrs={'rows': 3})}
+        help_texts = {'decision_note': 'Anything the score misses. Required when bidding against a No-go.'}
+
+    def __init__(self, *args, scoring_required=False, suggested=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scoring_required = scoring_required
+        suggested = suggested or {}
+        self.fields['contract_form'].choices = [('', 'Not known yet')] + scoring.CONTRACT_FORMS
+        self.fields['bidders'].widget.attrs.update({'min': 1, 'max': 50})
+        self.question_fields = []
+        for q in scoring.QUESTIONS:
+            name = f'q_{q.key}'
+            current = getattr(self.instance, name)
+            self.fields[name] = forms.TypedChoiceField(
+                label=q.label, help_text=q.help, required=False, coerce=int, empty_value=None,
+                choices=[(str(p), lbl) for p, lbl in q.options], widget=forms.RadioSelect,
+                initial=str(current) if current is not None else (str(suggested[q.key]) if q.key in suggested else None))
+            self.fields[name].suggested = suggested.get(q.key)
+            self.fields[name].weight = q.weight
+            self.question_fields.append(name)
+
+    def intake_fields(self):
+        return [self[n] for n in ('contract_form', 'amendments', 'bidders', 'client_budget')]
+
+    def questions(self):
+        return [self[n] for n in self.question_fields]
+
+    def clean_bidders(self):
+        b = self.cleaned_data.get('bidders')
+        if b is not None and b < 1:
+            raise forms.ValidationError('At least 1 (us).')
+        return b
+
+    def clean_client_budget(self):
+        v = self.cleaned_data.get('client_budget')
+        if v is not None and v < 0:
+            raise forms.ValidationError('Enter a positive amount.')
+        return v
+
+    def clean(self):
+        data = super().clean()
+        if self.scoring_required:
+            for name in self.question_fields:
+                if data.get(name) is None:
+                    self.add_error(name, 'Answer this to get a score.')
+        return data
+
+    def save(self, commit=True):
+        review = super().save(commit=False)
+        for name in self.question_fields:
+            setattr(review, name, self.cleaned_data.get(name))
+        review.rescore()
+        if commit:
+            review.save()
+        return review
+
+
+class DeclineBidForm(StyledModelForm):
+    class Meta:
+        model = BidReview
+        fields = ['decline_reason', 'decline_detail']
+        labels = {'decline_reason': 'Why are we declining?'}
+        widgets = {'decline_reason': forms.RadioSelect}
+        help_texts = {'decline_detail': 'Required for "Other". Kept with the bid and shown in tender analytics.'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['decline_reason'].required = True
+        self.fields['decline_reason'].choices = scoring.DECLINE_REASONS
+
+    def clean(self):
+        data = super().clean()
+        if data.get('decline_reason') == scoring.DECLINE_OTHER and not (data.get('decline_detail') or '').strip():
+            self.add_error('decline_detail', 'Say what the reason is.')
+        return data
+
+
+class LossReviewForm(StyledModelForm):
+    class Meta:
+        model = BidReview
+        fields = ['loss_reason', 'our_price', 'winner_price', 'lessons']
+        widgets = {'loss_reason': forms.RadioSelect, 'lessons': forms.Textarea(attrs={'rows': 4})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['loss_reason'].required = True
+        self.fields['loss_reason'].choices = scoring.LOSS_REASONS
+        self.fields['our_price'].help_text = 'Our tender sum. Filled in from the bid value.'
+
+    def clean(self):
+        data = super().clean()
+        for f in ('our_price', 'winner_price'):
+            if data.get(f) is not None and data[f] <= 0:
+                self.add_error(f, 'Enter a positive amount, or leave it blank.')
+        if data.get('loss_reason') == scoring.LOSS_OTHER and not (data.get('lessons') or '').strip():
+            self.add_error('lessons', 'Say what happened.')
+        return data
+
+
+class TenderSettingsForm(StyledModelForm):
+    class Meta:
+        model = TenderSettings
+        fields = ['gate_threshold', 'min_quotes']
+
+    def clean_gate_threshold(self):
+        v = self.cleaned_data['gate_threshold']
+        if v < 0:
+            raise forms.ValidationError('0 or more.')
+        return v
+
+    def clean_min_quotes(self):
+        v = self.cleaned_data['min_quotes']
+        if not 1 <= v <= 20:
+            raise forms.ValidationError('Between 1 and 20.')
+        return v
 
 
 class AddendumForm(StyledModelForm):

@@ -1,9 +1,10 @@
-from django.urls import path
+from django.urls import include, path
 
 from actions import views as actions
 from billing import views as billing
 from delivery import views as delivery
 from directory import views as directory
+from documents import urls as documents_urls
 from projects import views as projects
 from rfis import views as rfis
 from tenders import views as tenders
@@ -64,9 +65,8 @@ urlpatterns = [
     path(P + 'issues/<int:issue_id>/edit/', projects.issue_edit, name='issue_edit'),
     path(P + 'issues/<int:issue_id>/photo/', projects.issue_photo, name='issue_photo'),
 
-    path(P + 'documents/', projects.document_list, name='document_list'),
-    path(P + 'documents/<int:doc_id>/', projects.document_detail, name='document_detail'),
-    path(P + 'documents/<int:doc_id>/rev/<int:rev_id>/', projects.document_download, name='document_download'),
+    # Documents tab (documents/urls.py), listed flat so every project URL is a named pattern here
+    *[path(P + 'documents/' + str(u.pattern), u.callback, name=u.name) for u in documents_urls.urlpatterns],
 
     path(P + 'rfis/', rfis.rfi_list, name='rfi_list'),
     path(P + 'rfis/new/', rfis.rfi_create, name='rfi_create'),
@@ -98,4 +98,5 @@ urlpatterns = [
     path('directory/<int:pk>/', directory.sub_detail, name='sub_detail'),
     path('directory/<int:pk>/edit/', directory.sub_edit, name='sub_edit'),
     path('directory/<int:pk>/archive/', directory.sub_archive, name='sub_archive'),
+    path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

@@ -1,0 +1,30 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<div class="grid split">
+  <div>
+    <div class="card"><div class="card-head"><h2>Document numbering</h2></div><div class="card-body">
+      <p class="small dim" style="margin-top:0">Numbers follow BS EN ISO 19650-2 (UK National Annex): <span class="mono">project-originator-volume-level-type-role-number</span>, e.g. <span class="mono">SLN-ABC-ZZ-02-DR-A-1001</span>. Revision and suitability are recorded separately.</p>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="settings">{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save</button></div></form>
+    </div></div>
+
+    <div class="card" id="recipients"><div class="card-head"><h2>Usual recipients</h2><span class="small dim">who gets each discipline's documents</span></div>
+      {% if rules %}<ul class="list">{% for r in rules %}<li><span class="grow">{{ r.discipline|default:"Every discipline" }}<br><span class="small dim">{% if r.user %}{{ r.user.full_name|default:r.user.email }}{% else %}{{ r.subcontractor.company_name }} (company){% endif %}</span></span>
+        <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="remove_rule"><input type="hidden" name="rule" value="{{ r.pk }}"><button class="btn sm">Remove</button></form></li>{% endfor %}</ul>
+      {% else %}<div class="empty left">None set. "Issue to usual recipients" then sends to whoever the document last went to, or else to every client, consultant and subcontractor on the project.</div>{% endif %}
+      <div class="card-body" style="border-top:1px solid var(--line)"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_rule">{% with form=rule_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Add</button></div></form></div>
+    </div>
+  </div>
+
+  <div class="card" id="codes"><div class="card-head"><h2>Code lists</h2><span class="small dim">numbers using other codes get a warning</span></div>
+    {% for field, label, rows, own in lists %}<div class="card-body" style="border-bottom:1px solid var(--line)">
+      <div class="row"><h3 style="margin:0" class="grow">{{ label }}</h3>{% if own %}<span class="small dim">this project's own list</span>
+        <form method="post" class="inline" data-confirm="Go back to the UK default {{ label|lower }} codes?">{% csrf_token %}<input type="hidden" name="action" value="reset_codes"><input type="hidden" name="field" value="{{ field }}"><button class="btn sm">Use UK defaults</button></form>{% else %}<span class="small dim">UK defaults</span>{% endif %}</div>
+      {% if rows %}<p class="small" style="margin:6px 0 0">{% for code, desc in rows %}<span class="nowrap" style="display:inline-flex;align-items:center;gap:2px;margin:0 8px 4px 0"><span class="mono">{{ code }}</span>{% if desc %}<span class="dim">&nbsp;{{ desc }}</span>{% endif %}
+        <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="remove_code"><input type="hidden" name="field" value="{{ field }}"><input type="hidden" name="code" value="{{ code }}"><button class="linkbtn small" aria-label="Remove {{ code }}">×</button></form></span>{% endfor %}</p>
+      {% else %}<p class="small dim" style="margin:6px 0 0">No list: any code is accepted.{% if field == 'originator' %} Add the companies producing information on this job.{% endif %}</p>{% endif %}
+    </div>{% endfor %}
+    <div class="card-body"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_code">{% with form=code_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Add code</button></div></form></div>
+  </div>
+</div>
+</div>{% endblock %}
