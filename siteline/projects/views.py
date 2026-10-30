@@ -73,7 +73,7 @@ def project_context(request, project, tab, **extra):
     if not internal:
         rfi_qs = rfi_qs.filter(is_shared=True)
         task_qs = task_qs.filter(assignee=request.user)
-        issue_qs = issue_qs.filter(assignee=request.user)
+        issue_qs = issue_qs.filter(assignee=request.user, status=Issue.STATUS_OPEN)
     tabs.append(('programme', 'Programme', url('programme'), None))
     if internal:
         open_pkgs = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES)
@@ -217,7 +217,8 @@ def project_detail(request, org_slug, pk):
         'rfis_overdue': rfis.filter(status=RFI.STATUS_OPEN, due_date__lt=timezone.localdate()).count(),
         'tasks_open': Task.objects.filter(project=project, **({} if internal else {'assignee': request.user}))
         .exclude(status=Task.STATUS_DONE).count(),
-        'issues_open': Issue.objects.filter(project=project, **({} if internal else {'assignee': request.user}))
+        'issues_open': Issue.objects.filter(project=project, **({} if internal else {'assignee': request.user,
+                                                                                      'status': Issue.STATUS_OPEN}))
         .exclude(status=Issue.STATUS_CLOSED).count(),
         'docs': Document.objects.filter(project=project).count() if internal
         else Document.objects.filter(project=project, visibility=Document.VIS_SHARED).count(),

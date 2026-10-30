@@ -8,7 +8,7 @@
 <div class="grid split">
   <div class="stack">
     <div class="card"><div class="card-body">
-      <div class="row"><span class="ref">{{ issue.reference }}</span>{% badge issue.get_status_display 'accent' %}{% badge issue.get_issue_type_display 'muted' %}</div>
+      <div class="row"><span class="ref">{{ issue.reference }}</span>{% badge issue.get_status_display issue.status_tone %}{% badge issue.get_issue_type_display 'muted' %}</div>
       <h2 style="margin-top:8px">{{ issue.title }}</h2>
       {% if issue.description %}<div style="white-space:pre-wrap">{{ issue.description }}</div>{% endif %}
       {% if issue.photo %}<a href="{% url 'issue_photo' org.slug project.pk issue.pk %}" target="_blank" rel="noopener"><img src="{% url 'issue_photo' org.slug project.pk issue.pk %}" alt="Snag photo" style="max-width:100%;border-radius:5px;margin-top:12px;border:1px solid var(--line)"></a>{% endif %}

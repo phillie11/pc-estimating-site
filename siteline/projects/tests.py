@@ -669,3 +669,49 @@ class ArchiveTests(Base):
         """RESTRICT stops piecemeal deletes but not the workspace itself going (seed_demo --reset, admin)."""
         self.org_a.delete()
         self.assertFalse(Project.all_objects.filter(organization_id=self.org_a.pk).exists())
+
+
+class SnagStatusTests(Base):
+    """A snag the sub marks ready leaves their plate and lands on staff's as "Ready to inspect"."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Issue
+        self.sub_user = make_user('sub@s.test', 'Sid Sub')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=self.sub_user, role=Membership.ROLE_EXTERNAL)
+            ProjectMember.objects.create(project=self.pa, user=self.sub_user, role=ProjectMember.ROLE_SUBCONTRACTOR)
+            self.snag = Issue.objects.create(project=self.pa, title='Chipped skirting', assignee=self.sub_user,
+                                             created_by=self.alice)
+        self.detail = self.url('issue_detail', self.org_a, self.pa.pk, self.snag.pk)
+
+    def test_ready_snag_moves_from_sub_plate_to_staff_plate(self):
+        self.login(self.sub_user)
+        self.assertEqual(list(self.client.get(self.url('dashboard', self.org_a)).context['my_issues']), [self.snag])
+        self.client.post(self.detail, {'action': 'ready'})
+        self.snag.refresh_from_db()
+        self.assertEqual(self.snag.status, self.snag.STATUS_READY)
+        self.assertEqual(list(self.client.get(self.url('dashboard', self.org_a)).context['my_issues']), [])
+        overview = self.client.get(self.url('project_detail', self.org_a, self.pa.pk))
+        self.assertEqual(overview.context['stats']['issues_open'], 0)
+        self.login(self.alice)
+        r = self.client.get(self.url('delivery_home', self.org_a))
+        self.assertEqual(list(r.context['to_inspect']), [self.snag])
+        self.assertContains(r, 'Ready to inspect')
+
+    def test_project_manager_sees_ready_snags_too(self):
+        pm = make_user('pm@a.test', 'Pat PM')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=pm, role=Membership.ROLE_MEMBER)
+            Project.objects.filter(pk=self.pa.pk).update(manager=pm)
+            type(self.snag).objects.filter(pk=self.snag.pk).update(status=self.snag.STATUS_READY)
+        self.login(pm)
+        self.assertEqual(list(self.client.get(self.url('delivery_home', self.org_a)).context['to_inspect']), [self.snag])
+
+    def test_badge_tone_follows_status(self):
+        self.login(self.alice)
+        self.assertContains(self.client.get(self.detail), '<span class="badge accent">Open</span>')
+        self.client.post(self.detail, {'action': 'ready'})
+        self.assertContains(self.client.get(self.detail), '<span class="badge info">Ready for inspection</span>')
+        self.client.post(self.detail, {'action': 'close'})
+        self.assertContains(self.client.get(self.detail), '<span class="badge good">Closed</span>')

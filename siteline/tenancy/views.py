@@ -48,15 +48,24 @@ def dashboard(request, org_slug):
 
 
 def _my_plate(request, projects):
+    """
+    What is waiting on this person. A snag marked ready for inspection has left the
+    assignee's plate: it now waits on staff, so it shows to whoever raised it and to
+    the job's project manager as "Ready to inspect".
+    """
     user = request.user
-    return {
+    plate = {
         'my_tasks': Task.objects.filter(assignee=user, project__in=projects).exclude(status=Task.STATUS_DONE)
         .select_related('project')[:8],
         'my_rfis': RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=projects)
         .select_related('project')[:8],
-        'my_issues': Issue.objects.filter(assignee=user, project__in=projects).exclude(status=Issue.STATUS_CLOSED)
+        'my_issues': Issue.objects.filter(assignee=user, project__in=projects, status=Issue.STATUS_OPEN)
         .select_related('project')[:8],
     }
+    if is_internal(request):
+        plate['to_inspect'] = Issue.objects.filter(Q(created_by=user) | Q(project__manager=user), project__in=projects,
+                                                   status=Issue.STATUS_READY).select_related('project')[:8]
+    return plate
 
 
 @estimating_required

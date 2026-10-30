@@ -443,6 +443,10 @@ class Issue(TenantModel):
     def reference(self):
         return f'IS-{self.number:03d}'
 
+    @property
+    def status_tone(self):
+        return {self.STATUS_OPEN: 'accent', self.STATUS_READY: 'info', self.STATUS_CLOSED: 'good'}.get(self.status, 'muted')
+
     def save(self, *args, **kwargs):
         return save_with_number(self, super().save, *args, **kwargs)
 
