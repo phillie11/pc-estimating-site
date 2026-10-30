@@ -1,0 +1,38 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Register CSV</a><a class="btn" href="{% qs export='pdf' %}">{% icon 'download' %} Issue sheet PDF</a>{% if is_internal %}<a class="btn primary" href="{% url 'bulk_upload' org.slug project.pk %}">{% icon 'plus' %} Bulk upload</a>{% endif %}{% endblock %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+{% if is_internal and to_check %}<div class="flash warning">{{ to_check }} document number{{ to_check|pluralize }} {{ to_check|pluralize:"doesn't,don't" }} follow the project's naming. <a href="?naming=check">Show {{ to_check|pluralize:"it,them" }}</a> to correct or accept.</div>{% endif %}
+<div class="grid split">
+  <div>
+    <form class="filterbar" method="get" aria-label="Filter the register">
+      <input type="search" name="q" value="{{ f.q }}" placeholder="Search number, title or file" aria-label="Search">
+      {% if disciplines %}<select name="discipline" aria-label="Discipline"><option value="">All disciplines</option>{% for d in disciplines %}<option value="{{ d }}" {% if f.discipline|lower == d|lower %}selected{% endif %}>{{ d }}</option>{% endfor %}</select>{% endif %}
+      {% if types %}<select name="type" aria-label="Type"><option value="">All types</option>{% for t, label in types %}<option value="{{ t }}" {% if f.type == t %}selected{% endif %}>{{ t }}{% if label %} – {{ label }}{% endif %}</option>{% endfor %}</select>{% endif %}
+      <select name="status" aria-label="Status"><option value="">Any status</option>{% for v, l in statuses %}<option value="{{ v }}" {% if f.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      {% if suitabilities %}<select name="suitability" aria-label="Suitability"><option value="">Any suitability</option>{% for s in suitabilities %}<option value="{{ s }}" {% if f.suitability == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>{% endif %}
+      <select name="category" aria-label="Category"><option value="">All categories</option>{% for v, l in categories %}<option value="{{ v }}" {% if f.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      {% if f.naming %}<input type="hidden" name="naming" value="{{ f.naming }}">{% endif %}
+      <button class="btn">Filter</button>{% if filtered %}<a class="btn" href="?">Clear</a>{% endif %}
+    </form>
+    <div class="card">{% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Number</th><th>Title</th><th>Rev</th><th>Suit.</th><th>Status</th><th>Date</th>{% if is_internal %}<th>Shared</th>{% endif %}<th></th></tr></thead><tbody>
+      {% for d, cur in rows %}<tr>
+        <td class="ref nowrap">{{ d.reference|default:"—" }}{% if is_internal and d.naming == 'UNPARSED' %}<span class="sub">{% badge 'Check number' 'warn' %}</span>{% endif %}</td>
+        <td><a class="rowlink" href="{% url 'document_detail' org.slug project.pk d.pk %}">{{ d.title }}</a><span class="sub">{{ d.get_category_display }}{% if d.discipline %} · {{ d.discipline }}{% endif %}{% if d.folder %} · {{ d.folder }}{% endif %}</span></td>
+        <td class="mono">{{ cur.revision|default:"—" }}</td>
+        <td class="mono">{{ cur.suitability|default:"—" }}</td>
+        <td>{% if cur %}{% badge cur.get_status_display cur.status_tone %}{% endif %}</td>
+        <td class="small nowrap">{{ cur.uploaded_at|date:"j M Y" }}</td>
+        {% if is_internal %}<td>{% if d.visibility == 'SHARED' %}{% badge 'Shared' 'info' %}{% else %}<span class="dim small">Internal</span>{% endif %}{% if d.tender_issue %} {% badge 'Tender' 'accent' %}{% endif %}</td>{% endif %}
+        <td class="num">{% if cur %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk d.pk cur.pk %}" aria-label="Download {{ d.reference|default:d.title }} rev {{ cur.revision }}">{% icon 'download' %}</a>{% endif %}</td>
+      </tr>{% endfor %}</tbody></table></div>
+      {% elif filtered %}<div class="empty"><h3>Nothing matches these filters</h3><p>{{ total }} document{{ total|pluralize }} on the register, none with these filters. <a href="?">Clear the filters</a> to see them all.</p></div>
+      {% elif is_internal %}<div class="empty"><h3>The register is empty</h3><p>Upload drawings, specs and reports one at a time here, or drop a whole pack on <a href="{% url 'bulk_upload' org.slug project.pk %}">Bulk upload</a>: numbers and revisions are read from the file names.</p></div>
+      {% else %}<div class="empty"><h3>No documents for you yet</h3><p>{{ org.name }} hasn't issued any documents to you on this project. They'll appear here as soon as they do, and you'll get a notification.</p></div>{% endif %}</div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Upload a document</h2></div><div class="card-body">
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Upload</button></div></form>
+    {% if not is_internal %}<p class="small dim" style="margin-top:10px">Your uploads are visible to {{ org.name }} and other collaborators on this project.</p>{% endif %}
+  </div></div>
+</div>
+</div>{% endblock %}

@@ -1,0 +1,2 @@
+{% if rev.is_withdrawn %}<div class="flash warning" role="status"><strong>Withdrawn: do not use rev {{ rev.revision }}.</strong>{% if current %} The current revision is {{ current.revision }}.{% endif %}</div>
+{% elif rev.is_superseded %}<div class="flash warning" role="status"><strong>Superseded{% if rev.superseded_by %} by {{ rev.superseded_by.revision }}{% endif %}.</strong> Don't build from rev {{ rev.revision }}.{% if current and current.pk != rev.superseded_by_id %} The current revision is {{ current.revision }}.{% endif %}</div>{% endif %}

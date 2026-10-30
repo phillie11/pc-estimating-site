@@ -1,0 +1,50 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<p class="small"><a href="{% url 'bulk_upload' org.slug project.pk %}">← Bulk upload</a></p>
+{% if batch.status != 'OPEN' %}<div class="flash info">This upload was {{ batch.get_status_display|lower }}{% if batch.committed_at %} on {{ batch.committed_at|date:"j M Y, H:i" }}{% endif %}.</div>{% endif %}
+{% if scanning %}<div class="flash info">Some files are still being virus-checked. They can't be added until they're cleared, usually within a minute: press <strong>Check again</strong>.</div>{% endif %}
+<form method="post" id="batch">{% csrf_token %}
+<div class="card"><div class="card-head"><h2>Check {{ rows|length }} file{{ rows|length|pluralize }}</h2><span class="small dim">Correct anything in the boxes, then add the ticked rows to the register.</span></div>
+  <div class="table-wrap"><table class="t"><thead><tr><th><span class="sr-only">Add</span></th><th>File</th><th>Number</th><th>Rev</th><th>Suit.</th><th>Title</th><th>What happens</th></tr></thead><tbody>
+  {% for r in rows %}<tr>
+    {% if r.state == 'PENDING' and batch.status == 'OPEN' %}
+    <td><input type="checkbox" name="include_{{ r.pk }}" value="1" aria-label="Add {{ r.original_name }}" {% if r.ready %}checked{% endif %}></td>
+    <td class="small">{{ r.original_name }}<span class="sub">{{ r.size|filesize }}{% if r.page_count %} · {{ r.page_count }} page{{ r.page_count|pluralize }}{% endif %}</span>
+      {% if r.scan == 'scanning' %}<span class="sub">{% badge 'Virus check in progress' 'warn' %}</span>{% elif r.scan == 'blocked' %}<span class="sub">{% badge 'Blocked: failed virus check' 'bad' %}</span>{% endif %}</td>
+    <td><input class="grid-in mono" type="text" name="ref_{{ r.pk }}" value="{{ r.reference }}" aria-label="Number for {{ r.original_name }}"></td>
+    <td><input class="grid-in mono" style="min-width:64px" type="text" name="rev_{{ r.pk }}" value="{{ r.revision }}" aria-label="Revision"></td>
+    <td><select name="suit_{{ r.pk }}" aria-label="Suitability"><option value="">—</option>{% for c, d in suitabilities %}<option value="{{ c }}" {% if r.suitability == c %}selected{% endif %}>{{ c }}</option>{% endfor %}{% if r.suitability and r.suitability not in suit_codes %}<option value="{{ r.suitability }}" selected>{{ r.suitability }}</option>{% endif %}</select></td>
+    <td>{% if r.action == 'NEW_DOC' or r.action == 'INCOMPLETE' %}<input class="grid-in" type="text" name="title_{{ r.pk }}" value="{{ r.title }}" placeholder="Title" aria-label="Title">
+        <select name="cat_{{ r.pk }}" aria-label="Category">{% for v, l in categories %}<option value="{{ v }}" {% if r.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      {% else %}<input type="hidden" name="title_{{ r.pk }}" value="{{ r.title }}"><span class="small">{{ r.document.title|default:r.title }}</span>{% endif %}</td>
+    <td class="small">{% badge r.get_action_display r.action_tone %}<span class="sub">{{ r.message }}</span>
+      {% if r.warning_list %}<ul class="warnlist small">{% for w in r.warning_list %}<li>{{ w }}</li>{% endfor %}</ul>
+        <label class="check small"><input type="checkbox" name="accept_{{ r.pk }}" value="1" {% if r.accept_warnings %}checked{% endif %}> Accept this number as it is</label>{% endif %}</td>
+    {% else %}
+    <td></td><td class="small">{{ r.original_name }}</td><td class="mono">{{ r.reference }}</td><td class="mono">{{ r.revision }}</td><td class="mono">{{ r.suitability }}</td>
+    <td class="small">{% if r.committed_revision %}<a href="{% url 'document_detail' org.slug project.pk r.committed_revision.document_id %}">{{ r.committed_revision.document.title }}</a>{% endif %}</td>
+    <td class="small">{% badge r.get_state_display 'good' %}</td>
+    {% endif %}</tr>
+  {% empty %}<tr><td colspan="7"><div class="empty">No files in this upload.</div></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if pending and batch.status == 'OPEN' %}<div class="card-body" style="border-top:1px solid var(--line)">
+    <div class="row" style="flex-wrap:wrap;gap:12px">
+      <label class="small">New documents are <select name="visibility"><option value="INTERNAL">internal only</option><option value="SHARED">shared with collaborators</option></select></label>
+      <label class="small">Then <select name="then"><option value="">just add them</option><option value="issue">issue to usual recipients</option><option value="transmit">start a transmittal</option></select></label>
+      <label class="small">Issued <select name="purpose">{% for v, l in purposes %}<option value="{{ v }}" {% if v == 'INFORMATION' %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="form-actions"><button class="btn" name="action" value="save">Check again</button><button class="btn primary" name="action" value="commit">Add ticked rows to the register</button></div>
+    <p class="small dim" style="margin:6px 0 0">Rows that can't go yet (still being checked, a conflict, or a number not accepted) stay here for you to fix.</p>
+  </div>{% endif %}
+</div>
+</form>
+{% if batch.status == 'OPEN' %}<div class="grid split">
+  <form method="post" enctype="multipart/form-data" class="card"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="add">
+    <label for="more">Add more files</label><input type="file" id="more" name="files" multiple accept="{{ accept }}" required>
+    <div class="form-actions"><button class="btn">Add to this upload</button></div></div></form>
+  <form method="post" class="card" data-confirm="Cancel this upload? Files not yet on the register will be removed."><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="cancel">
+    <p class="small">Cancelling removes the files you haven't added. Anything already on the register stays.</p>
+    <div class="form-actions"><button class="btn danger">Cancel upload</button></div></div></form>
+</div>{% endif %}
+</div>{% endblock %}

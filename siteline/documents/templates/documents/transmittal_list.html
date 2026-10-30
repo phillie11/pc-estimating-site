@@ -1,0 +1,23 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if is_internal %}<a class="btn primary" href="{% url 'transmittal_create' org.slug project.pk %}">{% icon 'plus' %} New transmittal</a>{% endif %}{% endblock %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<div class="filters">
+  {% if is_internal %}<a class="chip {% if status == 'open' %}on{% endif %}" href="?status=open">Draft &amp; awaiting receipt</a>{% endif %}
+  <a class="chip {% if status == 'mine' %}on{% endif %}" href="?status=mine">Waiting on me</a>
+  {% if is_internal %}<a class="chip {% if status == 'DRAFT' %}on{% endif %}" href="?status=DRAFT">Drafts</a>{% endif %}
+  <a class="chip {% if status == 'ISSUED' %}on{% endif %}" href="?status=ISSUED">Awaiting receipt</a>
+  <a class="chip {% if status == 'ACKNOWLEDGED' %}on{% endif %}" href="?status=ACKNOWLEDGED">All received</a>
+  <a class="chip {% if status == 'all' %}on{% endif %}" href="?status=all">All</a>
+</div>
+<div class="card">{% if transmittals %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Subject</th><th>To</th><th>Issued</th><th>Acknowledge by</th><th>Status</th></tr></thead><tbody>
+{% for t in transmittals %}<tr><td class="ref">{{ t.reference }}</td>
+  <td><a class="rowlink" href="{{ t.get_absolute_url }}">{{ t.title }}</a><span class="sub">{{ t.get_purpose_display }} · {{ t.items.all|length }} document{{ t.items.all|length|pluralize }}</span></td>
+  <td class="small">{% for r in t.recipients.all %}{{ r.name }}{% if r.acknowledged_at %} ✓{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+  <td class="small nowrap">{{ t.issued_at|date:"j M Y"|default:"—" }}</td>
+  <td class="small nowrap {% if t.status == 'ISSUED' and t.due_date and t.due_date < today %}overdue{% endif %}">{{ t.due_date|date:"j M"|default:"—" }}</td>
+  <td>{% badge t.get_status_display t.status_tone %}{% if t.pk in waiting_ids %}<span class="sub">{% badge 'Waiting on you' 'warn' %}</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% elif is_internal %}<div class="empty"><h3>No transmittals here</h3><p>A transmittal is a numbered record of which revisions went to whom, and when. Start one from a document, from <a href="{% url 'bulk_upload' org.slug project.pk %}">Bulk upload</a>, or with <a href="{% url 'transmittal_create' org.slug project.pk %}">New transmittal</a>.{% if status != 'all' %} <a href="?status=all">Show all transmittals</a>.{% endif %}</p></div>
+{% else %}<div class="empty"><h3>Nothing here</h3><p>When {{ org.name }} issues documents to you, the transmittal appears here and you'll be asked to confirm you've received it.{% if status != 'all' %} <a href="?status=all">Show all</a>.{% endif %}</p></div>{% endif %}</div>
+</div>{% endblock %}

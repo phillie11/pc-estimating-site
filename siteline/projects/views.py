@@ -21,9 +21,9 @@ from . import analytics, gantt
 from .access import (can_see_archived, can_see_variations, get_project, is_bidder, is_internal, posted_id,
                      require_internal, visible_projects)
 from .files import serve
-from .forms import (ActivityForm, AddStaffForm, CommentForm, HandoverForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
-                    RevisionForm, TaskForm)
-from .models import Activity, Comment, Document, DocumentRevision, FileAccess, Issue, Project, ProjectInvite, ProjectMember, Task
+from .forms import (ActivityForm, AddStaffForm, CommentForm, HandoverForm, IssueForm, ProjectForm, ProjectInviteForm,
+                    TaskForm)
+from .models import Activity, Comment, Issue, Project, ProjectInvite, ProjectMember, Task
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +206,7 @@ def project_detail(request, org_slug, pk):
     project = get_project(request, pk, allow_bidder=True)
     if is_bidder(request):
         return redirect('tender', org_slug=org_slug, pk=pk)
+    from documents.access import latest_revisions, visible_documents
     from rfis.models import RFI
     from variations.models import Variation
     internal = is_internal(request)
@@ -220,8 +221,7 @@ def project_detail(request, org_slug, pk):
         'issues_open': Issue.objects.filter(project=project, **({} if internal else {'assignee': request.user,
                                                                                       'status': Issue.STATUS_OPEN}))
         .exclude(status=Issue.STATUS_CLOSED).count(),
-        'docs': Document.objects.filter(project=project).count() if internal
-        else Document.objects.filter(project=project, visibility=Document.VIS_SHARED).count(),
+        'docs': visible_documents(request, project).count(),
     }
     commercial = None
     if internal:
@@ -245,10 +245,7 @@ def project_detail(request, org_slug, pk):
         subcontracts = subcontract_summary(project, None if internal else subcontractor_id(request))
         if commercial is not None:
             commercial['committed'] = sum(r['total'] for r in subcontracts)
-    docs = Document.objects.filter(project=project).prefetch_related('revisions').order_by('-updated_at')
-    if not internal:
-        docs = docs.filter(visibility=Document.VIS_SHARED)
-    latest = [d.current for d in docs[:6] if d.current]
+    latest = latest_revisions(request, project)
     tender = None
     if internal and project.section == 'estimating':
         from directory.models import Package
@@ -682,19 +679,6 @@ def task_edit(request, org_slug, pk, task_id):
     return render(request, 'projects/task_form.html', project_context(request, project, 'tasks', form=form, task=task))
 
 
-def notify_collaborators_of_issue(request, project, doc, revision, new=False):
-    """Staff issuing a shared drawing or document: the client, consultants and appointed subs are told."""
-    if not is_internal(request) or doc.visibility != Document.VIS_SHARED:
-        return
-    people = [m.user for m in ProjectMember.objects.filter(
-        project=project, role__in=[ProjectMember.ROLE_CLIENT, ProjectMember.ROLE_CONSULTANT, ProjectMember.ROLE_SUBCONTRACTOR])
-        .select_related('user')]
-    label = f'{doc.reference} {doc.title}'.strip() if doc.reference else doc.title
-    notify.alert(people, f'{"Issued" if new else "New revision"}: {label} rev {revision}',
-                 reverse('document_detail', args=[request.org.slug, project.pk, doc.pk]), project=project,
-                 actor=request.user, org=request.org)
-
-
 def notify_assignee(request, user, subject, project, path):
     notify.alert([user], subject, path, project=project, actor=request.user, org=request.org)
 
@@ -780,104 +764,4 @@ def issue_photo(request, org_slug, pk, issue_id):
     return serve(request, issue.photo, project=project, label=f'{issue.reference} photo')
 
 
-# ---------------------------------------------------------------------------
-# Documents
-# ---------------------------------------------------------------------------
-
-def _visible_documents(request, project):
-    qs = Document.objects.filter(project=project).prefetch_related('revisions')
-    if not is_internal(request):
-        qs = qs.filter(visibility=Document.VIS_SHARED)
-    return qs
-
-
-def document_list(request, org_slug, pk):
-    project = get_project(request, pk)
-    docs = _visible_documents(request, project)
-    category = request.GET.get('category', '')
-    if category in dict(Document.CATEGORY_CHOICES):
-        docs = docs.filter(category=category)
-    q = request.GET.get('q', '').strip()
-    if q:
-        docs = docs.filter(Q(title__icontains=q) | Q(reference__icontains=q))
-    form = DocumentForm(external=not is_internal(request))
-    if request.method == 'POST':
-        form = DocumentForm(request.POST, request.FILES, external=not is_internal(request))
-        if form.is_valid():
-            doc = form.save(commit=False)
-            doc.project, doc.created_by = project, request.user
-            if not is_internal(request):
-                doc.visibility = Document.VIS_SHARED
-            doc.save()
-            f = form.cleaned_data['file']
-            doc.add_revision(DocumentRevision(file=f, original_name=f.name[:200], size=f.size,
-                                              revision=form.cleaned_data['revision'], notes=form.cleaned_data['notes'],
-                                              uploaded_by=request.user))
-            log_activity(request, 'uploaded', f'{doc.title} rev {form.cleaned_data["revision"]}', project=project,
-                         url=reverse('document_detail', args=[org_slug, pk, doc.pk]),
-                         internal_only=doc.visibility == Document.VIS_INTERNAL)
-            notify_collaborators_of_issue(request, project, doc, form.cleaned_data['revision'], new=True)
-            messages.success(request, f'{doc.title} uploaded.')
-            return redirect('document_list', org_slug=org_slug, pk=pk)
-    return render(request, 'projects/documents.html', project_context(
-        request, project, 'documents', documents=docs, form=form, category=category, q=q,
-        categories=Document.CATEGORY_CHOICES))
-
-
-def document_detail(request, org_slug, pk, doc_id):
-    project = get_project(request, pk)
-    doc = get_object_or_404(_visible_documents(request, project), pk=doc_id)
-    form = RevisionForm()
-    if request.method == 'POST':
-        if request.POST.get('action') == 'visibility' and is_internal(request):
-            doc.visibility = Document.VIS_SHARED if doc.visibility == Document.VIS_INTERNAL else Document.VIS_INTERNAL
-            doc.save(update_fields=['visibility', 'updated_at'])
-            return redirect(request.path)
-        if request.POST.get('action') == 'delete' and is_internal(request):
-            doc.delete()
-            messages.success(request, 'Document deleted.')
-            return redirect('document_list', org_slug=org_slug, pk=pk)
-        if not is_internal(request) and doc.created_by_id != request.user.pk:
-            raise PermissionDenied
-        if request.POST.get('action') == 'make_current':
-            rev = get_object_or_404(DocumentRevision, document=doc, pk=posted_id(request, 'revision'))
-            doc.set_current(rev)
-            doc.save(update_fields=['updated_at'])
-            log_activity(request, 'made current', f'{doc.title} rev {rev.revision}', project=project,
-                         url=request.path, internal_only=doc.visibility == Document.VIS_INTERNAL)
-            messages.success(request, f'Revision {rev.revision} is now current.')
-            return redirect(request.path)
-        form = RevisionForm(request.POST, request.FILES)
-        if form.is_valid():
-            rev = form.save(commit=False)
-            rev.uploaded_by = request.user
-            rev.original_name, rev.size = rev.file.name[:200], rev.file.size
-            doc.add_revision(rev, make_current=form.cleaned_data['make_current'])
-            doc.save(update_fields=['updated_at'])
-            log_activity(request, 'uploaded new revision of', f'{doc.title} rev {rev.revision}', project=project,
-                         url=request.path, internal_only=doc.visibility == Document.VIS_INTERNAL)
-            if rev.is_current:
-                notify_collaborators_of_issue(request, project, doc, rev.revision)
-                messages.success(request, f'Revision {rev.revision} uploaded.')
-            else:
-                messages.info(request, f'Revision {rev.revision} uploaded. It is older than rev {doc.current.revision}, '
-                                       'which stays current; use "Make current" to change that.')
-            return redirect(request.path)
-    revisions = list(doc.revisions.select_related('uploaded_by'))
-    downloads = None
-    if is_internal(request):
-        names = {r.file.name: r.revision for r in revisions}
-        downloads = list(FileAccess.objects.filter(path__in=names).select_related('user')[:50])
-        for d in downloads:
-            d.revision = names.get(d.path)
-    return render(request, 'projects/document_detail.html', project_context(
-        request, project, 'documents', doc=doc, revisions=revisions, current=doc.current, form=form, downloads=downloads,
-        can_revise=is_internal(request) or doc.created_by_id == request.user.pk))
-
-
-def document_download(request, org_slug, pk, doc_id, rev_id):
-    project = get_project(request, pk)
-    doc = get_object_or_404(_visible_documents(request, project), pk=doc_id)
-    rev = get_object_or_404(DocumentRevision, document=doc, pk=rev_id)
-    return serve(request, rev.file, rev.original_name, project=project,
-                 label=f'{doc.reference or doc.title} rev {rev.revision}')
+# Documents: the register, transmittals and bulk upload live in documents/views.py
