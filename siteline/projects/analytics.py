@@ -141,6 +141,7 @@ def tender_analytics(projects, period='12', today=None):
 
 
 NOT_SCORED = 'Not scored'
+DIRECT_AWARD = 'Direct award'
 NOT_RECORDED = 'Not recorded'
 
 
@@ -172,9 +173,15 @@ def bid_discipline(decided, bids):
     for p in decided:
         p.review = reviews.get(p.pk)
     result_labels = dict(RESULT_CHOICES)
-    score_order = [label for _, label in RESULT_CHOICES] + [NOT_SCORED]
-    by_score = _breakdown(bids, lambda p: result_labels.get(p.review.result) if p.review and p.review.result
-                          else NOT_SCORED, order=score_order)
+    score_order = [label for _, label in RESULT_CHOICES] + [DIRECT_AWARD, NOT_SCORED]
+
+    def band(p):
+        if p.review and p.review.result:
+            return result_labels[p.review.result]
+        if p.review and p.review.decision == BidReview.DIRECT_AWARD:
+            return DIRECT_AWARD  # won from a lead without tendering: never went through the gate
+        return NOT_SCORED
+    by_score = _breakdown(bids, band, order=score_order)
     declined = [p for p in decided if p.stage == Project.STAGE_DECLINED]
     decline_labels = dict(DECLINE_REASONS)
     decline_reasons = _counts([decline_labels.get(p.review.decline_reason, NOT_RECORDED) if p.review else NOT_RECORDED
@@ -186,7 +193,7 @@ def bid_discipline(decided, bids):
     gaps = [p.review.gap_pct for p in lost if p.review and p.review.gap_pct is not None]
     return {
         'by_score': by_score,
-        'scored_bids': sum(r.bids for r in by_score if r.label != NOT_SCORED),
+        'scored_bids': sum(r.bids for r in by_score if r.label not in (NOT_SCORED, DIRECT_AWARD)),
         'decline_reasons': decline_reasons,
         'loss_reasons': loss_reasons,
         'loss_reviews': lost[:10],

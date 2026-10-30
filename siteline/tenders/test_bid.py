@@ -94,12 +94,15 @@ class BidBase(Base):
                                                owner=self.alice, client_name='Acme Retail')
             self.small = Project.objects.create(name='Small lead', stage=Project.STAGE_LEAD, value=Decimal('60000'),
                                                 owner=self.alice)
+            # The default is the check on every bid; Alpha has raised it so the optional path can be tested
+            self.settings_a = TenderSettings.objects.create(gate_threshold=Decimal('250000'))
 
     def stage(self, project, stage, **extra):
         return self.client.post(self.url('project_stage', self.org_a, project.pk), {'stage': stage, **extra})
 
     def gate_post(self, project, action='go', to='TENDERING', **fields):
-        data = {'action': action, 'to': to, **{f'q_{k}': v for k, v in fields.pop('q', {}).items()}, **fields}
+        data = {'action': action, 'to': to, 'from': self.reload(project).stage,
+                **{f'q_{k}': v for k, v in fields.pop('q', {}).items()}, **fields}
         return self.client.post(self.url('bid_gate', self.org_a, project.pk) + f'?to={to}', data)
 
     def reload(self, project):
@@ -107,19 +110,24 @@ class BidBase(Base):
 
 
 class GateThresholdTests(BidBase):
-    def test_threshold_default_and_per_organisation(self):
+    def test_default_is_every_bid_including_no_value(self):
+        with org_context(self.org_b):
+            self.assertEqual(TenderSettings.for_org(self.org_b).gate_threshold, Decimal('0'))
+            for value in (Decimal('1'), Decimal('60000'), None):
+                p = Project.objects.create(name=f'B lead {value}', stage=Project.STAGE_LEAD, value=value)
+                self.assertTrue(gate.gate_required(p))
+
+    def test_raised_threshold_per_organisation(self):
         with org_context(self.org_a):
             self.assertTrue(gate.gate_required(self.lead))
             self.assertFalse(gate.gate_required(self.small))
             no_value = Project.objects.create(name='No value', stage=Project.STAGE_LEAD)
-            self.assertFalse(gate.gate_required(no_value))
+            # No value and no budget: its size isn't known, so it can't be skipped
+            self.assertTrue(gate.gate_required(no_value))
+            self.assertFalse(gate.gate_required(no_value, BidReview(project=no_value, client_budget=Decimal('1000'))))
             self.assertTrue(gate.gate_required(no_value, BidReview(project=no_value, client_budget=Decimal('250000'))))
-            TenderSettings.objects.create(gate_threshold=Decimal('50000'))
+            TenderSettings.objects.filter(pk=self.settings_a.pk).update(gate_threshold=Decimal('50000'))
             self.assertTrue(gate.gate_required(self.small))
-        with org_context(self.org_b):
-            # Org A's setting doesn't reach org B
-            pb = Project.objects.create(name='B lead', stage=Project.STAGE_LEAD, value=Decimal('60000'))
-            self.assertFalse(gate.gate_required(pb))
 
     def test_settings_page_admin_only(self):
         self.login(self.est)
@@ -300,10 +308,129 @@ class GatePageTests(BidBase):
         with org_context(self.org_a):
             Project.objects.filter(pk=self.lead.pk).update(stage=Project.STAGE_TENDERING)
         r = self.client.post(self.url('bid_gate', self.org_a, self.lead.pk),
-                             {'action': 'save', **{f'q_{k}': 2 for k in scoring.QUESTION_KEYS}})
+                             {'action': 'save', 'from': 'TENDERING', **{f'q_{k}': 2 for k in scoring.QUESTION_KEYS}})
         self.assertEqual(r.status_code, 302)
         self.assertEqual(BidReview.all_objects.get(project=self.lead).score, 50)
         self.assertEqual(self.reload(self.lead).stage, Project.STAGE_TENDERING)
+
+
+NO_GO = {k: 0 for k in scoring.QUESTION_KEYS}
+GO = {k: 4 for k in scoring.QUESTION_KEYS}
+
+
+class ReviewRegressionTests(BidBase):
+    """Defects found in independent review (PR #11), one test each."""
+
+    def setUp(self):
+        super().setUp()
+        self.login(self.alice)
+
+    def test_1_create_as_lost_or_declined_is_plan_checked_on_the_lead_it_saves(self):
+        from unittest import mock
+        for stage in ('LOST', 'DECLINED', 'TENDERING'):
+            with self.subTest(stage=stage), mock.patch.object(Project, 'plan_has_room', return_value=False):
+                r = self.client.post(self.url('project_create', self.org_a), {'name': f'Over {stage}', 'stage': stage})
+                self.assertEqual(r.status_code, 200)
+                self.assertFalse(Project.all_objects.filter(name=f'Over {stage}').exists())
+
+    def test_2_save_button_while_moving_obeys_the_no_go_rule(self):
+        r = self.gate_post(self.lead, action='save', q=NO_GO)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('decision_note', r.context['form'].errors)
+        self.assertEqual(self.reload(self.lead).stage, Project.STAGE_LEAD)
+
+    def test_3_skipped_bid_is_regated_when_its_value_goes_over_the_line(self):
+        with org_context(self.org_a):
+            p = Project.objects.create(name='Small then big', stage=Project.STAGE_LEAD, value=Decimal('10000'),
+                                       owner=self.alice)
+        self.gate_post(p, action='skip')
+        self.assertEqual(self.reload(p).stage, Project.STAGE_TENDERING)
+        # Value raised on the edit form: saved, then sent to the questions
+        r = self.client.post(self.url('project_edit', self.org_a, p.pk),
+                             {'name': 'Small then big', 'stage': 'TENDERING', 'value': '9000000', 'owner': self.alice.pk})
+        self.assertTrue(r.url.startswith(self.url('bid_gate', self.org_a, p.pk)))
+        self.assertEqual(self.reload(p).value, Decimal('9000000'))
+        # Moving to Submitted, by the edit form or the stage select, is held until it is scored
+        r = self.client.post(self.url('project_edit', self.org_a, p.pk),
+                             {'name': 'Small then big', 'stage': 'SUBMITTED', 'value': '9000000', 'owner': self.alice.pk})
+        self.assertEqual(r.url, gate.gate_url(p, 'SUBMITTED'))
+        self.assertRedirects(self.stage(p, 'SUBMITTED'), gate.gate_url(p, 'SUBMITTED'), fetch_redirect_response=False)
+        self.assertEqual(self.reload(p).stage, Project.STAGE_TENDERING)
+        # It can't be skipped again; answering it lets it through
+        self.client.post(self.url('bid_gate', self.org_a, p.pk), {'action': 'skip', 'from': 'TENDERING'})
+        self.assertEqual(BidReview.all_objects.get(project=p).decision, BidReview.SKIPPED)
+        self.client.post(self.url('bid_gate', self.org_a, p.pk),
+                         {'action': 'save', 'from': 'TENDERING', **{f'q_{k}': v for k, v in GO.items()}})
+        self.assertEqual(BidReview.all_objects.get(project=p).decision, BidReview.PROCEED)
+        self.stage(p, 'SUBMITTED')
+        self.assertEqual(self.reload(p).stage, Project.STAGE_SUBMITTED)
+
+    def test_3b_no_value_cannot_be_skipped(self):
+        with org_context(self.org_a):
+            p = Project.objects.create(name='No value', stage=Project.STAGE_LEAD, owner=self.alice)
+        self.gate_post(p, action='skip')
+        self.assertEqual(self.reload(p).stage, Project.STAGE_LEAD)
+
+    def test_4_lost_then_lead_then_tendering_asks_again(self):
+        self.gate_post(self.lead, q=GO)
+        self.client.post(self.url('bid_lost', self.org_a, self.lead.pk), {'loss_reason': 'PRICE'})
+        self.assertEqual(self.reload(self.lead).stage, Project.STAGE_LOST)
+        self.stage(self.lead, 'LEAD')
+        self.assertEqual(self.reload(self.lead).stage, Project.STAGE_LEAD)
+        self.assertRedirects(self.stage(self.lead, 'TENDERING'), gate.gate_url(self.lead, 'TENDERING'),
+                             fetch_redirect_response=False)
+
+    def test_5_reopening_a_declined_bid_records_a_bid_and_clears_the_decline(self):
+        self.client.post(self.url('bid_decline', self.org_a, self.lead.pk), {'decline_reason': 'BUSY'})
+        self.gate_post(self.lead, action='save', q=GO)
+        self.assertEqual(self.reload(self.lead).stage, Project.STAGE_TENDERING)
+        r = BidReview.all_objects.get(project=self.lead)
+        self.assertEqual((r.decision, r.decline_reason, r.decline_detail), (BidReview.PROCEED, '', ''))
+
+    def test_6_decline_and_lost_refuse_jobs_that_are_not_open_bids(self):
+        with org_context(self.org_a):
+            done = Project.objects.create(name='Done', stage=Project.STAGE_COMPLETE)
+        for project, stage in ((self.pa, Project.STAGE_LIVE), (done, Project.STAGE_COMPLETE)):
+            for name, data in (('bid_decline', {'decline_reason': 'BUSY'}), ('bid_lost', {'loss_reason': 'PRICE'})):
+                with self.subTest(project=project.name, page=name):
+                    r = self.client.post(self.url(name, self.org_a, project.pk), data)
+                    self.assertRedirects(r, project.get_absolute_url(), fetch_redirect_response=False)
+                    self.assertEqual(self.reload(project).stage, stage)
+        # Editing the reason on one already declined is still fine
+        self.client.post(self.url('bid_decline', self.org_a, self.lead.pk), {'decline_reason': 'BUSY'})
+        r = self.client.post(self.url('bid_decline', self.org_a, self.lead.pk), {'decline_reason': 'TERMS'})
+        self.assertEqual(BidReview.all_objects.get(project=self.lead).decline_reason, 'TERMS')
+
+    def test_9_stale_gate_page_is_refused(self):
+        page = self.client.get(self.url('bid_gate', self.org_a, self.lead.pk) + '?to=TENDERING')
+        self.assertContains(page, 'name="from" value="LEAD"')
+        with org_context(self.org_a):  # someone else declines it meanwhile
+            Project.objects.filter(pk=self.lead.pk).update(stage=Project.STAGE_DECLINED)
+        r = self.client.post(self.url('bid_gate', self.org_a, self.lead.pk) + '?to=TENDERING',
+                             {'action': 'go', 'to': 'TENDERING', 'from': 'LEAD', **{f'q_{k}': 4 for k in GO}},
+                             follow=True)
+        self.assertContains(r, 'nothing was saved')
+        self.assertEqual(self.reload(self.lead).stage, Project.STAGE_DECLINED)
+        self.assertFalse(BidReview.all_objects.filter(project=self.lead, score__isnull=False).exists())
+
+    def test_direct_award_is_recorded(self):
+        with org_context(self.org_a):
+            pm = Membership.objects.get(user=self.pm)
+            self.assertTrue(pm.can_deliver)
+        r = self.client.post(self.url('project_handover', self.org_a, self.small.pk),
+                             {'manager': self.pm.pk, 'value': '60000'})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.reload(self.small).stage, Project.STAGE_WON)
+        self.assertEqual(BidReview.all_objects.get(project=self.small).decision, BidReview.DIRECT_AWARD)
+        # A bid that went through the gate and was then won keeps its decision
+        with org_context(self.org_a):
+            Project.objects.filter(pk=self.lead.pk).update(stage=Project.STAGE_SUBMITTED)
+            BidReview.objects.create(project=self.lead, decision=BidReview.PROCEED)
+        self.client.post(self.url('project_handover', self.org_a, self.lead.pk), {'manager': self.pm.pk, 'value': '1'})
+        self.assertEqual(BidReview.all_objects.get(project=self.lead).decision, BidReview.PROCEED)
+        with org_context(self.org_a):
+            rows = {r.label: r.bids for r in tender_analytics(Project.objects.all(), '12', today=self.today)['by_score']}
+        self.assertEqual(rows.get('Direct award'), 1)
 
 
 class DeclineAndLossTests(BidBase):

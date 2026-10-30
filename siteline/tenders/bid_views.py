@@ -31,6 +31,15 @@ def _plan_blocks(request, project, to):
     return False
 
 
+def _not_a_bid(request, project, stage, verb):
+    """Only an open bid can be declined or lost; one already there can have its reason edited."""
+    if project.stage in Project.PIPELINE_STAGES or project.stage == stage:
+        return None
+    messages.error(request, f'Only an open bid (lead, tendering or submitted) can be {verb}. '
+                            f'{project.name} is {project.get_stage_display().lower()}.')
+    return redirect(project)
+
+
 @estimating_required
 def bid_gate(request, org_slug, pk):
     """
@@ -49,23 +58,34 @@ def bid_gate(request, org_slug, pk):
     settings = TenderSettings.for_org(request.org)
     suggested, other_bids = gate.suggestions(project, review)
     action = request.POST.get('action') if request.method == 'POST' else None
-    form = BidGateForm(request.POST if request.method == 'POST' else None, instance=review, scoring_required=action in ('go', 'save'),
-                       suggested=suggested)
+    if request.method == 'POST' and request.POST.get('from') != project.stage:
+        # The page was opened when the bid was at another stage (another tab, or someone else moved it)
+        messages.error(request, f'{project.name} is now at {project.get_stage_display()}, so nothing was saved. '
+                                'Check the questions again below.')
+        return redirect(request.path + (f'?to={to}' if moving else ''))
+    previous = review.decision
+    # Answering for a decision to bid (moving, or replacing a skipped check) obeys the No-go rule, whatever the button
+    deciding = action == 'go' or (action == 'save' and (moving or previous in ('', BidReview.SKIPPED)))
+    form = BidGateForm(request.POST if request.method == 'POST' else None, instance=review,
+                       scoring_required=action in ('go', 'save'), suggested=suggested)
 
     if request.method == 'POST' and form.is_valid():
         review = form.instance  # holds the posted intake, so the threshold uses the client budget given now
         required = gate.gate_required(project, review, settings)
-        if action == 'skip' and required:
-            messages.error(request, 'This bid is over the value where the bid/no-bid check is required. Answer the questions.')
-        elif action == 'go' and scoring.result(scoring.score(_answers(form))) == scoring.NO_GO \
+        if action == 'skip' and (required or not moving):
+            messages.error(request, 'The bid/no-bid check is required for this bid. Answer the questions.')
+        elif deciding and scoring.result(scoring.score(_answers(form))) == scoring.NO_GO \
                 and not form.cleaned_data['decision_note'].strip():
             form.add_error('decision_note', 'The score says No-go. Say why we are bidding anyway, or decline it.')
         elif action in ('go', 'skip', 'save') and not (moving and _plan_blocks(request, project, to)):
             review = form.save(commit=False)
             if action == 'skip':
                 review.decision = BidReview.SKIPPED
-            elif action == 'go' or not review.decision:
+            elif deciding:
                 review.decision = BidReview.PROCEED
+            if moving:
+                # Reopening a declined bid: it is being bid now, so the old decline no longer applies
+                review.decline_reason, review.decline_detail = '', ''
             if action != 'skip':
                 review.assessed_by, review.assessed_at, review.workload_bids = request.user, timezone.now(), other_bids
             review.save()
@@ -84,6 +104,7 @@ def bid_gate(request, org_slug, pk):
     live = scoring.score(_answers(form)) if form.is_bound and form.is_valid() else review.score
     return render(request, 'tenders/bid_gate.html', {
         'project': project, 'form': form, 'review': review, 'to': to, 'moving': moving,
+        'regate': not moving and previous == BidReview.SKIPPED and required,
         'to_label': dict(Project.STAGE_CHOICES).get(to, ''), 'required': required, 'settings': settings,
         'gate_value': gate.gate_value(project, review), 'other_bids': other_bids,
         'window': gate.tender_window(project), 'live_score': live,
@@ -102,6 +123,8 @@ def _answers(form):
 def bid_decline(request, org_slug, pk):
     """Decline to bid, with a reason from the list. Every route to Declined comes here."""
     project = get_project(request, pk)
+    if refused := _not_a_bid(request, project, Project.STAGE_DECLINED, 'declined'):
+        return refused
     review = _review(project)
     form = DeclineBidForm(request.POST if request.method == 'POST' else None, instance=review)
     if request.method == 'POST' and form.is_valid():
@@ -128,6 +151,8 @@ def bid_decline(request, org_slug, pk):
 def bid_lost(request, org_slug, pk):
     """The loss review: our price, the winner's if known, the gap, why, and lessons. Every route to Lost comes here."""
     project = get_project(request, pk)
+    if refused := _not_a_bid(request, project, Project.STAGE_LOST, 'marked lost'):
+        return refused
     review = _review(project)
     initial = {} if review.our_price is not None else {'our_price': project.value}
     form = LossReviewForm(request.POST if request.method == 'POST' else None, instance=review, initial=initial)

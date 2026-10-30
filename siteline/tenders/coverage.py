@@ -187,8 +187,13 @@ def run_chase(project, package_ids, actor=None, today=None):
         # Not signed up yet: send the pending portal invitation's link again
         from projects.models import ProjectInvite
         inv = ProjectInvite.objects.filter(project=project, subcontractor_id=sub_id,
-                                           status=ProjectInvite.STATUS_PENDING).first()
+                                           status=ProjectInvite.STATUS_PENDING).order_by('-expires_at').first()
         if inv is not None:
+            if not inv.is_valid():
+                # An expired link would only show "invitation expired". The chase goes to the address the
+                # invitation was made for, so give it a fresh expiry rather than sending a dead link.
+                inv.expires_at = ProjectInvite._meta.get_field('expires_at').get_default()
+                inv.save(update_fields=['expires_at'])
             notify.send(inv.email, title, 'tender_chase', {
                 'project': project, 'trades': trades, 'due': when, 'actor': actor,
                 'link': notify.absolute(reverse('accept_project_invite', args=[inv.token])),

@@ -104,13 +104,13 @@ class TenderSettings(TenantModel):
     One row per organisation; with no row the defaults apply. Kept here, not on Organization,
     so estimating can grow its own settings without touching tenancy.
     """
-    DEFAULT_GATE_THRESHOLD = Decimal('250000')
+    DEFAULT_GATE_THRESHOLD = Decimal('0')  # every bid, unless the company raises it
     DEFAULT_MIN_QUOTES = 3
 
     gate_threshold = models.DecimalField(
         'Bid/no-bid check required from', max_digits=14, decimal_places=2, default=DEFAULT_GATE_THRESHOLD,
         help_text='Bids worth this much or more must pass the bid/no-bid questions before tendering. '
-                  'Below it the check is optional. Set 0 to require it on every bid.')
+                  'Below it the check is optional. 0 (the default) requires it on every bid; so does a bid with no value or budget.')
     min_quotes = models.PositiveSmallIntegerField(
         'Quotes wanted per trade', default=DEFAULT_MIN_QUOTES,
         help_text='A trade with fewer quotes in than this shows red on the coverage board.')
@@ -134,8 +134,9 @@ class BidReview(TenantModel):
     intake (contract form, bidders, client budget), the bid/no-bid answers and score,
     the decision, why we declined, and the review of a loss.
     """
-    PROCEED, SKIPPED, DECLINED = 'PROCEED', 'SKIPPED', 'DECLINED'
-    DECISION_CHOICES = [(PROCEED, 'Bid'), (SKIPPED, 'Bid (check skipped)'), (DECLINED, 'Declined to bid')]
+    PROCEED, SKIPPED, DECLINED, DIRECT_AWARD = 'PROCEED', 'SKIPPED', 'DECLINED', 'DIRECT_AWARD'
+    DECISION_CHOICES = [(PROCEED, 'Bid'), (SKIPPED, 'Bid (check skipped)'), (DECLINED, 'Declined to bid'),
+                        (DIRECT_AWARD, 'Won without tendering')]
 
     project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name='bid_review')
 
@@ -159,7 +160,7 @@ class BidReview(TenantModel):
                                                      help_text="The estimator's other open bids over the same weeks, when scored.")
     score = models.PositiveSmallIntegerField(null=True, blank=True, editable=False)
     result = models.CharField(max_length=6, choices=scoring.RESULT_CHOICES, blank=True, editable=False)
-    decision = models.CharField(max_length=10, choices=DECISION_CHOICES, blank=True)
+    decision = models.CharField(max_length=12, choices=DECISION_CHOICES, blank=True)
     decision_note = models.TextField('Notes on the decision', blank=True)
     assessed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                     related_name='+')

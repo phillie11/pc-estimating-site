@@ -20,7 +20,9 @@ def seed(owner, estimator):
     for s in Subcontractor.objects.all():
         s.region_codes = guess_regions(s.regions)
         s.save(update_fields=['region_codes'])
-    TenderSettings.objects.create()  # defaults: check required from £250,000, 3 quotes per trade
+    # The default requires the check on every bid. The demo company has raised it to £100,000 so both
+    # paths show: the Gym lead (£420k) must pass it, the Didsbury barbers (£85k) may skip it.
+    TenderSettings.objects.create(gate_threshold=Decimal('100000'))
 
     def review(name, points=None, **kw):
         p = Project.objects.get(name=name)
@@ -56,7 +58,7 @@ def seed(owner, estimator):
     review('Primary school toilets, Wirral', decision=BidReview.DECLINED, decline_reason='BIDDERS',
            decline_detail='Seven contractors on the list.', bidders=7)
 
-    # A small lead the estimator can push straight to Tendering (the check is optional under £250k);
+    # A small lead the estimator can push straight to Tendering (the check is optional under £100k here);
     # the Gym lead (£420k) has to pass it.
     Project.objects.create(name='Barbers refit, Didsbury', stage=Project.STAGE_LEAD, value=Decimal('85000'),
                            probability=40, client_name='Fade Co', site_address='Didsbury, Manchester', sector='RETAIL',

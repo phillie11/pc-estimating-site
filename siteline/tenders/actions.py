@@ -4,6 +4,7 @@ Register these there; nothing in tenders calls them.
 
     from tenders.actions import coverage_alerts            # in a request (Needs me)
     from tenders.actions import coverage_alerts_for_org    # in send_reminders (digest)
+    from tenders.actions import estimating_recipients      # who gets them: every estimator, company-wide
 
 Each returns a list of dicts:
 
@@ -36,10 +37,16 @@ def coverage_alerts(request, mine_only=False):
 
 def coverage_alerts_for_org(org, user=None, today=None):
     """
-    For jobs and commands (no request): run inside org_context(org). With user, only bids
-    they lead. The digest's other tender lines are company-wide, so pass user=None to match.
+    For jobs and commands (no request): run inside org_context(org). Company-wide: every
+    estimator gets every alert (product owner, 30 Oct 2026). With user, [] unless they work
+    in estimating there, so the digest can call it per person without other checks.
     """
-    projects = Project.objects.filter(organization=org)
-    if user is not None:
-        projects = projects.filter(owner=user)
-    return coverage.alerts(projects, today=today or timezone.localdate())
+    if user is not None and user.pk not in {u.pk for u in estimating_recipients(org)}:
+        return []
+    return coverage.alerts(Project.objects.filter(organization=org), today=today or timezone.localdate())
+
+
+def estimating_recipients(org):
+    """Who the digest sends coverage alerts to: active staff with estimating access (owners and admins included)."""
+    from projects.access import staff_users
+    return list(staff_users(org, 'estimating'))

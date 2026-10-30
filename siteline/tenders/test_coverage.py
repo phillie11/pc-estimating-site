@@ -190,6 +190,34 @@ class ChaseTests(CoverageBase):
         self.work()
         self.assertEqual(Job.objects.filter(name='tenders.chase_outstanding').count(), 2)
 
+    def test_expired_invite_is_refreshed_not_sent_dead(self):
+        """Review defect 7: the chase re-sent an invitation link that had already expired."""
+        invite = ProjectInvite.all_objects.get(email='new@walls.test')
+        ProjectInvite.all_objects.filter(pk=invite.pk).update(expires_at=self.now - timedelta(days=1))
+        mail.outbox.clear()
+        self.chase()
+        self.work()
+        invite.refresh_from_db()
+        self.assertTrue(invite.is_valid())
+        self.assertGreater(invite.expires_at, self.now + timedelta(days=20))
+        self.assertEqual(len([m for m in mail.outbox if 'new@walls.test' in m.to]), 1)
+        # The link in the email now opens the invitation rather than "expired"
+        self.client.logout()
+        r = self.client.get(f'/invite/project/{invite.token}/')
+        self.assertNotContains(r, 'expired')
+
+    def test_failure_half_way_leaves_packages_unchased(self):
+        """Review defect 8: the task is atomic, so a crash after claiming doesn't mark anyone chased unnotified."""
+        from unittest import mock
+
+        from jobs import get_task
+        self.assertTrue(get_task('tenders.chase_outstanding').atomic)
+        self.chase()
+        with mock.patch('tenancy.notify.alert', side_effect=RuntimeError('mail server down')):
+            self.work()
+        self.assertFalse(Package.all_objects.filter(chased_at__isnull=False).exists())
+        self.assertEqual(Job.objects.get().status, Job.FAILED)  # will be retried
+
     def test_only_staff_can_chase(self):
         self.login(self.eve)
         self.client.post(self.tender(), {'action': 'chase'})
@@ -298,7 +326,11 @@ class AlertTests(CoverageBase):
             self.assertIn('Drylining (1 of 3)', a['detail'])
             self.assertTrue(a['url'].endswith('/tender/#coverage'))
             self.assertEqual(actions.coverage_alerts_for_org(self.org_a), got)
-            self.assertEqual(actions.coverage_alerts_for_org(self.org_a, user=self.est), [])
+            # Every estimator gets every alert, company-wide; people outside estimating get none
+            self.assertEqual(actions.coverage_alerts_for_org(self.org_a, user=self.est), got)
+            self.assertEqual(actions.coverage_alerts_for_org(self.org_a, user=self.pm), [])
+            self.assertEqual(actions.coverage_alerts_for_org(self.org_a, user=self.eve), [])
+            self.assertEqual({u.email for u in actions.estimating_recipients(self.org_a)}, {'alice@a.test', 'est@a.test'})
             # Further off, or covered: nothing
             Project.objects.filter(pk=self.bid.pk).update(quotes_due=self.today + timedelta(days=4))
             self.assertEqual(actions.coverage_alerts_for_org(self.org_a), [])

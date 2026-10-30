@@ -50,23 +50,26 @@ def intercept(project, old, new):
     Where a move from `old` to `new` must go first, or None if it can go straight through.
     `project` must be saved; `old` is its stage before the move.
     """
-    if old == new:
-        return None
-    if new == Project.STAGE_DECLINED:
+    if new == Project.STAGE_DECLINED and old != new:
         return decline_url(project)
-    if new == Project.STAGE_LOST:
+    if new == Project.STAGE_LOST and old != new:
         return lost_url(project)
+    review = review_for(project)
     if new in BIDDING and old in NOT_BIDDING:
-        review = review_for(project)
         if review is None or not review.passed_gate or old != Project.STAGE_LEAD:
             # Reopening a lost or declined bid asks again: whatever was decided then has changed
             return gate_url(project, new)
+    if new in BIDDING and old in BIDDING and review is not None and review.decision == BidReview.SKIPPED \
+            and gate_required(project, review):
+        # Skipped while it was under the threshold (or before a value was known), and now it isn't:
+        # moving to Submitted, or saving the new value, asks the questions after all
+        return gate_url(project, new) if new != old else gate_url(project, '')
+    if old in (Project.STAGE_LOST, Project.STAGE_DECLINED) and new != old and review is not None \
+            and review.decision:
+        # Leaving Lost or Declined (to a Lead, say) forgets the earlier decision, so the gate asks again
+        review.decision = ''
+        review.save(update_fields=['decision', 'updated_at'])
     return None
-
-
-def needs_intercept_on_create(stage):
-    """A new project created straight into a stage that needs a decision starts as a Lead and goes there."""
-    return stage in BIDDING + (Project.STAGE_DECLINED, Project.STAGE_LOST)
 
 
 def gate_value(project, review=None):
@@ -77,9 +80,23 @@ def gate_value(project, review=None):
 
 
 def gate_required(project, review=None, settings=None):
+    """
+    Required unless the organisation has raised its threshold above this bid's value. A bid with no
+    value and no client budget is required too: its size isn't known, so it can't be shown to be small.
+    """
     settings = settings or TenderSettings.for_org(project.organization)
     value = gate_value(project, review)
-    return value is not None and value >= settings.gate_threshold
+    return value is None or value >= settings.gate_threshold
+
+
+def record_direct_award(project, user):
+    """A lead won without tendering (straight to the handover): no gate, but analytics can tell."""
+    review = review_for(project) or BidReview(project=project)
+    if review.passed_gate:
+        return
+    review.decision = BidReview.DIRECT_AWARD
+    review.assessed_by, review.assessed_at = user, timezone.now()
+    review.save()
 
 
 def apply_stage(request, project, stage):

@@ -9,9 +9,9 @@
 {% if review.result %}<div>{% with tone=review.result_tone %}{% badge review.get_result_display tone %}{% endwith %} <span class="mono">{{ review.score }}/100</span></div>{% endif %}
 </div>
 
-{% if moving %}<div class="banner">{% if required %}This bid is worth {{ settings.gate_threshold|money:currency }} or more, so answer the six questions before it moves to {{ to_label }}.{% else %}The check is optional for bids under {{ settings.gate_threshold|money:currency }}{% if gate_value is None %} (no value is set yet){% endif %}. Answer it, or skip it and move to {{ to_label }}.{% endif %}</div>{% endif %}
+{% if moving %}<div class="banner">{% if required %}Answer the six questions before it moves to {{ to_label }}.{% if gate_value is None %} No value or client budget is set yet, so the check can't be skipped.{% elif settings.gate_threshold %} It is worth {{ settings.gate_threshold|money:currency }} or more.{% endif %}{% else %}The check is optional for bids under {{ settings.gate_threshold|money:currency }}. Answer it, or skip it and move to {{ to_label }}.{% endif %}</div>{% elif regate %}<div class="banner">The check was skipped while this bid was under {{ settings.gate_threshold|money:currency }} or had no value. It is required now: answer the six questions.</div>{% endif %}
 
-<form method="post">{% csrf_token %}{% if to %}<input type="hidden" name="to" value="{{ to }}">{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="from" value="{{ project.stage }}">{% if to %}<input type="hidden" name="to" value="{{ to }}">{% endif %}
 {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
 <div class="grid split">
   <div class="stack">
