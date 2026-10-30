@@ -177,7 +177,11 @@ ICONS = {
 
 @register.simple_tag
 def icon(name):
-    return mark_safe(
+    # Allowlist: only the constant SVG paths in ICONS above are ever output; an unknown name (the only
+    # input a template controls) gives an empty <svg>. No user data reaches mark_safe, so B308/B703 are
+    # reviewed and safe here.
+    paths = ICONS.get(name, '')
+    return mark_safe(  # nosec B308 B703
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
-        f'stroke-linejoin="round" aria-hidden="true">{ICONS.get(name, "")}</svg>'
+        f'stroke-linejoin="round" aria-hidden="true">{paths}</svg>'
     )

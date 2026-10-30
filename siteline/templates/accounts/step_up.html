@@ -1,0 +1,13 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Confirm it's you{% endblock %}
+{% block auth %}
+<h1>Confirm it's you</h1>
+<p class="dim">Billing, team changes, exports and archiving or deleting need you to confirm your password{% if form.code %} or a code from your phone{% endif %}. You won't be asked again for 10 minutes.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+  {% for e in form.non_field_errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+  {% for field in form %}{% include "partials/field.html" %}{% endfor %}
+  <button class="btn primary block">Confirm</button>
+</form>
+<p class="small dim" style="margin-top:14px">Nothing has been changed yet. After confirming you'll go back to the page you were on: press the button again to carry on.</p>
+<p class="small"><a href="{{ next }}">Cancel</a></p>
+{% endblock %}

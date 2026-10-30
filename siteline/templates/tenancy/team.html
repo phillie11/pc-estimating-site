@@ -1,7 +1,7 @@
 {% extends "app.html" %}{% load ui %}
 {% block title %}Team{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Team</h1><p class="dim" style="margin:4px 0 0">{{ seats_used }} of {{ seat_limit }} staff seats used on {{ org.plan_config.name }}. External collaborators are free.</p></div></div>
+<div class="page-head"><div><h1>Team</h1><p class="dim" style="margin:4px 0 0">{{ seats_used }} of {{ seat_limit }} staff seats used on {{ org.plan_config.name }}. External collaborators are free.</p></div>{% if is_org_admin %}<a class="btn" href="{% url 'two_factor_team' org.slug %}">Two-factor sign-in</a>{% endif %}</div>
 <div class="grid split">
   <div class="stack">
     <div class="card"><div class="card-head"><h2>Staff</h2></div><div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Role</th><th>Works in</th><th></th></tr></thead><tbody>

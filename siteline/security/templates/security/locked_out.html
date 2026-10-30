@@ -1,0 +1,8 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Sign-in locked{% endblock %}
+{% block auth %}
+<h1>Sign-in locked for an hour</h1>
+<p class="dim">There were too many wrong passwords or codes for this account from here, so signing in is paused for an hour to keep it safe.</p>
+<p>Wait an hour and try again, or <a href="{% url 'password_reset' %}">reset your password</a> if you've forgotten it.</p>
+<p class="small dim">Need to get in sooner? Contact <a href="mailto:{{ SUPPORT_EMAIL }}">{{ SUPPORT_EMAIL }}</a>.</p>
+{% endblock %}

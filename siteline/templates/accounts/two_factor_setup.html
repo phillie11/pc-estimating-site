@@ -1,0 +1,23 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Set up two-factor sign-in{% endblock %}
+{% block side_title %}A code from your phone, as well as your password.{% endblock %}
+{% block side_text %}Even if someone learns your password, they can't sign in without your phone.{% endblock %}
+{% block auth %}
+<h1>Set up two-factor sign-in</h1>
+{% if required %}<div class="flash info">As an owner or admin of a workspace, you need two-factor sign-in before you carry on. It takes about a minute.</div>{% endif %}
+<ol class="small" style="padding-left:18px;margin:0 0 14px">
+  <li>Install an authenticator app on your phone if you don't have one (Google Authenticator, Microsoft Authenticator and 1Password all work).</li>
+  <li>In the app, add an account and scan this code.</li>
+  <li>Type the 6-digit code the app shows.</li>
+</ol>
+<p style="text-align:center;margin:0 0 8px"><img src="{% url 'two_factor_qr' %}" alt="QR code to scan with your authenticator app" width="240" height="240" style="max-width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:6px"></p>
+<details style="margin:0 0 14px"><summary class="small">Can't scan it? Type this key into the app instead</summary>
+  <p class="mono" style="font-size:15px;word-break:break-all;margin:8px 0 0">{{ secret }}</p>
+  <p class="small dim">Choose "time-based" if the app asks.</p>
+</details>
+<form method="post">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+  {% include "partials/field.html" with field=form.code %}
+  <button class="btn primary block">Turn on two-factor sign-in</button>
+</form>
+<form method="post" action="{% url 'logout' %}" style="margin-top:14px">{% csrf_token %}<button class="linkbtn small">Sign out</button></form>
+{% endblock %}

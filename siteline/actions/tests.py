@@ -692,6 +692,23 @@ class DigestTests(Base):
         # A token for one person can't be turned into another's
         self.assertNotEqual(digest.unsubscribe_token(self.a.client), digest.unsubscribe_token(self.a.sub))
 
+    @override_settings(TWO_FACTOR_ENFORCE=True)
+    def test_unsubscribe_link_not_blocked_by_two_factor_enforcement(self):
+        """An owner signed in without two-factor set up can still use the email's link (no CSRF token either)."""
+        from django.test import Client
+
+        from . import digest
+        from .models import DigestPreference
+        browser = Client(enforce_csrf_checks=True)
+        browser.force_login(self.a.owner, backend='django.contrib.auth.backends.ModelBackend')
+        # Enforcement is on for this owner everywhere else
+        self.assertTrue(browser.get(self.url('dashboard', self.a)).url.startswith(reverse('two_factor_setup')))
+        link = digest.unsubscribe_path(self.a.owner)
+        self.assertContains(browser.get(link), 'Stop round-up emails')
+        r = browser.post(link, {'frequency': 'OFF'})
+        self.assertContains(r, 'Saved')
+        self.assertEqual(DigestPreference.frequency_for(self.a.owner), DigestPreference.OFF)
+
     def test_preference_on_profile_page_for_staff_and_externals(self):
         from .models import DigestPreference
         for user in (self.a.pm, self.a.client):
