@@ -1,0 +1,57 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% url 'change_event_edit' org.slug project.pk ce.pk %}">Edit</a>
+{% for t in transitions %}<form method="post" data-confirm="{{ t.label|capfirst }} {{ ce.reference }}?">{% csrf_token %}<input type="hidden" name="action" value="{{ t.name }}"><button class="btn{% if forloop.first %} primary{% else %} ghost{% endif %}">{{ t.label|capfirst }}</button></form>{% endfor %}{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small"><a href="{% url 'change_register' org.slug project.pk %}?show=ce">← Change events</a></p>
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-body">
+      <div class="row"><span class="ref">{{ ce.reference }}</span>{% badge ce.get_status_display ce.status_tone %}{% badge 'Internal' 'muted' %}</div>
+      <h2 style="margin:8px 0 12px">{{ ce.title }}</h2>
+      <div class="quote">{{ ce.description|linebreaksbr }}</div>
+    </div></div>
+
+    {% if clocks %}<div class="card"><div class="card-head"><h2>Notices and clocks</h2>{% badge 'Advisory' 'warn' %}</div><div class="card-body">
+      {% for c in clocks %}<div class="row" style="align-items:flex-start;margin-bottom:10px">{% badge c.label c.tone %}<div><strong>{% if c.deadline and c.key != 'delay_notice' %}{{ c.deadline|date:"D j M Y" }}{% endif %}</strong> <span class="{% if c.is_late %}overdue{% endif %}">{{ c.message }}</span> <span class="small dim">({{ c.clause }})</span></div></div>{% endfor %}
+      <p class="small dim">{{ advisory }} Counted in calendar weeks with no allowance for bank holidays{% if contract.is_nec %} (NEC4 clause 13){% endif %}; amendments to the contract change these periods.</p>
+    </div></div>{% elif not contract %}<div class="card"><div class="card-body small"><a href="{% url 'contract_edit' org.slug project.pk %}">Set up the contract</a> to see the notice clocks for this change event.</div></div>{% endif %}
+
+    <div class="card"><div class="card-head"><h2>Estimate</h2></div>
+      {% if ce.lines.all %}<div class="table-wrap"><table class="t"><thead><tr><th>Line</th><th>Trade / package</th><th class="num">Cost</th><th class="num">Revenue</th><th></th></tr></thead><tbody>
+      {% for line in ce.lines.all %}<tr><td>{{ line.description }}</td><td class="small">{% if line.package %}{{ line.package.subcontractor }}{% elif line.trade %}{{ line.trade }}{% else %}—{% endif %}</td>
+        <td class="num">{% if line.kind == 'COST' %}{{ line.amount|money:currency }}{% endif %}</td><td class="num">{% if line.kind == 'REVENUE' %}{{ line.amount|money:currency }}{% endif %}</td>
+        <td><form method="post" data-confirm="Remove this line?">{% csrf_token %}<input type="hidden" name="action" value="delete_line"><input type="hidden" name="line" value="{{ line.pk }}"><button class="btn sm ghost" style="min-height:44px" aria-label="Remove {{ line.description }}">Remove</button></form></td></tr>{% endfor %}
+      <tr><td colspan="2"><strong>Total</strong> (margin {{ ce.margin|money:currency }})</td><td class="num"><strong>{{ ce.cost_total|money:currency }}</strong></td><td class="num"><strong>{{ ce.revenue_total|money:currency }}</strong></td><td></td></tr>
+      </tbody></table></div>{% else %}<div class="empty"><h3>Not priced yet</h3><p>Add what it will cost us (labour, subcontractors, materials) and what we'll recover from the client. The revenue becomes the value of the client {{ vocab.change }}.</p></div>{% endif %}
+      <div class="card-body"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_line">{% with form=line_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Add line</button></div></form></div>
+    </div>
+    {% include "partials/comments.html" %}
+  </div>
+  <div class="stack">
+    <div class="card"><div class="card-body"><dl class="dl">
+      <dt>Origin</dt><dd>{{ ce.get_origin_display }}</dd>
+      {% if sources %}<dt>Came from</dt><dd>{% for idx in sources %}<a href="{{ idx.url }}">{{ idx.ref }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+      <dt>Time impact</dt><dd>{% if ce.time_impact_days %}{{ ce.time_impact_days }} day{{ ce.time_impact_days|pluralize }}{% else %}None stated{% endif %}</dd>
+      <dt>Owner</dt><dd>{{ ce.ball_in_court_user|default:"—" }}</dd>
+      {% if ce.aware_on %}<dt>Became aware</dt><dd>{{ ce.aware_on|date:"j M Y" }}</dd>{% endif %}
+      {% if ce.notified_on %}<dt>Notified</dt><dd>{{ ce.notified_on|date:"j M Y" }}</dd>{% endif %}
+      {% if ce.quotation_instructed_on %}<dt>Quotation instructed</dt><dd>{{ ce.quotation_instructed_on|date:"j M Y" }}</dd>{% endif %}
+      {% if ce.quotation_submitted_on %}<dt>Quotation submitted</dt><dd>{{ ce.quotation_submitted_on|date:"j M Y" }}</dd>{% endif %}
+      {% if ce.reply_received_on %}<dt>Reply received</dt><dd>{{ ce.reply_received_on|date:"j M Y" }}</dd>{% endif %}
+      {% if ce.delay_notice_given_on %}<dt>Notice of delay</dt><dd>{{ ce.delay_notice_given_on|date:"j M Y" }}</dd>{% endif %}
+    </dl></div></div>
+    <div class="card"><div class="card-head"><h2>Client {{ vocab.change }}</h2></div><div class="card-body">
+      {% if variations %}{% for idx in variations %}<p><a href="{{ idx.url }}">{{ idx.ref }} {{ idx.title }}</a> {% badge idx.status_label 'info' %}</p>{% endfor %}
+      {% else %}<p class="small dim">Not raised yet. This drafts a client variation at the estimated revenue ({{ ce.revenue_total|money:currency }}), linked to this change event{% if sources %} and where it came from{% endif %}. Nothing goes to the client until you submit it.</p>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="raise_variation"><button class="btn primary" style="min-height:44px">Draft client variation</button></form>{% endif %}
+    </div></div>
+    <div class="card"><div class="card-head"><h2>Sub variations</h2></div><div class="card-body">
+      {% for sv in sub_variations %}<div class="row"><a href="{{ sv.get_absolute_url }}">{{ sv.reference }} {{ sv.title }}</a> <span class="small dim">{{ sv.subcontractor }}</span>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="unlink_sub_variation"><input type="hidden" name="sv" value="{{ sv.pk }}"><button class="btn sm ghost" style="min-height:44px">Unlink</button></form></div>
+      {% empty %}<p class="small dim">No subcontractor variations tied to this yet.</p>{% endfor %}
+      {% if sv_form.fields.sub_variation.queryset.exists %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="link_sub_variation">{% with form=sv_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Tie to this change event</button></div></form>{% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

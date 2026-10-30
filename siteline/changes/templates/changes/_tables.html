@@ -1,0 +1,21 @@
+{% load ui %}
+{% if filters.show != 'ew' %}<div class="card"><div class="card-head"><h2>Change events</h2></div>{% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Change event</th>{% if show_project %}<th>Project</th>{% endif %}<th>Owner</th><th>Status</th><th class="num">Est. cost</th><th class="num">Est. revenue</th><th>Clock (advisory)</th></tr></thead><tbody>
+{% for row in rows %}{% with ce=row.ce %}<tr><td class="ref">{{ ce.reference }}</td>
+  <td><a class="rowlink" href="{{ ce.get_absolute_url }}">{{ ce.title }}</a><span class="sub">{{ ce.get_origin_display }}{% if ce.time_impact_days %} · {{ ce.time_impact_days }} day{{ ce.time_impact_days|pluralize }} delay{% endif %}</span></td>
+  {% if show_project %}<td class="small">{{ ce.project.name }}</td>{% endif %}
+  <td class="small">{{ ce.ball_in_court_user|default:"—" }}</td>
+  <td>{% badge ce.get_status_display ce.status_tone %}</td>
+  <td class="num">{{ ce.cost_total|money:currency }}</td><td class="num">{{ ce.revenue_total|money:currency }}</td>
+  <td class="small">{% for c in row.attention %}{% badge c.label c.tone %} <span class="{% if c.is_late %}overdue{% endif %}">{% if c.days_left is not None %}{% if c.days_late %}{{ c.days_late }} day{{ c.days_late|pluralize }} late{% else %}{{ c.days_left }} day{{ c.days_left|pluralize }} left{% endif %}{% else %}action needed{% endif %}</span><br>{% empty %}<span class="dim">—</span>{% endfor %}</td></tr>{% endwith %}{% endfor %}
+</tbody></table></div>{% else %}<div class="empty"><h3>No change events here</h3><p>{% if filters.status != 'live' or filters.origin or filters.mine or filters.attention %}Nothing matches these filters. <a href="?">Clear them</a>.{% else %}Log anything that could change cost or time (an instruction, a site problem, an RFI answer) as a change event, then price it and turn it into a client variation.{% endif %}</p></div>{% endif %}</div>{% endif %}
+
+{% if filters.show != 'ce' and not filters.origin and not filters.attention %}<div class="card"><div class="card-head"><h2>Early warnings</h2></div>{% if early_warnings %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Early warning</th>{% if show_project %}<th>Project</th>{% endif %}<th>Risk to</th><th>Owner</th><th>Meeting</th><th>Status</th></tr></thead><tbody>
+{% for ew in early_warnings %}<tr><td class="ref">{{ ew.reference }}</td>
+  <td><a class="rowlink" href="{{ ew.get_absolute_url }}">{{ ew.title }}</a><span class="sub">Raised by {{ ew.get_raised_by_side_display|lower }}</span></td>
+  {% if show_project %}<td class="small">{{ ew.project.name }}</td>{% endif %}
+  <td class="small">{{ ew.risks|join:", "|default:"—" }}</td>
+  <td class="small">{{ ew.ball_in_court_user|default:"—" }}</td>
+  <td class="small nowrap">{{ ew.meeting_date|date:"j M"|default:"—" }}</td>
+  <td>{% badge ew.get_status_display ew.status_tone %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty"><h3>No early warnings here</h3><p>{% if filters.status != 'live' or filters.mine %}Nothing matches these filters. <a href="?">Clear them</a>.{% else %}Raise one as soon as you spot something that could add cost, delay completion or affect quality, so it can be talked through before it happens.{% endif %}</p></div>{% endif %}</div>{% endif %}
+<p class="small dim">{% badge 'Advisory' 'warn' %} Clocks are a guide, counted in calendar weeks. {{ advisory }}</p>

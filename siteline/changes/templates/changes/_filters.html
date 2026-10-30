@@ -1,0 +1,16 @@
+{% load ui %}<div class="filters" aria-label="Show">
+  <a class="chip {% if filters.show == 'all' %}on{% endif %}" href="{% qs show='all' %}">Everything</a>
+  <a class="chip {% if filters.show == 'ew' %}on{% endif %}" href="{% qs show='ew' origin='' %}">Early warnings</a>
+  <a class="chip {% if filters.show == 'ce' %}on{% endif %}" href="{% qs show='ce' %}">Change events</a>
+  <a class="chip {% if filters.mine %}on{% endif %}" href="{% if filters.mine %}{% qs mine='' %}{% else %}{% qs mine='1' %}{% endif %}">Mine</a>
+  <a class="chip {% if filters.attention %}on{% endif %}" href="{% if filters.attention %}{% qs attention='' %}{% else %}{% qs attention='1' %}{% endif %}">Clocks running out</a>
+</div>
+<form method="get" class="filters">
+  {% if filters.show != 'all' %}<input type="hidden" name="show" value="{{ filters.show }}">{% endif %}
+  {% if filters.mine %}<input type="hidden" name="mine" value="1">{% endif %}
+  {% if filters.attention %}<input type="hidden" name="attention" value="1">{% endif %}
+  {% if projects %}<label class="small">Project <select name="project"><option value="">All live jobs</option>{% for p in projects %}<option value="{{ p.pk }}"{% if chosen_project == p.pk|stringformat:"s" %} selected{% endif %}>{{ p.reference }} {{ p.name }}</option>{% endfor %}</select></label>{% endif %}
+  <label class="small">Status <select name="status">{% for code, label in statuses %}<option value="{{ code }}"{% if filters.status == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label class="small">Origin <select name="origin"><option value="">Any</option>{% for code, label in origins %}<option value="{{ code }}"{% if filters.origin == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <button class="btn sm" style="min-height:44px">Filter</button>
+</form>

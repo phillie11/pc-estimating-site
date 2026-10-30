@@ -66,7 +66,10 @@ def portal_projects(request):
     """Projects whose shared content (RFIs, feed) this user may see: bidders' tenders excluded."""
     qs = visible_projects(request)
     if not is_internal(request):
-        qs = qs.exclude(members__user=request.user, members__role=ProjectMember.ROLE_BIDDER)
+        # A subquery, not exclude(members__user=..., members__role=...): across a multi-valued relation that
+        # would also drop every project where *someone else* is a bidder, hiding it from its client
+        qs = qs.exclude(pk__in=ProjectMember.objects.filter(user=request.user, role=ProjectMember.ROLE_BIDDER)
+                        .values('project'))
     return qs
 
 

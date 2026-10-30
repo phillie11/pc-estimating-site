@@ -1,6 +1,7 @@
 from django.urls import path
 
 from billing import views as billing
+from changes import urls as changes_urls
 from delivery import views as delivery
 from directory import views as directory
 from projects import views as projects
@@ -94,4 +95,8 @@ urlpatterns = [
     path('directory/<int:pk>/', directory.sub_detail, name='sub_detail'),
     path('directory/<int:pk>/edit/', directory.sub_edit, name='sub_edit'),
     path('directory/<int:pk>/archive/', directory.sub_archive, name='sub_archive'),
+
+    # Commercial tab: contract set-up, change register, early warnings, change events (changes/urls.py)
+    *changes_urls.project_patterns(P),
+    *changes_urls.org_patterns,
 ]
