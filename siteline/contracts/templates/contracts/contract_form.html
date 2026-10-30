@@ -1,0 +1,9 @@
+{% extends "project_base.html" %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<div class="card" style="max-width:900px"><div class="card-head"><h2>{% if creating %}Set up the contract{% else %}Edit the contract{% endif %}</h2></div><div class="card-body">
+<p class="small">Leave the payment, retention and defects terms blank and Siteline fills them from the standard terms for the form you pick. {{ advisory }} The contract sum and dates are saved on the project, so the overview and reports use the same figures.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'contract_detail' org.slug project.pk %}">Cancel</a></div></form>
+</div></div>
+{% endblock %}

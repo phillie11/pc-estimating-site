@@ -56,6 +56,8 @@ INSTALLED_APPS = [
     'core',
     'rfis',
     'variations',
+    'contracts',
+    'changes',
     'directory',
     'tenders',
     'delivery',

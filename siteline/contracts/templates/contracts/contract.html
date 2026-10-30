@@ -1,0 +1,47 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn{% if not contract %} primary{% endif %}" href="{% url 'contract_edit' org.slug project.pk %}">{% if contract %}Edit contract{% else %}{% icon 'plus' %} Set up the contract{% endif %}</a>{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Contract sum</div><div class="value">{{ position.contract|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Approved {{ vocab.change_plural }}</div><div class="value">{{ position.approved|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Awaiting client decision</div><div class="value">{{ position.pending|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Forecast final account</div><div class="value">{{ position.forecast|money:currency }}</div></div>
+</div>
+<p class="small dim"><a href="{% url 'change_register' org.slug project.pk %}">{{ changes.change_events }} live change event{{ changes.change_events|pluralize }}</a> (estimated revenue {{ changes.revenue|money:currency }}) and {{ changes.early_warnings }} open early warning{{ changes.early_warnings|pluralize }}. Not in the forecast until they become approved client {{ vocab.change_plural }}.</p>
+{% if contract %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>{{ contract.form_label }}</h2></div><div class="card-body"><dl class="dl">
+    <dt>{{ vocab.administrator }}</dt><dd>{% if contract.administrator %}{{ contract.administrator.user }}{% if contract.administrator.company_name %} ({{ contract.administrator.company_name }}){% endif %}{% else %}<span class="dim">Not set. <a href="{% url 'contract_edit' org.slug project.pk %}">Pick them</a> once they're on the Team tab.</span>{% endif %}</dd>
+    <dt>{{ vocab.possession_date|capfirst }}</dt><dd>{{ contract.possession_date|date:"j M Y"|default:"—" }}</dd>
+    <dt>{{ vocab.completion_date|capfirst }}</dt><dd>{{ contract.completion_date|date:"j M Y"|default:"—" }}</dd>
+    <dt>{{ vocab.damages|capfirst }}</dt><dd>{% if contract.lads_rate is not None %}<span class="mono">{{ contract.lads_rate|money:currency }}</span> {{ contract.get_lads_period_display }}{% else %}—{% endif %}</dd>
+    <dt>Retention</dt><dd>{{ contract.retention_rule|default:"—" }}</dd>
+    <dt>{{ vocab.defects_period|capfirst }}</dt><dd>{% if contract.defects_period_months %}{{ contract.defects_period_months }} month{{ contract.defects_period_months|pluralize }}{% else %}—{% endif %}</dd>
+    {% if contract.amendments %}<dt>Amendments</dt><dd><div class="quote">{{ contract.amendments|linebreaksbr }}</div></dd>{% endif %}
+  </dl></div></div>
+  <div class="card"><div class="card-head"><h2>Payment terms</h2></div><div class="card-body">
+    <p class="small">{% badge 'Advisory' 'warn' %} {{ advisory }} These start from the standard {{ contract.preset.label }} terms; the Contract Particulars and any amendments override them.</p>
+    <dl class="dl">
+      <dt>{{ vocab.valuation_date|capfirst }}</dt><dd>{% if contract.valuation_day %}Day {{ contract.valuation_day }} of each month{% else %}—{% endif %}</dd>
+      <dt>Due date</dt><dd>{% if contract.due_date_offset_days is not None %}{{ contract.due_date_offset_days }} day{{ contract.due_date_offset_days|pluralize }} after the {{ vocab.valuation_date }}{% else %}—{% endif %}</dd>
+      <dt>Final date for payment</dt><dd>{% if contract.final_date_offset_days is not None %}{{ contract.final_date_offset_days }} days after the due date{% else %}—{% endif %}</dd>
+      <dt>Pay less notice</dt><dd>{% if contract.pay_less_notice_days is not None %}No later than {{ contract.pay_less_notice_days }} days before the final date{% else %}—{% endif %}</dd>
+    </dl>
+    {% if timetable %}<h3 style="margin-top:12px">Next payment cycle</h3><dl class="dl">
+      <dt>{{ vocab.valuation_date|capfirst }}</dt><dd>{{ timetable.valuation_date|date:"D j M Y" }}</dd>
+      <dt>Due date</dt><dd>{{ timetable.due_date|date:"D j M Y" }}</dd>
+      <dt>Pay less notice by</dt><dd>{{ timetable.pay_less_by|date:"D j M Y" }}</dd>
+      <dt>Final date for payment</dt><dd>{{ timetable.final_date|date:"D j M Y" }}</dd>
+    </dl><p class="small dim">Counted in calendar days. The Construction Act and the JCT forms leave bank holidays out, so check any date near one.</p>{% elif not contract.valuation_day %}<p class="small dim">Add the valuation day to see the next payment dates.</p>{% endif %}
+    <form method="post" action="{% url 'contract_edit' org.slug project.pk %}" data-confirm="Reset the payment, retention and defects terms to the standard {{ contract.preset.label }} terms? Anything you changed from the standard will be overwritten.">{% csrf_token %}<input type="hidden" name="action" value="preset"><button class="btn sm ghost" style="min-height:44px">Reset to the standard terms</button></form>
+  </div></div>
+</div>
+<div class="card"><div class="card-head"><h2>Words for this contract</h2></div><div class="card-body small">
+  <p>Siteline uses the {{ contract.get_form_display }} terms on this job: <strong>{{ vocab.change }}</strong> for a change, <strong>{{ vocab.instruction }}</strong>, <strong>{{ vocab.delay_event }}</strong> for a delay event, <strong>{{ vocab.time_extension }}</strong>, and the <strong>{{ vocab.administrator }}</strong>.</p>
+  <p class="dim">{{ vocab.early_warning_note }}</p>
+</div></div>
+{% else %}
+<div class="card"><div class="empty"><h3>No contract set up yet</h3><p>Pick the form of contract (JCT, NEC4 or bespoke) and Siteline fills in its standard payment, retention and defects terms for you to check against the signed contract. It also switches this job to that contract's words, and turns on the advisory notice clocks for NEC4 jobs.</p><p><a class="btn primary" href="{% url 'contract_edit' org.slug project.pk %}" style="min-height:44px">Set up the contract</a></p><p class="small dim">If the contract has no compliant payment terms, the {{ scheme.label }} applies. {{ advisory }}</p></div></div>
+{% endif %}
+{% endblock %}

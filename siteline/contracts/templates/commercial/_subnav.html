@@ -1,0 +1,1 @@
+{% if commercial_nav %}<nav class="filters" aria-label="Commercial">{% for code, label, url in commercial_nav %}<a class="chip {% if code == commercial_sub %}on{% endif %}" href="{{ url }}" style="min-height:44px;display:inline-flex;align-items:center"{% if code == commercial_sub %} aria-current="page"{% endif %}>{{ label|capfirst }}</a>{% endfor %}</nav>{% endif %}
