@@ -21,7 +21,7 @@ Where the terms come from (as published; amendments are common):
   JCT IC/ICD 2016 and 2024: due date 7 days after each Interim Valuation Date; final date 14
     days after the due date; pay less notice 5 days before the final date; interim payments at
     95% of value unless the Contract Particulars say otherwise, so 5% retention (half at Practical
-    Completion); Rectification Period 6 months if none stated. VERIFY: see the note on _IC.
+    Completion; confirmed by the product owner); Rectification Period 6 months if none stated.
   JCT SBC and DB 2016 and 2024: as IC for the payment periods; Retention Percentage 3% unless the
     Contract Particulars state less; Rectification Period 6 months if none stated.
   NEC4 ECC with Option Y(UK)2: payment due 7 days after the assessment date; final date 14 days
@@ -68,11 +68,10 @@ _MW = dict(due_date_offset_days=0, final_date_offset_days=14, pay_less_notice_da
 _JCT = dict(due_date_offset_days=7, final_date_offset_days=14, pay_less_notice_days=5,
             retention_percent=Decimal('3'), defects_period_months=6)
 # IC/ICD: interim certificates are for 95% of the value before Practical Completion unless the
-# Contract Particulars state another percentage, i.e. 5% retention (JCT IC 2016 clause 4.9 and its
-# Contract Particulars entry, as described in published commentary). The form's own text couldn't be
-# checked when this was written: VERIFY against IC/ICD 2016 and 2024 before relying on it.
+# Contract Particulars state another percentage, i.e. 5% retention. Default confirmed by the product
+# owner (30 Oct 2026) for the 2016 and 2024 editions.
 _IC = {**_JCT, 'retention_percent': Decimal('5')}
-IC_NOTE = 'Retention: 5% (95% of value certified) unless the Contract Particulars say otherwise. Verify.'
+IC_NOTE = 'Retention: 5% (95% of value certified) unless the Contract Particulars say otherwise.'
 
 SCHEME = Preset('Scheme for Construction Contracts (fallback)', due_date_offset_days=7, final_date_offset_days=17,
                 pay_less_notice_days=7, note='Applies where the contract has no compliant payment terms.')

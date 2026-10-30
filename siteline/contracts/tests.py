@@ -20,7 +20,7 @@ class PresetTableTests(SimpleTestCase):
     TABLE = {
         'JCT_MW': (0, 14, 5, Decimal('5'), 3, 'WEEK'),
         'JCT_MWD': (0, 14, 5, Decimal('5'), 3, 'WEEK'),
-        'JCT_IC': (7, 14, 5, Decimal('5'), 6, 'WEEK'),   # 95% certified unless stated (verify note)
+        'JCT_IC': (7, 14, 5, Decimal('5'), 6, 'WEEK'),   # 95% certified unless stated (product owner)
         'JCT_ICD': (7, 14, 5, Decimal('5'), 6, 'WEEK'),
         'JCT_SBC': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
         'JCT_DB': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
@@ -45,8 +45,10 @@ class PresetTableTests(SimpleTestCase):
         self.assertEqual(presets.SCHEME.due_date_offset_days, 7)
         self.assertIn('Part II para 4', presets.__doc__)
 
-    def test_ic_retention_carries_a_verify_note(self):
-        self.assertIn('Verify', presets.preset_for('JCT_IC').note)
+    def test_ic_retention_is_five_percent_and_confirmed(self):
+        for form in ('JCT_IC', 'JCT_ICD'):
+            self.assertEqual(presets.preset_for(form).retention_percent, Decimal('5'))
+            self.assertNotIn('erify', presets.preset_for(form).note)
         self.assertEqual(presets.preset_for('JCT_SBC').retention_percent, Decimal('3'))
 
     def test_unknown_form_falls_back_to_the_scheme(self):
