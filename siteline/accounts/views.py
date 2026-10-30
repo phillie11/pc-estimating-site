@@ -142,6 +142,7 @@ def accept_team_invite(request, token):
 
 
 def accept_project_invite(request, token):
+    # No workspace is open yet: the secret token pins the row, so look it up unscoped
     invite = get_object_or_404(ProjectInvite.all_objects.select_related('organization', 'project'), token=token)
     if not invite.is_valid():
         return render(request, 'accounts/invite_invalid.html', status=410)

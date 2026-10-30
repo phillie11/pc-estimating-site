@@ -59,11 +59,19 @@ This is the part to keep intact as you add features.
 
 1. Every company-owned model inherits `tenancy.models.TenantModel`, which adds an `organization` field.
 2. `TenantMiddleware` resolves `/<org_slug>/`, checks the user has an active `Membership`, and sets the current organisation for the request. Non-members get a 404, so workspace names can't be probed.
-3. `TenantModel.objects` filters to the current organisation automatically, and `save()` refuses to write a row into a different organisation. So a view that forgets to filter still can't read another company's data. Use `Model.all_objects` only in admin, webhooks and management commands.
-4. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
-5. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
+3. `TenantModel.objects` filters to the current organisation automatically, and `save()` refuses to write a row into a different organisation. So a view that forgets to filter still can't read another company's data.
+4. It **fails closed**. With no current organisation (management commands, webhooks, scheduled jobs, the shell, login/signup/invite pages), running a `TenantModel.objects` query raises `TenantContextMissing` instead of returning every company's rows. That covers reverse and many-to-many managers (`project.rfis.all()`), `count()`, `exists()`, `pk__in=queryset` subqueries and `get_or_create()` too. Building a queryset is fine; running it is what needs an organisation, so a form's class-level `queryset=` is scoped to whichever organisation is current when the form is used. The exception is `Subquery()` / `Exists()`, which copy the SQL when they are created: only build those where an organisation is current.
+5. `update()`, `delete()` and `bulk_create()` on `TenantModel.objects` stay inside the current organisation: update and delete only reach its rows, `update(organization=...)` can't move rows elsewhere, and `bulk_create()` fills in a missing organisation and refuses any object that belongs to another one.
+6. Code outside a request picks one of these, in this order of preference:
+   - `with org_context(org):` (from `tenancy.context`), looping over organisations where the job covers several, as `send_reminders` does.
+   - `with unscoped():` when the code really means every company, as the platform admin (`tenancy.admin.TenantModelAdmin`) does. Inside it `TenantModel.objects` behaves like `all_objects` and `save()` needs an explicit organisation.
+   - `Model.all_objects` for a lookup that is pinned some other way: a pk or token (invite links), a known organisation, or a file path.
 
-`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 17 more for programmes, workload and analytics, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
+   Say why in a comment, and grep for `unscoped()` and `all_objects` when reviewing. Following a foreign key (`rfi.project`), `refresh_from_db()` and delete cascades use `all_objects` as the base manager; each is pinned to a row the code already holds, so it can't list another company's data. For backups use `manage.py dumpdata --all` (plain `dumpdata` reads through `objects` and stops with `TenantContextMissing`).
+7. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
+8. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
+
+`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `tenancy/test_fail_closed.py` adds 23 for the fail-closed rule, the bulk-write guard, the admin and every management command run against two companies; `projects/tests.py` adds 17 more for programmes, workload and analytics, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
 
 ```bash
 DEBUG=1 python manage.py test
