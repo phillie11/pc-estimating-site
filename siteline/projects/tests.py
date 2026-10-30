@@ -12,6 +12,7 @@ from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from tenancy.context import org_context
@@ -752,3 +753,108 @@ class PipelineMoveTests(Base):
         self.assertContains(r, 'Unknown stage')
         r = self.client.post(self.move, '{"stage": "NOPE"}', content_type='application/json')
         self.assertEqual(r.status_code, 400)
+
+
+class ArchivedReadOnlyTests(Base):
+    """
+    Archiving frees a plan slot, so an archived project is read-only for everyone, owners
+    included: every write endpoint refuses it until it is restored (security review).
+    """
+    # The only project URLs that may write to an archived project
+    ALLOWED = {'project_archive', 'project_delete'}
+
+    def setUp(self):
+        super().setUp()
+        from directory.models import Package
+        from projects.models import Issue, Task
+        with org_context(self.org_a):
+            self.ids = {
+                'rfi_id': self.rfi_a.pk, 'vo_id': self.vo_a.pk,
+                'task_id': Task.objects.create(project=self.pa, title='Before archive').pk,
+                'issue_id': Issue.objects.create(project=self.pa, title='Snag').pk,
+                'activity_id': Activity.objects.create(project=self.pa, name='Strip out', start=date(2026, 1, 5),
+                                                       finish=date(2026, 1, 9)).pk,
+                'doc_id': Document.objects.create(project=self.pa, title='Plan').pk,
+                'package_id': Package.objects.create(project=self.pa, subcontractor=self.sub_a).pk,
+            }
+            self.pa.archive(self.alice)
+        self.login(self.alice)
+
+    def fingerprint(self):
+        """Row counts of every tenant table plus the project's own fields."""
+        from django.apps import apps
+        counts = {m.__name__: m.all_objects.count() for m in apps.get_models() if hasattr(m, 'all_objects')}
+        p = Project.all_objects.get(pk=self.pa.pk)
+        return counts, (p.stage, p.name, p.value, p.manager_id, p.archived_at, p.updated_at)
+
+    def project_urls(self):
+        """Every URL under projects/<pk>/, so a new endpoint is checked without editing this test."""
+        from tenancy.urls_org import urlpatterns
+        for p in urlpatterns:
+            converters = getattr(p.pattern, 'converters', {})
+            if not str(p.pattern).startswith('projects/<int:pk>/'):
+                continue
+            kwargs = {'org_slug': self.org_a.slug, 'pk': self.pa.pk,
+                      **{k: self.ids.get(k, 999) for k in converters if k != 'pk'}}
+            yield p.name, reverse(p.name, kwargs=kwargs)
+
+    def test_every_write_to_an_archived_project_is_refused(self):
+        from django.core import mail
+        payload = {'stage': Project.STAGE_COMPLETE, 'subject': 'after archive', 'question': 'still works?',
+                   'title': 'New', 'name': 'New', 'description': 'x', 'value': '1', 'body': 'Note',
+                   'status': 'DONE', 'start': '2026-02-01', 'finish': '2026-02-02', 'manager': self.alice.pk,
+                   'email': 'new@c.test', 'role': ProjectMember.ROLE_CLIENT, 'action': 'comment', 'delete': '1'}
+        before = self.fingerprint()
+        names = set()
+        for name, url in self.project_urls():
+            names.add(name)
+            if name in self.ALLOWED:
+                continue
+            r = self.client.post(url, payload)
+            self.assertEqual(r.status_code, 403, name)
+        r = self.client.post(self.url('project_stage', self.org_a, self.pa.pk), '{"stage": "COMPLETE"}',
+                             content_type='application/json')
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.fingerprint(), before)
+        self.assertEqual(mail.outbox, [])
+        self.assertLessEqual({'project_stage', 'project_edit', 'rfi_create', 'document_list', 'package_list',
+                              'tender', 'rams_list', 'subvariation_list', 'variation_create', 'project_handover'},
+                             names)
+        # Reading still works
+        self.assertContains(self.client.get(self.url('rfi_list', self.org_a, self.pa.pk)), 'A question')
+
+    def test_restore_is_still_allowed_and_makes_it_writable_again(self):
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        r = self.client.post(self.url('project_stage', self.org_a, self.pa.pk), {'stage': Project.STAGE_COMPLETE})
+        self.assertEqual(r.status_code, 302)
+        self.pa.refresh_from_db()
+        self.assertEqual((self.pa.is_archived, self.pa.stage), (False, Project.STAGE_COMPLETE))
+
+    def test_an_empty_archived_project_can_still_be_deleted(self):
+        with org_context(self.org_a):
+            lead = Project.objects.create(name='Mistaken lead', stage=Project.STAGE_LEAD)
+            lead.archive(self.alice)
+        self.client.post(self.url('project_delete', self.org_a, lead.pk), {'confirm': lead.reference})
+        self.assertFalse(Project.all_objects.filter(pk=lead.pk).exists())
+
+
+class HandoverPlanLimitTests(Base):
+    @override_settings(PLANS={'team': {'name': 'Tiny', 'max_staff': 3, 'max_active_projects': 1}})
+    def test_winning_a_lost_bid_needs_room_on_the_plan(self):
+        """pa (live) fills the plan; handing over a lost bid would reopen a second active project."""
+        with org_context(self.org_a):
+            lost = Project.objects.create(name='Lost bid', stage=Project.STAGE_LOST)
+        self.login(self.alice)
+        handover = {'manager': self.alice.pk, 'value': '1000', 'handover_notes': 'x'}
+        r = self.client.post(self.url('project_handover', self.org_a, lost.pk), handover, follow=True)
+        self.assertContains(r, 'active projects')
+        lost.refresh_from_db()
+        self.assertEqual(lost.stage, Project.STAGE_LOST)
+        self.assertEqual(Project.active_count(self.org_a), 1)
+        # With room on the plan it can be won as usual
+        with org_context(self.org_a):
+            self.pa.stage = Project.STAGE_COMPLETE
+            self.pa.save()
+        self.client.post(self.url('project_handover', self.org_a, lost.pk), handover)
+        lost.refresh_from_db()
+        self.assertEqual(lost.stage, Project.STAGE_WON)

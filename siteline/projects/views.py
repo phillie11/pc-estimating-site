@@ -301,7 +301,7 @@ def project_edit(request, org_slug, pk):
 @admin_required
 def project_delete(request, org_slug, pk):
     """Only for a project with nothing on it, such as a lead added by mistake. Anything else is archived."""
-    project = get_project(request, pk)
+    project = get_project(request, pk, allow_archived_write=True)
     if project.has_records():
         messages.error(request, f'{project.reference} has records on it, so it can only be archived.')
         return redirect('project_edit', org_slug=org_slug, pk=pk)
@@ -321,9 +321,9 @@ def project_archive(request, org_slug, pk):
     """
     Take a project out of every list, the pipeline, workload and plan limits without
     losing its RFIs, variations, RAMS, documents, audit trail or download log.
-    Collaborators lose access; owners and admins can still open and restore it.
+    Collaborators lose access; owners and admins can still open it, read only, and restore it.
     """
-    project = get_project(request, pk)
+    project = get_project(request, pk, allow_archived_write=True)
     if request.POST.get('action') == 'restore':
         if not project.is_archived:
             return redirect(project)
@@ -429,6 +429,12 @@ def project_handover(request, org_slug, pk):
         return redirect(project)
     form = HandoverForm(request.POST or None, instance=project, org=request.org)
     if request.method == 'POST' and form.is_valid():
+        if winning and project.stage in Project.CLOSED_STAGES and not Project.plan_has_room(request.org):
+            # A lost or declined bid doesn't count against the plan; winning it would
+            messages.error(request, f'Your {request.org.plan_config["name"]} plan allows '
+                                    f'{request.org.plan_config["max_active_projects"]} active projects. '
+                                    'Close some or upgrade before winning this one.')
+            return redirect(project)
         p = form.save(commit=False)
         if winning:
             p.stage = Project.STAGE_WON

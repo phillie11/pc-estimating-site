@@ -60,9 +60,20 @@ def portal_projects(request):
     return qs
 
 
-def get_project(request, pk, allow_bidder=False):
-    """Fetch a project the user may see; sets request.project_member. Owners and admins can open archived ones."""
+SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
+
+
+def get_project(request, pk, allow_bidder=False, allow_archived_write=False):
+    """
+    Fetch a project the user may see; sets request.project_member. Owners and admins can open
+    archived ones, read only: archiving frees a plan slot, so work must not carry on there.
+    Every project view comes through here, so any request that could write (anything but GET
+    and HEAD) to an archived project is refused unless the view says otherwise, which only
+    archive/restore and deleting an empty project do.
+    """
     project = get_object_or_404(visible_projects(request, include_archived=can_see_archived(request)), pk=pk)
+    if project.is_archived and request.method not in SAFE_METHODS and not allow_archived_write:
+        raise PermissionDenied('This project is archived, so it is read only. Restore it to make changes.')
     request.project_member = ProjectMember.objects.filter(project=project, user=request.user) \
         .select_related('subcontractor').first()
     if not is_internal(request) and request.project_member is None:
