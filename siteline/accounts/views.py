@@ -8,6 +8,7 @@ from django.views.decorators.http import require_POST
 
 from directory.models import DEFAULT_TRADES, Trade
 from projects.models import ProjectInvite, ProjectMember
+from security import twofactor
 from tenancy.context import org_context
 from tenancy.models import Membership, Organization, TeamInvite, log_activity
 
@@ -53,6 +54,31 @@ class LoginView(auth_views.LoginView):
     template_name = 'accounts/login.html'
     redirect_authenticated_user = True
 
+    def form_valid(self, form):
+        """
+        Right password. Without two-factor, or on a device remembered in the last 30 days, sign in.
+        Otherwise don't sign in yet: hold the user in the session and ask for the code
+        (security.views.two_factor_verify signs them in once it's right).
+        """
+        user = form.get_user()
+        device = twofactor.device_for(user)
+        if device is None or twofactor.is_remembered(self.request, user, device):
+            return super().form_valid(form)
+        twofactor.start_pending(self.request, user, self.get_success_url())
+        return redirect('two_factor_verify')
+
+
+def admin_login(request):
+    """The platform admin's own login page would skip two-factor, so it sends people to the main one."""
+    from django.contrib.auth.views import redirect_to_login
+    from django.core.exceptions import PermissionDenied
+    from django.urls import reverse
+    if request.user.is_authenticated:
+        if not request.user.is_staff:
+            raise PermissionDenied  # signed in, but not platform staff (sending them to /login/ would loop)
+        return redirect(reverse('admin:index'))
+    return redirect_to_login(request.GET.get('next') or reverse('admin:index'), login_url=reverse('login'))
+
 
 @require_POST
 def logout_view(request):
@@ -89,7 +115,12 @@ def profile(request):
         form.save()
         messages.success(request, 'Profile saved.')
         return redirect('profile')
-    return render(request, 'accounts/profile.html', {'form': form})
+    from security.models import RecoveryCode
+    device = twofactor.device_for(request.user)
+    return render(request, 'accounts/profile.html', {
+        'form': form, 'two_factor': device, 'two_factor_required': twofactor.requires_two_factor(request.user),
+        'recovery_codes_left': RecoveryCode.remaining(request.user) if device else 0,
+    })
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,17 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Enter your code{% endblock %}
+{% block auth %}
+<h1>Enter your code</h1>
+<p class="dim">Open the authenticator app on your phone and type the 6-digit code for {{ PRODUCT_NAME }} ({{ email }}).</p>
+<form method="post">{% csrf_token %}
+  {% for e in form.non_field_errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+  {% include "partials/field.html" with field=form.code %}
+  <details style="margin:0 0 14px"><summary class="small">Lost your phone? Use a recovery code</summary>
+    {% include "partials/field.html" with field=form.recovery_code %}
+  </details>
+  {% include "partials/field.html" with field=form.remember %}
+  <p class="small dim">Only tick this on your own computer or phone. Changing your password signs out remembered devices.</p>
+  <button class="btn primary block">Sign in</button>
+</form>
+<p class="small" style="margin-top:14px">No phone and no recovery codes? Ask an owner of your workspace to reset your two-factor sign-in. <a href="{% url 'login' %}">Start again</a></p>
+{% endblock %}

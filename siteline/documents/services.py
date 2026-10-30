@@ -4,6 +4,7 @@ checksum / page count worked out for each uploaded file.
 """
 import hashlib
 import logging
+import re
 
 from django.db import transaction
 from django.utils import timezone
@@ -263,12 +264,26 @@ def file_facts(fh, name):
     return h.hexdigest(), pages
 
 
-def pdf_page_count(fh):
+_PAGE_OBJECT = re.compile(rb'/Type\s*/Page(?![a-zA-Z])')
+
+
+def pdf_page_count(fh, limit_mb=200):
+    """
+    Page count of an uploaded PDF, or None when it can't be told cheaply.
+
+    Counts page objects in the raw bytes rather than parsing the file: uploads
+    come from outside the company, and a full PDF parser on untrusted files
+    is a security liability we don't need for a display figure. PDFs that keep
+    their pages in compressed object streams give None.
+    """
     try:
-        from pypdf import PdfReader
         fh.seek(0)
-        return len(PdfReader(fh, strict=False).pages)
-    except Exception:  # noqa: BLE001 - a broken or encrypted PDF just has no page count
+        data = fh.read(limit_mb * 1024 * 1024)
+        if not data.startswith(b'%PDF'):
+            return None
+        pages = len(_PAGE_OBJECT.findall(data))
+        return pages or None
+    except Exception:  # noqa: BLE001 - a broken file just has no page count
         return None
 
 

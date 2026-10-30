@@ -5,4 +5,17 @@
 <h1>Your account</h1><p class="dim">{{ request.user.email }}</p>
 <form method="post">{% csrf_token %}{% for field in form %}{% include "partials/field.html" %}{% endfor %}<button class="btn primary">Save</button></form>
 <hr><a class="btn" href="{% url 'password_change' %}">Change password</a>
+<hr>
+<h2 id="two-factor">Two-factor sign-in</h2>
+{% if two_factor %}
+  <p><span class="badge good">On</span> <span class="small dim">since {{ two_factor.confirmed_at|date:"j M Y" }}. {{ recovery_codes_left }} recovery code{{ recovery_codes_left|pluralize }} left.</span></p>
+  <div class="row">
+    <form method="post" action="{% url 'two_factor_regenerate' %}" class="inline" data-confirm="Make new recovery codes? The old ones will stop working.">{% csrf_token %}<button class="btn">New recovery codes</button></form>
+    {% if not two_factor_required %}<form method="post" action="{% url 'two_factor_disable' %}" class="inline" data-confirm="Turn off two-factor sign-in? You'll sign in with just your password.">{% csrf_token %}<button class="btn danger">Turn off</button></form>{% endif %}
+  </div>
+  {% if two_factor_required %}<p class="small dim">Owners and admins must keep it on. To move it to a new phone, ask another owner to reset it, then set it up again.</p>{% endif %}
+{% else %}
+  <p><span class="badge {% if two_factor_required %}bad{% else %}plain{% endif %}">Off</span> <span class="small dim">Sign in with a code from your phone as well as your password, so a stolen password isn't enough.</span></p>
+  <a class="btn primary" href="{% url 'two_factor_setup' %}">Set up two-factor sign-in</a>
+{% endif %}
 {% endblock %}
