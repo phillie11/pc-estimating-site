@@ -225,6 +225,7 @@ class EveryRouteHitsTheGateTests(BidBase):
     def test_other_moves_are_untouched(self):
         with org_context(self.org_a):
             Project.objects.filter(pk=self.lead.pk).update(stage=Project.STAGE_TENDERING)
+            BidReview.objects.create(project=self.lead, decision=BidReview.PROCEED)  # already through the gate
         self.stage(self.lead, 'SUBMITTED')
         self.assertEqual(self.reload(self.lead).stage, Project.STAGE_SUBMITTED)
         r = self.stage(self.lead, 'WON')
@@ -364,6 +365,25 @@ class ReviewRegressionTests(BidBase):
         self.assertEqual(BidReview.all_objects.get(project=p).decision, BidReview.PROCEED)
         self.stage(p, 'SUBMITTED')
         self.assertEqual(self.reload(p).stage, Project.STAGE_SUBMITTED)
+
+    def test_3c_tendering_with_no_decision_is_gated_before_submitted(self):
+        """Owner decision: always mandatory, so a bid tendering from before the gate is asked at Submitted."""
+        with org_context(self.org_a):
+            p = Project.objects.create(name='Old tender', stage=Project.STAGE_TENDERING, value=Decimal('400000'),
+                                       owner=self.alice)
+        url = gate.gate_url(p, 'SUBMITTED')
+        self.assertRedirects(self.stage(p, 'SUBMITTED'), url, fetch_redirect_response=False)
+        r = self.client.post(self.url('project_stage', self.org_a, p.pk), json.dumps({'stage': 'SUBMITTED'}),
+                             content_type='application/json')
+        self.assertEqual(r.json()['redirect'], url)
+        r = self.client.post(self.url('project_edit', self.org_a, p.pk),
+                             {'name': 'Old tender', 'stage': 'SUBMITTED', 'value': '400000', 'owner': self.alice.pk})
+        self.assertEqual(r.url, url)
+        self.assertEqual(self.reload(p).stage, Project.STAGE_TENDERING)
+        # The gate page itself makes the move once answered
+        self.gate_post(p, to='SUBMITTED', q=GO)
+        self.assertEqual(self.reload(p).stage, Project.STAGE_SUBMITTED)
+        self.assertEqual(BidReview.all_objects.get(project=p).decision, BidReview.PROCEED)
 
     def test_3b_no_value_cannot_be_skipped(self):
         with org_context(self.org_a):

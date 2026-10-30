@@ -59,6 +59,10 @@ def intercept(project, old, new):
         if review is None or not review.passed_gate or old != Project.STAGE_LEAD:
             # Reopening a lost or declined bid asks again: whatever was decided then has changed
             return gate_url(project, new)
+    if old == Project.STAGE_TENDERING and new == Project.STAGE_SUBMITTED and (review is None or not review.decision):
+        # Tendering with no bid/no-bid decision on file (it started before the gate, or the decision was
+        # cleared): the check is always mandatory by default, so it is asked before the tender goes in
+        return gate_url(project, new)
     if new in BIDDING and old in BIDDING and review is not None and review.decision == BidReview.SKIPPED \
             and gate_required(project, review):
         # Skipped while it was under the threshold (or before a value was known), and now it isn't:

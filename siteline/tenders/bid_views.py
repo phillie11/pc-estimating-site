@@ -51,7 +51,9 @@ def bid_gate(request, org_slug, pk):
         messages.info(request, 'The bid/no-bid check is for bids. This job is with the projects team.')
         return redirect(project)
     to = request.POST.get('to') or request.GET.get('to')
-    moving = to in gate.BIDDING and project.stage in gate.NOT_BIDDING
+    # Into Tendering or Submitted from a lead or a closed bid, or Tendering on to Submitted (re-gated)
+    moving = to in gate.BIDDING and to != project.stage and (
+        project.stage in gate.NOT_BIDDING or project.stage == Project.STAGE_TENDERING)
     if not moving:
         to = None
     review = _review(project)
