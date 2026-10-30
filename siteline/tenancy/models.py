@@ -479,6 +479,15 @@ class TenantQuerySet(models.QuerySet):
 
     _raw_delete.alters_data = True
 
+    def raw(self, raw_query, params=(), translations=None, using=None):
+        """Hand-written SQL can't be filtered, so it is only allowed where every company is meant."""
+        if not is_unscoped():
+            raise PermissionError(
+                f'{self.model.__name__}.objects.raw() reads every company. Use the ORM, or run it inside unscoped() '
+                'with an explicit organization_id condition.'
+            )
+        return super().raw(raw_query, params, translations, using)
+
     def bulk_create(self, objs, *args, **kwargs):
         """Same rules as TenantModel.save(), checked for every object before anything is written."""
         objs = list(objs)

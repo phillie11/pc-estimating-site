@@ -181,6 +181,15 @@ class EscapeHatchTests(Base):
         with unscoped():
             self.assertEqual(qs.all().count(), 2)
 
+    def test_raw_sql_needs_unscoped(self):
+        sql = 'SELECT * FROM projects_project'
+        with org_context(self.org_b), self.assertRaises(PermissionError):
+            list(Project.objects.raw(sql))
+        with self.assertRaises(PermissionError):
+            list(Project.objects.raw(sql))
+        with unscoped():
+            self.assertEqual(len(list(Project.objects.raw(sql))), 2)
+
     def test_org_context_inside_unscoped_wins(self):
         with unscoped(), org_context(self.org_b):
             self.assertEqual(list(Project.objects.values_list('name', flat=True)), ['Bravo job'])
