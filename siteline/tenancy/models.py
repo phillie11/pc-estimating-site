@@ -8,7 +8,7 @@ from django.db import models, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
-from .context import get_current_org
+from .context import TenantContextMissing, get_current_org, is_unscoped
 
 RESERVED_SLUGS = {
     'admin', 'login', 'logout', 'signup', 'register', 'billing', 'static', 'media',
@@ -267,25 +267,165 @@ class TeamInvite(models.Model):
 # Base class for every model that belongs to one organisation
 # ---------------------------------------------------------------------------
 
-class TenantManager(models.Manager):
-    """Filters to the current organisation whenever one is set."""
+class TenantQuerySet(models.QuerySet):
+    """
+    Fails closed. A queryset made while an organisation is current is filtered
+    to it there and then. One made with none (a form field's class-level
+    queryset, a command that forgot org_context) is filtered to whichever
+    organisation is current when it runs, and raises TenantContextMissing if
+    there is none, unless it is inside unscoped(). Every way Django runs a
+    query (iteration, count, exists, aggregate, update, delete, pk__in=qs)
+    goes through _guarded() first.
+    """
 
-    def get_queryset(self):
-        qs = super().get_queryset()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tenant_org = None        # the organisation this queryset is filtered to
+        self._tenant_unscoped = False  # made inside unscoped()
+
+    def _clone(self):
+        c = super()._clone()
+        c._tenant_org, c._tenant_unscoped = self._tenant_org, self._tenant_unscoped
+        return c
+
+    def _scoped(self):
+        """Called by the manager: filter to the current organisation now, if there is one."""
         org = get_current_org()
         if org is not None:
-            qs = qs.filter(organization=org)
+            qs = self.filter(organization=org)
+            qs._tenant_org = org
+            return qs
+        self._tenant_unscoped = is_unscoped()
+        return self
+
+    def _guarded(self):
+        """This queryset, or a copy filtered to the current organisation, safe to run."""
+        current = get_current_org()
+        if self._tenant_org is not None:
+            if current is not None and current.pk != self._tenant_org.pk:
+                raise PermissionError(f'{self.model.__name__} query built for one organisation run inside another.')
+            return self
+        if self._tenant_unscoped or is_unscoped() or self.query.is_empty():
+            return self
+        if current is None:
+            raise TenantContextMissing(
+                f'{self.model.__name__}.objects queried with no current organisation. '
+                'Wrap the code in org_context(org), or use unscoped() / all_objects if it really means every company.'
+            )
+        if self.query.combinator:
+            raise TenantContextMissing(f'Build {self.model.__name__} union/intersection queries inside org_context().')
+        qs = self._chain()
+        qs.query.add_q(models.Q(organization=current))
+        qs._tenant_org = current
         return qs
+
+    # --- reads ------------------------------------------------------------
+    def _fetch_all(self):
+        if self._result_cache is None:
+            qs = self._guarded()
+            if qs is not self:
+                qs._fetch_all()
+                self._result_cache, self._prefetch_done = qs._result_cache, qs._prefetch_done
+        super()._fetch_all()
+
+    def iterator(self, chunk_size=None):
+        return super(TenantQuerySet, self._guarded()).iterator(chunk_size)
+
+    def aiterator(self, chunk_size=2000):
+        return super(TenantQuerySet, self._guarded()).aiterator(chunk_size)
+
+    def count(self):
+        if self._result_cache is not None:
+            return len(self._result_cache)
+        return super(TenantQuerySet, self._guarded()).count()
+
+    def exists(self):
+        if self._result_cache is not None:
+            return bool(self._result_cache)
+        return super(TenantQuerySet, self._guarded()).exists()
+
+    def aggregate(self, *args, **kwargs):
+        return super(TenantQuerySet, self._guarded()).aggregate(*args, **kwargs)
+
+    def explain(self, **kwargs):
+        return super(TenantQuerySet, self._guarded()).explain(**kwargs)
+
+    def resolve_expression(self, *args, **kwargs):  # used as a subquery, e.g. pk__in=qs
+        return super(TenantQuerySet, self._guarded()).resolve_expression(*args, **kwargs)
+
+    # --- writes -----------------------------------------------------------
+    def update(self, **kwargs):
+        qs = self._guarded()
+        for key in ('organization', 'organization_id'):
+            if key in kwargs:
+                target = getattr(kwargs[key], 'pk', kwargs[key])
+                if qs._tenant_org is not None and target != qs._tenant_org.pk:
+                    raise PermissionError('Refusing to move rows into a different organisation.')
+        return super(TenantQuerySet, qs).update(**kwargs)
+
+    update.alters_data = True
+
+    def _update(self, values):
+        return super(TenantQuerySet, self._guarded())._update(values)
+
+    _update.alters_data = True
+
+    def delete(self):
+        return super(TenantQuerySet, self._guarded()).delete()
+
+    delete.alters_data = True
+    delete.queryset_only = True
+
+    def _raw_delete(self, using):
+        return super(TenantQuerySet, self._guarded())._raw_delete(using)
+
+    _raw_delete.alters_data = True
+
+    def bulk_create(self, objs, *args, **kwargs):
+        """Same rules as TenantModel.save(), checked for every object before anything is written."""
+        objs = list(objs)
+        current = get_current_org() or self._tenant_org
+        if current is None and not (self._tenant_unscoped or is_unscoped()):
+            raise TenantContextMissing(f'{self.model.__name__}.objects.bulk_create() with no current organisation.')
+        for obj in objs:
+            if not obj.organization_id:
+                if current is None:
+                    raise ImproperlyConfigured(
+                        f'{type(obj).__name__} bulk-created with no organisation and no current org context.'
+                    )
+                obj.organization = current
+            elif current is not None and obj.organization_id != current.pk:
+                raise PermissionError('Refusing to write a row into a different organisation.')
+        return super().bulk_create(objs, *args, **kwargs)
+
+    bulk_create.alters_data = True
+
+
+class TenantManager(models.Manager.from_queryset(TenantQuerySet)):
+    """
+    Scopes to the current organisation and fails closed without one (see
+    TenantQuerySet). It is the default manager, so reverse and many-to-many
+    related managers (project.rfis, sub.trades), ModelChoiceFields and model
+    form unique checks are scoped the same way.
+    """
+
+    def get_queryset(self):
+        return super().get_queryset()._scoped()
 
 
 class TenantModel(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, editable=False, related_name='+')
 
     objects = TenantManager()
-    all_objects = models.Manager()  # unscoped: admin, webhooks, management commands only
+    # Unscoped escape hatch: admin, webhooks, token lookups, cross-company commands only.
+    all_objects = models.Manager()
 
     class Meta:
         abstract = True
+        # Django uses the base manager to follow a foreign key (rfi.project), refresh_from_db,
+        # save()'s UPDATE and delete cascades. Each of those is pinned to a pk or FK value from
+        # a row the caller already holds, so it cannot list another company's data, and keeping
+        # it unscoped means cascades and FK access still work outside a request.
         base_manager_name = 'all_objects'
 
     def save(self, *args, **kwargs):
