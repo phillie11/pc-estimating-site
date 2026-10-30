@@ -54,8 +54,9 @@ def project_context(request, project, tab, **extra):
     section = use_section(request, project.section)
     base = {'project': project, 'tab': tab, 'project_member': getattr(request, 'project_member', None),
             'section': section, **extra}
+    from actions.tabs import arrange  # row layout, "More" menu and the external portal's five tabs
     if is_bidder(request):
-        return {**base, 'tabs': [('tender', 'Your tender', url('tender'), None)]}
+        return {**base, **arrange(request, project, [('tender', 'Your tender', url('tender'), None)], tab)}
 
     tabs = [('overview', 'Overview', url('project_detail'), None)]
     if internal and section == 'estimating':
@@ -64,7 +65,7 @@ def project_context(request, project, tab, **extra):
                  ('packages', 'Sub quotes', url('package_list'), quotes),
                  ('documents', 'Documents', url('document_list'), None),
                  ('team', 'Team', url('project_team'), None)]
-        return {**base, 'tabs': tabs}
+        return {**base, **arrange(request, project, tabs, tab)}
 
     from rfis.models import RFI
     rfi_qs = RFI.objects.filter(project=project, status=RFI.STATUS_OPEN)
@@ -97,7 +98,7 @@ def project_context(request, project, tab, **extra):
         ('documents', 'Documents', url('document_list'), None),
         ('team', 'Team', url('project_team'), None),
     ]
-    return {**base, 'tabs': tabs}
+    return {**base, **arrange(request, project, tabs, tab)}
 
 
 def comments_for(request, obj):
@@ -168,6 +169,10 @@ def project_list(request, org_slug, section=None):
         qs = qs.filter(stage__in=groups[view])
     if q:
         qs = qs.filter(Q(name__icontains=q) | Q(client_name__icontains=q) | Q(site_address__icontains=q))
+    narrowed = []
+    if internal:  # the filters each dashboard number links to (actions/filters.py)
+        from actions.filters import apply as apply_dashboard_filters
+        qs, narrowed = apply_dashboard_filters(request, qs, section)
     if request.GET.get('export') == 'csv' and is_internal(request):
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = 'attachment; filename="projects.csv"'
@@ -179,7 +184,7 @@ def project_list(request, org_slug, section=None):
                         p.start_date or '', p.completion_date or '', p.owner or ''])
         return resp
     return render(request, 'projects/project_list.html', {'projects': qs, 'view': view, 'q': q, 'groups': groups,
-                                                          'list_section': section})
+                                                          'list_section': section, 'narrowed': narrowed})
 
 
 @internal_required
@@ -663,7 +668,7 @@ def task_list(request, org_slug, pk):
             t.project, t.created_by = project, request.user
             t.save()
             notify_assignee(request, t.assignee, f'Task: {t.title}', project,
-                            reverse('task_list', args=[org_slug, pk]))
+                            reverse('task_list', args=[org_slug, pk]) + f'#task-{t.pk}')
             log_activity(request, 'added task', t.title, project=project)
             return redirect('task_list', org_slug=org_slug, pk=pk)
     show = request.GET.get('show', 'open')

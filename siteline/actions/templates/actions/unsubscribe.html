@@ -1,0 +1,24 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Round-up emails{% endblock %}
+{% block auth %}
+{% if invalid %}
+  <h1>This link doesn't work</h1>
+  <p class="dim">It may have been copied incompletely. Log in and change your round-up email on <a href="{% url 'profile' %}">your account page</a>.</p>
+{% elif done %}
+  <h1>Saved</h1>
+  <p>Round-up email for {{ who.email }}: <strong>{{ done|lower }}</strong>.</p>
+  <p class="dim">You'll still get an email when someone sends you something directly, such as a variation to approve. Change this any time on <a href="{% url 'profile' %}">your account page</a>.</p>
+{% else %}
+  <h1>Round-up emails</h1>
+  <p>For {{ who.email }}. The round-up lists what is waiting on you in {{ PRODUCT_NAME }}.</p>
+  <form method="post">{% csrf_token %}
+    <input type="hidden" name="frequency" value="OFF">
+    <button class="btn primary block">Stop round-up emails</button>
+  </form>
+  {% if current != 'WEEKLY' %}<form method="post" style="margin-top:10px">{% csrf_token %}
+    <input type="hidden" name="frequency" value="WEEKLY">
+    <button class="btn block">Send it weekly instead, on Mondays</button>
+  </form>{% endif %}
+  <p class="small dim" style="margin-top:14px">Nothing changes until you press a button. Emails about things sent to you directly still arrive.</p>
+{% endif %}
+{% endblock %}

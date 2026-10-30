@@ -1,0 +1,18 @@
+{% load ui %}{% comment %}
+A register of things to act on: ref, what it is, project, due date, status. Rows are
+anything with ref, title, url, project (or project_name), due, status_label + tone (or a
+model with get_status_display + status_tone), and optionally amount, action and detail;
+actions.Item fits.
+  {% include "partials/register_table.html" with rows=items show_project=True show_money=True %}
+Pass empty_title / empty_message / empty_cta_url / empty_cta_label for the empty state.
+{% endcomment %}{% if rows %}<div class="table-wrap"><table class="t register">
+  <thead><tr><th>Ref</th><th>What</th>{% if show_project %}<th>Project</th>{% endif %}<th>Due</th>{% if show_money %}<th class="num">Value</th>{% endif %}<th>Status</th></tr></thead>
+  <tbody>{% for r in rows %}<tr class="{% if r.priority == 'high' %}high{% endif %}">
+    <td class="ref">{{ r.ref|default:"—" }}</td>
+    <td><a class="rowlink" href="{{ r.url }}">{{ r.title }}</a>{% if r.action or r.detail %}<span class="sub">{{ r.action }}{% if r.action and r.detail %} · {% endif %}{{ r.detail }}</span>{% endif %}</td>
+    {% if show_project %}<td class="small">{% if r.project %}<a href="{{ r.project.get_absolute_url }}">{{ r.project.name }}</a>{% else %}—{% endif %}</td>{% endif %}
+    <td class="small nowrap{% if r.is_overdue %} overdue{% endif %}">{% if r.due %}{{ r.due|date:"D j M" }}{% else %}<span class="dim">No date</span>{% endif %}</td>
+    {% if show_money %}<td class="num">{% if r.amount is not None %}{{ r.amount|money_exact:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>{% endif %}
+    <td>{% if r.status_label %}<span class="badge {{ r.tone|default:'muted' }}">{{ r.status_label }}</span>{% else %}{% include "partials/status_badge.html" with obj=r %}{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+{% else %}{% include "partials/empty_state.html" with title=empty_title message=empty_message cta_url=empty_cta_url cta_label=empty_cta_label left=True %}{% endif %}

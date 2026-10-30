@@ -1,0 +1,7 @@
+{% comment %}
+A status shown as words plus a tone, never colour alone.
+  {% include "partials/status_badge.html" with obj=variation %}        uses obj.get_status_display and obj.status_tone
+  {% include "partials/status_badge.html" with label="Overdue" tone="bad" %}
+Or the tag: {% status_badge variation %} / {% status_badge "Overdue" "bad" %} (tenancy/templatetags/ui.py).
+Tones: good, warn, bad, info, accent, muted.
+{% endcomment %}{% if obj %}<span class="badge {{ obj.status_tone|default:'muted' }}">{% if obj.get_status_display %}{{ obj.get_status_display }}{% else %}{{ obj.status_label }}{% endif %}</span>{% else %}<span class="badge {{ tone|default:'muted' }}">{{ label }}</span>{% endif %}

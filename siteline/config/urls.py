@@ -6,6 +6,7 @@ from django.http import HttpResponse
 from django.urls import include, path
 
 from accounts import views as accounts
+from actions import views as actions
 from billing import views as billing
 from security import views as security
 
@@ -27,6 +28,8 @@ urlpatterns = [
     path('home/', accounts.home, name='home'),
     path('orgs/', accounts.org_picker, name='org_picker'),
     path('account/', accounts.profile, name='profile'),
+    path('account/round-up/', actions.digest_preference, name='digest_preference'),
+    path('round-up/<str:token>/', actions.digest_unsubscribe, name='digest_unsubscribe'),
     path('account/password/', auth_views.PasswordChangeView.as_view(
         template_name='accounts/password_change.html', success_url='/account/'), name='password_change'),
     path('account/two-factor/', security.two_factor_setup, name='two_factor_setup'),

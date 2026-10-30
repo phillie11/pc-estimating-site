@@ -84,6 +84,49 @@
     }
   }
 
+  // Drop-down menus (<details data-menu>): close on a click elsewhere, on Escape, and when another opens
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('details[data-menu][open]').forEach(function (d) {
+      if (!d.contains(e.target)) d.removeAttribute('open');
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('details[data-menu][open]').forEach(function (d) {
+      d.removeAttribute('open');
+      var s = d.querySelector('summary'); if (s) s.focus();
+    });
+  });
+
+  // Project tabs: show which edge has more tabs (fade + arrow), and bring the current tab into view
+  document.querySelectorAll('[data-tabbar]').forEach(function (bar) {
+    var row = bar.querySelector('.tabs');
+    if (!row) return;
+    var more = bar.querySelector('.tabmore');
+    ['l', 'r'].forEach(function (side) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'scroll-hint ' + side;
+      b.setAttribute('aria-label', side === 'l' ? 'Scroll tabs left' : 'Scroll tabs right');
+      b.textContent = side === 'l' ? '‹' : '›';
+      b.addEventListener('click', function () { row.scrollBy({ left: (side === 'l' ? -1 : 1) * row.clientWidth * 0.7 }); });
+      bar.appendChild(b);
+    });
+    function update() {
+      if (more) bar.style.setProperty('--more-w', more.offsetWidth + 'px');
+      bar.classList.toggle('can-left', row.scrollLeft > 2);
+      bar.classList.toggle('can-right', row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+    }
+    var on = row.querySelector('a.on');
+    if (on && row.scrollWidth > row.clientWidth) {
+      row.style.scrollBehavior = 'auto';
+      row.scrollLeft = Math.max(0, on.offsetLeft - row.clientWidth / 3);
+      row.style.scrollBehavior = '';
+    }
+    row.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+  });
+
   // Gantt: when the chart is wider than the screen, open it with today in view
   document.querySelectorAll('.gantt-wrap').forEach(function (wrap) {
     var today = wrap.querySelector('.g-lines .today');

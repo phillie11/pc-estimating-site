@@ -1,5 +1,6 @@
 from django.urls import include, path
 
+from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
 from delivery import views as delivery
@@ -19,6 +20,8 @@ urlpatterns = [
     path('activity/', views.activity, name='activity'),
     path('notifications/', views.notifications, name='notifications'),
     path('notifications/<int:pk>/', views.notification_open, name='notification_open'),
+    path('needs-me/', actions.needs_me, name='needs_me'),
+    path('_ui/', actions.ui_kit, name='ui_kit'),
     path('team/', views.team, name='team'),
     path('team/<int:pk>/', views.member_update, name='member_update'),
     path('team/invites/<int:pk>/revoke/', views.invite_revoke, name='invite_revoke'),
@@ -48,6 +51,7 @@ urlpatterns = [
     path(P + 'stage/', projects.project_stage, name='project_stage'),
     path(P + 'handover/', projects.project_handover, name='project_handover'),
     path(P + 'team/', projects.project_team, name='project_team'),
+    path(P + 'decisions/', actions.project_decisions, name='project_decisions'),
 
     path(P + 'programme/', projects.programme, name='programme'),
     path(P + 'programme/<int:activity_id>/', projects.activity_edit, name='activity_edit'),

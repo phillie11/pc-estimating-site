@@ -348,6 +348,11 @@ class Command(BaseCommand):
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')
             due = kings.quotes_due
+            # Something on the estimators' "Needs me" lists too
+            Task.objects.create(project=kings, title='Chase drylining clarifications before the return', assignee=est,
+                                due_date=today + timedelta(days=1), priority='HIGH', created_by=owner)
+            Task.objects.create(project=kings, title='Agree tender margin and sign off the return', assignee=owner,
+                                due_date=today + timedelta(days=4), created_by=est)
             for title, ref in [('Tender drawings – GA plans', 'KW-A-100'), ('Specification – fit-out', 'KW-SPEC-01'),
                                ('Reflected ceiling plans', 'KW-A-300')]:
                 d = Document.objects.create(project=kings, title=title, reference=ref, category='TENDER',

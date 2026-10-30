@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 
 from directory.models import Subcontractor
 from projects.access import is_internal, openable, portal_projects, visible_projects
-from projects.models import Issue, Project, Task
+from projects.models import Issue, Project, ProjectMember, Task
 from rfis.models import RFI
 from variations.models import Variation
 
@@ -29,6 +29,8 @@ def dashboard(request, org_slug):
         section = section if section in sections else sections[0]
         return redirect('estimating_home' if section == 'estimating' else 'delivery_home', org_slug=org_slug)
 
+    import actions
+    from actions.visits import unseen_counts
     from directory.models import Package
     user = request.user
     portal = portal_projects(request)
@@ -39,11 +41,21 @@ def dashboard(request, org_slug):
     subs = user.project_memberships.filter(organization=request.org, subcontractor__isnull=False) \
         .values_list('subcontractor_id', flat=True)
     tenders = Package.objects.filter(subcontractor_id__in=subs, status__in=Package.OPEN_STATUSES,
-                                     project__members__user=user).distinct().select_related('project', 'trade')
+                                     project__members__user=user, project__archived_at__isnull=True) \
+        .distinct().select_related('project', 'trade')
+    waiting = actions.for_user(request)
+    is_client = user.project_memberships.filter(organization=request.org, role=ProjectMember.ROLE_CLIENT,
+                                                project__in=portal).exists()
+    projects = list(portal.exclude(stage__in=Project.CLOSED_STAGES))
+    unseen = unseen_counts(request, projects)
+    for p in projects:
+        p.unseen = unseen.get(p.pk, 0)
     return render(request, 'tenancy/dashboard_external.html', {
         'tenders': tenders,
-        'projects': portal.exclude(stage__in=Project.CLOSED_STAGES),
+        'projects': projects,
         'activity': ActivityEvent.objects.filter(project__in=portal, internal_only=False).select_related('actor', 'project')[:15],
+        'waiting': waiting[:12], 'waiting_count': len(waiting),
+        'waiting_money': actions.total(waiting), 'is_client': is_client,
         **plate,
     })
 
@@ -71,6 +83,8 @@ def _my_plate(request, projects):
 
 @estimating_required
 def estimating_home(request, org_slug):
+    import actions
+    from actions.filters import returns_within
     from directory.models import Package
     from projects.views import use_section
     from tenders.models import TenderQuery
@@ -91,8 +105,7 @@ def estimating_home(request, org_slug):
             'weighted': sum((p.weighted_value or 0) for p in pipeline.select_related(None).only('value', 'probability')),
             'win_rate': round(100 * won / (won + lost)) if (won + lost) else None, 'won': won, 'lost': lost,
             'won_value': decided.filter(stage__in=Project.WON_STAGES).aggregate(s=Sum('value'))['s'] or Decimal('0'),
-            'returns_14': pipeline.exclude(stage=Project.STAGE_SUBMITTED)
-            .filter(tender_due__lte=timezone.now() + timedelta(days=14)).count(),
+            'returns_14': returns_within(pipeline, 14).count(),
             'quotes_awaited': awaited.count(), 'quotes_overdue': awaited.filter(quote_due__lt=today).count(),
             'queries': TenderQuery.objects.filter(project__in=pipeline, answered_at__isnull=True).count(),
         },
@@ -101,6 +114,7 @@ def estimating_home(request, org_slug):
         'awaited': awaited.order_by('quote_due')[:10],
         'my_bids': pipeline.filter(owner=request.user).order_by('tender_due')[:8],
         'activity': ActivityEvent.objects.filter(project__in=bids).select_related('actor', 'project')[:12],
+        'plate_items': actions.for_user(request)[:8],
         'org_empty': not Project.objects.exists(),
     }
     return render(request, 'tenancy/estimating_home.html', ctx)
@@ -108,6 +122,7 @@ def estimating_home(request, org_slug):
 
 @delivery_required
 def delivery_home(request, org_slug):
+    import actions
     from delivery.models import Rams, SubVariation
     from directory.models import Package
     from projects.views import use_section
@@ -140,6 +155,7 @@ def delivery_home(request, org_slug):
                       .distinct().filter(Q(public_liability_expiry__lte=today + timedelta(days=30)) |
                                          Q(employers_liability_expiry__lte=today + timedelta(days=30)))][:8],
         'activity': ActivityEvent.objects.filter(project__in=jobs).select_related('actor', 'project')[:12],
+        'plate_items': actions.for_user(request)[:8],
         **_my_plate(request, live),
     }
     return render(request, 'tenancy/delivery_home.html', ctx)

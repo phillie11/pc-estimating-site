@@ -1,0 +1,40 @@
+{% extends "base.html" %}{% load ui %}
+{% block body_class %}portal{% endblock %}
+{% block body %}
+{% with u=request.resolver_match.url_name %}
+<header class="pbar">
+  <a class="pbar-brand" href="{% url 'dashboard' org.slug %}">
+    {% if org.logo %}<img src="{% url 'org_logo' org.slug %}" alt="">{% else %}<span class="mark">{{ org.name|first|upper }}</span>{% endif %}
+    <span class="name">{{ org.name }}</span>
+  </a>
+  <details class="pswitch" data-menu>
+    <summary aria-label="Switch project"><span class="lbl">{% if project %}{{ project.name }}{% else %}Your projects{% endif %}</span><span class="caret" aria-hidden="true">▾</span></summary>
+    <div class="pmenu" role="menu">
+      {% for p in portal_switcher %}<a role="menuitem" href="{{ p.url }}" class="{% if project and p.pk == project.pk %}on{% endif %}">{{ p.name }}{% if p.sub %}<span class="sub">{{ p.sub }}</span>{% endif %}</a>
+      {% empty %}<span class="dim small" style="padding:8px 12px;display:block">No open projects shared with you.</span>{% endfor %}
+      <a role="menuitem" class="foot" href="{% url 'project_list' org.slug %}">All your projects, including finished ones</a>
+      <a role="menuitem" class="foot" href="{% url 'rfi_register' org.slug %}">Every RFI across your projects</a>
+    </div>
+  </details>
+  <nav class="pnav" aria-label="Portal">
+    <a href="{% url 'dashboard' org.slug %}" class="{% if u == 'dashboard' %}on{% endif %}">{% icon 'home' %}<span class="t">Home</span></a>
+    <a href="{% url 'needs_me' org.slug %}" class="{% if u == 'needs_me' %}on{% endif %}" aria-label="Needs me: {{ needs_me_count }} waiting">{% icon 'inbox' %}<span class="t">Needs me</span>{% if needs_me_count %}<span class="n">{{ needs_me_count|badge_count }}</span>{% endif %}</a>
+    <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}" aria-label="Notifications{% if unread_notifications %}: {{ unread_notifications }} unread{% endif %}">{% icon 'bell' %}{% if unread_notifications %}<span class="n">{{ unread_notifications }}</span>{% endif %}</a>
+    <details class="pacct" data-menu>
+      <summary aria-label="Your account"><span class="avatar">{{ request.user.initials }}</span></summary>
+      <div class="pmenu right" role="menu">
+        <span class="small dim" style="padding:8px 12px;display:block">{{ request.user.full_name }}<br>{{ request.user.email }}</span>
+        <a role="menuitem" href="{% url 'profile' %}">Your account</a>
+        {% for o in other_orgs %}<a role="menuitem" href="{% url 'dashboard' o.slug %}">Switch to {{ o.name }}</a>{% endfor %}
+        <a role="menuitem" href="{% url 'org_picker' %}">All workspaces</a>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button role="menuitem">Log out</button></form>
+      </div>
+    </details>
+  </nav>
+</header>
+{% endwith %}
+<main class="main portal-main">
+  {% include "partials/messages.html" %}
+  {% block content %}{% endblock %}
+</main>
+{% endblock %}

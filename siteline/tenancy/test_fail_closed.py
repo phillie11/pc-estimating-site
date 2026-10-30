@@ -301,6 +301,9 @@ class SendRemindersTests(Base):
         soon = timezone.now() + timedelta(days=1)
         with org_context(self.org_a):
             RFI.objects.filter(pk=self.rfi_a.pk).update(ball_in_court_user=self.alice, due_date=late)
+            # update() skips the record index, which the digest reads (through the Needs me registry)
+            from core.models import index_record
+            index_record(RFI.objects.get(pk=self.rfi_a.pk))
             Project.objects.create(name='Alpha tender', stage=Project.STAGE_TENDERING, tender_due=soon)
         with org_context(self.org_b):
             RFI.objects.create(project=self.pb, title='Bravo question', question='?', ball_in_court_user=self.bob, due_date=late)

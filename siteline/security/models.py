@@ -9,7 +9,7 @@ the signed-in user, or by a user an owner has picked from their own workspace's 
 import secrets
 
 from django.conf import settings
-from django.contrib.auth.hashers import PBKDF2PasswordHasher, check_password
+from django.contrib.auth.hashers import PBKDF2PasswordHasher
 from django.db import models, transaction
 from django.utils import timezone
 
@@ -185,9 +185,11 @@ class RecoveryCode(models.Model):
         code = normalise_recovery_code(code)
         if len(code) != RECOVERY_CODE_LENGTH:
             return False
+        # Verify with the hasher that made the codes, not the site's PASSWORD_HASHERS list.
+        hasher = _hasher()
         with transaction.atomic():
             for rc in cls.objects.select_for_update().filter(user=user, used_at__isnull=True):
-                if check_password(code, rc.code_hash):
+                if hasher.verify(code, rc.code_hash):
                     rc.used_at = timezone.now()
                     rc.save(update_fields=['used_at'])
                     return True

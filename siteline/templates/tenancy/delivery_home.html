@@ -2,30 +2,31 @@
 {% block title %}Projects{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><div class="eyebrow">Projects · {% now "l j F" %}</div><h1>Morning, {{ request.user.get_short_name }}</h1></div>
+  <div><div class="eyebrow">Projects · {% now "l j F" %}</div><h1>{% greeting %}, {{ request.user.get_short_name }}</h1></div>
   <div class="row"><a href="{% url 'workload' org.slug %}?view=secured" class="btn">Secured work</a></div>
 </div>
 {% if unassigned %}<div class="banner">{{ unassigned|length }} won job{{ unassigned|length|pluralize }} without a project manager: {% for p in unassigned %}<a href="{% url 'project_handover' org.slug p.pk %}">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
-<div class="kpis">
-  <div class="kpi hero"><div class="label">Live jobs</div><div class="value">{{ kpi.live }}</div><div class="note">{{ kpi.mine }} yours</div></div>
-  <div class="kpi"><div class="label">RAMS to review</div><div class="value">{% if kpi.rams %}<span class="bad">{{ kpi.rams }}</span>{% else %}0{% endif %}</div></div>
-  <div class="kpi"><div class="label">Sub variations to decide</div><div class="value">{{ kpi.subvars_value|money_short:currency }}</div><div class="note">{{ kpi.subvars }} awaiting</div></div>
-  <div class="kpi"><div class="label">With the client</div><div class="value">{{ kpi.client_vos_value|money_short:currency }}</div><div class="note">{{ kpi.client_vos }} variation{{ kpi.client_vos|pluralize }} awaiting approval</div></div>
-  <div class="kpi"><div class="label">Open RFIs</div><div class="value">{{ kpi.open_rfis }}</div><div class="note">{% if kpi.overdue_rfis %}<span class="bad">{{ kpi.overdue_rfis }} overdue</span>{% else %}none overdue{% endif %}</div></div>
-  <div class="kpi"><div class="label">Packages to appoint</div><div class="value">{{ kpi.to_appoint }}</div><div class="note">trades still out to tender</div></div>
+{% url 'project_list' org.slug as jobs %}{% url 'rfi_register' org.slug as rfis %}<div class="kpis">
+  <div class="kpi hero"><a href="{{ jobs }}?view=live" style="text-decoration:none;color:inherit"><div class="label">Live jobs</div><div class="value">{{ kpi.live }}</div></a><div class="note"><a href="{{ jobs }}?view=live&amp;mine=1" style="color:inherit">{{ kpi.mine }} yours</a></div></div>
+  <a class="kpi" href="{{ jobs }}?view=live&amp;attention=rams"><div class="label">RAMS to review</div><div class="value">{% if kpi.rams %}<span class="bad">{{ kpi.rams }}</span>{% else %}0{% endif %}</div><div class="note">on live jobs</div></a>
+  <a class="kpi" href="{{ jobs }}?view=live&amp;attention=subvars"><div class="label">Sub variations to decide</div><div class="value">{{ kpi.subvars_value|money_short:currency }}</div><div class="note">{{ kpi.subvars }} awaiting</div></a>
+  <a class="kpi" href="{{ jobs }}?view=live&amp;attention=client_vos"><div class="label">With the client</div><div class="value">{{ kpi.client_vos_value|money_short:currency }}</div><div class="note">{{ kpi.client_vos }} variation{{ kpi.client_vos|pluralize }} awaiting approval</div></a>
+  <div class="kpi"><a href="{{ rfis }}?status=open&amp;scope=live" style="text-decoration:none;color:inherit"><div class="label">Open RFIs</div><div class="value">{{ kpi.open_rfis }}</div></a><div class="note">{% if kpi.overdue_rfis %}<a class="bad" href="{{ rfis }}?status=open&amp;scope=live&amp;overdue=1">{{ kpi.overdue_rfis }} overdue</a>{% else %}none overdue{% endif %}</div></div>
+  <a class="kpi" href="{{ jobs }}?view=live&amp;attention=appoint"><div class="label">Packages to appoint</div><div class="value">{{ kpi.to_appoint }}</div><div class="note">trades still out to tender</div></a>
+  <a class="kpi" href="{% url 'needs_me' org.slug %}"><div class="label">Needs me</div><div class="value">{{ needs_me_count }}</div><div class="note">waiting on you personally</div></a>
 </div>
 <div class="grid split">
   <div class="stack">
-    <div class="card"><div class="card-head"><h2>Your jobs</h2><a class="small" href="{% url 'project_list' org.slug %}">All projects →</a></div>
+    <div class="card"><div class="card-head"><h2>Your jobs</h2><a class="small" href="{{ jobs }}?view=live&amp;mine=1">All yours →</a></div>
       {% if my_jobs %}<div class="table-wrap"><table class="t"><tbody>{% for p in my_jobs %}<tr>
         <td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}</span></td>
         <td class="small nowrap">{% if p.start_date %}{{ p.start_date|date:"j M" }} – {{ p.completion_date|date:"j M y"|default:"?" }}{% else %}<span class="dim">No dates</span>{% endif %}</td>
         <td>{% badge p.get_stage_display p.stage_tone %}</td></tr>{% endfor %}</tbody></table></div>
       {% else %}<div class="empty left">You aren't project manager on a live job.</div>{% endif %}</div>
-    <div class="card"><div class="card-head"><h2>RAMS awaiting review</h2></div>
+    <div class="card"><div class="card-head"><h2>RAMS awaiting review</h2>{% if kpi.rams %}<a class="small" href="{{ jobs }}?view=live&amp;attention=rams">Jobs with RAMS waiting →</a>{% endif %}</div>
       {% if rams %}<ul class="list">{% for r in rams %}<li><span class="grow"><a href="{{ r.get_absolute_url }}">{{ r.title }}</a> <span class="dim small">· {{ r.subcontractor }} · {{ r.project.name }}</span></span><span class="small dim nowrap">{{ r.submitted_at|timesince }} ago</span></li>{% endfor %}</ul>
       {% else %}<div class="empty left">Nothing to review.</div>{% endif %}</div>
-    <div class="card"><div class="card-head"><h2>Subcontractor variations to decide</h2></div>
+    <div class="card"><div class="card-head"><h2>Subcontractor variations to decide</h2>{% if kpi.subvars %}<a class="small" href="{{ jobs }}?view=live&amp;attention=subvars">Jobs with variations waiting →</a>{% endif %}</div>
       {% if subvars %}<ul class="list">{% for v in subvars %}<li><span class="ref">{{ v.reference }}</span><span class="grow"><a href="{{ v.get_absolute_url }}">{{ v.title }}</a> <span class="dim small">· {{ v.subcontractor }} · {{ v.project.name }}</span></span><span class="mono small">{{ v.value|money:currency }}</span></li>{% endfor %}</ul>
       {% else %}<div class="empty left">Nothing waiting.</div>{% endif %}</div>
   </div>

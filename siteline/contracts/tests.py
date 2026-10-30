@@ -258,6 +258,9 @@ class ContractViewTests(CommercialTestBase):
         self.login(self.carla)
         r = self.client.get(self.url('project_detail', self.pa.pk))
         self.assertNotContains(r, 'Commercial')
+        # Externals' client variations sit under their "Waiting on you" tab (actions/tabs.py)
+        r = self.client.get(self.url('project_decisions', self.pa.pk))
+        self.assertNotContains(r, 'Commercial')
         self.assertContains(r, self.url('variation_list', self.pa.pk))
 
 

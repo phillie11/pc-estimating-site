@@ -1,0 +1,69 @@
+{% extends "base.html" %}{% load ui %}
+{% block body_class %}staff{% endblock %}
+{% block body %}
+<div class="topbar"><button data-nav-toggle aria-label="Menu">{% icon 'menu' %}</button>
+  <span class="mark" style="width:26px;height:26px;border-radius:4px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:800">{{ org.name|first|upper }}</span>
+  <strong>{{ org.name }}</strong>
+  <a class="needs" href="{% url 'needs_me' org.slug %}" aria-label="Needs me: {{ needs_me_count }} waiting">{% icon 'inbox' %}{% if needs_me_count %}<span>{{ needs_me_count|badge_count }}</span>{% endif %}</a>
+  <a class="bell" href="{% url 'notifications' org.slug %}" aria-label="Notifications">{% icon 'bell' %}{% if unread_notifications %}<span>{{ unread_notifications }}</span>{% endif %}</a></div>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="{% url 'dashboard' org.slug %}">
+      {% if org.logo %}<img src="{% url 'org_logo' org.slug %}" alt="">{% else %}<span class="mark">{{ org.name|first|upper }}</span>{% endif %}
+      <span><span class="name">{{ org.name }}</span><br><span class="sub">{% if section == 'estimating' %}Estimating{% else %}Projects{% endif %}</span></span>
+    </a>
+    {% if membership.can_estimate and membership.can_deliver %}
+    <div class="switch" role="tablist" aria-label="Section">
+      <a role="tab" href="{% url 'estimating_home' org.slug %}" class="{% if section == 'estimating' %}on{% endif %}" aria-selected="{% if section == 'estimating' %}true{% else %}false{% endif %}">Estimating</a>
+      <a role="tab" href="{% url 'delivery_home' org.slug %}" class="{% if section == 'delivery' %}on{% endif %}" aria-selected="{% if section == 'delivery' %}true{% else %}false{% endif %}">Projects</a>
+    </div>{% endif %}
+    {% with u=request.resolver_match.url_name %}
+    <nav class="nav">
+      {% if section == 'estimating' %}
+      <a href="{% url 'estimating_home' org.slug %}" class="{% if u == 'estimating_home' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
+      {% else %}
+      <a href="{% url 'delivery_home' org.slug %}" class="{% if u == 'delivery_home' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
+      {% endif %}
+      <a href="{% url 'needs_me' org.slug %}" class="{% if u == 'needs_me' %}on{% endif %}">{% icon 'inbox' %} Needs me{% if needs_me_count %}<span class="count unread">{{ needs_me_count|badge_count }}</span>{% endif %}</a>
+      <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}">{% icon 'bell' %} Notifications{% if unread_notifications %}<span class="count unread">{{ unread_notifications }}</span>{% endif %}</a>
+      {% if section == 'estimating' %}
+      <a href="{% url 'bid_list' org.slug %}" class="{% if project or u == 'bid_list' or u == 'project_create' %}on{% endif %}">{% icon 'tender' %} Bids</a>
+      <a href="{% url 'pipeline' org.slug %}" class="{% if u == 'pipeline' %}on{% endif %}">{% icon 'pipeline' %} Bid pipeline</a>
+      <a href="{% url 'workload' org.slug %}?view=tenders" class="{% if u == 'workload' %}on{% endif %}">{% icon 'programme' %} Tender workload</a>
+      <a href="{% url 'tender_analytics' org.slug %}" class="{% if u == 'tender_analytics' %}on{% endif %}">{% icon 'chart' %} Tender analytics</a>
+      {% else %}
+      <a href="{% url 'project_list' org.slug %}" class="{% if project or u == 'project_list' or u == 'project_create' %}on{% endif %}">{% icon 'projects' %} Projects</a>
+      <a href="{% url 'workload' org.slug %}?view=secured" class="{% if u == 'workload' %}on{% endif %}">{% icon 'programme' %} Secured work</a>
+      <a href="{% url 'rfi_register' org.slug %}" class="{% if u == 'rfi_register' %}on{% endif %}">{% icon 'rfi' %} RFI register</a>
+      {% endif %}
+      <a href="{% url 'sub_list' org.slug %}" class="{% if u == 'sub_list' or u == 'sub_detail' or u == 'sub_create' or u == 'sub_edit' or u == 'trades' %}on{% endif %}">{% icon 'directory' %} Supply chain</a>
+      <div class="nav-label">Company</div>
+      <a href="{% url 'team' org.slug %}" class="{% if u == 'team' %}on{% endif %}">{% icon 'team' %} Team</a>
+      <a href="{% url 'activity' org.slug %}" class="{% if u == 'activity' %}on{% endif %}">{% icon 'activity' %} Activity</a>
+      {% if is_org_admin %}
+      <a href="{% url 'org_settings' org.slug %}" class="{% if u == 'org_settings' %}on{% endif %}">{% icon 'settings' %} Settings</a>
+      <a href="{% url 'billing' org.slug %}" class="{% if u == 'billing' %}on{% endif %}">{% icon 'billing' %} Billing</a>
+      {% endif %}
+    </nav>
+    {% endwith %}
+    {% if is_org_admin and org.is_on_internal_trial %}<a class="trial-pill" href="{% url 'billing' org.slug %}"><strong>{{ org.trial_days_left }} day{{ org.trial_days_left|pluralize }}</strong> left in your trial. Choose a plan →</a>{% endif %}
+    <div class="side-foot">
+      <details>
+        <summary><div class="who"><span class="avatar">{{ request.user.initials }}</span><span><span style="color:#fff">{{ request.user.full_name }}</span><br><span class="small" style="color:var(--side-dim)">{{ membership.get_role_display }}</span></span></div></summary>
+        <div class="menu">
+          <a href="{% url 'profile' %}">Your account</a>
+          <a href="{% url 'ui_kit' org.slug %}">Screen parts (for builders)</a>
+          {% for o in other_orgs %}<a href="{% url 'dashboard' o.slug %}">Switch to {{ o.name }}</a>{% endfor %}
+          <a href="{% url 'org_picker' %}">All workspaces</a>
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>Log out</button></form>
+        </div>
+      </details>
+    </div>
+  </aside>
+  <main class="main">
+    {% if org.access_state == 'ok' and org.subscription_status == 'past_due' and is_org_admin %}<div class="banner">Your last payment failed. Update your card to keep the workspace open. <a href="{% url 'billing_portal' org.slug %}">Update billing</a></div>{% endif %}
+    {% include "partials/messages.html" %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

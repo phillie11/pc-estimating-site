@@ -153,9 +153,11 @@ class RateLimitMiddleware:
 # Two-factor required for owners and admins
 # ---------------------------------------------------------------------------
 
-# Reachable without two-factor set up: signing out, setting it up, and the error pages it might hit
+# Reachable without two-factor set up: signing out, setting it up, and the error pages it might hit.
+# digest_unsubscribe is the signed one-click link in the round-up email: the token, not the
+# session, says whose email to stop, so an owner who happens to be signed in can still use it.
 ENFORCEMENT_EXEMPT = {'logout', 'two_factor_setup', 'two_factor_qr', 'two_factor_codes', 'health',
-                      'stripe_webhook'}
+                      'stripe_webhook', 'digest_unsubscribe'}
 
 
 class TwoFactorEnforcementMiddleware:
