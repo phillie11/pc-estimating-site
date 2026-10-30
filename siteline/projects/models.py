@@ -460,7 +460,17 @@ class Issue(TenantModel):
         return save_with_number(self, super().save, *args, **kwargs)
 
 
+# DocumentRevision statuses (ISO 19650 states plus superseded and withdrawn)
+REV_WIP, REV_SHARED, REV_PUBLISHED, REV_SUPERSEDED, REV_WITHDRAWN = 'WIP', 'SHARED', 'PUBLISHED', 'SUPERSEDED', 'WITHDRAWN'
+
+
 class Document(TenantModel):
+    """
+    One entry on the drawing register: a drawing, spec, report or other document, with its
+    revisions. Numbered to BS EN ISO 19650-2 (UK National Annex) where it can be: the seven
+    fields below assemble into `reference` (SLN-ABC-ZZ-02-DR-A-1001); see documents.naming.
+    Revision and suitability belong to each DocumentRevision, not to the number.
+    """
     CATEGORY_CHOICES = [
         ('DRAWING', 'Drawing'), ('SPEC', 'Specification'), ('TENDER', 'Tender document'),
         ('CONTRACT', 'Contract'), ('RAMS', 'RAMS / H&S'), ('REPORT', 'Report'),
@@ -470,52 +480,163 @@ class Document(TenantModel):
     VIS_SHARED = 'SHARED'
     VISIBILITY_CHOICES = [(VIS_INTERNAL, 'Internal only'), (VIS_SHARED, 'Shared with project collaborators')]
 
+    # How well `reference` follows the naming standard
+    NAMING_NONE = ''           # no number (photos, letters)
+    NAMING_OK = 'OK'           # follows ISO 19650 and the project's code lists
+    NAMING_ACCEPTED = 'WARN'   # doesn't fully conform; someone accepted it as it is
+    NAMING_UNPARSED = 'UNPARSED'  # an older number we couldn't read: someone should fix or accept it
+    NAMING_CHOICES = [(NAMING_NONE, 'No number'), (NAMING_OK, 'Follows naming'),
+                      (NAMING_ACCEPTED, 'Accepted with warnings'), (NAMING_UNPARSED, 'Needs checking')]
+    SHEET_SIZES = [('A0', 'A0'), ('A1', 'A1'), ('A2', 'A2'), ('A3', 'A3'), ('A4', 'A4'), ('OTHER', 'Other')]
+    SHARE_ROLE_CHOICES = [('CLIENT', 'Client'), ('CONSULTANT', 'Consultants / designers'),
+                          ('SUBCONTRACTOR', 'Subcontractors')]
+
     project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='documents')
     title = models.CharField(max_length=200)
     reference = models.CharField('Doc / drawing no.', max_length=80, blank=True)
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, default='DRAWING')
     visibility = models.CharField(max_length=8, choices=VISIBILITY_CHOICES, default=VIS_INTERNAL)
+    # Blank: shared with every collaborator role (as before). Otherwise ",CLIENT,CONSULTANT," etc.
+    share_roles = models.CharField('Shared with', max_length=60, blank=True, default='')
     tender_issue = models.BooleanField('Issued to tenderers', default=False,
                                        help_text='Subcontractors pricing a package can see and download it.')
+
+    # ISO 19650-2 UK National Annex fields; `reference` is these joined with hyphens
+    project_code = models.CharField('Project', max_length=12, blank=True)
+    originator = models.CharField(max_length=12, blank=True)
+    volume = models.CharField('Volume / system', max_length=12, blank=True)
+    level = models.CharField('Level / location', max_length=12, blank=True)
+    doc_type = models.CharField('Type', max_length=12, blank=True)
+    role = models.CharField(max_length=12, blank=True)
+    number = models.CharField(max_length=12, blank=True)
+    naming = models.CharField(max_length=8, choices=NAMING_CHOICES, blank=True, default=NAMING_NONE)
+    naming_notes = models.CharField(max_length=500, blank=True, help_text='Why the number was flagged.')
+
+    discipline = models.CharField(max_length=60, blank=True)
+    sheet_size = models.CharField(max_length=5, choices=SHEET_SIZES, blank=True)
+    scale = models.CharField(max_length=30, blank=True, help_text='e.g. 1:50 @ A1')
+    folder = models.CharField(max_length=120, blank=True, help_text='Optional, e.g. "Stage 4 / Architecture"')
+
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['category', 'reference', 'title']
+        indexes = [models.Index(fields=['project', 'reference'])]
 
     def __str__(self):
         return self.title
 
     @property
+    def label(self):
+        return f'{self.reference} {self.title}' if self.reference else self.title
+
+    # --- naming ------------------------------------------------------------------
+    @property
+    def parts(self):
+        from documents.naming import FIELDS
+        return {f: getattr(self, f) for f in FIELDS}
+
+    def set_number(self, text, warnings=(), accepted=False):
+        """
+        Set `reference` from a typed number, filling the seven ISO fields when it has them.
+        warnings: what documents.naming.check_reference found. With warnings the number is
+        kept as typed and flagged: accepted (someone said "use it anyway") or needs checking.
+        """
+        from documents.naming import FIELDS, assemble, split_reference
+        text = (text or '').strip()
+        parts = split_reference(text)
+        for f in FIELDS:
+            setattr(self, f, parts[f] if parts else '')
+        self.reference = (assemble(parts) if parts else text)[:80]
+        if not text:
+            self.naming, self.naming_notes = self.NAMING_NONE, ''
+        elif not warnings:
+            self.naming, self.naming_notes = self.NAMING_OK, ''
+        else:
+            self.naming = self.NAMING_ACCEPTED if accepted else self.NAMING_UNPARSED
+            self.naming_notes = ' '.join(warnings)[:500]
+        if parts and not self.discipline:
+            from documents.naming import DEFAULT_CODES
+            self.discipline = dict(DEFAULT_CODES['role']).get(parts['role'], '')
+
+    @property
+    def needs_naming_check(self):
+        return self.naming == self.NAMING_UNPARSED
+
+    # --- sharing -----------------------------------------------------------------
+    @property
+    def share_role_list(self):
+        return [r for r in self.share_roles.split(',') if r]
+
+    def set_share_roles(self, roles):
+        roles = [r for r, _ in self.SHARE_ROLE_CHOICES if r in set(roles or ())]
+        self.share_roles = f',{",".join(roles)},' if roles and len(roles) < len(self.SHARE_ROLE_CHOICES) else ''
+
+    def shared_with_role(self, role):
+        return self.visibility == self.VIS_SHARED and (not self.share_roles or f',{role},' in self.share_roles)
+
+    # --- revisions ---------------------------------------------------------------
+    @property
     def current(self):
         """The revision people should build from: flagged when uploaded, or worked out for unflagged rows."""
         revisions = list(self.revisions.all())  # uses prefetch_related('revisions') where the view set it up
-        return next((r for r in revisions if r.is_current), None) or latest_revision(revisions)
+        live = [r for r in revisions if r.status != REV_WITHDRAWN]
+        return next((r for r in revisions if r.is_current), None) or latest_revision(live)
 
     def add_revision(self, revision, make_current=False):
         """
         Save a new revision of this document. It becomes current unless it is older
         than the current one (P02 uploaded after C01 stays a superseded revision),
-        or the uploader explicitly marks it current.
+        or the uploader explicitly marks it current. Whichever is no longer current is
+        marked superseded by the one that is.
         """
         with transaction.atomic():
             Document.all_objects.select_for_update().filter(pk=self.pk).first()
-            current = self.revisions.filter(is_current=True).first() or latest_revision(self.revisions.all())
+            current = self.revisions.filter(is_current=True).first() or latest_revision(
+                self.revisions.exclude(status=REV_WITHDRAWN))
             revision.document = self
             revision.is_current = make_current or current is None or not is_older_revision(revision, current)
             revision.save()
             if revision.is_current:
                 self.revisions.exclude(pk=revision.pk).filter(is_current=True).update(is_current=False)
+                if current is not None:
+                    current.supersede(revision)
+            else:
+                revision.supersede(current)
         return revision
 
     def set_current(self, revision):
         """Mark an existing revision current, e.g. to go back to an earlier issue."""
         with transaction.atomic():
             Document.all_objects.select_for_update().filter(pk=self.pk).first()
+            previous = self.revisions.filter(is_current=True).exclude(pk=revision.pk).first()
             self.revisions.exclude(pk=revision.pk).filter(is_current=True).update(is_current=False)
             self.revisions.filter(pk=revision.pk).update(is_current=True)
+            revision.refresh_from_db()
+            revision.reinstate()
+            if previous is not None:
+                previous.supersede(revision)
         revision.is_current = True
+
+    def withdraw(self, revision, note=''):
+        """Withdraw a revision (issued in error). If it was current, the latest one left takes over."""
+        with transaction.atomic():
+            Document.all_objects.select_for_update().filter(pk=self.pk).first()
+            was_current = revision.is_current
+            DocumentRevision.objects.filter(pk=revision.pk).update(
+                status=REV_WITHDRAWN, is_current=False, status_changed_at=timezone.now(),
+                notes=(f'{revision.notes} · Withdrawn: {note}' if revision.notes else f'Withdrawn: {note}')[:300]
+                if note else revision.notes)
+            revision.refresh_from_db()
+            if was_current:
+                successor = latest_revision(self.revisions.exclude(pk=revision.pk).exclude(status=REV_WITHDRAWN))
+                if successor is not None:
+                    self.revisions.filter(pk=successor.pk).update(is_current=True)
+                    successor.is_current = True
+                    successor.reinstate()
+        return revision
 
 
 # Drawing revisions: preliminary (P01, P02 ... P10) come before construction (C01, C02 ...)
@@ -549,11 +670,29 @@ def latest_revision(revisions):
 
 
 class DocumentRevision(TenantModel):
+    """
+    One issue of a document. Status follows ISO 19650: work in progress (internal), shared,
+    published, then superseded once a newer revision is current, or withdrawn if issued in
+    error. Suitability (S2, A1...) says what it may be used for.
+    """
+    WIP, SHARED, PUBLISHED, SUPERSEDED, WITHDRAWN = REV_WIP, REV_SHARED, REV_PUBLISHED, REV_SUPERSEDED, REV_WITHDRAWN
+    STATUS_CHOICES = [(WIP, 'Work in progress'), (SHARED, 'Shared'), (PUBLISHED, 'Published'),
+                      (SUPERSEDED, 'Superseded'), (WITHDRAWN, 'Withdrawn')]
+    STATUS_TONES = {WIP: 'muted', SHARED: 'info', PUBLISHED: 'good', SUPERSEDED: 'warn', WITHDRAWN: 'bad'}
+    LIVE_STATUSES = (WIP, SHARED, PUBLISHED)
+
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='revisions')
     revision = models.CharField(max_length=20, default='P01')
+    suitability = models.CharField(max_length=4, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, blank=True, db_index=True,
+                              help_text='Left blank, it is worked out on save from the suitability and sharing.')
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+    superseded_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     file = models.FileField(upload_to=upload_document)
     original_name = models.CharField(max_length=200)
     size = models.PositiveBigIntegerField(default=0)
+    sha256 = models.CharField(max_length=64, blank=True)
+    page_count = models.PositiveIntegerField(null=True, blank=True)
     notes = models.CharField(max_length=300, blank=True)
     is_current = models.BooleanField('Current revision', default=False,
                                      help_text='Set by Document.add_revision / set_current; one per document.')
@@ -565,6 +704,67 @@ class DocumentRevision(TenantModel):
 
     def __str__(self):
         return f'{self.document} rev {self.revision}'
+
+    @property
+    def status_tone(self):
+        return self.STATUS_TONES.get(self.status, 'muted')
+
+    @property
+    def is_superseded(self):
+        return self.status == self.SUPERSEDED
+
+    @property
+    def is_withdrawn(self):
+        return self.status == self.WITHDRAWN
+
+    def live_status(self):
+        """What this revision's status is while it is in use: from its suitability, else how widely it's shared."""
+        from documents.naming import status_for_suitability
+        return status_for_suitability(self.suitability) or (
+            self.SHARED if self.document.visibility == Document.VIS_SHARED or self._transmitted() else self.WIP)
+
+    def _transmitted(self):
+        if not self.pk:
+            return False
+        from documents.models import TransmittalItem
+        return TransmittalItem.objects.filter(revision=self, transmittal__issued_at__isnull=False).exists()
+
+    def save(self, *args, **kwargs):
+        if not self.status:
+            self.status = self.live_status()
+        if self.status_changed_at is None:
+            self.status_changed_at = timezone.now()
+        super().save(*args, **kwargs)
+
+    def supersede(self, by):
+        """Mark this revision superseded by `by` (left alone if withdrawn)."""
+        if self.status == self.WITHDRAWN or by is None or by.pk == self.pk:
+            return
+        self.status, self.superseded_by = self.SUPERSEDED, by
+        self.status_changed_at = timezone.now()
+        DocumentRevision.objects.filter(pk=self.pk).update(status=self.status, superseded_by=by,
+                                                            status_changed_at=self.status_changed_at)
+
+    def reinstate(self):
+        """Back in use (made current again): its live status, no longer superseded."""
+        if self.status not in (self.SUPERSEDED, self.WITHDRAWN) and self.superseded_by_id is None:
+            return
+        self.status, self.superseded_by = self.live_status(), None
+        self.status_changed_at = timezone.now()
+        DocumentRevision.objects.filter(pk=self.pk).update(status=self.status, superseded_by=None,
+                                                            status_changed_at=self.status_changed_at)
+
+    def set_status(self, status):
+        if status == self.status:
+            return
+        self.status, self.status_changed_at = status, timezone.now()
+        DocumentRevision.objects.filter(pk=self.pk).update(status=status, status_changed_at=self.status_changed_at)
+
+    @property
+    def current_revision(self):
+        """The document's current revision, when it isn't this one (for the superseded banner)."""
+        cur = self.document.current
+        return cur if cur and cur.pk != self.pk else None
 
 
 class Comment(TenantModel):
