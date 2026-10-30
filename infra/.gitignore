@@ -1,0 +1,16 @@
+# Terraform working files and local state (bootstrap keeps its state here: back it up, never commit it)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# Data move working files (contain customer data)
+scripts/data/
+*.json.gz
+counts-*.txt
