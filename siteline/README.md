@@ -33,7 +33,7 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 | **Documents** | Revision-controlled drawings, specs, RAMS. The current revision is the highest one (P01 → P10 → C01 → C02), not the last uploaded: filing an old P03 after C01 doesn't replace it unless you tick "make current". Internal or shared per document. Externals can upload (e.g. RAMS). |
 | **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. A subcontractor with quotes, RAMS or variations on file is archived rather than deleted. |
 | **Billing** | 14-day trial, then Stripe subscription (Starter / Team / Business). Plan limits on staff seats and active projects (archived projects don't count). External users are never charged. |
-| **Daily digest** | Overdue RFIs, tender returns in 3 days, insurance expiring, trial ending. |
+| **Needs me** | One list of everything waiting on you, across every project and register, with a count by the bell. The daily digest emails the same list (overdue, today, this week), plus tender returns in 3 days, insurance expiring and trial ending. |
 
 ### Who sees what
 
@@ -102,6 +102,16 @@ Checklist:
 5. **Access.** `Model.objects` hides soft-deleted rows (`with_deleted` shows them, `all_objects` is unscoped as everywhere). Views still fetch the project with `projects.access.get_project()` and filter externals to `visibility=VIS_SHARED`. Anything listing records across types reads `RecordIndex` through `core.access.visible_index(request)` (or `needs_me(request)`), never `RecordIndex.objects` directly. If externals' rule is narrower than visibility (a subcontractor sees only their own), the index can't serve them yet: see the ADR.
 6. **Adopting an existing register** takes three migrations, as `rfis 0003`–`0005`: (a) rename fields to the base names and add the new columns, (b) a reversible `RunPython` that fills `ref`/`visibility` and creates the `NumberSequence`, `RecordIndex` and back-filled `created` `AuditEntry` rows from the historical models, (c) drop the old columns. Keep data changes and `ALTER TABLE`s in separate migrations (PostgreSQL). A new register only needs its `CreateModel`.
 7. **Tests.** Copy `core/tests/base.py` for set-up and add your type's versions of: numbering per project (`test_records.NumberingTests`), index kept in step on create/update/transition/soft delete (`IndexTests`), audit diffs (`AuditTests`), each transition's permissions and source statuses through the views (`test_workflow`), another company can't see it and no organisation fails closed (`test_tenancy`), and, when adopting an existing register, the forward and backward data migration on seeded data (`test_rfi_migration`).
+
+## Needs me, dashboards and the portal
+
+Anything waiting on a person is listed through one registry, `actions` ("Needs me"). Don't add a dashboard card of your own for it: register a provider.
+
+- **Registry.** `actions.register(provider)` from your `AppConfig.ready()`; `actions.for_user(request)` returns `actions.Item`s (`kind`, `title`, `ref`, `project`, `due`, `url`, `priority`, `action`, `status_label`, `tone`, `amount`) soonest due first, cached on the request; `actions.grouped(items)` splits them into Overdue / Today / This week / Later or no date. A provider has `kind`, `label`, `items(request)` and optionally `covers` (record types it already lists, so the record-index provider skips them). It must apply the same access rules as the page its items link to. The built-ins are listed at the top of `actions/providers.py`: open ball-in-court records from `core.access.needs_me`, client variations to approve, RAMS to revise (subcontractor) and to review (the job's team), sub variations to decide, unacknowledged addenda and tenders to price (tendering subcontractors), open snags, snags to inspect and tasks. `actions/tests.py` checks every provider against two companies and with no organisation.
+- **Where it shows.** The *Needs me* page (`/<org>/needs-me/`, filter with `?kind=` and `?project=`), the count next to the bell, the staff dashboards' *Needs me* card, the client and subcontractor dashboard's *Decisions waiting* (with the money for clients), each project's *Decisions* tab for externals, and the daily digest (`send_reminders`), which lists overdue, today, this week and undated items with a link to each.
+- **Dashboards.** Every number on the estimating and projects dashboards links to the list behind it, using the filters in `actions/filters.py` (`/projects/?view=live&attention=rams`, `/bids/?view=open&due=14`, `?mine=1`; `/rfis/?status=open&scope=live&overdue=1`), so the number and the list always agree.
+- **Layouts.** `templates/app.html` picks `layouts/staff.html` (sidebar) or `layouts/portal.html` (top bar with a project switcher, no sidebar) for external collaborators. Externals get at most five project tabs (Overview, Decisions, Documents, Programme, Snags); the registers under each (RFIs, Variations, *Your variations*, *Your RAMS*, tasks, who's who) show as a second row. On the overview they see *What's changed since your last visit*, from `actions.ProjectVisit` (one row per `ProjectMember`). Staff get at most eight tabs on a live job: seven in the row and a *More* menu; tab order and labels are in `actions/tabs.py`.
+- **Screen parts.** `templates/partials/status_badge.html` (or `{% status_badge obj %}`), `empty_state.html`, `register_table.html` and `decision_panel.html`. Staff can see them all at `/<org>/_ui/`.
 
 ## Background jobs and email
 
@@ -369,6 +379,7 @@ tenders/      portal tenders: invitations, addenda, tender queries, appointment 
 delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
 docs/adr/     architecture decision records
 jobs/         background job queue and worker (run_worker, jobs_status), email outbox
+actions/      "Needs me" registry and providers, project tab layout, portal visits, dashboard filters
 templates/    shared templates; app-specific ones live in each app
 static/       app.css (single stylesheet; --accent is set from each company's brand colour, --accent-ink to white or near-black, whichever contrasts more), app.js
 ```
