@@ -193,38 +193,19 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
-      # Non-blocking for now: the current pins (Django 5.1.4, Pillow 11.0.0,
-      # python-dotenv 1.0.1) have known advisories. Remove continue-on-error once fixed.
+      # Blocking: any known advisory in a pinned package fails the job. If a fix isn't out yet,
+      # pin around it or add `--ignore-vuln <ID>` here with a comment saying why and until when.
       - name: pip-audit (full dependency tree, without mysqlclient)
-        id: audit_tree
-        continue-on-error: true
         run: |
           grep -viE '^[[:space:]]*mysqlclient([^A-Za-z0-9_.-]|$)' requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
           pip-audit --progress-spinner off -r "$RUNNER_TEMP/requirements-ci.txt" -r requirements-dev.txt
 
       # Checks every pin in requirements.txt, mysqlclient included, without building it.
       - name: pip-audit (all pinned requirements, no build)
-        id: audit_pins
-        continue-on-error: true
         run: pip-audit --progress-spinner off -r requirements.txt --no-deps --disable-pip
 
-      # Non-blocking for now: two medium findings (B308/B703, mark_safe in
-      # tenancy/templatetags/ui.py) on a constant SVG lookup.
+      # Blocking: medium severity and above. A reviewed false positive gets `# nosec <ID>` with
+      # a comment explaining why on the line itself (see tenancy/templatetags/ui.py icon()).
       - name: Bandit (medium severity and above)
-        id: bandit
-        continue-on-error: true
         working-directory: .
         run: bandit -r siteline -ll
-
-      - name: Summarise non-blocking findings
-        if: ${{ !cancelled() }}
-        run: |
-          for r in "pip-audit tree:${{ steps.audit_tree.outcome }}" \
-                   "pip-audit pins:${{ steps.audit_pins.outcome }}" \
-                   "bandit:${{ steps.bandit.outcome }}"; do
-            name="${r%%:*}"; outcome="${r##*:}"
-            if [ "$outcome" != "success" ]; then
-              echo "::warning title=Security scan::$name reported findings (non-blocking, see step log)"
-            fi
-            echo "- $name: $outcome" >> "$GITHUB_STEP_SUMMARY"
-          done
