@@ -101,8 +101,10 @@ class BidderIsolationTests(TenderBase):
         self.assertRedirects(self.client.get(self.url('project_detail', self.org_a, self.bid.pk)), self.tender())
         for name in ('rfi_list', 'document_list', 'programme', 'task_list', 'issue_list', 'project_team', 'variation_list'):
             self.assertEqual(self.client.get(self.url(name, self.org_a, self.bid.pk)).status_code, 403, name)
+        with org_context(self.org_a):
+            current = self.private.current
         self.assertEqual(self.client.get(self.url('document_download', self.org_a, self.bid.pk, self.private.pk,
-                                                  self.private.current.pk)).status_code, 403)
+                                                  current.pk)).status_code, 403)
         r = self.client.get(self.url('rfi_register', self.org_a))
         self.assertNotContains(r, 'Client-side RFI')
 
@@ -172,13 +174,15 @@ class QueryAndAddendumTests(TenderBase):
                                              'files': [SimpleUploadedFile('rcp.pdf', b'%PDF-1.4')]})
         self.assertEqual(r.status_code, 302)
         a = Addendum.all_objects.get()
-        self.assertEqual(a.files.count(), 1)
+        with org_context(self.org_a):
+            self.assertEqual(a.files.count(), 1)
+            file_pk = a.files.get().pk
         for u in (self.dry_a, self.dry_b):
             self.assertTrue(Notification.all_objects.filter(user=u, title__startswith='Addendum 01').exists())
         self.login(self.dry_a)
         self.client.post(self.tender(), {'action': 'ack', 'addendum': a.pk})
         self.assertTrue(AddendumReceipt.all_objects.filter(addendum=a, subcontractor=self.sub_a).exists())
-        self.assertEqual(self.client.get(self.url('addendum_file', self.org_a, self.bid.pk, a.files.get().pk)).status_code, 200)
+        self.assertEqual(self.client.get(self.url('addendum_file', self.org_a, self.bid.pk, file_pk)).status_code, 200)
         self.login(self.alice)
         r = self.client.get(self.tender())
         self.assertContains(r, 'Not yet acknowledged')

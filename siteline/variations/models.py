@@ -23,7 +23,7 @@ class Variation(TenantModel):
         (STATUS_REJECTED, 'Rejected'), (STATUS_WITHDRAWN, 'Withdrawn'),
     ]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='variations')
+    project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='variations')
     number = models.PositiveIntegerField(editable=False)
     title = models.CharField(max_length=200)
     description = models.TextField(help_text='What changed and why.')

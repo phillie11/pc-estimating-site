@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from directory.models import Subcontractor
-from projects.access import is_internal, portal_projects, visible_projects
+from projects.access import is_internal, openable, portal_projects, visible_projects
 from projects.models import Issue, Project, Task
 from rfis.models import RFI
 from variations.models import Variation
@@ -48,15 +48,24 @@ def dashboard(request, org_slug):
 
 
 def _my_plate(request, projects):
+    """
+    What is waiting on this person. A snag marked ready for inspection has left the
+    assignee's plate: it now waits on staff, so it shows to whoever raised it and to
+    the job's project manager as "Ready to inspect".
+    """
     user = request.user
-    return {
+    plate = {
         'my_tasks': Task.objects.filter(assignee=user, project__in=projects).exclude(status=Task.STATUS_DONE)
         .select_related('project')[:8],
         'my_rfis': RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, project__in=projects)
         .select_related('project')[:8],
-        'my_issues': Issue.objects.filter(assignee=user, project__in=projects).exclude(status=Issue.STATUS_CLOSED)
+        'my_issues': Issue.objects.filter(assignee=user, project__in=projects, status=Issue.STATUS_OPEN)
         .select_related('project')[:8],
     }
+    if is_internal(request):
+        plate['to_inspect'] = Issue.objects.filter(Q(created_by=user) | Q(project__manager=user), project__in=projects,
+                                                   status=Issue.STATUS_READY).select_related('project')[:8]
+    return plate
 
 
 @estimating_required
@@ -69,7 +78,7 @@ def estimating_home(request, org_slug):
     bids = visible_projects(request).filter(stage__in=Project.ESTIMATING_STAGES)
     pipeline = bids.filter(stage__in=Project.PIPELINE_STAGES)
     year_ago = today - timedelta(days=365)
-    decided = Project.objects.filter(decided_at__gte=year_ago)
+    decided = Project.objects.filter(decided_at__gte=year_ago, archived_at__isnull=True)
     won = decided.filter(stage__in=Project.WON_STAGES).count()
     lost = decided.filter(stage=Project.STAGE_LOST).count()
     awaited = Package.objects.filter(project__in=pipeline, status=Package.ENQUIRY).select_related('project', 'subcontractor', 'trade')
@@ -125,7 +134,8 @@ def delivery_home(request, org_slug):
         'my_jobs': live.filter(manager=request.user).order_by('completion_date'),
         'rams': rams.order_by('submitted_at')[:8],
         'subvars': subvars.order_by('created_at')[:8],
-        'insurance': [s for s in Subcontractor.objects.filter(packages__project__in=live, packages__status=Package.APPOINTED)
+        'insurance': [s for s in Subcontractor.objects.filter(packages__project__in=live, packages__status=Package.APPOINTED,
+                                                              archived_at__isnull=True)
                       .distinct().filter(Q(public_liability_expiry__lte=today + timedelta(days=30)) |
                                          Q(employers_liability_expiry__lte=today + timedelta(days=30)))][:8],
         'activity': ActivityEvent.objects.filter(project__in=jobs).select_related('actor', 'project')[:12],
@@ -252,7 +262,9 @@ def org_locked(request, org_slug):
 
 def activity(request, org_slug):
     qs = ActivityEvent.objects.select_related('actor', 'project')
-    if not is_internal(request):
+    if is_internal(request):
+        qs = qs.filter(openable(request))
+    else:
         qs = qs.filter(project__in=portal_projects(request), internal_only=False)
     return render(request, 'tenancy/activity.html', {'activity': qs[:200]})
 
@@ -262,7 +274,7 @@ def activity(request, org_slug):
 # ---------------------------------------------------------------------------
 
 def notifications(request, org_slug):
-    items = Notification.objects.filter(user=request.user).select_related('actor', 'project')
+    items = Notification.objects.filter(openable(request), user=request.user).select_related('actor', 'project')
     if request.method == 'POST' and request.POST.get('action') == 'read_all':
         items.filter(read_at__isnull=True).update(read_at=timezone.now())
         return redirect('notifications', org_slug=org_slug)
@@ -273,7 +285,7 @@ def notifications(request, org_slug):
 
 
 def notification_open(request, org_slug, pk):
-    n = get_object_or_404(Notification, user=request.user, pk=pk)
+    n = get_object_or_404(Notification.objects.filter(openable(request)), user=request.user, pk=pk)
     if n.read_at is None:
         n.read_at = timezone.now()
         n.save(update_fields=['read_at'])

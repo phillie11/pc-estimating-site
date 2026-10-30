@@ -14,7 +14,7 @@
   <td><a class="rowlink" href="{{ s.get_absolute_url }}">{{ s.company_name }}</a><span class="sub">{{ s.regions }}</span></td>
   <td>{% for t in s.trades.all %}<span class="tag">{{ t.name }}</span>{% endfor %}</td>
   <td class="small">{{ s.contact_name }}{% if s.phone %}<span class="sub">{{ s.phone }}</span>{% endif %}</td>
-  <td>{% badge s.get_status_display s.status_tone %}</td>
+  <td>{% badge s.get_status_display s.status_tone %}{% if s.is_archived %} {% badge 'Archived' 'muted' %}{% endif %}</td>
   <td class="mono small">{% if s.rating %}{{ s.rating }}/5{% else %}—{% endif %}</td>
   <td>{% if s.next_insurance_expiry %}{% badge s.next_insurance_expiry|date:"j M Y" s.insurance_tone %}{% else %}<span class="dim small">Not recorded</span>{% endif %}</td>
 </tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><h3>No subcontractors match</h3><p>Add your supply chain to track insurance and invite them to projects.</p></div>{% endif %}</div>

@@ -1,0 +1,6 @@
+# Tools used by CI (.github/workflows/ci.yml) and for running the same checks locally.
+# Not needed on PythonAnywhere. Install alongside requirements.txt:
+#   pip install -r requirements.txt -r requirements-dev.txt
+coverage==7.17.0
+pip-audit==2.10.1
+bandit==1.9.4

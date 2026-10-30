@@ -122,6 +122,7 @@ elif env('DB_ENGINE') == 'postgres':
             'PASSWORD': env('DB_PASSWORD'),
             'HOST': env('DB_HOST'),
             'PORT': env('DB_PORT', '5432'),
+            'OPTIONS': {'sslmode': env('DB_SSLMODE', 'prefer')},  # AWS RDS: DB_SSLMODE=require
         }
     }
 else:
@@ -185,8 +186,11 @@ STORAGE_REGION = env('STORAGE_REGION', 'eu-west-2')
 # GuardDuty Malware Protection tags every upload; files are only handed out once tagged clean.
 # Set STORAGE_MALWARE_SCAN=0 only if scanning is not enabled on the bucket.
 STORAGE_MALWARE_SCAN = env_bool('STORAGE_MALWARE_SCAN', True)
+# On AWS (ECS), STORAGE_USE_IAM_ROLE=1 uses the task role via boto3's default credential chain instead of keys
+STORAGE_USE_IAM_ROLE = env_bool('STORAGE_USE_IAM_ROLE', False)
 if STORAGE_BUCKET:
-    _missing = [k for k in ('STORAGE_ACCESS_KEY', 'STORAGE_SECRET_KEY') if not (env(k) or '').strip()]
+    _missing = [] if STORAGE_USE_IAM_ROLE else [
+        k for k in ('STORAGE_ACCESS_KEY', 'STORAGE_SECRET_KEY') if not (env(k) or '').strip()]
     if _missing:
         # Fail at start-up with a plain message, not a signing error deep inside boto on the first upload
         raise RuntimeError(f'STORAGE_BUCKET is set but {" and ".join(_missing)} {"are" if len(_missing) > 1 else "is"} empty in .env. '
@@ -198,8 +202,8 @@ if STORAGE_BUCKET:
             # Without an endpoint, use AWS's regional one (London by default), never the global one
             'endpoint_url': env('STORAGE_ENDPOINT_URL') or f'https://s3.{STORAGE_REGION}.amazonaws.com',
             'region_name': STORAGE_REGION,
-            'access_key': env('STORAGE_ACCESS_KEY'),
-            'secret_key': env('STORAGE_SECRET_KEY'),
+            'access_key': None if STORAGE_USE_IAM_ROLE else env('STORAGE_ACCESS_KEY'),
+            'secret_key': None if STORAGE_USE_IAM_ROLE else env('STORAGE_SECRET_KEY'),
             'default_acl': None,            # never public; the bucket policy decides
             'querystring_auth': True,       # every link is signed...
             'querystring_expire': STORAGE_LINK_SECONDS,  # ...and short-lived

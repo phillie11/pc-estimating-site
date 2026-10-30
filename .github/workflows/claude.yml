@@ -1,11 +1,5 @@
 name: Claude Code Action
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  id-token: write
-
 on:
   issue_comment:
     types: [created]
@@ -14,19 +8,51 @@ on:
   issues:
     types: [opened, assigned]
 
+# Nothing by default; the job below asks only for what the action documents.
+permissions: {}
+
 jobs:
-  claude-pr:
+  claude:
+    # Only run for "@claude" from people who already have a trusted relationship
+    # with the repo (owner, org member, or invited collaborator). The action also
+    # checks write access itself; this stops untrusted events before a runner
+    # (and the API key) is ever involved.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
-    runs-on: ubuntu-latest
-    
+      (
+        (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+        contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      ) || (
+        github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    # The documented minimum: read/write on contents, pull requests and issues
+    # (branches, PR and issue comments), and id-token for the action's OIDC
+    # token exchange.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          # Don't leave the job's GITHUB_TOKEN in .git/config for every later step.
+          # The action doesn't need it: it strips checkout's auth header if one is
+          # there and sets up git with its own token (src/github/operations/
+          # git-config.ts at the pinned commit, replaceCheckoutCredentials()).
+          persist-credentials: false
 
       - name: Run Claude Code Action
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@6d5ae526d25ce88daa2200be073e1a373167f064 # v1.0.265
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

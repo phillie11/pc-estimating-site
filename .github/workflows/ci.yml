@@ -1,0 +1,230 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Nothing in CI needs to write to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: siteline
+
+jobs:
+  test:
+    name: Tests (${{ matrix.db }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres, mysql]
+
+    services:
+      postgres:
+        # An empty image means the service is not started (the sqlite leg).
+        image: ${{ matrix.db == 'postgres' && 'postgres:16' || '' }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: siteline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mysql:
+        # Production (PythonAnywhere) runs MySQL 8.0. The image defaults already match
+        # what config/settings.py expects: utf8mb4 / utf8mb4_0900_ai_ci and a strict
+        # sql_mode (settings.py also sets STRICT_TRANS_TABLES per connection). Service
+        # containers cannot take server flags, so the "Check MySQL server" step below
+        # asserts those defaults instead of assuming them.
+        image: ${{ matrix.db == 'mysql' && 'mysql:8.0' || '' }}
+        env:
+          # root, because the test runner needs CREATE/DROP DATABASE for test_siteline.
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: siteline
+        ports:
+          - 3306:3306
+        # -h 127.0.0.1 forces TCP: the entrypoint's temporary init server listens on
+        # the socket only, so a socket ping would report healthy too early.
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pmysql --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      # config/settings.py: anything other than mysql/postgres falls back to SQLite.
+      DB_ENGINE: ${{ matrix.db }}
+      DB_NAME: siteline
+      DB_USER: ${{ matrix.db == 'mysql' && 'root' || 'postgres' }}
+      DB_PASSWORD: ${{ matrix.db == 'mysql' && 'mysql' || 'postgres' }}
+      # 127.0.0.1, not localhost, for MySQL: libmysqlclient treats "localhost" as
+      # "use the Unix socket", and the server is only reachable over TCP here.
+      DB_HOST: ${{ matrix.db == 'mysql' && '127.0.0.1' || 'localhost' }}
+      DB_PORT: ${{ matrix.db == 'mysql' && '3306' || '5432' }}
+      DEBUG: '1'
+      SECRET_KEY: ci-only-not-a-secret
+      PYTHONUNBUFFERED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            siteline/requirements.txt
+            siteline/requirements-dev.txt
+
+      # mysqlclient (DB_ENGINE=mysql, PythonAnywhere) ships no Linux wheels, so it is
+      # compiled against libmysqlclient-dev. Only the mysql leg needs it; the sqlite
+      # and postgres legs drop that one line and skip the apt step.
+      - name: Install MySQL client headers
+        if: ${{ matrix.db == 'mysql' }}
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+            pkg-config default-libmysqlclient-dev build-essential
+
+      - name: Install dependencies (mysql)
+        if: ${{ matrix.db == 'mysql' }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -c "import MySQLdb; print('mysqlclient', MySQLdb.version_info)"
+
+      # The security job still audits the mysqlclient pin.
+      - name: Install dependencies
+        if: ${{ matrix.db != 'mysql' }}
+        run: |
+          grep -viE '^[[:space:]]*mysqlclient([^A-Za-z0-9_.-]|$)' requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
+          python -m pip install --upgrade pip
+          python -m pip install -r "$RUNNER_TEMP/requirements-ci.txt" -r requirements-dev.txt
+
+      # Fails fast, with a readable message, if the image defaults ever drift from
+      # what production relies on. Uses the Python driver, so no mysql CLI is needed.
+      - name: Check MySQL server
+        if: ${{ matrix.db == 'mysql' }}
+        shell: python
+        run: |
+          import os, sys, MySQLdb
+          conn = MySQLdb.connect(host=os.environ["DB_HOST"], port=int(os.environ["DB_PORT"]),
+                                 user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"])
+          cur = conn.cursor()
+          cur.execute("SELECT VERSION(), @@character_set_server, @@collation_server, @@GLOBAL.sql_mode")
+          version, charset, collation, sql_mode = cur.fetchone()
+          print(f"MySQL {version}\ncharacter_set_server={charset}\ncollation_server={collation}\nsql_mode={sql_mode}")
+          errors = []
+          if not version.startswith("8.0."):
+              errors.append(f"expected MySQL 8.0, got {version}")
+          if charset != "utf8mb4":
+              errors.append(f"expected character_set_server=utf8mb4, got {charset}")
+          if "STRICT_TRANS_TABLES" not in sql_mode.split(","):
+              errors.append(f"expected STRICT_TRANS_TABLES in the server sql_mode, got {sql_mode}")
+          for e in errors:
+              print(f"::error title=MySQL server::{e}")
+          sys.exit(1 if errors else 0)
+
+      - name: Use a temporary MEDIA_ROOT
+        run: echo "MEDIA_ROOT=$(mktemp -d)" >> "$GITHUB_ENV"
+
+      - name: Django system checks
+        run: python manage.py check
+
+      # Database-tagged checks (mysql.W002 strict mode, MySQL field limits) only run
+      # with --database. Errors fail the job; warnings are printed. Known warning:
+      # mysql.W003 on projects.FileScan.path (unique, max_length=500). That is 2000
+      # bytes in utf8mb4, inside InnoDB's 3072-byte index limit for the DYNAMIC row
+      # format (the 8.0 default), and the migrations below prove it applies.
+      - name: Django database checks (mysql)
+        if: ${{ matrix.db == 'mysql' }}
+        run: python manage.py check --database default
+
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run tests with coverage
+        run: python -m coverage run manage.py test --noinput
+
+      - name: Coverage report
+        if: ${{ !cancelled() }}
+        run: |
+          python -m coverage report
+          {
+            echo "### Coverage (${{ matrix.db }})"
+            python -m coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: siteline/requirements-dev.txt
+
+      - name: Install scanners
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      # Non-blocking for now: the current pins (Django 5.1.4, Pillow 11.0.0,
+      # python-dotenv 1.0.1) have known advisories. Remove continue-on-error once fixed.
+      - name: pip-audit (full dependency tree, without mysqlclient)
+        id: audit_tree
+        continue-on-error: true
+        run: |
+          grep -viE '^[[:space:]]*mysqlclient([^A-Za-z0-9_.-]|$)' requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
+          pip-audit --progress-spinner off -r "$RUNNER_TEMP/requirements-ci.txt" -r requirements-dev.txt
+
+      # Checks every pin in requirements.txt, mysqlclient included, without building it.
+      - name: pip-audit (all pinned requirements, no build)
+        id: audit_pins
+        continue-on-error: true
+        run: pip-audit --progress-spinner off -r requirements.txt --no-deps --disable-pip
+
+      # Non-blocking for now: two medium findings (B308/B703, mark_safe in
+      # tenancy/templatetags/ui.py) on a constant SVG lookup.
+      - name: Bandit (medium severity and above)
+        id: bandit
+        continue-on-error: true
+        working-directory: .
+        run: bandit -r siteline -ll
+
+      - name: Summarise non-blocking findings
+        if: ${{ !cancelled() }}
+        run: |
+          for r in "pip-audit tree:${{ steps.audit_tree.outcome }}" \
+                   "pip-audit pins:${{ steps.audit_pins.outcome }}" \
+                   "bandit:${{ steps.bandit.outcome }}"; do
+            name="${r%%:*}"; outcome="${r##*:}"
+            if [ "$outcome" != "success" ]; then
+              echo "::warning title=Security scan::$name reported findings (non-blocking, see step log)"
+            fi
+            echo "- $name: $outcome" >> "$GITHUB_STEP_SUMMARY"
+          done

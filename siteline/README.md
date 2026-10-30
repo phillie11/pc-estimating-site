@@ -19,20 +19,20 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 
 | Area | What it does |
 |---|---|
-| **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won. Weighted pipeline, 12-month win rate, tender return deadlines. |
+| **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won, with a "Move to" control on every card for touch and keyboard users (moving to Won still opens the handover). Weighted pipeline, 12-month win rate, tender return deadlines. |
 | **Subcontract tenders (portal)** | Invite subcontractors to price a trade package. They get a notification with a link, never attachments: scope, tender documents, addenda (with acknowledgement tracking) and tender queries are all in the portal, and they submit quotes there. Compare quotes side by side, appoint one, and the rest are told and lose access. Losing the main tender closes every open package. |
 | **Live-job portal for subcontractors** | Appointed subcontractors submit RAMS for review (approve, approve with comments, or revise and resubmit, with revision history) and submit variations, which the projects team approves in full or part, rejects, or passes straight on to the client as a draft variation. Each subcontractor sees only their own. Issuing or revising a shared drawing notifies the client and subcontractors. The overview shows each subcontract's order value, approved variations and RAMS status. |
 | **Notifications** | A bell for everyone, staff and external. Every alert (tender invitations, addenda, queries, quotes, RFI and task assignments, variation decisions) is an in-app notification plus a short email linking to the item. Reply in the portal, not by email. |
 | **Tender analytics** | Win rate by number and by value, results by month, and breakdowns by sector, size, client, lead source and project lead. Recent losses with feedback. 12 months, 24 months or all time. |
 | **Programmes** | A Gantt chart per project: activities with dates, progress, milestones and a "follows" link that flags anything out of sequence or behind. Lines can be internal or shared with the client and subcontractors. The Workload page has two company-wide Gantt charts: **Tenders** (every open bid from enquiry received to tender return, with site visit, queries close and subcontractor quotes due as milestones, filterable by estimator) and **Secured work** (every won and live job from start on site to completion). |
-| **Projects** | One record from first lead to completion. Overview with commercial position (contract sum + approved variations = forecast final account). |
+| **Projects** | One record from first lead to completion. Overview with commercial position (contract sum + approved variations = forecast final account). **Archived, not deleted:** once a project has anything on it (documents, RFIs, variations, RAMS, packages, snags, tasks, programme, downloads) an owner or admin can only archive it. See [Archiving](#archiving-instead-of-deleting). |
 | **Client & subcontractor portal** | Invite external people per project by email. They get free logins and only see what's shared with them. |
 | **RFIs** | Numbered per project (RFI-001), ball-in-court assignment, due dates, responses, threaded comments, internal notes, CSV register. Company-wide RFI register. |
 | **Variations** | Draft → submit to client → client approves or rejects in the portal (with PO ref). Linked to RFIs. CSV export. |
 | **Snags & tasks** | Assign to staff or subcontractors; subs mark snags "ready for inspection" from their phone. |
-| **Documents** | Revision-controlled drawings, specs, RAMS. Internal or shared per document. Externals can upload (e.g. RAMS). |
-| **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. |
-| **Billing** | 14-day trial, then Stripe subscription (Starter / Team / Business). Plan limits on staff seats and active projects. External users are never charged. |
+| **Documents** | Revision-controlled drawings, specs, RAMS. The current revision is the highest one (P01 → P10 → C01 → C02), not the last uploaded: filing an old P03 after C01 doesn't replace it unless you tick "make current". Internal or shared per document. Externals can upload (e.g. RAMS). |
+| **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. A subcontractor with quotes, RAMS or variations on file is archived rather than deleted. |
+| **Billing** | 14-day trial, then Stripe subscription (Starter / Team / Business). Plan limits on staff seats and active projects (archived projects don't count). External users are never charged. |
 | **Daily digest** | Overdue RFIs, tender returns in 3 days, insurance expiring, trial ending. |
 
 ### Who sees what
@@ -53,17 +53,34 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 A **tendering subcontractor** (invited to price a package, not yet appointed) sees only their tender page: their own package and quote, documents issued to tenderers, addenda, and query answers issued to everyone. They can't see other bidders, the client's documents, RFIs, the programme or anything else on the project. Appointing them turns them into a normal subcontractor on the project.
 | Team, settings, billing | ✓ | team list only | – | – |
 
+### Archiving instead of deleting
+
+Deleting a project used to take its RFIs, variations, RAMS, sub variations, packages, documents, the activity trail and the download log with it. Now:
+
+- **Project with records:** *Edit project → Archive project* (owners and admins). It disappears from the bid and project lists, the pipeline, workload charts, dashboards, tender analytics, reminders and the plan's active-project count, and collaborators lose access. Nothing is deleted. Owners and admins find it under the **Archived** filter on Bids or Projects, can open every tab read only, and can **Restore** it (if the plan has room). Because it no longer counts against the plan, nothing can be changed on it until it is restored: `projects.access.get_project()`, which every project view uses, refuses any request other than GET/HEAD for an archived project, except archive/restore itself and deleting an empty project. Its events and alerts drop out of the activity feed, the notifications page and the bell for anyone who can't open it, and a pending portal invite to it can't be accepted. The activity feed also only shows staff events for the sections they work in.
+- **Project with nothing on it** (a lead added by mistake): still deleted outright, by typing its reference.
+- **Subcontractors** work the same way from *Edit subcontractor*: archive if they have quotes, RAMS, variations or addendum receipts (they drop out of the list and tender invitations; owners and admins see them under *Status → Archived*), delete if not.
+- The database backs this up: those records' links to their project and subcontractor are `RESTRICT`, so even Django admin or the shell can't delete a project or subcontractor out from under them. Deleting a whole workspace still removes everything.
+
 ## How tenant separation works
 
 This is the part to keep intact as you add features.
 
 1. Every company-owned model inherits `tenancy.models.TenantModel`, which adds an `organization` field.
 2. `TenantMiddleware` resolves `/<org_slug>/`, checks the user has an active `Membership`, and sets the current organisation for the request. Non-members get a 404, so workspace names can't be probed.
-3. `TenantModel.objects` filters to the current organisation automatically, and `save()` refuses to write a row into a different organisation. So a view that forgets to filter still can't read another company's data. Use `Model.all_objects` only in admin, webhooks and management commands.
-4. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
-5. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
+3. `TenantModel.objects` filters to the current organisation automatically, and `save()` refuses to write a row into a different organisation. So a view that forgets to filter still can't read another company's data.
+4. It **fails closed**. With no current organisation (management commands, webhooks, scheduled jobs, the shell, login/signup/invite pages), running a `TenantModel.objects` query raises `TenantContextMissing` instead of returning every company's rows. That covers reverse and many-to-many managers (`project.rfis.all()`), `count()`, `exists()`, `pk__in=queryset` subqueries and `get_or_create()` too. Building a queryset is fine; running it is what needs an organisation, so a form's class-level `queryset=` is scoped to whichever organisation is current when the form is used. The filter is a `TenantFilter` expression in the query's WHERE clause that reads the current organisation when the SQL is compiled, so it also holds when querysets are combined (`|`, `&`, `^`, `union()`, `intersection()`, `difference()`) or wrapped in `Subquery()` / `Exists()`. A queryset made while an organisation is current stays pinned to it and raises `PermissionError` if it runs inside another. Combining a `TenantModel.objects` queryset with an `all_objects` one is refused, since that half has no filter.
+5. `update()`, `delete()` and `bulk_create()` on `TenantModel.objects` stay inside the current organisation: update and delete only reach its rows, `update(organization=...)` can't move rows elsewhere, and `bulk_create()` fills in a missing organisation and refuses any object that belongs to another one.
+6. Code outside a request picks one of these, in this order of preference:
+   - `with org_context(org):` (from `tenancy.context`), looping over organisations where the job covers several, as `send_reminders` does.
+   - `with unscoped():` when the code really means every company, as the platform admin (`tenancy.admin.TenantModelAdmin`) does. Inside it `TenantModel.objects` behaves like `all_objects` and `save()` needs an explicit organisation. The scope ends with the block: a queryset made inside it and run after it is filtered to whichever organisation is current then (or raises with none), and rows already fetched into a queryset's cache under one organisation, or inside `unscoped()`, raise `PermissionError` if read again inside another. Render anything that lists every company inside the block, as the admin does.
+   - `Model.all_objects` for a lookup that is pinned some other way: a pk or token (invite links), a known organisation, or a file path.
 
-`tenancy/tests.py` covers all of this (54 tests, including regression tests from an independent access-control review; `projects/tests.py` adds 17 more for programmes, workload and analytics, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
+   Say why in a comment, and grep for `unscoped()` and `all_objects` when reviewing. Following a foreign key (`rfi.project`), `refresh_from_db()` and delete cascades use `all_objects` as the base manager; each is pinned to a row the code already holds, so it can't list another company's data. For whole-database exports use `manage.py export_data` and `import_data`, which run `dumpdata`/`loaddata` inside `unscoped()` (plain `dumpdata`, even with `--all`, stops with `TenantContextMissing` on many-to-many fields).
+7. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
+8. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
+
+`tenancy/tests.py` covers all of this (45 tests, including regression tests from an independent access-control review; `tenancy/test_fail_closed.py` adds 30 for the fail-closed rule, combined querysets and subqueries, the bulk-write guard, the admin and every management command run against two companies; `projects/tests.py` adds 65 more for programmes, workload, analytics, files and archived projects, `tenders/tests.py` 18 for the tender portal, and `delivery/tests.py` 17 for the estimating/projects split and the live-job portal). Run them after every change:
 
 ```bash
 DEBUG=1 python manage.py test
@@ -89,6 +106,27 @@ Open http://localhost:8000/login/. Demo logins (password `DemoPass!2026`):
 - `bids@demo.test`: drylining subcontractor pricing the Kingsway tender (sees only their tender)
 
 Emails print to the console while `EMAIL_BACKEND` is unset.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`:
+
+- **Tests**, on Python 3.13, one job per database: `Tests (sqlite)`, `Tests (postgres)` (PostgreSQL 16, the planned AWS RDS database) and `Tests (mysql)` (MySQL 8.0, what PythonAnywhere runs in production today). Each job runs `manage.py check`, `manage.py makemigrations --check --dry-run` (fails if a model change has no migration), then the full test suite under `coverage`, with the report printed in the log and the job summary. There is no coverage threshold yet.
+  - The MySQL job uses the `mysql:8.0` service container with the same settings as production (`DB_ENGINE=mysql`: utf8mb4, `STRICT_TRANS_TABLES`, `CONN_MAX_AGE=280`). It connects as root so the test runner can create `test_siteline`. It installs `pkg-config`, `default-libmysqlclient-dev` and `build-essential` from apt and compiles `mysqlclient`. It also checks that the server is 8.0 with utf8mb4 and strict mode, and runs `manage.py check --database default` for the MySQL-specific checks. Warnings there are printed but do not fail the job; the one known warning, `mysql.W003` on `projects.FileScan.path`, is fine on MySQL 8.0 InnoDB. Any migration that relies on database-specific behaviour, such as `SELECT ... FOR UPDATE SKIP LOCKED`, must pass this job before it is deployed to PythonAnywhere.
+  - The SQLite and PostgreSQL jobs leave `mysqlclient` out of the install because it has to be compiled and they do not use it.
+  - Branch protection: once `Tests (mysql)` has passed on `main`, add it to the required status checks next to `Tests (sqlite)` and `Tests (postgres)`.
+- **Security scan**: `pip-audit` on `requirements.txt` and `requirements-dev.txt`, and `bandit -r siteline -ll`. This is non-blocking for now (`continue-on-error`) while the existing findings are fixed. Findings show up as warnings on the run.
+
+Dependabot (`.github/dependabot.yml`) opens weekly update PRs for the pip requirements and for the GitHub Actions, which are pinned to commit SHAs. The `@claude` workflow (`.github/workflows/claude.yml`) only runs for repository owners, members and collaborators.
+
+To run the same checks locally:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+DEBUG=1 MEDIA_ROOT=$(mktemp -d) python -m coverage run manage.py test && python -m coverage report
+pip-audit -r requirements.txt --no-deps --disable-pip   # checks the pins without building mysqlclient
+bandit -r . -ll --exclude ./.venv
+```
 
 ## Deploy on PythonAnywhere
 
@@ -254,6 +292,10 @@ python manage.py migrate && python manage.py collectstatic --noinput
 ```
 Then reload on the Web tab.
 
+## Deploy on AWS (London)
+
+The move from PythonAnywhere to AWS (ECS Fargate, RDS PostgreSQL, SES) is scripted in `infra/`. Follow `infra/README.md`; the data move is in `infra/scripts/migrate-data.md`.
+
 ## Running the platform
 
 - Admin is at `/<ADMIN_PATH>/` (default `platform-admin`). From there you can see every company, its plan and status, extend a trial (`trial_ends_at`) or suspend a workspace (`is_suspended`).
@@ -281,5 +323,5 @@ directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
 delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
 templates/    shared templates; app-specific ones live in each app
-static/       app.css (single stylesheet; --accent is set from each company's brand colour), app.js
+static/       app.css (single stylesheet; --accent is set from each company's brand colour, --accent-ink to white or near-black, whichever contrasts more), app.js
 ```

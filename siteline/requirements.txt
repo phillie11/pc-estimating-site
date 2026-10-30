@@ -1,11 +1,14 @@
-Django==5.1.4
+Django==5.2.18
 stripe==11.4.1
-whitenoise==6.8.2
-python-dotenv==1.0.1
+whitenoise==6.12.0
+python-dotenv==1.2.4
 # Cloud file storage (AWS S3 London, DigitalOcean Spaces or Cloudflare R2), switched on by STORAGE_BUCKET
-django-storages==1.14.4
+django-storages==1.14.6
 boto3==1.35.36
-django-axes==7.0.1
-Pillow==11.0.0
-# MySQL on PythonAnywhere
+django-axes==7.1.0
+Pillow==12.3.0
+# MySQL on PythonAnywhere (left out of the Docker image)
 mysqlclient==2.2.6
+# AWS (ECS Fargate + RDS PostgreSQL): web server and PostgreSQL driver (DB_ENGINE=postgres)
+gunicorn==26.2.0
+psycopg[binary]==3.3.6

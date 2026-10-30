@@ -30,15 +30,18 @@ class Command(BaseCommand):
                 continue
             with org_context(org):
                 tenders = list(Project.objects.filter(stage__in=[Project.STAGE_LEAD, Project.STAGE_TENDERING],
+                                                      archived_at__isnull=True,
                                                       tender_due__gte=timezone.now(),
                                                       tender_due__lte=timezone.now() + timedelta(days=3)))
                 soon = today + timedelta(days=14)
                 insurance = list(Subcontractor.objects.exclude(status=Subcontractor.STATUS_STRUCK_OFF).filter(
-                    Q(public_liability_expiry__range=(today, soon)) | Q(employers_liability_expiry__range=(today, soon))))
+                    Q(public_liability_expiry__range=(today, soon)) | Q(employers_liability_expiry__range=(today, soon)),
+                    archived_at__isnull=True))
                 trial_days = org.trial_days_left if org.is_on_internal_trial and org.trial_days_left in (7, 3, 1) else None
                 for m in org.memberships.filter(is_active=True).select_related('user'):
                     user = m.user
-                    rfis = list(RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, due_date__lt=today)
+                    rfis = list(RFI.objects.filter(assigned_to=user, status=RFI.STATUS_OPEN, due_date__lt=today,
+                                                   project__archived_at__isnull=True)
                                 .select_related('project'))
                     if not m.is_internal:
                         if rfis:

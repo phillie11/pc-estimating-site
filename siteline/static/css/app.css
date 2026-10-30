@@ -12,7 +12,7 @@
   --side-ink: #C9CDD3;
   --side-dim: #7D848F;
   --accent: #E8590C;
-  --accent-ink: #FFFFFF;
+  --accent-ink: #FFFFFF;  /* white or #15191F, picked per company in base.html (ui.readable_ink) */
   --good: #1F7A4D;   --good-bg: #E3F1E8;
   --warn: #9A6200;   --warn-bg: #FBEFD5;
   --bad: #B42318;    --bad-bg: #FBE4E1;
@@ -215,8 +215,17 @@ textarea { resize: vertical; }
 .col-head { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 4px 10px; }
 .col-head h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
 .col-head .total { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
-.bcard { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; margin-bottom: 8px; cursor: grab; box-shadow: var(--shadow); text-decoration: none; display: block; }
+.bcard { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; margin-bottom: 8px; cursor: grab; box-shadow: var(--shadow); text-decoration: none; display: block; }
 .bcard:hover { border-color: var(--line-2); color: inherit; }
+.bcard:focus-within { border-color: var(--accent); }
+/* The title link covers the card so the whole card still opens the project; the move form sits above it */
+.bcard-link { text-decoration: none; }
+.bcard-link::after { content: ''; position: absolute; inset: 0; }
+.bcard-link:focus-visible { outline: none; }
+.bcard-move { position: relative; z-index: 1; display: flex; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.bcard-move label { margin: 0; font-weight: 400; white-space: nowrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.bcard-move select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 12.5px; }
 .bcard.dragging { opacity: .5; }
 .bcard .t1 { font-weight: 600; line-height: 1.3; }
 .bcard .t2 { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
@@ -251,7 +260,7 @@ textarea { resize: vertical; }
 .auth-box .field { margin-bottom: 14px; }
 @media (max-width: 860px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } }
 .logo-word { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; color: inherit; }
-.logo-word .mark { width: 30px; height: 30px; border-radius: 4px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 14px; }
+.logo-word .mark { width: 30px; height: 30px; border-radius: 4px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 14px; }
 
 .mk-nav { display: flex; align-items: center; justify-content: space-between; padding: 18px clamp(16px, 4vw, 48px); max-width: 1200px; margin: 0 auto; }
 .mk-hero { max-width: 1200px; margin: 0 auto; padding: 56px clamp(16px, 4vw, 48px) 40px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; }

@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static ui %}<!doctype html>
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
-{% if org %}<style>:root{--accent: {{ org.brand_colour }};}</style>{% endif %}
+{% if org %}<style>:root{--accent: {{ org.brand_colour }};--accent-ink: {{ org.brand_colour|readable_ink }};}</style>{% endif %}
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">

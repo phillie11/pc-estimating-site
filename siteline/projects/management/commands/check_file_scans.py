@@ -21,6 +21,7 @@ from django.db import models
 
 from projects import files
 from projects.models import FileScan
+from tenancy.context import org_context
 from tenancy.models import Organization
 
 UPLOADER_FIELDS = ('uploaded_by', 'submitted_by', 'created_by', 'raised_by', 'asked_by', 'issued_by')
@@ -90,8 +91,9 @@ class Command(BaseCommand):
                         continue
                     counts['blocked'] += 1
                     uploader = uploader_of(row)
-                    files.alert_blocked(org, fieldfile.name, status, str(row) or os.path.basename(fieldfile.name),
-                                  project_of(row), extra=[uploader] if uploader else ())
+                    with org_context(org):  # the file list spans every company; each alert stays in the file's own
+                        files.alert_blocked(org, fieldfile.name, status, str(row) or os.path.basename(fieldfile.name),
+                                            project_of(row), extra=[uploader] if uploader else ())
                     self.stderr.write(f'{status}: {fieldfile.name}')
         self.stdout.write(self.style.SUCCESS(
             f'Clean {counts["clean"]}, blocked {counts["blocked"]}, still being scanned {counts["pending"]}.'))

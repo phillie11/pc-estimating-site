@@ -25,7 +25,7 @@ class RFI(TenantModel):
     LIVE_STATUSES = (STATUS_OPEN, STATUS_RESPONDED)
     IMPACT_CHOICES = [('NONE', 'None'), ('POSSIBLE', 'Possible'), ('YES', 'Yes'), ('TBC', 'TBC')]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='rfis')
+    project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='rfis')
     number = models.PositiveIntegerField(editable=False)
     subject = models.CharField(max_length=200)
     question = models.TextField()

@@ -12,6 +12,7 @@ from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from tenancy.context import org_context
@@ -424,3 +425,531 @@ class MalwareScanTests(FileStorageMixin, Base):
             call_command('check_file_scans', '--retrigger', stdout=out)
             self.assertEqual([c.args[0].name for c in retrigger.call_args_list], [rev.file.name])
             self.assertIn('Asked GuardDuty to scan 1 file', out.getvalue())
+
+
+class CurrentRevisionTests(Base):
+    """Which revision of a drawing is current: P01 < P02 < P10 < C01, whatever order they were uploaded in."""
+
+    def setUp(self):
+        super().setUp()
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
+        override = self.settings(MEDIA_ROOT=self.media)
+        override.enable()
+        self.addCleanup(override.disable)
+        with org_context(self.org_a):
+            self.doc = Document.objects.create(project=self.pa, title='GA plan', reference='A-100')
+
+    def upload(self, code, **kwargs):
+        with org_context(self.org_a):
+            return self.doc.add_revision(DocumentRevision(revision=code, original_name=f'{code}.pdf', size=8,
+                                                          file=SimpleUploadedFile(f'{code}.pdf', b'%PDF-1.4')), **kwargs)
+
+    def current(self):
+        with org_context(self.org_a):
+            return Document.objects.get(pk=self.doc.pk).current.revision
+
+    def test_revision_rank_orders_p_before_c_numerically(self):
+        from .models import revision_rank
+        codes = ['C02', 'P10', 'c01', 'P02', 'P1', 'C10']
+        self.assertEqual(sorted(codes, key=revision_rank), ['P1', 'P02', 'P10', 'c01', 'C02', 'C10'])
+        self.assertIsNone(revision_rank('A'))
+        self.assertIsNone(revision_rank('rev 3'))
+
+    def test_newer_revision_becomes_current(self):
+        self.upload('P01')
+        self.upload('P02')
+        self.upload('C01')
+        self.assertEqual(self.current(), 'C01')
+        self.assertEqual(DocumentRevision.all_objects.filter(document=self.doc, is_current=True).count(), 1)
+
+    def test_p10_is_newer_than_p02(self):
+        self.upload('P02')
+        self.upload('P10')
+        self.assertEqual(self.current(), 'P10')
+
+    def test_older_upload_does_not_displace_current(self):
+        self.upload('C01')
+        late = self.upload('P03')
+        self.assertFalse(late.is_current)
+        self.assertEqual(self.current(), 'C01')
+
+    def test_older_upload_marked_current_explicitly(self):
+        self.upload('C01')
+        self.upload('P03', make_current=True)
+        self.assertEqual(self.current(), 'P03')
+        self.assertEqual(DocumentRevision.all_objects.filter(document=self.doc, is_current=True).count(), 1)
+
+    def test_odd_codes_fall_back_to_upload_order(self):
+        self.upload('C02')
+        self.upload('A')
+        self.assertEqual(self.current(), 'A')
+        self.upload('rev 3')
+        self.assertEqual(self.current(), 'rev 3')
+
+    def test_revise_view_keeps_newer_current_and_make_current_switches(self):
+        self.upload('C02')
+        self.login(self.alice)
+        path = self.url('document_detail', self.org_a, self.pa.pk, self.doc.pk)
+        r = self.client.post(path, {'revision': 'C01', 'file': SimpleUploadedFile('old.pdf', b'%PDF-1.4')}, follow=True)
+        self.assertContains(r, 'which stays current')
+        self.assertEqual(self.current(), 'C02')
+        old = DocumentRevision.all_objects.get(document=self.doc, revision='C01')
+        self.client.post(path, {'action': 'make_current', 'revision': old.pk})
+        self.assertEqual(self.current(), 'C01')
+
+    def test_revise_view_can_mark_older_upload_current(self):
+        self.upload('C02')
+        self.login(self.alice)
+        path = self.url('document_detail', self.org_a, self.pa.pk, self.doc.pk)
+        self.client.post(path, {'revision': 'C01', 'make_current': 'on',
+                                'file': SimpleUploadedFile('old.pdf', b'%PDF-1.4')})
+        self.assertEqual(self.current(), 'C01')
+
+    def test_external_cannot_change_current_on_someone_elses_document(self):
+        self.upload('C01')
+        old = self.upload('P01')
+        sub = make_user('sub@s.test', 'Sid Sub')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=sub, role=Membership.ROLE_EXTERNAL)
+            ProjectMember.objects.create(project=self.pa, user=sub, role=ProjectMember.ROLE_SUBCONTRACTOR)
+            Document.objects.filter(pk=self.doc.pk).update(visibility=Document.VIS_SHARED)
+        self.login(sub)
+        r = self.client.post(self.url('document_detail', self.org_a, self.pa.pk, self.doc.pk),
+                             {'action': 'make_current', 'revision': old.pk})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.current(), 'C01')
+
+    def test_data_migration_flags_existing_revisions(self):
+        from importlib import import_module
+        from django.apps import apps
+        migration = import_module('projects.migrations.0010_documentrevision_is_current')
+        with org_context(self.org_a):
+            other = Document.objects.create(project=self.pa, title='Odd', reference='X-1')
+        for doc, codes in ((self.doc, ['P01', 'C02', 'P10', 'C01']), (other, ['C01', 'A', 'P02'])):
+            for code in codes:
+                with org_context(self.org_a):
+                    DocumentRevision.objects.create(document=doc, revision=code, original_name='f.pdf',
+                                                    file=SimpleUploadedFile('f.pdf', b'%PDF-1.4'))
+        migration.flag_current(apps, None)
+        flagged = dict(DocumentRevision.all_objects.filter(is_current=True).values_list('document_id', 'revision'))
+        # All P/C: highest code wins even though C01 was uploaded last; any odd code: latest upload wins
+        self.assertEqual(flagged, {self.doc.pk: 'C02', other.pk: 'P02'})
+
+
+class ArchiveTests(Base):
+    """Projects and subcontractors with records are archived, never deleted; empty ones can still go."""
+
+    def setUp(self):
+        super().setUp()
+        from directory.models import Package
+        self.staff = make_user('staff@a.test', 'Stan Staff')
+        self.ext = make_user('client@c.test', 'Cara Client')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=self.staff, role=Membership.ROLE_MEMBER)
+            Membership.objects.create(organization=self.org_a, user=self.ext, role=Membership.ROLE_EXTERNAL)
+            ProjectMember.objects.create(project=self.pa, user=self.ext, role=ProjectMember.ROLE_CLIENT)
+            self.bid = Project.objects.create(name='Archived tender', stage=Project.STAGE_TENDERING,
+                                              tender_due=timezone.now() + timedelta(days=5))
+            Package.objects.create(project=self.bid, subcontractor=self.sub_a)
+            self.lead = Project.objects.create(name='Mistaken lead', stage=Project.STAGE_LEAD)
+
+    def archive(self, project):
+        return self.client.post(self.url('project_archive', self.org_a, project.pk))
+
+    def test_project_with_records_cannot_be_deleted(self):
+        from rfis.models import RFI
+        self.login(self.alice)
+        r = self.client.post(self.url('project_delete', self.org_a, self.pa.pk), {'confirm': self.pa.reference})
+        self.assertRedirects(r, self.url('project_edit', self.org_a, self.pa.pk), fetch_redirect_response=False)
+        self.assertTrue(Project.all_objects.filter(pk=self.pa.pk).exists())
+        self.assertTrue(RFI.all_objects.filter(pk=self.rfi_a.pk).exists())
+        self.assertContains(self.client.get(self.url('project_edit', self.org_a, self.pa.pk)), 'Archive project')
+
+    def test_records_block_a_hard_delete_at_the_database_level_too(self):
+        from django.db.models import RestrictedError
+        with org_context(self.org_a), self.assertRaises(RestrictedError):
+            Project.objects.get(pk=self.pa.pk).delete()
+        with org_context(self.org_a), self.assertRaises(RestrictedError):
+            self.sub_a.delete()
+
+    def test_empty_lead_can_still_be_deleted(self):
+        self.login(self.alice)
+        self.assertContains(self.client.get(self.url('project_edit', self.org_a, self.lead.pk)), 'Delete permanently')
+        self.client.post(self.url('project_delete', self.org_a, self.lead.pk), {'confirm': self.lead.reference})
+        self.assertFalse(Project.all_objects.filter(pk=self.lead.pk).exists())
+
+    def test_archive_keeps_records_and_audit(self):
+        from tenancy.models import ActivityEvent
+        from variations.models import Variation
+        self.login(self.alice)
+        with org_context(self.org_a):
+            FileAccess.objects.create(user=self.alice, project=self.pa, label='A-100', path='x')
+        self.archive(self.pa)
+        self.pa.refresh_from_db()
+        self.assertEqual((self.pa.is_archived, self.pa.archived_by), (True, self.alice))
+        self.assertTrue(Variation.all_objects.filter(pk=self.vo_a.pk).exists())
+        self.assertTrue(FileAccess.all_objects.filter(project=self.pa).exists())
+        self.assertTrue(ActivityEvent.all_objects.filter(project=self.pa, verb='archived project').exists())
+
+    def test_archived_hidden_from_lists_pipeline_and_workload(self):
+        self.login(self.alice)
+        self.archive(self.pa)
+        self.archive(self.bid)
+        self.assertNotContains(self.client.get(self.url('project_list', self.org_a) + '?view=all'), 'Alpha secret job')
+        self.assertNotContains(self.client.get(self.url('bid_list', self.org_a) + '?view=all'), 'Archived tender')
+        self.assertNotContains(self.client.get(self.url('pipeline', self.org_a)), 'Archived tender')
+        self.assertNotContains(self.client.get(self.url('workload', self.org_a) + '?view=tenders'), 'Archived tender')
+        self.assertNotContains(self.client.get(self.url('workload', self.org_a) + '?view=secured'), 'Alpha secret job')
+        # Owners and admins still find and open them
+        self.assertContains(self.client.get(self.url('project_list', self.org_a) + '?view=archived'), 'Alpha secret job')
+        self.assertContains(self.client.get(self.url('bid_list', self.org_a) + '?view=archived'), 'Archived tender')
+        self.assertContains(self.client.get(self.url('project_detail', self.org_a, self.pa.pk)), 'Restore')
+        self.assertContains(self.client.get(self.url('rfi_list', self.org_a, self.pa.pk)), 'A question')
+
+    def test_staff_and_collaborators_cannot_open_archived(self):
+        self.login(self.alice)
+        self.archive(self.pa)
+        for user in (self.staff, self.ext):
+            self.login(user)
+            self.assertEqual(self.client.get(self.url('project_detail', self.org_a, self.pa.pk)).status_code, 404)
+        self.login(self.staff)
+        self.assertNotContains(self.client.get(self.url('project_list', self.org_a) + '?view=archived'), 'Alpha secret job')
+        self.assertEqual(self.archive(self.bid).status_code, 403)
+        self.login(self.ext)
+        self.assertNotContains(self.client.get(self.url('project_list', self.org_a) + '?view=archived'), 'Alpha secret job')
+
+    @override_settings(PLANS={'team': {'name': 'Tiny', 'max_staff': 3, 'max_active_projects': 1}})
+    def test_archived_projects_free_up_the_plan_limit(self):
+        self.login(self.alice)
+        self.client.post(self.url('project_create', self.org_a), {'name': 'Over limit', 'stage': 'LEAD'})
+        self.assertFalse(Project.all_objects.filter(name='Over limit').exists())
+        for p in (self.pa, self.bid, self.lead):
+            self.archive(p)
+        self.assertEqual(Project.active_count(self.org_a), 0)
+        self.client.post(self.url('project_create', self.org_a), {'name': 'Room now', 'stage': 'LEAD'})
+        self.assertTrue(Project.all_objects.filter(name='Room now').exists())
+        # Restoring one would go over the limit again, so it is refused
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        self.pa.refresh_from_db()
+        self.assertTrue(self.pa.is_archived)
+
+    def test_restore(self):
+        self.login(self.alice)
+        self.archive(self.pa)
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        self.pa.refresh_from_db()
+        self.assertFalse(self.pa.is_archived)
+        self.assertContains(self.client.get(self.url('project_list', self.org_a) + '?view=all'), 'Alpha secret job')
+
+    def test_subcontractor_with_records_is_archived_not_deleted(self):
+        from directory.models import Package, Subcontractor
+        self.login(self.alice)
+        archive = self.url('sub_archive', self.org_a, self.sub_a.pk)
+        self.client.post(archive, {'action': 'delete'})
+        self.assertTrue(Package.all_objects.filter(subcontractor=self.sub_a).exists())
+        self.client.post(archive, {'action': 'archive'})
+        self.sub_a.refresh_from_db()
+        self.assertTrue(self.sub_a.is_archived)
+        listed = lambda qs='': list(self.client.get(self.url('sub_list', self.org_a) + qs).context['subs'])  # noqa: E731
+        self.assertEqual(listed(), [])
+        self.assertEqual(listed('?status=ARCHIVED'), [self.sub_a])
+        self.assertContains(self.client.get(self.url('sub_detail', self.org_a, self.sub_a.pk)), 'Restore')
+        self.login(self.staff)
+        self.assertEqual(self.client.get(self.url('sub_detail', self.org_a, self.sub_a.pk)).status_code, 404)
+        self.assertEqual(listed('?status=ARCHIVED'), [])
+        with org_context(self.org_a):
+            from tenders.forms import TenderInviteForm
+            self.assertNotIn(self.sub_a, TenderInviteForm(project=self.bid).fields['subcontractors'].queryset)
+            spare = Subcontractor.objects.create(company_name='Added twice')
+        self.login(self.alice)
+        self.client.post(self.url('sub_archive', self.org_a, spare.pk), {'action': 'delete'})
+        self.assertFalse(Subcontractor.all_objects.filter(pk=spare.pk).exists())
+
+    def test_deleting_a_company_still_removes_everything(self):
+        """RESTRICT stops piecemeal deletes but not the workspace itself going (seed_demo --reset, admin)."""
+        self.org_a.delete()
+        self.assertFalse(Project.all_objects.filter(organization_id=self.org_a.pk).exists())
+
+
+class SnagStatusTests(Base):
+    """A snag the sub marks ready leaves their plate and lands on staff's as "Ready to inspect"."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Issue
+        self.sub_user = make_user('sub@s.test', 'Sid Sub')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=self.sub_user, role=Membership.ROLE_EXTERNAL)
+            ProjectMember.objects.create(project=self.pa, user=self.sub_user, role=ProjectMember.ROLE_SUBCONTRACTOR)
+            self.snag = Issue.objects.create(project=self.pa, title='Chipped skirting', assignee=self.sub_user,
+                                             created_by=self.alice)
+        self.detail = self.url('issue_detail', self.org_a, self.pa.pk, self.snag.pk)
+
+    def test_ready_snag_moves_from_sub_plate_to_staff_plate(self):
+        self.login(self.sub_user)
+        self.assertEqual(list(self.client.get(self.url('dashboard', self.org_a)).context['my_issues']), [self.snag])
+        self.client.post(self.detail, {'action': 'ready'})
+        self.snag.refresh_from_db()
+        self.assertEqual(self.snag.status, self.snag.STATUS_READY)
+        self.assertEqual(list(self.client.get(self.url('dashboard', self.org_a)).context['my_issues']), [])
+        overview = self.client.get(self.url('project_detail', self.org_a, self.pa.pk))
+        self.assertEqual(overview.context['stats']['issues_open'], 0)
+        self.login(self.alice)
+        r = self.client.get(self.url('delivery_home', self.org_a))
+        self.assertEqual(list(r.context['to_inspect']), [self.snag])
+        self.assertContains(r, 'Ready to inspect')
+
+    def test_project_manager_sees_ready_snags_too(self):
+        pm = make_user('pm@a.test', 'Pat PM')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=pm, role=Membership.ROLE_MEMBER)
+            Project.objects.filter(pk=self.pa.pk).update(manager=pm)
+            type(self.snag).objects.filter(pk=self.snag.pk).update(status=self.snag.STATUS_READY)
+        self.login(pm)
+        self.assertEqual(list(self.client.get(self.url('delivery_home', self.org_a)).context['to_inspect']), [self.snag])
+
+    def test_badge_tone_follows_status(self):
+        self.login(self.alice)
+        self.assertContains(self.client.get(self.detail), '<span class="badge accent">Open</span>')
+        self.client.post(self.detail, {'action': 'ready'})
+        self.assertContains(self.client.get(self.detail), '<span class="badge info">Ready for inspection</span>')
+        self.client.post(self.detail, {'action': 'close'})
+        self.assertContains(self.client.get(self.detail), '<span class="badge good">Closed</span>')
+
+
+class PipelineMoveTests(Base):
+    """The "Move to" control on each pipeline card: the drag-and-drop route for touch and keyboard users."""
+
+    def setUp(self):
+        super().setUp()
+        with org_context(self.org_a):
+            self.bid = Project.objects.create(name='Retail refit', stage=Project.STAGE_TENDERING)
+        self.login(self.alice)
+        self.move = self.url('project_stage', self.org_a, self.bid.pk)
+
+    def test_each_card_has_a_labelled_move_form(self):
+        r = self.client.get(self.url('pipeline', self.org_a))
+        self.assertContains(r, f'action="{self.move}" class="bcard-move"')
+        self.assertContains(r, f'<label for="move-{self.bid.pk}" class="small dim">Move'
+                               f'<span class="sr-only"> Retail refit</span> to</label>')
+        self.assertContains(r, '<option value="SUBMITTED">Submitted</option>')
+        self.assertContains(r, '(hand over)</option>')
+
+    def test_move_form_changes_stage_and_returns_to_pipeline(self):
+        r = self.client.post(self.move, {'stage': Project.STAGE_SUBMITTED, 'next': 'pipeline'})
+        self.assertRedirects(r, self.url('pipeline', self.org_a), fetch_redirect_response=False)
+        self.bid.refresh_from_db()
+        self.assertEqual(self.bid.stage, Project.STAGE_SUBMITTED)
+
+    def test_moving_to_won_still_goes_through_handover(self):
+        r = self.client.post(self.move, {'stage': Project.STAGE_WON, 'next': 'pipeline'})
+        self.assertRedirects(r, self.url('project_handover', self.org_a, self.bid.pk), fetch_redirect_response=False)
+        self.bid.refresh_from_db()
+        self.assertEqual(self.bid.stage, Project.STAGE_TENDERING)
+
+    def test_bad_stage_from_the_form_is_a_message_not_json(self):
+        r = self.client.post(self.move, {'stage': 'NOPE', 'next': 'pipeline'}, follow=True)
+        self.assertContains(r, 'Unknown stage')
+        r = self.client.post(self.move, '{"stage": "NOPE"}', content_type='application/json')
+        self.assertEqual(r.status_code, 400)
+
+
+class ArchivedReadOnlyTests(Base):
+    """
+    Archiving frees a plan slot, so an archived project is read-only for everyone, owners
+    included: every write endpoint refuses it until it is restored (security review).
+    """
+    # The only project URLs that may write to an archived project
+    ALLOWED = {'project_archive', 'project_delete'}
+
+    def setUp(self):
+        super().setUp()
+        from directory.models import Package
+        from projects.models import Issue, Task
+        with org_context(self.org_a):
+            self.ids = {
+                'rfi_id': self.rfi_a.pk, 'vo_id': self.vo_a.pk,
+                'task_id': Task.objects.create(project=self.pa, title='Before archive').pk,
+                'issue_id': Issue.objects.create(project=self.pa, title='Snag').pk,
+                'activity_id': Activity.objects.create(project=self.pa, name='Strip out', start=date(2026, 1, 5),
+                                                       finish=date(2026, 1, 9)).pk,
+                'doc_id': Document.objects.create(project=self.pa, title='Plan').pk,
+                'package_id': Package.objects.create(project=self.pa, subcontractor=self.sub_a).pk,
+            }
+            self.pa.archive(self.alice)
+        self.login(self.alice)
+
+    def fingerprint(self):
+        """Row counts of every tenant table plus the project's own fields."""
+        from django.apps import apps
+        counts = {m.__name__: m.all_objects.count() for m in apps.get_models() if hasattr(m, 'all_objects')}
+        p = Project.all_objects.get(pk=self.pa.pk)
+        return counts, (p.stage, p.name, p.value, p.manager_id, p.archived_at, p.updated_at)
+
+    def project_urls(self):
+        """Every URL under projects/<pk>/, so a new endpoint is checked without editing this test."""
+        from tenancy.urls_org import urlpatterns
+        for p in urlpatterns:
+            converters = getattr(p.pattern, 'converters', {})
+            if not str(p.pattern).startswith('projects/<int:pk>/'):
+                continue
+            kwargs = {'org_slug': self.org_a.slug, 'pk': self.pa.pk,
+                      **{k: self.ids.get(k, 999) for k in converters if k != 'pk'}}
+            yield p.name, reverse(p.name, kwargs=kwargs)
+
+    def test_every_write_to_an_archived_project_is_refused(self):
+        from django.core import mail
+        payload = {'stage': Project.STAGE_COMPLETE, 'subject': 'after archive', 'question': 'still works?',
+                   'title': 'New', 'name': 'New', 'description': 'x', 'value': '1', 'body': 'Note',
+                   'status': 'DONE', 'start': '2026-02-01', 'finish': '2026-02-02', 'manager': self.alice.pk,
+                   'email': 'new@c.test', 'role': ProjectMember.ROLE_CLIENT, 'action': 'comment', 'delete': '1'}
+        before = self.fingerprint()
+        names = set()
+        for name, url in self.project_urls():
+            names.add(name)
+            if name in self.ALLOWED:
+                continue
+            r = self.client.post(url, payload)
+            self.assertEqual(r.status_code, 403, name)
+        r = self.client.post(self.url('project_stage', self.org_a, self.pa.pk), '{"stage": "COMPLETE"}',
+                             content_type='application/json')
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.fingerprint(), before)
+        self.assertEqual(mail.outbox, [])
+        self.assertLessEqual({'project_stage', 'project_edit', 'rfi_create', 'document_list', 'package_list',
+                              'tender', 'rams_list', 'subvariation_list', 'variation_create', 'project_handover'},
+                             names)
+        # Reading still works
+        self.assertContains(self.client.get(self.url('rfi_list', self.org_a, self.pa.pk)), 'A question')
+
+    def test_restore_is_still_allowed_and_makes_it_writable_again(self):
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        r = self.client.post(self.url('project_stage', self.org_a, self.pa.pk), {'stage': Project.STAGE_COMPLETE})
+        self.assertEqual(r.status_code, 302)
+        self.pa.refresh_from_db()
+        self.assertEqual((self.pa.is_archived, self.pa.stage), (False, Project.STAGE_COMPLETE))
+
+    def test_an_empty_archived_project_can_still_be_deleted(self):
+        with org_context(self.org_a):
+            lead = Project.objects.create(name='Mistaken lead', stage=Project.STAGE_LEAD)
+            lead.archive(self.alice)
+        self.client.post(self.url('project_delete', self.org_a, lead.pk), {'confirm': lead.reference})
+        self.assertFalse(Project.all_objects.filter(pk=lead.pk).exists())
+
+
+class HandoverPlanLimitTests(Base):
+    @override_settings(PLANS={'team': {'name': 'Tiny', 'max_staff': 3, 'max_active_projects': 1}})
+    def test_winning_a_lost_bid_needs_room_on_the_plan(self):
+        """pa (live) fills the plan; handing over a lost bid would reopen a second active project."""
+        with org_context(self.org_a):
+            lost = Project.objects.create(name='Lost bid', stage=Project.STAGE_LOST)
+        self.login(self.alice)
+        handover = {'manager': self.alice.pk, 'value': '1000', 'handover_notes': 'x'}
+        r = self.client.post(self.url('project_handover', self.org_a, lost.pk), handover, follow=True)
+        self.assertContains(r, 'active projects')
+        lost.refresh_from_db()
+        self.assertEqual(lost.stage, Project.STAGE_LOST)
+        self.assertEqual(Project.active_count(self.org_a), 1)
+        # With room on the plan it can be won as usual
+        with org_context(self.org_a):
+            self.pa.stage = Project.STAGE_COMPLETE
+            self.pa.save()
+        self.client.post(self.url('project_handover', self.org_a, lost.pk), handover)
+        lost.refresh_from_db()
+        self.assertEqual(lost.stage, Project.STAGE_WON)
+
+
+class ArchivedVisibilityTests(Base):
+    """Archived projects stay out of the feed, the bell and invite links for people who can't open them."""
+
+    def setUp(self):
+        super().setUp()
+        from tenancy.models import log_activity
+        self.staff = make_user('staff@a.test', 'Stan Staff')
+        self.estimator = make_user('est@a.test', 'Esme Estimator')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=self.staff, role=Membership.ROLE_MEMBER)
+            Membership.objects.create(organization=self.org_a, user=self.estimator, role=Membership.ROLE_MEMBER,
+                                      area=Membership.AREA_ESTIMATING)
+            self.bid = Project.objects.create(name='Shopfit bid', stage=Project.STAGE_TENDERING)
+            log_activity(self.alice, 'priced', 'Bid event', project=self.bid)
+            log_activity(self.alice, 'programmed', 'Live job event', project=self.pa)
+            log_activity(self.alice, 'joined the team', 'Company event')
+
+    def feed(self, user):
+        self.login(user)
+        return self.client.get(self.url('activity', self.org_a)).content.decode()
+
+    def test_activity_feed_follows_what_each_person_can_open(self):
+        feed = self.feed(self.estimator)  # estimating only: the live job belongs to the projects team
+        self.assertIn('Bid event', feed)
+        self.assertIn('Company event', feed)
+        self.assertNotIn('Live job event', feed)
+        self.bid.archive(self.alice)
+        feed = self.feed(self.staff)
+        self.assertNotIn('Bid event', feed)
+        self.assertIn('Live job event', feed)
+        self.assertIn('Bid event', self.feed(self.alice))  # owners and admins can still open it
+
+    def test_notifications_for_archived_projects_are_hidden_from_people_who_cannot_open_them(self):
+        from tenancy.models import Notification
+        with org_context(self.org_a):
+            n = Notification.objects.create(user=self.staff, project=self.bid, title='Quote in for shopfit', url='/x/')
+            Notification.objects.create(user=self.alice, project=self.bid, title='Owner alert', url='/x/')
+        self.bid.archive(self.alice)
+        self.login(self.staff)
+        r = self.client.get(self.url('notifications', self.org_a))
+        self.assertNotContains(r, 'Quote in for shopfit')
+        self.assertEqual(r.context['unread_notifications'], 0)
+        self.assertEqual(self.client.get(self.url('notification_open', self.org_a, n.pk)).status_code, 404)
+        self.login(self.alice)
+        r = self.client.get(self.url('notifications', self.org_a))
+        self.assertContains(r, 'Owner alert')
+        self.assertEqual(r.context['unread_notifications'], 1)
+
+    def test_invite_to_an_archived_project_cannot_be_accepted(self):
+        from django.urls import reverse
+        from projects.models import ProjectInvite
+        with org_context(self.org_a):
+            inv = ProjectInvite.objects.create(project=self.pa, email='late@c.test', role=ProjectMember.ROLE_CLIENT)
+        self.pa.archive(self.alice)
+        url = reverse('accept_project_invite', args=[inv.token])
+        r = self.client.post(url, {'full_name': 'Late Client', 'password': 'Correct-Horse-9'})
+        self.assertContains(r, 'archived', status_code=410)
+        self.assertFalse(ProjectMember.all_objects.filter(project=self.pa, user__email='late@c.test').exists())
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, ProjectInvite.STATUS_PENDING)
+
+    def test_archiving_notifies_nobody(self):
+        from django.core import mail
+        from tenancy.models import Notification
+        with org_context(self.org_a):
+            ProjectMember.objects.create(project=self.pa, user=self.staff, role=ProjectMember.ROLE_PM)
+        before = Notification.all_objects.count()
+        self.login(self.alice)
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk))
+        self.client.post(self.url('project_archive', self.org_a, self.pa.pk), {'action': 'restore'})
+        self.assertEqual((Notification.all_objects.count(), mail.outbox), (before, []))
+
+
+class PostedIdTests(Base):
+    """An id posted from a form that isn't a number is a 404, not a server error."""
+
+    def test_non_numeric_ids_are_not_found(self):
+        with org_context(self.org_a):
+            doc = Document.objects.create(project=self.pa, title='GA plan')
+            bid = Project.objects.create(name='Shopfit bid', stage=Project.STAGE_TENDERING)
+        self.login(self.alice)
+        posts = [
+            (self.url('document_detail', self.org_a, self.pa.pk, doc.pk), {'action': 'make_current', 'revision': 'abc'}),
+            (self.url('project_team', self.org_a, self.pa.pk), {'action': 'remove', 'member': '1 OR 1=1'}),
+            (self.url('project_team', self.org_a, self.pa.pk), {'action': 'revoke', 'invite': 'x'}),
+            (self.url('project_team', self.org_a, self.pa.pk), {'action': 'resend', 'invite': ''}),
+            (self.url('tender', self.org_a, bid.pk), {'action': 'answer', 'query': 'x'}),
+            (self.url('package_list', self.org_a, bid.pk), {'action': 'note', 'package': 'x'}),
+            (self.url('sub_detail', self.org_a, self.sub_a.pk), {'action': 'delete_contact', 'contact': 'x'}),
+            (self.url('trades', self.org_a), {'action': 'delete', 'trade': 'x'}),
+        ]
+        for url, data in posts:
+            self.assertEqual(self.client.post(url, data).status_code, 404, (url, data))

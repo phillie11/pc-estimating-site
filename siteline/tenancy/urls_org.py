@@ -42,6 +42,7 @@ urlpatterns = [
     path(P, projects.project_detail, name='project_detail'),
     path(P + 'edit/', projects.project_edit, name='project_edit'),
     path(P + 'delete/', projects.project_delete, name='project_delete'),
+    path(P + 'archive/', projects.project_archive, name='project_archive'),
     path(P + 'stage/', projects.project_stage, name='project_stage'),
     path(P + 'handover/', projects.project_handover, name='project_handover'),
     path(P + 'team/', projects.project_team, name='project_team'),
@@ -92,4 +93,5 @@ urlpatterns = [
     path('directory/trades/', directory.trades, name='trades'),
     path('directory/<int:pk>/', directory.sub_detail, name='sub_detail'),
     path('directory/<int:pk>/edit/', directory.sub_edit, name='sub_edit'),
+    path('directory/<int:pk>/archive/', directory.sub_archive, name='sub_archive'),
 ]
