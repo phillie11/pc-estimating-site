@@ -19,7 +19,7 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 
 | Area | What it does |
 |---|---|
-| **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won. Weighted pipeline, 12-month win rate, tender return deadlines. |
+| **Bid pipeline** | Drag-and-drop board from Lead → Tendering → Submitted → Won, with a "Move to" control on every card for touch and keyboard users (moving to Won still opens the handover). Weighted pipeline, 12-month win rate, tender return deadlines. |
 | **Subcontract tenders (portal)** | Invite subcontractors to price a trade package. They get a notification with a link, never attachments: scope, tender documents, addenda (with acknowledgement tracking) and tender queries are all in the portal, and they submit quotes there. Compare quotes side by side, appoint one, and the rest are told and lose access. Losing the main tender closes every open package. |
 | **Live-job portal for subcontractors** | Appointed subcontractors submit RAMS for review (approve, approve with comments, or revise and resubmit, with revision history) and submit variations, which the projects team approves in full or part, rejects, or passes straight on to the client as a draft variation. Each subcontractor sees only their own. Issuing or revising a shared drawing notifies the client and subcontractors. The overview shows each subcontract's order value, approved variations and RAMS status. |
 | **Notifications** | A bell for everyone, staff and external. Every alert (tender invitations, addenda, queries, quotes, RFI and task assignments, variation decisions) is an in-app notification plus a short email linking to the item. Reply in the portal, not by email. |

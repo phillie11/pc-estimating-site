@@ -357,42 +357,57 @@ def pipeline(request, org_slug):
         total = items.aggregate(s=Sum('value'))['s'] or Decimal('0')
         columns.append({'code': code, 'label': dict(Project.STAGE_CHOICES)[code], 'items': items, 'total': total})
     recent_closed = qs.filter(stage__in=[Project.STAGE_LOST, Project.STAGE_DECLINED]).order_by('-decided_at')[:10]
+    move_choices = [(c, dict(Project.STAGE_CHOICES)[c]) for c in Project.BOARD_STAGES]
     return render(request, 'projects/pipeline.html', {'columns': columns, 'recent_closed': recent_closed,
-                                                      'stage_choices': Project.STAGE_CHOICES,
+                                                      'stage_choices': Project.STAGE_CHOICES, 'move_choices': move_choices,
                                                       'section': use_section(request, 'estimating')})
 
 
 @require_POST
 @internal_required
 def project_stage(request, org_slug, pk):
+    """
+    Change a project's stage: JSON from a pipeline drag, or a plain form from the project
+    page's stage select or a pipeline card's "Move to" control (touch and keyboard users).
+    """
     project = get_project(request, pk)
+    is_json = request.content_type == 'application/json'
     try:
-        stage = json.loads(request.body or '{}').get('stage') if request.content_type == 'application/json' \
-            else request.POST.get('stage')
+        stage = json.loads(request.body or '{}').get('stage') if is_json else request.POST.get('stage')
     except json.JSONDecodeError:
         stage = None
+    back = redirect('pipeline', org_slug=org_slug) if request.POST.get('next') == 'pipeline' else redirect(project)
+
+    def refuse(error, status):
+        if is_json:
+            return JsonResponse({'ok': False, 'error': error}, status=status)
+        messages.error(request, error)
+        return back
+
     if stage not in dict(Project.STAGE_CHOICES):
-        return JsonResponse({'ok': False, 'error': 'Unknown stage'}, status=400)
+        return refuse('Unknown stage', 400)
     if project.stage in Project.CLOSED_STAGES and stage not in Project.CLOSED_STAGES and not Project.plan_has_room(request.org):
-        return JsonResponse({'ok': False, 'error': 'Active project limit reached for your plan'}, status=402)
+        return refuse('Active project limit reached for your plan', 402)
     if _crosses_to_delivery(project.stage, stage):
         # Winning is estimating's call, made through the handover (which checks who may do it)
         url = reverse('project_handover', args=[org_slug, pk])
-        if request.content_type == 'application/json':
+        if is_json:
             return JsonResponse({'ok': True, 'redirect': url})
         return redirect(url)
     allowed = request.membership.can_estimate if stage in Project.ESTIMATING_STAGES else request.membership.can_deliver
     if not allowed:
-        return JsonResponse({'ok': False, 'error': 'That stage belongs to the other team.'}, status=403)
+        return refuse('That stage belongs to the other team.', 403)
     if project.stage != stage:
         project.stage = stage
         project.save()
         log_activity(request, f'moved to {project.get_stage_display()}', project.name, project=project,
                      url=project.get_absolute_url())
         _close_tenders_if_lost(request, project)
-    if request.content_type == 'application/json':
+        if not is_json and request.POST.get('next') == 'pipeline':
+            messages.success(request, f'{project.name} moved to {project.get_stage_display()}.')
+    if is_json:
         return JsonResponse({'ok': True, 'stage': stage})
-    return redirect(project)
+    return back
 
 
 def _crosses_to_delivery(old, new):

@@ -715,3 +715,40 @@ class SnagStatusTests(Base):
         self.assertContains(self.client.get(self.detail), '<span class="badge info">Ready for inspection</span>')
         self.client.post(self.detail, {'action': 'close'})
         self.assertContains(self.client.get(self.detail), '<span class="badge good">Closed</span>')
+
+
+class PipelineMoveTests(Base):
+    """The "Move to" control on each pipeline card: the drag-and-drop route for touch and keyboard users."""
+
+    def setUp(self):
+        super().setUp()
+        with org_context(self.org_a):
+            self.bid = Project.objects.create(name='Retail refit', stage=Project.STAGE_TENDERING)
+        self.login(self.alice)
+        self.move = self.url('project_stage', self.org_a, self.bid.pk)
+
+    def test_each_card_has_a_labelled_move_form(self):
+        r = self.client.get(self.url('pipeline', self.org_a))
+        self.assertContains(r, f'action="{self.move}" class="bcard-move"')
+        self.assertContains(r, f'<label for="move-{self.bid.pk}" class="small dim">Move'
+                               f'<span class="sr-only"> Retail refit</span> to</label>')
+        self.assertContains(r, '<option value="SUBMITTED">Submitted</option>')
+        self.assertContains(r, '(hand over)</option>')
+
+    def test_move_form_changes_stage_and_returns_to_pipeline(self):
+        r = self.client.post(self.move, {'stage': Project.STAGE_SUBMITTED, 'next': 'pipeline'})
+        self.assertRedirects(r, self.url('pipeline', self.org_a), fetch_redirect_response=False)
+        self.bid.refresh_from_db()
+        self.assertEqual(self.bid.stage, Project.STAGE_SUBMITTED)
+
+    def test_moving_to_won_still_goes_through_handover(self):
+        r = self.client.post(self.move, {'stage': Project.STAGE_WON, 'next': 'pipeline'})
+        self.assertRedirects(r, self.url('project_handover', self.org_a, self.bid.pk), fetch_redirect_response=False)
+        self.bid.refresh_from_db()
+        self.assertEqual(self.bid.stage, Project.STAGE_TENDERING)
+
+    def test_bad_stage_from_the_form_is_a_message_not_json(self):
+        r = self.client.post(self.move, {'stage': 'NOPE', 'next': 'pipeline'}, follow=True)
+        self.assertContains(r, 'Unknown stage')
+        r = self.client.post(self.move, '{"stage": "NOPE"}', content_type='application/json')
+        self.assertEqual(r.status_code, 400)
