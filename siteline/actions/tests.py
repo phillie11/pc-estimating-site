@@ -970,3 +970,64 @@ class LiveHookTests(Base):
         self.assertIn('Thin quote cover on Alpha bid', by['est@alpha.test'])
         self.assertNotIn('Thin quote cover', by.get('bid@alpha.test', ''))
         self.assertNotIn('Thin quote cover', by.get('client@alpha.test', ''))
+
+
+class ChangeHookTests(Base):
+    """Early warnings and change events from changes.actions.items, and client variations' respond-by dates."""
+
+    def items_of(self, world, user, kind=None):
+        with org_context(world.org):
+            got = actions.for_user(actions.request_for(user, world.membership(user)))
+        return [i for i in got if kind is None or i.kind == kind]
+
+    def raise_change(self, world, model='ew', **kw):
+        from changes.models import ChangeEvent, EarlyWarning
+        cls = EarlyWarning if model == 'ew' else ChangeEvent
+        with org_context(world.org):
+            record = cls(project=kw.pop('project', world.job), description='x', **kw)
+            record.save(actor=world.pm)
+            return cls.objects.get(pk=record.pk)
+
+    def test_unowned_early_warning_goes_to_the_pm_only_with_its_status_and_reason(self):
+        today = timezone.localdate()
+        ew = self.raise_change(self.a, title='Riser approval late', meeting_date=today + timedelta(days=2))
+        got = self.items_of(self.a, self.a.pm, 'change')
+        self.assertEqual(len(got), 1)
+        item = got[0]
+        self.assertEqual((item.title, item.ref, item.url, item.project, item.due),
+                         ('Riser approval late', ew.reference, ew.get_absolute_url(), self.a.job, ew.meeting_date))
+        self.assertEqual(item.status_label, 'Open')
+        self.assertIn('Risk reduction meeting', item.detail)
+        self.assertEqual(item.kind_label, 'Early warnings')
+        # Listed once: not again from the record index
+        self.assertEqual(len([i for i in self.items_of(self.a, self.a.pm) if i.ref == ew.reference]), 1)
+        for user in (self.a.owner, self.a.est, self.a.client, self.a.consultant, self.a.sub, self.a.bidder):
+            self.assertEqual(self.items_of(self.a, user, 'change'), [], user)
+        for user in (self.b.owner, self.b.pm):
+            self.assertEqual(self.items_of(self.b, user, 'change'), [], user)
+        self.login(self.a.pm)
+        self.assertContains(self.client.get(self.url('needs_me', self.a)), 'Riser approval late')
+        self.login(self.b.pm)
+        self.assertNotContains(self.client.get(self.url('needs_me', self.b)), 'Riser approval late')
+
+    def test_change_event_goes_to_its_owner_once(self):
+        from changes.models import ChangeEvent
+        ce = self.raise_change(self.a, 'ce', title='Extra data points', ball_in_court_user=self.a.owner,
+                               status=ChangeEvent.STATUS_NOTIFIED)
+        got = self.items_of(self.a, self.a.owner, 'change')
+        self.assertEqual([(i.title, i.ref, i.kind_label) for i in got], [('Extra data points', ce.reference, 'Change events')])
+        self.assertEqual(len([i for i in self.items_of(self.a, self.a.owner) if i.ref == ce.reference]), 1)
+        self.assertEqual(self.items_of(self.a, self.a.pm, 'change'), [])  # it has an owner, so not the PM's
+
+    def test_change_on_an_archived_job_is_dropped(self):
+        self.raise_change(self.a, title='Old job warning', project=self.a.old)
+        self.assertEqual(self.items_of(self.a, self.a.pm, 'change'), [])
+
+    def test_client_variation_carries_its_respond_by_date(self):
+        due = timezone.localdate() - timedelta(days=1)
+        with org_context(self.a.org):
+            Variation.objects.filter(pk=self.a.items['job']['vo'].pk).update(due_date=due)
+        got = [i for i in self.items_of(self.a, self.a.client, 'client_variation') if i.title == 'Alpha job extra ceiling']
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0].due, due)
+        self.assertTrue(got[0].is_overdue)

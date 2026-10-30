@@ -95,7 +95,7 @@ class ClientVariationProvider:
             .filter(project__in=_portal(request).values('pk'))
         return [Item(
             kind=self.kind, title=v.title, url=v.get_absolute_url(), ref=v.reference, project=v.project,
-            due=getattr(v, 'due_date', None), priority=PRIORITY_HIGH if v.proceed_at_risk else PRIORITY_NORMAL,
+            due=v.due_date, priority=PRIORITY_HIGH if v.proceed_at_risk else PRIORITY_NORMAL,
             action='Approve or reject', status_label=v.get_status_display(), tone=v.status_tone, amount=v.value,
             detail=(f'{v.time_impact_days} days time impact' if v.time_impact_days else ''),
             key=f'vo:{v.pk}',
@@ -323,11 +323,11 @@ class HookProvider:
         import dataclasses
         if isinstance(row, Item):
             return row
+        if self.mapper is not None:
+            return self.mapper(self, row)
         if isinstance(row, dict):
             known = {f.name for f in dataclasses.fields(Item)}
             return Item(**{**{k: v for k, v in row.items() if k in known}, 'kind': self.kind})
-        if self.mapper is not None:
-            return self.mapper(self, row)
         url = row.get_absolute_url() if hasattr(row, 'get_absolute_url') else ''
         if not url:
             return None
@@ -346,13 +346,28 @@ def transmittal_item(provider, t):
                 status_label='To acknowledge', tone='warn', detail=t.get_purpose_display(), key=f'tr:{t.pk}')
 
 
+def change_item(provider, row):
+    """An early warning or change event from changes.actions.items (a dict: status and reason aren't Item fields)."""
+    early_warning = row.get('kind') == 'early_warning'
+    return Item(kind=provider.kind, title=row['title'], url=row['url'], ref=row.get('ref', ''),
+                project=row.get('project'), due=row.get('due'), tone=row.get('tone') or 'accent',
+                status_label=row.get('status', ''), detail=row.get('reason', ''),
+                priority=PRIORITY_HIGH if row.get('tone') == 'bad' else PRIORITY_NORMAL,
+                action='Review the risk and update it' if early_warning else 'Move it on before the clock runs out',
+                kind_label='Early warnings' if early_warning else 'Change events',
+                key=f"chg:{row.get('kind')}:{row.get('ref') or row['url']}")
+
+
 # Hooks into modules owned by other parts of the product; each lists nothing until its module exists
 HOOKS = [
     # Every estimator gets every coverage alert, company-wide (product owner, 30 Oct 2026);
     # coverage_alerts itself returns [] for anyone who doesn't work in estimating
     lambda: HookProvider('coverage_alert', 'Tenders short of quotes', 'tenders.actions.coverage_alerts', staff=True,
                          action='Chase more quotes before they are due'),
-    lambda: HookProvider('change', 'Early warnings and compensation events', 'changes.actions.items'),
+    # Internal only (early warnings and change events have no external roles). It covers their
+    # index rows, since the hook already lists the ball-in-court owner's (and the PM's when unowned).
+    lambda: HookProvider('change', 'Early warnings and change events', 'changes.actions.items', staff=True,
+                         covers=('changes.earlywarning', 'changes.changeevent'), mapper=change_item),
     # Staff and externals alike: whoever a transmittal went to. It covers the index rows for
     # transmittals so the first pending recipient (the ball in court) doesn't see it twice.
     lambda: HookProvider('transmittal', 'Documents to acknowledge', 'documents.models.pending_acknowledgements',
