@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 
 from billing import views as billing
 from delivery import views as delivery
@@ -94,4 +94,5 @@ urlpatterns = [
     path('directory/<int:pk>/', directory.sub_detail, name='sub_detail'),
     path('directory/<int:pk>/edit/', directory.sub_edit, name='sub_edit'),
     path('directory/<int:pk>/archive/', directory.sub_archive, name='sub_archive'),
+    path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

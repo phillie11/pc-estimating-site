@@ -399,4 +399,7 @@ class Command(BaseCommand):
                 Notification.objects.create(user=u_, project=kings, title=title,
                                             url=f'/{SLUG}/projects/{kings.pk}/tender/')
 
+            from tenders.demo import seed as seed_bid_discipline
+            seed_bid_discipline(owner, est)  # bid/no-bid scores, loss reviews, coverage (tenders/demo.py)
+
         self.stdout.write(self.style.SUCCESS(f'Demo workspace ready at /{SLUG}/  (password {PASSWORD})'))

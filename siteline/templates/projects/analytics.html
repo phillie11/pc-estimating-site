@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <div><div class="eyebrow">Bids won and lost</div><h1>Tender analytics</h1></div>
-  <div class="filters" style="margin:0">{% for code, label in periods %}<a class="chip {% if code == period %}on{% endif %}" href="?period={{ code }}">{{ label }}</a>{% endfor %}</div>
+  <div class="filters" style="margin:0">{% for code, label in periods %}<a class="chip {% if code == period %}on{% endif %}" href="?period={{ code }}">{{ label }}</a>{% endfor %}<a class="chip" href="{% url 'tender_coverage' org.slug %}">Quote coverage →</a></div>
 </div>
 
 <div class="kpis">
@@ -43,6 +43,9 @@
   {% include "projects/_breakdown.html" with title="By client" rows=by_client note="top 10" %}
   {% include "projects/_breakdown.html" with title="By lead source" rows=by_source %}
   {% include "projects/_breakdown.html" with title="By project lead" rows=by_owner %}
+  {% include "projects/_breakdown.html" with title="By bid/no-bid score" rows=by_score note="Go, Review, No-go when tendered" %}
+  {% include "tenders/_reasons.html" with title="Why we decline" rows=decline_reasons total=declined empty="No bids declined in this period." %}
+  {% include "tenders/_reasons.html" with title="Why we lose" rows=loss_reasons total=losses_total empty="No losses in this period." %}
   <div class="card">
     <div class="card-head"><h2>Open pipeline by stage</h2><a class="small" href="{% url 'pipeline' org.slug %}">Board →</a></div>
     <div class="table-wrap"><table class="t"><thead><tr><th>Stage</th><th class="num">Bids</th><th class="num">Value</th><th class="num">Weighted</th></tr></thead><tbody>
@@ -52,10 +55,15 @@
 </div>
 
 <div class="card" style="margin-top:1rem">
-  <div class="card-head"><h2>Recent losses</h2><span class="small dim">feedback recorded on each project</span></div>
-  {% if recent_losses %}<div class="table-wrap"><table class="t"><thead><tr><th>Bid</th><th>Decided</th><th class="num">Value</th><th>Feedback</th></tr></thead><tbody>
-    {% for p in recent_losses %}<tr><td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}</span></td><td class="small nowrap">{{ p.decided_at|date:"j M Y" }}</td><td class="num">{{ p.value|money_short:currency }}</td><td class="small">{{ p.outcome_notes|default:"—"|truncatechars:160 }}</td></tr>{% endfor %}
+  <div class="card-head"><h2>Loss reviews</h2><span class="small dim">{{ losses_reviewed }} of {{ losses_total }} reviewed{% if avg_price_gap is not None %} · average gap to the winner {% if avg_price_gap > 0 %}+{% endif %}{{ avg_price_gap }}% ({{ price_gaps_known }} known){% endif %}</span></div>
+  {% if loss_reviews %}<div class="table-wrap"><table class="t"><thead><tr><th>Bid</th><th>Decided</th><th class="num">Our price</th><th class="num">Winner</th><th class="num">Gap</th><th>Reason</th><th>Lessons and feedback</th></tr></thead><tbody>
+    {% for p in loss_reviews %}<tr><td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}</span></td><td class="small nowrap">{{ p.decided_at|date:"j M Y" }}</td>
+      <td class="num">{{ p.review.our_price|default:p.value|money_short:currency }}</td>
+      <td class="num">{% if p.review.winner_price %}{{ p.review.winner_price|money_short:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+      <td class="num">{% if p.review.gap_pct is not None %}{% if p.review.gap_pct > 0 %}+{% endif %}{{ p.review.gap_pct }}%{% else %}<span class="dim">—</span>{% endif %}</td>
+      <td>{% if p.review.loss_reason %}{{ p.review.get_loss_reason_display }}{% else %}<a class="small" href="{% url 'bid_lost' org.slug p.pk %}">Review it</a>{% endif %}</td>
+      <td class="small">{{ p.review.lessons|default:p.outcome_notes|default:"—"|truncatechars:160 }}</td></tr>{% endfor %}
   </tbody></table></div>
-  {% else %}<div class="empty left">No losses in this period.</div>{% endif %}
+  {% else %}<div class="empty left">No losses in this period. When a bid is marked lost you are asked for our price, the winner's if known, the reason and the lessons; they collect here.</div>{% endif %}
 </div>
 {% endblock %}

@@ -1,0 +1,51 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Bid or no bid: {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <div class="crumbs"><a href="{{ project.get_absolute_url }}">{{ project.reference }}</a> / Bid or no bid</div>
+  <h1>{% if moving %}Before you start tendering{% else %}Bid or no bid{% endif %}</h1>
+  <p class="dim" style="margin:4px 0 0">{{ project.name }}{% if project.client_name %} · {{ project.client_name }}{% endif %}{% if gate_value is not None %} · {{ gate_value|money:currency }}{% endif %}</p>
+</div>
+{% if review.result %}<div>{% with tone=review.result_tone %}{% badge review.get_result_display tone %}{% endwith %} <span class="mono">{{ review.score }}/100</span></div>{% endif %}
+</div>
+
+{% if moving %}<div class="banner">{% if required %}Answer the six questions before it moves to {{ to_label }}.{% if gate_value is None %} No value or client budget is set yet, so the check can't be skipped.{% elif settings.gate_threshold %} It is worth {{ settings.gate_threshold|money:currency }} or more.{% endif %}{% else %}The check is optional for bids under {{ settings.gate_threshold|money:currency }}. Answer it, or skip it and move to {{ to_label }}.{% endif %}</div>{% elif regate %}<div class="banner">The check was skipped while this bid was under {{ settings.gate_threshold|money:currency }} or had no value. It is required now: answer the six questions.</div>{% endif %}
+
+<form method="post">{% csrf_token %}<input type="hidden" name="from" value="{{ project.stage }}">{% if to %}<input type="hidden" name="to" value="{{ to }}">{% endif %}
+{% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Six questions</h2><span class="small dim">score out of 100</span></div><div class="card-body">
+      {% for field in form.questions %}
+      <fieldset class="field{% if field.errors %} has-error{% endif %}" style="border:0;padding:0;margin:0 0 18px">
+        <legend style="font-weight:600;padding:0">{{ field.label }} <span class="small dim">· weight {{ field.field.weight }}</span></legend>
+        <div class="help" style="margin:2px 0 6px">{{ field.help_text }}{% if field.field.suggested is not None %} <span class="badge info plain">suggested from your records</span>{% endif %}{% if field.name == 'q_workload' %}{% if other_bids is None %} No bid lead is set, so we can't count their other bids.{% else %} {{ project.owner.full_name }} has {{ other_bids }} other open bid{{ other_bids|pluralize }} between {{ window.0|date:"j M" }} and {{ window.1|date:"j M" }} on the tender workload chart.{% endif %}{% endif %}</div>
+        <div class="checks" style="grid-template-columns:1fr">{% for c in field %}<label style="min-height:44px;padding:4px 0">{{ c.tag }} {{ c.choice_label }}</label>{% endfor %}</div>
+        {% for e in field.errors %}<div class="err">{{ e }}</div>{% endfor %}
+      </fieldset>
+      {% endfor %}
+      <p class="small dim" style="margin:0">Go from {{ go_from }}, Review from {{ review_from }}, No-go below {{ review_from }}. The score is advice, not the decision: it is recorded with who answered and when, and feeds the win rate by score in tender analytics.</p>
+    </div></div>
+  </div>
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2>Tender details</h2></div><div class="card-body">
+      {% for field in form.intake_fields %}{% include "partials/field.html" with full=True %}{% endfor %}
+    </div></div>
+    <div class="card"><div class="card-body">
+      {% with field=form.decision_note %}{% include "partials/field.html" with full=True %}{% endwith %}
+      {% if live_score is not None %}<p style="margin:0 0 10px">Score {% badge live_label live_tone %} <span class="mono">{{ live_score }}/100</span></p>{% endif %}
+      <div class="form-actions" style="flex-wrap:wrap">
+        {% if moving %}
+          <button class="btn primary" name="action" value="go">Score it and move to {{ to_label }}</button>
+          {% if not required %}<button class="btn" name="action" value="skip" formnovalidate>Skip the check and move to {{ to_label }}</button>{% endif %}
+        {% else %}
+          <button class="btn primary" name="action" value="save">Save the score</button>
+        {% endif %}
+        <a class="btn ghost" href="{{ project.get_absolute_url }}">Cancel</a>
+      </div>
+      <p class="small dim" style="margin:10px 0 0">{% if moving %}Moving it to {{ to_label }} opens the sub tenders page so you can invite subcontractors. {% endif %}Not bidding? <a href="{% url 'bid_decline' org.slug project.pk %}">Decline it with a reason</a>.</p>
+    </div></div>
+  </div>
+</div>
+</form>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Quote coverage{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">Open tenders</div><h1>Quote coverage</h1>
+  <p class="dim" style="margin:4px 0 0">Every trade out to subcontractors on open bids. Red means fewer than {{ target }} quote{{ target|pluralize }} in.{% if thin_total %} <strong>{{ thin_total }} thin trade{{ thin_total|pluralize }}</strong>.{% endif %}</p></div>
+  {% if is_org_admin %}<a class="btn ghost" href="{% url 'tender_settings' org.slug %}">Settings</a>{% endif %}
+</div>
+<form class="filters" method="get">
+  <a class="chip {% if show == 'all' %}on{% endif %}" href="{% qs show=None %}">All trades</a>
+  <a class="chip {% if show == 'thin' %}on{% endif %}" href="{% qs show='thin' %}">Thin only</a>
+  {% if leads %}<select name="lead" data-autosubmit style="width:auto" aria-label="Bid lead"><option value="">Every bid lead</option>{% for u in leads %}<option value="{{ u.pk }}" {% if lead == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select>{% endif %}
+  {% if show == 'thin' %}<input type="hidden" name="show" value="thin">{% endif %}
+</form>
+{% for project, rows in tenders %}
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-head"><h2><a href="{% url 'tender' org.slug project.pk %}#coverage">{{ project.name }}</a></h2>
+    <span class="small">{% if project.thin_rows and project.cover_days is not None and project.cover_days <= 3 %}<span class="overdue">{{ project.cover_due_label }}</span>{% else %}<span class="dim">{{ project.cover_due_label }}</span>{% endif %}{% if project.owner %} · <span class="dim">{{ project.owner.full_name }}</span>{% endif %}</span></div>
+  {% include "tenders/_coverage_rows.html" %}
+</div>
+{% empty %}
+<div class="card"><div class="empty"><h3>{% if show == 'thin' %}No thin trades{% else %}No open tenders out to subcontractors{% endif %}</h3>
+  <p>{% if show == 'thin' %}Every trade out to tender has at least {{ target }} quote{{ target|pluralize }} in. <a href="{% qs show=None %}">Show all trades</a>.{% elif lead %}This bid lead has no trades out to subcontractors. <a href="{% url 'tender_coverage' org.slug %}">Show everyone's</a>.{% else %}Trades appear here once you invite subcontractors to price a lead or tender, from its <strong>Sub quotes</strong> tab. See the <a href="{% url 'pipeline' org.slug %}">pipeline</a>.{% endif %}</p></div></div>
+{% endfor %}
+{% endblock %}

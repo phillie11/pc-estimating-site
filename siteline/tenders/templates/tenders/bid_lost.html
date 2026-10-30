@@ -1,0 +1,22 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Loss review: {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <div class="crumbs"><a href="{{ project.get_absolute_url }}">{{ project.reference }}</a> / Loss review</div>
+  <h1>{% if project.stage == 'LOST' %}Loss review{% else %}Mark as lost{% endif %}</h1>
+  <p class="dim" style="margin:4px 0 0">{{ project.name }}{% if project.client_name %} · {{ project.client_name }}{% endif %}</p>
+</div>
+{% if review.gap_pct is not None %}<div>{% if review.gap_pct > 0 %}{% badge 'Above the winner' 'bad' %}{% else %}{% badge 'Not above the winner' 'muted' %}{% endif %} <span class="mono">{% if review.gap_pct > 0 %}+{% endif %}{{ review.gap_pct }}%</span></div>{% endif %}
+</div>
+<div class="grid split">
+  <div class="card"><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">{% if project.stage == 'LOST' %}Save review{% else %}Mark lost and save review{% endif %}</button><a class="btn ghost" href="{{ project.get_absolute_url }}">Cancel</a></div></form>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>What happens next</h2></div><div class="card-body small">
+    <p>The bid moves to <strong>Lost</strong> and stops counting against your plan's active projects. If the client gave the winning price, the gap is worked out for you: (our price − winner's price) ÷ winner's price.</p>
+    {% if open_packages %}<p><strong>{{ open_packages }} subcontractor invitation{{ open_packages|pluralize }}</strong> still open will be closed, and those subcontractors are told and lose access to the tender.</p>{% endif %}
+    <p style="margin:0">Losses, reasons and price gaps appear in tender analytics. You can come back and add the winner's price later.</p>
+  </div></div>
+</div>
+{% endblock %}
