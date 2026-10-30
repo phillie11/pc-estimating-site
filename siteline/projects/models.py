@@ -40,9 +40,12 @@ def upload_variation(instance, filename):
 
 def save_with_number(instance, save_fn, *args, **kwargs):
     """
-    Give a per-project register row (RFI-001, VO-001, IS-001) its next number.
+    Give a per-project register row (VO-001, IS-001) its next number.
     The project row is locked for the duration so two people saving at once
     cannot get the same number.
+
+    Only for registers not yet on core.models.RecordBase, which numbers from a
+    NumberSequence row instead (RFIs so far). Each moves over as it adopts it.
     """
     if instance.number:
         return save_fn(*args, **kwargs)
@@ -141,7 +144,7 @@ class Project(TenantModel):
 
     # Related records that mean a project must be archived, not deleted
     RECORD_RELATIONS = ('rfis', 'variations', 'rams', 'sub_variations', 'packages', 'documents', 'file_access',
-                        'tasks', 'issues', 'activities', 'addenda', 'tender_queries')
+                        'tasks', 'issues', 'activities', 'addenda', 'tender_queries', 'record_index')
 
     class Meta:
         ordering = ['-updated_at']
@@ -172,8 +175,14 @@ class Project(TenantModel):
         return self.archived_at is not None
 
     def has_records(self):
-        """Anything worth keeping hangs off it. Portal access, the activity feed and notifications don't count."""
-        return any(getattr(self, name).exists() for name in self.RECORD_RELATIONS)
+        """
+        Anything worth keeping hangs off it. Portal access, the activity feed and notifications don't count.
+        Soft-deleted records (core.models.RecordBase) count too: they are still rows, kept for the audit trail.
+        """
+        def rows(name):
+            related = getattr(self, name)
+            return related(manager='with_deleted') if hasattr(related.model, 'with_deleted') else related
+        return any(rows(name).exists() for name in self.RECORD_RELATIONS)
 
     def archive(self, user):
         self.archived_at, self.archived_by = timezone.now(), user
