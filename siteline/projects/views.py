@@ -749,9 +749,9 @@ def document_list(request, org_slug, pk):
                 doc.visibility = Document.VIS_SHARED
             doc.save()
             f = form.cleaned_data['file']
-            DocumentRevision.objects.create(document=doc, file=f, original_name=f.name[:200], size=f.size,
-                                            revision=form.cleaned_data['revision'], notes=form.cleaned_data['notes'],
-                                            uploaded_by=request.user)
+            doc.add_revision(DocumentRevision(file=f, original_name=f.name[:200], size=f.size,
+                                              revision=form.cleaned_data['revision'], notes=form.cleaned_data['notes'],
+                                              uploaded_by=request.user))
             log_activity(request, 'uploaded', f'{doc.title} rev {form.cleaned_data["revision"]}', project=project,
                          url=reverse('document_detail', args=[org_slug, pk, doc.pk]),
                          internal_only=doc.visibility == Document.VIS_INTERNAL)
@@ -778,17 +778,29 @@ def document_detail(request, org_slug, pk, doc_id):
             return redirect('document_list', org_slug=org_slug, pk=pk)
         if not is_internal(request) and doc.created_by_id != request.user.pk:
             raise PermissionDenied
+        if request.POST.get('action') == 'make_current':
+            rev = get_object_or_404(DocumentRevision, document=doc, pk=request.POST.get('revision'))
+            doc.set_current(rev)
+            doc.save(update_fields=['updated_at'])
+            log_activity(request, 'made current', f'{doc.title} rev {rev.revision}', project=project,
+                         url=request.path, internal_only=doc.visibility == Document.VIS_INTERNAL)
+            messages.success(request, f'Revision {rev.revision} is now current.')
+            return redirect(request.path)
         form = RevisionForm(request.POST, request.FILES)
         if form.is_valid():
             rev = form.save(commit=False)
-            rev.document, rev.uploaded_by = doc, request.user
+            rev.uploaded_by = request.user
             rev.original_name, rev.size = rev.file.name[:200], rev.file.size
-            rev.save()
+            doc.add_revision(rev, make_current=form.cleaned_data['make_current'])
             doc.save(update_fields=['updated_at'])
             log_activity(request, 'uploaded new revision of', f'{doc.title} rev {rev.revision}', project=project,
                          url=request.path, internal_only=doc.visibility == Document.VIS_INTERNAL)
-            notify_collaborators_of_issue(request, project, doc, rev.revision)
-            messages.success(request, f'Revision {rev.revision} uploaded.')
+            if rev.is_current:
+                notify_collaborators_of_issue(request, project, doc, rev.revision)
+                messages.success(request, f'Revision {rev.revision} uploaded.')
+            else:
+                messages.info(request, f'Revision {rev.revision} uploaded. It is older than rev {doc.current.revision}, '
+                                       'which stays current; use "Make current" to change that.')
             return redirect(request.path)
     revisions = list(doc.revisions.select_related('uploaded_by'))
     downloads = None
@@ -798,7 +810,7 @@ def document_detail(request, org_slug, pk, doc_id):
         for d in downloads:
             d.revision = names.get(d.path)
     return render(request, 'projects/document_detail.html', project_context(
-        request, project, 'documents', doc=doc, revisions=revisions, form=form, downloads=downloads,
+        request, project, 'documents', doc=doc, revisions=revisions, current=doc.current, form=form, downloads=downloads,
         can_revise=is_internal(request) or doc.created_by_id == request.user.pk))
 
 

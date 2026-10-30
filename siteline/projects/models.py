@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import uuid
 from datetime import timedelta
@@ -439,7 +440,63 @@ class Document(TenantModel):
 
     @property
     def current(self):
-        return self.revisions.order_by('-uploaded_at').first()
+        """The revision people should build from: flagged when uploaded, or worked out for unflagged rows."""
+        revisions = list(self.revisions.all())  # uses prefetch_related('revisions') where the view set it up
+        return next((r for r in revisions if r.is_current), None) or latest_revision(revisions)
+
+    def add_revision(self, revision, make_current=False):
+        """
+        Save a new revision of this document. It becomes current unless it is older
+        than the current one (P02 uploaded after C01 stays a superseded revision),
+        or the uploader explicitly marks it current.
+        """
+        with transaction.atomic():
+            Document.all_objects.select_for_update().filter(pk=self.pk).first()
+            current = self.revisions.filter(is_current=True).first() or latest_revision(self.revisions.all())
+            revision.document = self
+            revision.is_current = make_current or current is None or not is_older_revision(revision, current)
+            revision.save()
+            if revision.is_current:
+                self.revisions.exclude(pk=revision.pk).filter(is_current=True).update(is_current=False)
+        return revision
+
+    def set_current(self, revision):
+        """Mark an existing revision current, e.g. to go back to an earlier issue."""
+        with transaction.atomic():
+            Document.all_objects.select_for_update().filter(pk=self.pk).first()
+            self.revisions.exclude(pk=revision.pk).filter(is_current=True).update(is_current=False)
+            self.revisions.filter(pk=revision.pk).update(is_current=True)
+        revision.is_current = True
+
+
+# Drawing revisions: preliminary (P01, P02 ... P10) come before construction (C01, C02 ...)
+REVISION_SERIES = {'P': 0, 'C': 1}
+_REVISION_RE = re.compile(r'^\s*([PC])\s*-?\s*(\d+)\s*$', re.IGNORECASE)
+
+
+def revision_rank(code):
+    """(series, number) for a P or C revision, so P10 sorts after P02 and before C01; None for 'A', 'rev 3'."""
+    m = _REVISION_RE.match(code or '')
+    return (REVISION_SERIES[m.group(1).upper()], int(m.group(2))) if m else None
+
+
+def is_older_revision(new, current):
+    """True when `new` is an earlier revision than `current`. Codes we can't rank fall back to upload order."""
+    a, b = revision_rank(new.revision), revision_rank(current.revision)
+    return a is not None and b is not None and a < b
+
+
+def latest_revision(revisions):
+    """
+    The revision that should be current: the highest P/C code, or, when any code
+    can't be ranked, the most recently uploaded. A data migration copies this rule.
+    """
+    revisions = list(revisions)
+    if not revisions:
+        return None
+    if all(revision_rank(r.revision) for r in revisions):
+        return max(revisions, key=lambda r: (revision_rank(r.revision), r.uploaded_at, r.pk))
+    return max(revisions, key=lambda r: (r.uploaded_at, r.pk))
 
 
 class DocumentRevision(TenantModel):
@@ -449,6 +506,8 @@ class DocumentRevision(TenantModel):
     original_name = models.CharField(max_length=200)
     size = models.PositiveBigIntegerField(default=0)
     notes = models.CharField(max_length=300, blank=True)
+    is_current = models.BooleanField('Current revision', default=False,
+                                     help_text='Set by Document.add_revision / set_current; one per document.')
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 

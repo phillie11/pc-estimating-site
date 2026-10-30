@@ -424,3 +424,113 @@ class MalwareScanTests(FileStorageMixin, Base):
             call_command('check_file_scans', '--retrigger', stdout=out)
             self.assertEqual([c.args[0].name for c in retrigger.call_args_list], [rev.file.name])
             self.assertIn('Asked GuardDuty to scan 1 file', out.getvalue())
+
+
+class CurrentRevisionTests(Base):
+    """Which revision of a drawing is current: P01 < P02 < P10 < C01, whatever order they were uploaded in."""
+
+    def setUp(self):
+        super().setUp()
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
+        override = self.settings(MEDIA_ROOT=self.media)
+        override.enable()
+        self.addCleanup(override.disable)
+        with org_context(self.org_a):
+            self.doc = Document.objects.create(project=self.pa, title='GA plan', reference='A-100')
+
+    def upload(self, code, **kwargs):
+        with org_context(self.org_a):
+            return self.doc.add_revision(DocumentRevision(revision=code, original_name=f'{code}.pdf', size=8,
+                                                          file=SimpleUploadedFile(f'{code}.pdf', b'%PDF-1.4')), **kwargs)
+
+    def current(self):
+        with org_context(self.org_a):
+            return Document.objects.get(pk=self.doc.pk).current.revision
+
+    def test_revision_rank_orders_p_before_c_numerically(self):
+        from .models import revision_rank
+        codes = ['C02', 'P10', 'c01', 'P02', 'P1', 'C10']
+        self.assertEqual(sorted(codes, key=revision_rank), ['P1', 'P02', 'P10', 'c01', 'C02', 'C10'])
+        self.assertIsNone(revision_rank('A'))
+        self.assertIsNone(revision_rank('rev 3'))
+
+    def test_newer_revision_becomes_current(self):
+        self.upload('P01')
+        self.upload('P02')
+        self.upload('C01')
+        self.assertEqual(self.current(), 'C01')
+        self.assertEqual(DocumentRevision.all_objects.filter(document=self.doc, is_current=True).count(), 1)
+
+    def test_p10_is_newer_than_p02(self):
+        self.upload('P02')
+        self.upload('P10')
+        self.assertEqual(self.current(), 'P10')
+
+    def test_older_upload_does_not_displace_current(self):
+        self.upload('C01')
+        late = self.upload('P03')
+        self.assertFalse(late.is_current)
+        self.assertEqual(self.current(), 'C01')
+
+    def test_older_upload_marked_current_explicitly(self):
+        self.upload('C01')
+        self.upload('P03', make_current=True)
+        self.assertEqual(self.current(), 'P03')
+        self.assertEqual(DocumentRevision.all_objects.filter(document=self.doc, is_current=True).count(), 1)
+
+    def test_odd_codes_fall_back_to_upload_order(self):
+        self.upload('C02')
+        self.upload('A')
+        self.assertEqual(self.current(), 'A')
+        self.upload('rev 3')
+        self.assertEqual(self.current(), 'rev 3')
+
+    def test_revise_view_keeps_newer_current_and_make_current_switches(self):
+        self.upload('C02')
+        self.login(self.alice)
+        path = self.url('document_detail', self.org_a, self.pa.pk, self.doc.pk)
+        r = self.client.post(path, {'revision': 'C01', 'file': SimpleUploadedFile('old.pdf', b'%PDF-1.4')}, follow=True)
+        self.assertContains(r, 'which stays current')
+        self.assertEqual(self.current(), 'C02')
+        old = DocumentRevision.all_objects.get(document=self.doc, revision='C01')
+        self.client.post(path, {'action': 'make_current', 'revision': old.pk})
+        self.assertEqual(self.current(), 'C01')
+
+    def test_revise_view_can_mark_older_upload_current(self):
+        self.upload('C02')
+        self.login(self.alice)
+        path = self.url('document_detail', self.org_a, self.pa.pk, self.doc.pk)
+        self.client.post(path, {'revision': 'C01', 'make_current': 'on',
+                                'file': SimpleUploadedFile('old.pdf', b'%PDF-1.4')})
+        self.assertEqual(self.current(), 'C01')
+
+    def test_external_cannot_change_current_on_someone_elses_document(self):
+        self.upload('C01')
+        old = self.upload('P01')
+        sub = make_user('sub@s.test', 'Sid Sub')
+        with org_context(self.org_a):
+            Membership.objects.create(organization=self.org_a, user=sub, role=Membership.ROLE_EXTERNAL)
+            ProjectMember.objects.create(project=self.pa, user=sub, role=ProjectMember.ROLE_SUBCONTRACTOR)
+            Document.objects.filter(pk=self.doc.pk).update(visibility=Document.VIS_SHARED)
+        self.login(sub)
+        r = self.client.post(self.url('document_detail', self.org_a, self.pa.pk, self.doc.pk),
+                             {'action': 'make_current', 'revision': old.pk})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.current(), 'C01')
+
+    def test_data_migration_flags_existing_revisions(self):
+        from importlib import import_module
+        from django.apps import apps
+        migration = import_module('projects.migrations.0010_documentrevision_is_current')
+        with org_context(self.org_a):
+            other = Document.objects.create(project=self.pa, title='Odd', reference='X-1')
+        for doc, codes in ((self.doc, ['P01', 'C02', 'P10', 'C01']), (other, ['C01', 'A', 'P02'])):
+            for code in codes:
+                with org_context(self.org_a):
+                    DocumentRevision.objects.create(document=doc, revision=code, original_name='f.pdf',
+                                                    file=SimpleUploadedFile('f.pdf', b'%PDF-1.4'))
+        migration.flag_current(apps, None)
+        flagged = dict(DocumentRevision.all_objects.filter(is_current=True).values_list('document_id', 'revision'))
+        # All P/C: highest code wins even though C01 was uploaded last; any odd code: latest upload wins
+        self.assertEqual(flagged, {self.doc.pk: 'C02', other.pk: 'P02'})

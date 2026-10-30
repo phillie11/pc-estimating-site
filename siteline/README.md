@@ -30,7 +30,7 @@ The join is the **handover**. When a bid is won, estimating picks a project mana
 | **RFIs** | Numbered per project (RFI-001), ball-in-court assignment, due dates, responses, threaded comments, internal notes, CSV register. Company-wide RFI register. |
 | **Variations** | Draft → submit to client → client approves or rejects in the portal (with PO ref). Linked to RFIs. CSV export. |
 | **Snags & tasks** | Assign to staff or subcontractors; subs mark snags "ready for inspection" from their phone. |
-| **Documents** | Revision-controlled drawings, specs, RAMS. Internal or shared per document. Externals can upload (e.g. RAMS). |
+| **Documents** | Revision-controlled drawings, specs, RAMS. The current revision is the highest one (P01 → P10 → C01 → C02), not the last uploaded: filing an old P03 after C01 doesn't replace it unless you tick "make current". Internal or shared per document. Externals can upload (e.g. RAMS). |
 | **Supply chain** | Subcontractor directory with trades, ratings, accreditations, PL/EL insurance expiry. Trade packages per project with quotes and appointment, and a one-click portal invite. |
 | **Billing** | 14-day trial, then Stripe subscription (Starter / Team / Business). Plan limits on staff seats and active projects. External users are never charged. |
 | **Daily digest** | Overdue RFIs, tender returns in 3 days, insurance expiring, trial ending. |

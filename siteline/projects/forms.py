@@ -165,6 +165,9 @@ class DocumentForm(StyledModelForm):
 
 
 class RevisionForm(forms.ModelForm):
+    make_current = forms.BooleanField(required=False, label='Make this the current revision',
+                                      help_text='Only needed for an older revision: a newer one becomes current anyway.')
+
     class Meta:
         model = DocumentRevision
         fields = ['file', 'revision', 'notes']
