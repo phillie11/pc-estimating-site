@@ -1,0 +1,18 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>Upload many files at once</h2></div><div class="card-body">
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}
+      <div class="field full"><label for="files">Files</label><input type="file" id="files" name="files" multiple accept="{{ accept }}" required>
+        <div class="help">Each file's number, revision and suitability are read from its name, e.g. <span class="mono">SLN-ABC-ZZ-02-DR-A-1001_P03.pdf</span>. Nothing is added to the register until you've checked the preview.</div></div>
+      <div class="form-actions"><button class="btn primary">Upload and preview</button></div>
+    </form>
+    <p class="small dim" style="margin-top:12px">This project reads file names as <span class="mono">{{ pattern }}</span>. Change it under <a href="{% url 'register_settings' org.slug project.pk %}">Naming &amp; recipients</a>.</p>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>Waiting to be checked</h2></div>
+    {% if batches %}<ul class="list">{% for b in batches %}<li><span class="grow"><a href="{{ b.get_absolute_url }}">Upload of {{ b.created_at|date:"j M Y, H:i" }}</a><br><span class="small dim">{{ b.created_by.full_name|default:"" }}</span></span></li>{% endfor %}</ul>
+    {% else %}<div class="empty left">Nothing waiting. Uploads you haven't committed yet appear here, so you can come back to them.</div>{% endif %}
+  </div>
+</div>
+</div>{% endblock %}

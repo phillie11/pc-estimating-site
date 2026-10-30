@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'directory',
     'tenders',
     'delivery',
+    'documents',
     'jobs',
     'security',
 ]

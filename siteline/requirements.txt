@@ -9,6 +9,9 @@ django-axes==7.1.0
 Pillow==13.0.0
 # Two-factor set-up QR codes, drawn on the server (pure Python, no dependencies)
 segno==1.6.6
+# PDF drawing register and transmittal issue sheets (ReportLab, BSD) and page counts of uploaded PDFs (pypdf, BSD)
+reportlab==5.0.1
+pypdf==6.19.0
 # MySQL on PythonAnywhere (left out of the Docker image)
 mysqlclient==2.2.6
 # AWS (ECS Fargate + RDS PostgreSQL): web server and PostgreSQL driver (DB_ENGINE=postgres)
