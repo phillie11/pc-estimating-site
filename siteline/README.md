@@ -290,5 +290,5 @@ directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules
 delivery/     live-job portal: RAMS review, subcontractor variations, subcontract summary
 templates/    shared templates; app-specific ones live in each app
-static/       app.css (single stylesheet; --accent is set from each company's brand colour), app.js
+static/       app.css (single stylesheet; --accent is set from each company's brand colour, --accent-ink to white or near-black, whichever contrasts more), app.js
 ```

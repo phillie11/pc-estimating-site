@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% load ui %}
 {% block body %}
 <div class="topbar"><button data-nav-toggle aria-label="Menu">{% icon 'menu' %}</button>
-  <span class="mark" style="width:26px;height:26px;border-radius:4px;background:var(--accent);display:grid;place-items:center;font-weight:800">{{ org.name|first|upper }}</span>
+  <span class="mark" style="width:26px;height:26px;border-radius:4px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:800">{{ org.name|first|upper }}</span>
   <strong>{{ org.name }}</strong><a class="bell" href="{% url 'notifications' org.slug %}" aria-label="Notifications">{% icon 'bell' %}{% if unread_notifications %}<span>{{ unread_notifications }}</span>{% endif %}</a></div>
 <div class="shell">
   <aside class="side">
