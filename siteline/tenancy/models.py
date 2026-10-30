@@ -316,6 +316,9 @@ class TenantFilter(models.Expression):
         return f'{sql} = %s', (*params, org_pk)
 
 
+ALL_ORGS = 'all'  # _tenant_cache_org for rows fetched inside unscoped()
+
+
 class TenantQuerySet(models.QuerySet):
     """
     Fails closed. A queryset made while an organisation is current is filtered
@@ -331,19 +334,19 @@ class TenantQuerySet(models.QuerySet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._tenant_org = None        # the organisation this queryset is pinned to
-        self._tenant_unscoped = False  # made inside unscoped()
+        self._tenant_cache_org = None  # who filled _result_cache: an org pk, ALL (inside unscoped()) or unknown
 
     def _clone(self):
         c = super()._clone()
-        c._tenant_org, c._tenant_unscoped = self._tenant_org, self._tenant_unscoped
+        c._tenant_org = self._tenant_org
         return c
 
     def _scoped(self):
-        """Called by the manager: pin to the current organisation if there is one, else filter when run."""
+        """
+        Called by the manager: pin to the current organisation if there is one, else filter when run.
+        Made inside unscoped() it is unpinned too, so it reads every company only while still inside one.
+        """
         org = get_current_org()
-        if org is None and is_unscoped():
-            self._tenant_unscoped = True
-            return self
         column = models.F('organization_id').resolve_expression(self.query, allow_joins=False)
         self.query.where.add(TenantFilter(column, org.pk if org else None), AND)
         self._tenant_org = org
@@ -356,7 +359,7 @@ class TenantQuerySet(models.QuerySet):
             if current is not None and current.pk != self._tenant_org.pk:
                 raise PermissionError(f'{self.model.__name__} query built for one organisation run inside another.')
             return self
-        if self._tenant_unscoped or is_unscoped() or self.query.is_empty():
+        if is_unscoped() or self.query.is_empty():
             return self
         if current is None:
             raise TenantContextMissing(
@@ -399,10 +402,26 @@ class TenantQuerySet(models.QuerySet):
         return super().difference(*other_qs)
 
     # --- reads ------------------------------------------------------------
+    def _check_cache(self):
+        """Rows fetched for one organisation (or every one, inside unscoped()) are not handed to another."""
+        current = get_current_org()
+        if self._result_cache and current is not None and self._tenant_cache_org not in (None, current.pk):
+            raise PermissionError(f'{self.model.__name__} results fetched for one organisation read inside another.')
+
     def _fetch_all(self):
         if self._result_cache is None:
             self._guarded()
-        super()._fetch_all()
+            current = get_current_org()
+            super()._fetch_all()
+            self._tenant_cache_org = current.pk if current else ALL_ORGS if is_unscoped() else None
+        else:
+            self._check_cache()
+            super()._fetch_all()
+
+    def __getitem__(self, k):
+        if self._result_cache is not None:
+            self._check_cache()
+        return super().__getitem__(k)
 
     def iterator(self, chunk_size=None):
         return super(TenantQuerySet, self._guarded()).iterator(chunk_size)
@@ -412,11 +431,13 @@ class TenantQuerySet(models.QuerySet):
 
     def count(self):
         if self._result_cache is not None:
+            self._check_cache()
             return len(self._result_cache)
         return super(TenantQuerySet, self._guarded()).count()
 
     def exists(self):
         if self._result_cache is not None:
+            self._check_cache()
             return bool(self._result_cache)
         return super(TenantQuerySet, self._guarded()).exists()
 
@@ -462,7 +483,7 @@ class TenantQuerySet(models.QuerySet):
         """Same rules as TenantModel.save(), checked for every object before anything is written."""
         objs = list(objs)
         current = get_current_org() or self._tenant_org
-        if current is None and not (self._tenant_unscoped or is_unscoped()):
+        if current is None and not is_unscoped():
             raise TenantContextMissing(f'{self.model.__name__}.objects.bulk_create() with no current organisation.')
         for obj in objs:
             if not obj.organization_id:

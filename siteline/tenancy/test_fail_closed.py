@@ -94,6 +94,16 @@ class GuardBypassTests(Base):
             self.assertEqual(self.names(pre & Project.objects.all()), ['Bravo job'])
             self.assertEqual(self.names(Project.objects.none() ^ pre), ['Bravo job'])
 
+    def test_combining_with_a_queryset_made_inside_unscoped(self):
+        with unscoped():
+            other = Project.objects.all()
+        with org_context(self.org_b):
+            self.assertEqual(self.names(Project.objects.filter(pk=-1) | other), ['Bravo job'])
+            self.assertEqual(self.names(Project.objects.filter(pk=-1).order_by().union(other.order_by())), ['Bravo job'])
+            self.assertEqual(self.names(other.order_by().intersection(Project.objects.order_by())), ['Bravo job'])
+            self.assertEqual(self.names(other.order_by().difference(Project.objects.filter(pk=-1).order_by())),
+                             ['Bravo job'])
+
     def test_combining_with_all_objects_is_refused(self):
         with org_context(self.org_b):
             for combine in (lambda: Project.objects.all() | Project.all_objects.all(),
@@ -134,6 +144,23 @@ class GuardBypassTests(Base):
         with org_context(self.org_b), self.assertRaises(PermissionError):
             list(RFI.all_objects.annotate(n=name).values_list('n', flat=True))
 
+    def test_result_cache_is_not_served_to_another_org(self):
+        qs = Project.objects.all()
+        with org_context(self.org_a):
+            self.assertEqual(self.names(qs), ['Alpha secret job'])
+        with org_context(self.org_b):
+            for name, run in {'iterate': lambda: list(qs), 'count': qs.count, 'exists': qs.exists,
+                              'len': lambda: len(qs), 'bool': lambda: bool(qs), 'index': lambda: qs[0],
+                              'first': qs.first}.items():
+                with self.assertRaises(PermissionError, msg=name):
+                    run()
+            self.assertEqual(self.names(qs.all()), ['Bravo job'])  # a fresh copy runs normally
+        with unscoped():
+            everyone = Project.objects.all()
+            self.assertEqual(len(everyone), 2)
+        with org_context(self.org_b), self.assertRaises(PermissionError):
+            list(everyone)
+
 
 class EscapeHatchTests(Base):
     def test_unscoped_reads_every_company(self):
@@ -142,10 +169,17 @@ class EscapeHatchTests(Base):
             self.assertEqual(sorted(p.name for p in Project.objects.all()), ['Alpha secret job', 'Bravo job'])
         self.assertEqual(Project.all_objects.count(), 2)
 
-    def test_queryset_made_inside_unscoped_stays_unscoped(self):
+    def test_queryset_made_inside_unscoped_is_only_unscoped_inside_it(self):
+        """Leaving the block ends the scope; the queryset falls back to the current organisation."""
         with unscoped():
             qs = Project.objects.all()
-        self.assertEqual(qs.count(), 2)
+            self.assertEqual(qs.count(), 2)
+        with self.assertRaises(TenantContextMissing):
+            qs.all().count()
+        with org_context(self.org_b):
+            self.assertEqual([p.name for p in qs.all()], ['Bravo job'])
+        with unscoped():
+            self.assertEqual(qs.all().count(), 2)
 
     def test_org_context_inside_unscoped_wins(self):
         with unscoped(), org_context(self.org_b):
