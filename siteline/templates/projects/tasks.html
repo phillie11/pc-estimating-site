@@ -4,7 +4,7 @@
   <div>
     <div class="filters"><a class="chip {% if show == 'open' %}on{% endif %}" href="?show=open">Open</a><a class="chip {% if show == 'all' %}on{% endif %}" href="?show=all">All</a></div>
     <div class="card">{% if tasks %}<div class="table-wrap"><table class="t"><thead><tr><th>Task</th><th>Assignee</th><th>Due</th><th>Status</th></tr></thead><tbody>
-      {% for t in tasks %}<tr>
+      {% for t in tasks %}<tr id="task-{{ t.pk }}">
         <td>{% if is_internal %}<a class="rowlink" href="{% url 'task_edit' org.slug project.pk t.pk %}">{{ t.title }}</a>{% else %}<strong>{{ t.title }}</strong>{% endif %}{% if t.priority == 'HIGH' or t.priority == 'URGENT' %} {% badge t.get_priority_display 'bad' %}{% endif %}{% if t.description %}<span class="sub">{{ t.description|truncatechars:120 }}</span>{% endif %}</td>
         <td class="small">{{ t.assignee|default:"—" }}</td>
         <td class="small nowrap {% if t.is_overdue %}overdue{% endif %}">{{ t.due_date|date:"j M"|default:"—" }}</td>

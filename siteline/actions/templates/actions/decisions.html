@@ -1,0 +1,13 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% if items %}
+  {% if money and project_member.is_client %}<div class="money-strip"><span class="small">Variations waiting for your approval on this project</span><span class="big">{{ money|money:currency }}</span></div>{% endif %}
+  {% for code, label, rows in groups %}
+  <div class="group-head {{ code }}"><h2>{{ label }}</h2><span class="small dim">{{ rows|length }}</span></div>
+  <div class="decisions">{% for item in rows %}{% include "partials/decision_panel.html" with item=item %}{% endfor %}</div>
+  {% endfor %}
+  <p class="small dim" style="margin-top:1rem">Open an item to answer it. Nothing is decided until you press the button on the item itself, and {{ org.name }} is told as soon as you do.</p>
+{% else %}
+  <div class="card">{% if subtabs %}{% with first=subtabs.1 %}{% include "partials/empty_state.html" with title="Nothing is waiting on you here" message="Anything the team needs from you on this project, an answer, an approval or a revised document, appears here and is emailed to you with a link." cta_url=first.2 cta_label="See "|add:first.1 cta_plain=True %}{% endwith %}{% else %}{% include "partials/empty_state.html" with title="Nothing is waiting on you here" message="Anything the team needs from you on this project appears here and is emailed to you with a link." %}{% endif %}</div>
+{% endif %}
+{% endblock %}

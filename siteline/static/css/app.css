@@ -285,7 +285,7 @@ textarea { resize: vertical; }
 .progress { height: 8px; background: var(--paper-2); border-radius: 4px; overflow: hidden; }
 .progress > span { display: block; height: 100%; background: var(--accent); }
 .hidden { display: none !important; }
-@media print { .side, .topbar, .tabs, .btn, form { display: none !important; } .shell { display: block; } }
+@media print { .side, .topbar, .pbar, .tabs, .tabbar, .subtabs, .btn, form { display: none !important; } .shell { display: block; } }
 .topbar svg { width: 22px; height: 22px; display: block; }
 .mk-shot .kpis { grid-template-columns: repeat(3, 1fr); }
 .mk-shot .kpi .value { font-size: 1.3rem; }
@@ -376,3 +376,116 @@ textarea { resize: vertical; }
 .switch a { text-align: center; padding: 6px 4px; border-radius: 4px; font-size: 12.5px; font-weight: 600; color: var(--side-dim); text-decoration: none; }
 .switch a:hover { color: #fff; }
 .switch a.on { background: var(--accent); color: var(--accent-ink); }
+
+/* ---------- Project tabs: row of at most 8, "More" menu, visible scroll affordance ---------- */
+.tabbar { position: relative; display: flex; align-items: stretch; gap: 4px; border-bottom: 1px solid var(--line-2); margin-bottom: 1.25rem; }
+.tabbar .tabs { flex: 1; min-width: 0; border-bottom: 0; margin-bottom: 0; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; scroll-behavior: smooth; }
+.tabbar .tabs::-webkit-scrollbar { height: 4px; }
+.tabbar .tabs::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 2px; }
+.tabs a { min-height: 44px; }
+/* Fades and arrows at whichever edge has more tabs behind it (classes set by app.js), so a cut-off row reads as scrollable */
+.tabbar::before, .tabbar::after { content: ''; position: absolute; top: 0; bottom: 1px; width: 28px; pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 1; }
+.tabbar::before { left: 0; background: linear-gradient(90deg, var(--paper), transparent); }
+.tabbar::after { right: var(--more-w, 0px); background: linear-gradient(270deg, var(--paper), transparent); }
+.tabbar.can-left::before, .tabbar.can-right::after { opacity: 1; }
+.tabbar .scroll-hint { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); display: none; place-items: center; cursor: pointer; font: 600 14px/1 var(--font); box-shadow: var(--shadow); padding: 0; }
+.tabbar .scroll-hint.l { left: 0; }
+.tabbar .scroll-hint.r { right: calc(var(--more-w, 0px) + 2px); }
+.tabbar.can-left .scroll-hint.l, .tabbar.can-right .scroll-hint.r { display: grid; }
+.tabmore { position: relative; flex: none; }
+.tabmore summary { list-style: none; cursor: pointer; display: flex; gap: 6px; align-items: center; min-height: 44px; padding: 9px 13px; font-weight: 600; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tabmore summary::-webkit-details-marker { display: none; }
+.tabmore summary:hover, .tabmore[open] summary { color: var(--ink); }
+.tabmore.on summary { color: var(--ink); border-bottom-color: var(--accent); }
+.tabmore .n, .pmenu .n, .subtabs .n { font-family: var(--mono); font-size: 11px; padding: 0 6px; border-radius: 9px; background: var(--paper-2); color: var(--ink-2); }
+.caret { font-size: 11px; color: var(--ink-3); }
+.subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin: -.5rem 0 1rem; }
+.subtabs .chip { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; }
+.subtabs .chip.on .n { background: rgba(255,255,255,.2); color: #fff; }
+
+/* Drop-down menus (tab overflow, portal project switcher, account) */
+.pmenu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; min-width: 240px; max-width: min(360px, calc(100vw - 32px)); max-height: 70vh; overflow-y: auto; background: #fff; border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: 0 12px 32px -12px rgba(21,25,31,.35); padding: 4px; color: var(--ink); }
+.pmenu.right { left: auto; right: 0; }
+.pmenu a, .pmenu button { display: flex; flex-direction: column; justify-content: center; gap: 0; min-height: 44px; padding: 8px 12px; border-radius: 4px; text-decoration: none; color: var(--ink); font: 500 14px/1.3 var(--font); background: none; border: 0; width: 100%; text-align: left; cursor: pointer; }
+.pmenu a:hover, .pmenu button:hover { background: var(--paper); color: var(--ink); }
+.pmenu a.on { background: var(--paper-2); font-weight: 600; }
+.pmenu a .sub { font-size: 12px; color: var(--ink-3); }
+.pmenu a.foot { border-top: 1px solid var(--line); border-radius: 0; font-size: 13px; color: var(--ink-2); }
+.tabmore .pmenu a { flex-direction: row; justify-content: space-between; align-items: center; }
+
+/* ---------- External portal: top bar with project switcher, no sidebar ---------- */
+body.portal .pbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 12px; padding: 8px clamp(16px, 3vw, 36px); background: var(--side); color: #fff; }
+.pbar a { color: inherit; text-decoration: none; }
+.pbar-brand { display: flex; align-items: center; gap: 10px; min-height: 44px; flex: none; }
+.pbar-brand img { width: 30px; height: 30px; object-fit: contain; border-radius: 4px; background: #fff; }
+.pbar-brand .mark { width: 30px; height: 30px; border-radius: 4px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 800; }
+.pbar-brand .name { font-weight: 700; }
+.pswitch { position: relative; min-width: 0; }
+.pswitch summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px; border-radius: 5px; background: rgba(255,255,255,.08); max-width: 46vw; }
+.pswitch summary::-webkit-details-marker, .pacct summary::-webkit-details-marker { display: none; }
+.pswitch summary:hover, .pswitch[open] summary { background: rgba(255,255,255,.14); }
+.pswitch .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pswitch .caret { color: var(--side-dim); }
+.pnav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.pnav > a { position: relative; display: flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; justify-content: center; padding: 6px 10px; border-radius: 5px; color: var(--side-ink); font-weight: 500; }
+.pnav > a:hover, .pnav > a.on { background: rgba(255,255,255,.09); color: #fff; }
+.pnav svg { width: 20px; height: 20px; flex: none; }
+.pnav .n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font: 600 11px/18px var(--mono); text-align: center; }
+.pacct { position: relative; }
+.pacct summary { list-style: none; cursor: pointer; display: grid; place-items: center; min-height: 44px; min-width: 44px; }
+.pacct .avatar { background: #2A3039; color: #fff; }
+.portal-main { max-width: 1180px; margin: 0 auto; }
+@media (max-width: 700px) {
+  body.portal .pbar { flex-wrap: wrap; padding: 6px 16px; gap: 6px; }
+  .pbar-brand .name { display: none; }
+  .pswitch { order: 3; flex: 1 0 100%; }
+  .pswitch summary { max-width: none; }
+  .pswitch .pmenu { right: 0; max-width: none; }
+  .pnav .t { display: none; }
+}
+
+/* Mobile top bar (staff): the needs-me count next to the bell */
+.topbar .needs { margin-left: auto; color: #fff; position: relative; display: flex; }
+.topbar .needs + .bell { margin-left: 10px; }
+.topbar .needs span { position: absolute; top: 4px; right: -2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font: 600 10px/16px var(--mono); text-align: center; }
+.topbar .needs, .topbar .bell { min-height: 44px; min-width: 36px; align-items: center; justify-content: center; }
+.topbar .bell span { top: 4px; right: -2px; }
+
+/* ---------- Dashboards: every number is a link to the list behind it ---------- */
+a.kpi { display: block; text-decoration: none; color: inherit; }
+a.kpi:hover { background: #FCFBF8; color: inherit; }
+a.kpi.hero:hover { background: #222831; color: #fff; }
+a.kpi:hover .value { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a.kpi:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.kpi .note a { text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------- Needs me / decisions ---------- */
+.group-head { display: flex; align-items: baseline; gap: 8px; margin: 1.25rem 0 .5rem; }
+.group-head h2 { margin: 0; font-size: 1rem; }
+.group-head.overdue h2 { color: var(--bad); }
+.t.register tr.high td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.decisions { display: grid; gap: 10px; }
+.decision { display: flex; gap: 16px; justify-content: space-between; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; box-shadow: var(--shadow); }
+.decision.high { border-left: 3px solid var(--accent); }
+.decision.late { border-left: 3px solid var(--bad); }
+.decision h3 { margin: 4px 0 2px; font-size: 1.02rem; }
+.decision h3 a { text-decoration: none; }
+.decision p { margin: 0; }
+.decision-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.decision-main { min-width: 0; }
+.decision-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; text-align: right; }
+.decision-side .btn { min-height: 44px; }
+.decision-amount { font: 700 1.25rem/1.1 var(--font); font-stretch: 110%; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .decision { flex-direction: column; align-items: stretch; }
+  .decision-side { align-items: stretch; text-align: left; }
+}
+.money-strip { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; padding: 12px 16px; background: var(--ink); color: #fff; border-radius: var(--r); margin-bottom: 12px; }
+.money-strip .big { font: 700 1.5rem/1 var(--font); font-stretch: 110%; font-variant-numeric: tabular-nums; }
+.money-strip .small { color: #A8AFB9; }
+.card.changed { margin-bottom: 1rem; border-left: 3px solid var(--info); }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.ui-section { margin-bottom: 2rem; }
+.ui-section > h2 { border-bottom: 1px solid var(--line-2); padding-bottom: 6px; }
+pre.code { background: #FCFBF8; border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; }
+@media (max-width: 860px) { .btn { min-height: 44px; } .chip { min-height: 36px; display: inline-flex; align-items: center; } }

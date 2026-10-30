@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="crumbs"><a href="{% url 'project_list' org.slug %}">Projects</a> / <span class="mono">{{ project.reference }}</span></div>
+    {% if is_internal %}<div class="crumbs"><a href="{% if project.section == 'estimating' %}{% url 'bid_list' org.slug %}{% else %}{% url 'project_list' org.slug %}{% endif %}">{% if project.section == 'estimating' %}Bids{% else %}Projects{% endif %}</a> / <span class="mono">{{ project.reference }}</span></div>{% endif %}
     <h1>{{ project.name }}</h1>
     <div class="row small dim" style="margin-top:4px">
       {% badge project.get_stage_display project.stage_tone %}{% if project.is_archived %} {% badge 'Archived' 'muted' %}{% endif %}
@@ -15,6 +15,19 @@
 </div>
 {% if project.is_archived %}<div class="banner">Archived {{ project.archived_at|date:"j M Y" }}{% if project.archived_by %} by {{ project.archived_by.full_name }}{% endif %}. Hidden from lists, the pipeline and your plan's project count, and read only until restored; nothing was deleted.
   {% if is_org_admin %}<form method="post" action="{% url 'project_archive' org.slug project.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="action" value="restore"><button class="btn sm">Restore</button></form>{% endif %}</div>{% endif %}
-<nav class="tabs">{% for code, label, url, n in tabs %}<a href="{{ url }}" class="{% if code == tab %}on{% endif %}">{{ label }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>
+<div class="tabbar" data-tabbar>
+  <nav class="tabs" aria-label="Project sections">{% for code, label, url, n in tab_row|default:tabs %}<a href="{{ url }}" class="{% if code == tab_group or code == tab %}on{% endif %}"{% if code == tab_group or code == tab %} aria-current="page"{% endif %}>{{ label }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>
+  {% if tab_more %}<details class="tabmore{% if more_on %} on{% endif %}" data-menu>
+    <summary>{% if more_on %}{{ more_on.1 }}{% else %}More{% endif %}{% if more_count %}<span class="n">{{ more_count }}</span>{% endif %}<span class="caret" aria-hidden="true">▾</span></summary>
+    <div class="pmenu right" role="menu">{% for code, label, url, n in tab_more %}<a role="menuitem" href="{{ url }}" class="{% if code == tab %}on{% endif %}">{{ label }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</div>
+  </details>{% endif %}
+</div>
+{% if subtabs %}<nav class="subtabs" aria-label="In this section">{% for code, label, url, n in subtabs %}<a href="{{ url }}" class="chip{% if code == tab %} on{% endif %}"{% if code == tab %} aria-current="page"{% endif %}>{{ label }}{% if n %} <span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>{% endif %}
+{% if not is_internal and tab == 'overview' and last_visit %}
+<div class="card changed">
+  <div class="card-head"><h2>What's changed since your last visit</h2><span class="small dim">{{ last_visit|date:"D j M, H:i" }}</span></div>
+  {% if changes %}{% include "partials/feed.html" with activity=changes %}
+  {% else %}<div class="empty left">Nothing new from anyone else since then.</div>{% endif %}
+</div>{% endif %}
 {% block project_content %}{% endblock %}
 {% endblock %}

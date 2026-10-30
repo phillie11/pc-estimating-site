@@ -1,0 +1,17 @@
+{% load ui %}{% comment %}
+One thing waiting on a decision, as a card: what it is, the money, when it's due, what to do,
+and one button to open it. Used for the client's and subcontractor's "Decisions waiting".
+  {% include "partials/decision_panel.html" with item=item show_project=True %}
+`item` is an actions.Item (or anything with title, url, ref, amount, due, action, detail, status_label, tone).
+{% endcomment %}<article class="decision{% if item.is_overdue %} late{% endif %}{% if item.priority == 'high' %} high{% endif %}">
+  <div class="decision-main">
+    <div class="decision-meta">{% if item.ref %}<span class="ref">{{ item.ref }}</span>{% endif %}<span class="badge {{ item.tone|default:'accent' }}">{{ item.status_label|default:item.kind_label }}</span>{% if show_project and item.project %}<span class="small dim">{{ item.project.name }}</span>{% endif %}</div>
+    <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+    {% if item.detail %}<p class="small dim">{{ item.detail }}</p>{% endif %}
+  </div>
+  <div class="decision-side">
+    {% if item.amount is not None %}<div class="decision-amount">{{ item.amount|money:currency }}</div>{% endif %}
+    <div class="small {% if item.is_overdue %}overdue{% else %}dim{% endif %}">{% if item.due %}{% if item.is_overdue %}Was due{% else %}Due{% endif %} {{ item.due|date:"D j M" }}{% else %}No due date{% endif %}</div>
+    <a class="btn primary" href="{{ item.url }}">{{ item.action|default:"Open" }}</a>
+  </div>
+</article>

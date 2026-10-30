@@ -16,8 +16,9 @@ def money(value, symbol='£'):
         v = Decimal(value)
     except (InvalidOperation, TypeError):
         return value
+    from decimal import ROUND_HALF_UP
     sign = '-' if v < 0 else ''
-    return f'{sign}{symbol}{abs(v):,.0f}'
+    return f'{sign}{symbol}{abs(v).quantize(Decimal("1"), ROUND_HALF_UP):,}'
 
 
 @register.filter
@@ -25,12 +26,16 @@ def money_short(value, symbol='£'):
     """£1.2m / £450k for tight spaces."""
     if value in (None, ''):
         return '—'
-    v = float(value)
+    try:
+        v = Decimal(value)
+    except (InvalidOperation, TypeError, ValueError):
+        return value
+    from decimal import ROUND_HALF_UP
     if abs(v) >= 1_000_000:
-        return f'{symbol}{v / 1_000_000:.1f}m'
+        return f'{symbol}{(v / 1_000_000).quantize(Decimal("0.1"), ROUND_HALF_UP)}m'
     if abs(v) >= 1_000:
-        return f'{symbol}{v / 1_000:.0f}k'
-    return f'{symbol}{v:.0f}'
+        return f'{symbol}{(v / 1_000).quantize(Decimal("1"), ROUND_HALF_UP)}k'
+    return f'{symbol}{v.quantize(Decimal("1"), ROUND_HALF_UP)}'
 
 
 # Text colours for anything drawn on the brand colour (--accent-ink); dark is the app's --ink
@@ -69,6 +74,33 @@ def readable_ink(background):
 @register.simple_tag
 def badge(text, tone='muted'):
     return format_html('<span class="badge {}">{}</span>', tone, text)
+
+
+TONES = ('good', 'warn', 'bad', 'info', 'accent', 'muted')
+
+
+@register.simple_tag
+def status_badge(obj_or_label, tone=None):
+    """
+    A status as words plus a tone. Pass a model with status_tone (and get_status_display or
+    status_label), or a label and a tone: {% status_badge variation %}, {% status_badge "Overdue" "bad" %}.
+    """
+    if isinstance(obj_or_label, str):
+        label = obj_or_label
+    else:
+        display = getattr(obj_or_label, 'get_status_display', None)
+        label = display() if callable(display) else getattr(obj_or_label, 'status_label', '') or ''
+        tone = tone or getattr(obj_or_label, 'status_tone', None) or getattr(obj_or_label, 'tone', None)
+    tone = tone if tone in TONES else 'muted'
+    return format_html('<span class="badge {}">{}</span>', tone, label)
+
+
+@register.simple_tag
+def greeting():
+    """Good morning / afternoon / evening, by the site's local time."""
+    from django.utils import timezone
+    hour = timezone.localtime().hour
+    return 'Good morning' if 4 <= hour < 12 else 'Good afternoon' if 12 <= hour < 18 else 'Good evening'
 
 
 @register.filter
@@ -115,6 +147,7 @@ ICONS = {
     'plus': '<path d="M12 5v14M5 12h14"/>',
     'menu': '<path d="M3 6h18M3 12h18M3 18h18"/>',
     'download': '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 21h16"/>',
+    'inbox': '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
 }
 
 

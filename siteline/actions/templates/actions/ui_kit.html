@@ -1,0 +1,41 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Screen parts{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">For people building {{ PRODUCT_NAME }} · staff only</div><h1>Screen parts</h1>
+  <p class="dim" style="margin:.25rem 0 0;max-width:70ch">Reuse these on new screens so every register looks and behaves the same. The examples below use made-up data and link nowhere.</p></div></div>
+
+<section class="ui-section">
+  <h2>status_badge</h2>
+  <p class="small dim">Words plus a tone, never colour alone. Driven by the model's <code>status_tone</code>.</p>
+  <div class="swatches" style="margin-bottom:10px">{% for s in statuses %}{% status_badge s %}{% endfor %}</div>
+  <div class="swatches" style="margin-bottom:10px">{% for t in tones %}{% status_badge t t %}{% endfor %}</div>
+  <pre class="code">{% templatetag openblock %} status_badge variation {% templatetag closeblock %}
+{% templatetag openblock %} status_badge "Overdue" "bad" {% templatetag closeblock %}
+{% templatetag openblock %} include "partials/status_badge.html" with obj=variation {% templatetag closeblock %}</pre>
+</section>
+
+<section class="ui-section">
+  <h2>empty_state</h2>
+  <p class="small dim">Say why the list is empty and what to do next.</p>
+  <div class="card">{% include "partials/empty_state.html" with title="No RAMS yet" message="Subcontractors submit RAMS here once they are appointed. Appoint one from Procurement." cta_url="#" cta_label="Go to procurement" %}</div>
+  <pre class="code">{% templatetag openblock %} include "partials/empty_state.html" with title="No RAMS yet" message="..." cta_url=url cta_label="Go to procurement" {% templatetag closeblock %}</pre>
+</section>
+
+<section class="ui-section">
+  <h2>register_table</h2>
+  <p class="small dim">A register of things to act on. Rows are <code>actions.Item</code>s or models with the same attributes.</p>
+  {% for code, label, rows in groups %}<div class="group-head {{ code }}"><h2>{{ label }}</h2><span class="small dim">{{ rows|length }}</span></div>
+  <div class="card">{% include "partials/register_table.html" with rows=rows show_project=True show_money=True %}</div>{% endfor %}
+  <div class="group-head"><h2>Empty</h2></div>
+  <div class="card">{% include "partials/register_table.html" with rows=None empty_title="No RFIs open" empty_message="Raise one when you need an answer from the design team." empty_cta_url="#" empty_cta_label="Raise an RFI" %}</div>
+  <pre class="code">{% templatetag openblock %} include "partials/register_table.html" with rows=items show_project=True show_money=True empty_title="..." empty_message="..." {% templatetag closeblock %}</pre>
+</section>
+
+<section class="ui-section">
+  <h2>decision_panel</h2>
+  <p class="small dim">One decision, with the money and one clear button. Used on the client's and subcontractor's "Decisions waiting".</p>
+  <div class="money-strip"><span class="small">Value waiting on your decision</span><span class="big">{{ money|money:currency }}</span></div>
+  <div class="decisions">{% for item in samples %}{% include "partials/decision_panel.html" with item=item show_project=True %}{% endfor %}</div>
+  <pre class="code">{% templatetag openblock %} include "partials/decision_panel.html" with item=item show_project=True {% templatetag closeblock %}</pre>
+</section>
+{% endblock %}
