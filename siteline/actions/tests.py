@@ -667,6 +667,31 @@ class DigestTests(Base):
         self.assertNotIn('sub@alpha.test', self.run_digest(tuesday))
         self.assertIn('pm@alpha.test', self.run_digest(tuesday))  # no row: daily
 
+    def test_weekly_is_a_full_summary_even_with_nothing_urgent(self):
+        from .models import DigestPreference
+        from . import digest
+        from .registry import Item
+        DigestPreference.set_for(self.a.pm, DigestPreference.WEEKLY)
+        today = timezone.localdate()
+        monday = today - timedelta(days=today.weekday())
+        calm = [Item(kind='task', title=f'Calm job {n}', url=f'/x/{n}/', due=monday + timedelta(days=20))
+                for n in range(digest.EXTRA_CAP + 3)]
+        with mock.patch('actions.for_user', return_value=calm):
+            by = self.run_digest(monday)
+        body = by['pm@alpha.test'].body
+        for n in range(digest.EXTRA_CAP + 3):  # nothing urgent and nothing left out by the cap
+            self.assertIn(f'Calm job {n}', body)
+        self.assertIn('weekly', by['pm@alpha.test'].subject)
+        self.assertEqual(set(by), {'pm@alpha.test'})  # daily people with nothing urgent still get nothing
+
+    def test_weekly_with_nothing_waiting_sends_nothing(self):
+        from .models import DigestPreference
+        DigestPreference.set_for(self.a.pm, DigestPreference.WEEKLY)
+        today = timezone.localdate()
+        monday = today - timedelta(days=today.weekday())
+        with mock.patch('actions.for_user', return_value=[]):
+            self.assertNotIn('pm@alpha.test', self.run_digest(monday))
+
     def test_unsubscribe_link_works_without_login(self):
         from . import digest
         from .models import DigestPreference

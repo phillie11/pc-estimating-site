@@ -1,9 +1,10 @@
 """
 The round-up email's rules: when it goes, what it lists, and the signed unsubscribe link.
 
-It goes only when something is overdue or due within URGENT_DAYS. Items with no date never
-send it on their own; when it goes anyway they are listed, capped at EXTRA_CAP. Each person
-picks daily (default), weekly on Mondays, or off (actions.DigestPreference).
+The daily one goes only when something is overdue or due within URGENT_DAYS. Items with no
+date never send it on their own; when it goes anyway they are listed, capped at EXTRA_CAP.
+The weekly one is a full summary: it goes whenever anything is waiting and lists everything.
+Each person picks daily (default), weekly on Mondays, or off (actions.DigestPreference).
 """
 from datetime import timedelta
 
@@ -27,10 +28,11 @@ def is_due_day(frequency, today=None):
     return True
 
 
-def sections_for(items, today=None):
+def sections_for(items, today=None, cap=EXTRA_CAP):
     """
     (urgent, sections, more): urgent is True when anything is overdue or due within
-    URGENT_DAYS; sections are [(label, [item...])]; more counts items left out by the cap.
+    URGENT_DAYS; sections are [(label, [item...])]; more counts items left out by the cap
+    (None lists them all).
     """
     today = today or timezone.localdate()
     soon = today + timedelta(days=URGENT_DAYS)
@@ -44,8 +46,8 @@ def sections_for(items, today=None):
     if due_soon:
         sections.append((f'Due in the next {URGENT_DAYS} days', due_soon))
     if rest:
-        sections.append(('Also waiting on you', rest[:EXTRA_CAP]))
-    return bool(overdue or due_soon), sections, max(0, len(rest) - EXTRA_CAP)
+        sections.append(('Also waiting on you', rest if cap is None else rest[:cap]))
+    return bool(overdue or due_soon), sections, 0 if cap is None else max(0, len(rest) - cap)
 
 
 def unsubscribe_token(user):
