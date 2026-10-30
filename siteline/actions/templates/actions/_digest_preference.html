@@ -1,0 +1,8 @@
+{% load needs_me %}{% digest_setting request.user as pref %}
+<hr>
+<h2>Round-up email</h2>
+<p class="small dim">A summary of what is waiting on you, sent only when something is overdue or due within 3 days.</p>
+<form method="post" action="{% url 'digest_preference' %}">{% csrf_token %}
+  <div class="field">{% for value, label in pref.choices %}<label class="check" style="font-weight:500;display:flex;gap:8px;align-items:center;min-height:44px;margin:0"><input type="radio" name="frequency" value="{{ value }}" {% if value == pref.current %}checked{% endif %}> {{ label }}</label>{% endfor %}</div>
+  <button class="btn">Save round-up setting</button>
+</form>

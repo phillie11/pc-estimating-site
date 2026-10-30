@@ -1,10 +1,16 @@
 """
-Daily digest. Schedule on PythonAnywhere (Tasks tab), e.g. 07:00 daily:
+Round-up email. Schedule on PythonAnywhere (Tasks tab), e.g. 07:00 daily:
     cd ~/siteline && source .venv/bin/activate && python manage.py send_reminders
 
 What is waiting on each person comes from the "Needs me" registry (actions), the same list
-as their Needs me page, so the email and the page always agree. Staff also get tender
-returns in the next three days, subcontractor insurance expiring and the trial reminder.
+as their Needs me page. Staff also get tender returns in the next three days, subcontractor
+insurance expiring and the trial reminder.
+
+It is sent only when something is urgent: an item overdue or due within 3 days, a tender
+return within 3 days, insurance lapsing within 3 days, or the trial ending within 3 days.
+Undated items and things further off are listed when it goes, never a reason to send it
+(actions/digest.py). Each person chooses daily (default), weekly on Mondays, or off, on
+their profile or from the signed unsubscribe link in every email.
 """
 from datetime import timedelta
 
@@ -14,43 +20,35 @@ from django.urls import reverse
 from django.utils import timezone
 
 import actions
+from actions import digest
+from actions.models import DigestPreference
 from directory.models import Subcontractor
 from projects.models import Project
 from tenancy import notify
 from tenancy.context import org_context
 from tenancy.models import Membership, Organization
 
-# Groups the digest lists item by item; anything due further off is only counted
-LISTED_GROUPS = ('overdue', 'today', 'week')
 
-
-def waiting_for(user, membership):
-    """(sections, later_count): [(label, [item...])] for the email, each item with an absolute link."""
+def waiting_for(user, membership, today=None):
+    """(urgent, sections, more) for this person, each item with an absolute link."""
     items = actions.for_user(actions.request_for(user, membership))
     for item in items:
         item.link = notify.absolute(item.url)
-    sections, later = [], 0
-    for code, label, rows in actions.grouped(items):
-        if code in LISTED_GROUPS:
-            sections.append((label, rows))
-        else:
-            undated = [i for i in rows if i.due is None]
-            later += len(rows) - len(undated)
-            if undated:
-                sections.append(('Waiting on you, no date set', undated))
-    return sections, later
+    return digest.sections_for(items, today)
 
 
 class Command(BaseCommand):
-    help = ('Email each person a digest of what is waiting on them (their Needs me list), plus, for staff, '
-            'tender deadlines, insurance expiry and trial status.')
+    help = ('Email each person a round-up of what is waiting on them (their Needs me list), plus, for staff, '
+            'tender deadlines, insurance expiry and trial status, when something is overdue or due within 3 days.')
 
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true')
 
     def handle(self, *args, dry_run=False, **opts):
         today = timezone.localdate()
+        urgent_by = today + timedelta(days=digest.URGENT_DAYS)
         sent = 0
+        prefs = {}
         for org in Organization.objects.filter(is_suspended=False):
             if not org.has_access:
                 continue
@@ -68,16 +66,26 @@ class Command(BaseCommand):
                     user = m.user
                     if not user.is_active:
                         continue
-                    waiting, later = waiting_for(user, m)
-                    ctx = {'waiting': waiting, 'later': later, 'needs_me_link': notify.absolute(reverse('needs_me', args=[org.slug]))}
+                    if user.pk not in prefs:
+                        prefs[user.pk] = DigestPreference.frequency_for(user)
+                    if not digest.is_due_day(prefs[user.pk], today):
+                        continue
+                    urgent, waiting, more = waiting_for(user, m, today)
+                    ctx = {'waiting': waiting, 'more': more,
+                           'needs_me_link': notify.absolute(reverse('needs_me', args=[org.slug])),
+                           'unsubscribe_link': notify.absolute(digest.unsubscribe_path(user)),
+                           'weekly': prefs[user.pk] == DigestPreference.WEEKLY}
                     if m.is_internal:
-                        # Estimators see tender returns; everyone else only if they can see bids
+                        mine_insurance = insurance if m.is_admin or m.role == Membership.ROLE_MEMBER else []
                         ctx.update({
+                            # Estimators see tender returns; projects-only staff can't open bids
                             'tenders': tenders if m.can_estimate else [],
-                            'insurance': insurance if m.is_admin or m.role == Membership.ROLE_MEMBER else [],
+                            'insurance': mine_insurance,
                             'trial_days': trial_days if m.is_admin else None,
                         })
-                    if ctx['waiting'] or ctx.get('tenders') or ctx.get('insurance') or ctx.get('trial_days') is not None:
+                        urgent = urgent or bool(ctx['tenders']) or (ctx['trial_days'] or 99) <= digest.URGENT_DAYS \
+                            or any(s.next_insurance_expiry and s.next_insurance_expiry <= urgent_by for s in mine_insurance)
+                    if urgent:
                         sent += self._send(user, org, ctx, dry_run)
         self.stdout.write(self.style.SUCCESS(f'{sent} digest(s) {"would be " if dry_run else ""}sent'))
 
@@ -85,5 +93,6 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(f'  {org.slug}: {user.email}')
             return 1
-        notify.send(user.email, 'Your daily round-up', 'digest', {'user': user, **ctx}, org=org)
+        notify.send(user.email, 'Your weekly round-up' if ctx.get('weekly') else 'Your daily round-up', 'digest',
+                    {'user': user, **ctx}, org=org)
         return 1

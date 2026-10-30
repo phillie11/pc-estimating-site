@@ -1,12 +1,12 @@
-Hi {{ user.get_short_name }},
+{% load ui %}Hi {{ user.get_short_name }},
 
 Your {{ org.name }} round-up for {% now "l j F" %}:
 {% for label, rows in waiting %}
 {{ label }}
-{% for i in rows %}  - {% if i.ref %}{{ i.ref }} {% endif %}{{ i.title }}{% if i.project %} ({{ i.project.name }}){% endif %}{% if i.due %}, due {{ i.due|date:"j M" }}{% endif %}{% if i.amount is not None %}, {{ org.currency_symbol }}{{ i.amount|floatformat:2 }}{% endif %}
+{% for i in rows %}  - {% if i.ref %}{{ i.ref }} {% endif %}{{ i.title }}{% if i.project %} ({{ i.project.name }}){% endif %}{% if i.due %}, due {{ i.due|date:"j M" }}{% endif %}{% if i.amount is not None %}, {{ i.amount|money_exact:org.currency_symbol }}{% endif %}
     {{ i.action|default:"Open it" }}: {{ i.link }}
-{% endfor %}{% endfor %}{% if later %}
-{{ later }} more thing{{ later|pluralize }} due later. Everything waiting on you: {{ needs_me_link }}
+{% endfor %}{% endfor %}{% if more %}
+...and {{ more }} more thing{{ more|pluralize }} waiting on you.
 {% endif %}{% if tenders %}
 Tender returns in the next 3 days
 {% for p in tenders %}  - {{ p.name }}: {{ p.tender_due|date:"D j M H:i" }}
@@ -21,3 +21,5 @@ Your free trial ends in {{ trial_days }} day{{ trial_days|pluralize }}. Choose a
 {% if waiting %}Everything waiting on you: {{ needs_me_link }}{% else %}{{ SITE_URL }}/{{ org.slug }}/{% endif %}
 
 — {{ PRODUCT_NAME }}
+
+You get this {% if weekly %}every Monday{% else %}on days when something is overdue or due soon{% endif %}. Change how often, or stop these emails (no login needed): {{ unsubscribe_link }}

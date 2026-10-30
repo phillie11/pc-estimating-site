@@ -6,6 +6,8 @@ import io
 from datetime import timedelta
 from decimal import Decimal
 
+from unittest import mock
+
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -349,7 +351,7 @@ class NeedsMePageTests(Base):
         self.login(self.a.client)
         r = self.client.get(self.url('needs_me', self.a))
         self.assertEqual([g[0] for g in r.context['groups']], ['overdue', 'later'])
-        self.assertContains(r, '£1,851')  # Value waiting on your decision
+        self.assertContains(r, '£1,850.50')  # Value waiting on your decision
         r = self.client.get(self.url('needs_me', self.a) + '?kind=client_variation')
         self.assertEqual([i.kind for i in r.context['items']], ['client_variation'])
 
@@ -402,7 +404,7 @@ class PortalLayoutTests(Base):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Alpha job extra ceiling')
         self.assertContains(r, 'Approve or reject')
-        self.assertContains(r, '£1,851')
+        self.assertContains(r, '£1,850.50')
         self.assertNotContains(r, 'Alpha job rams to revise')
         self.login(self.a.bidder)  # a tendering sub only ever sees their tender
         self.assertEqual(self.client.get(self.url('project_decisions', self.a, self.a.bid.pk)).status_code, 403)
@@ -534,7 +536,7 @@ class DashboardTests(Base):
         html = r.content.decode()
         self.assertLess(html.index('id="dw"'), html.index('<h2>Your projects</h2>'))
         self.assertContains(r, 'Variations waiting for your approval')
-        self.assertContains(r, '£1,851')
+        self.assertContains(r, '£1,850.50')
         self.assertContains(r, 'Alpha job extra ceiling')
         self.assertEqual(r.context['my_rfis'][0].title, 'Alpha job veneer?')  # older context kept for callers
 
@@ -572,29 +574,248 @@ class UiKitTests(Base):
 
 @override_settings(SITE_URL='https://portal.test')
 class DigestTests(Base):
+    def run_digest(self, today=None):
+        mail.outbox.clear()
+        if today is None:
+            call_command('send_reminders', stdout=io.StringIO())
+        else:
+            with mock.patch('django.utils.timezone.localdate', return_value=today):
+                call_command('send_reminders', stdout=io.StringIO())
+        return {m.to[0]: m for m in mail.outbox}
+
     def test_digest_lists_needs_me_items_with_links(self):
-        call_command('send_reminders', stdout=io.StringIO())
-        by = {m.to[0]: m for m in mail.outbox}
+        by = self.run_digest()
         client = by['client@alpha.test'].body
         self.assertIn('Overdue', client)
         self.assertIn('Alpha job veneer?', client)
-        self.assertIn('Alpha job extra ceiling', client)
+        self.assertIn('Alpha job extra ceiling', client)  # undated, listed because the email goes anyway
+        self.assertIn('£1,850.50', client)
         self.assertIn('https://portal.test' + self.a.items['job']['vo'].get_absolute_url(), client)
         self.assertNotIn('archived', client)
         self.assertNotIn('Bravo', client)
-        self.assertIn('1 more thing due later', client)  # the task due in 20 days is only counted
         sub = by['sub@alpha.test'].body
+        self.assertIn('Alpha job snag for sub', sub)       # due in 2 days: the reason it was sent
         self.assertIn('Alpha job rams to revise', sub)
         self.assertNotIn('extra ceiling', sub)
-        bidder = by['bid@alpha.test'].body
-        self.assertIn('Alpha revised layout', bidder)
+        self.assertIn('Alpha revised layout', by['bid@alpha.test'].body)  # quote due in 3 days sends it
         pm = by['pm@alpha.test'].body
         self.assertIn('Alpha job sub claim', pm)
         self.assertNotIn('Tender returns', pm)  # projects-only staff aren't sent bid deadlines
 
-    def test_nobody_with_nothing_waiting_is_emailed(self):
-        call_command('send_reminders', stdout=io.StringIO())
-        self.assertNotIn('qs@alpha.test', {m.to[0] for m in mail.outbox})
+    def test_final_link_printed_once(self):
+        body = self.run_digest()['client@alpha.test'].body
+        self.assertEqual(body.count('Everything waiting on you:'), 1)
+        self.assertEqual(body.count('https://portal.test' + self.url('needs_me', self.a)), 1)
+
+    def test_undated_or_distant_items_never_send_it_on_their_own(self):
+        with org_context(self.a.org):
+            RFI.objects.filter(project=self.a.job).update(due_date=None)
+            from core.models import index_record
+            for r in RFI.objects.filter(project=self.a.job):
+                index_record(r)
+        by = self.run_digest()
+        # The client is left with an undated variation and a task due in 20 days
+        self.assertNotIn('client@alpha.test', by)
+        self.assertNotIn('qs@alpha.test', by)
+
+    def test_extra_items_are_capped(self):
+        from . import digest
+        with org_context(self.a.org):
+            for n in range(digest.EXTRA_CAP + 3):
+                Task.objects.create(project=self.a.job, title=f'Undated task {n}', assignee=self.a.client)
+        body = self.run_digest()['client@alpha.test'].body
+        self.assertEqual(body.count('Undated task'), digest.EXTRA_CAP - 1)  # the variation takes one slot
+        self.assertIn('...and', body)
+
+    def test_variation_respond_by_date_is_read_when_the_field_exists(self):
+        with org_context(self.a.org):
+            vo = self.a.items['job']['vo']
+            vo.due_date = timezone.localdate() + timedelta(days=1)  # what the variations branch adds
+            from .providers import ClientVariationProvider
+            from django.db.models.query import QuerySet
+            real = QuerySet.__iter__
+
+            def with_due(qs):
+                for obj in real(qs):
+                    if isinstance(obj, Variation):
+                        obj.due_date = vo.due_date
+                    yield obj
+            with mock.patch.object(QuerySet, '__iter__', with_due):
+                items = ClientVariationProvider().items(
+                    actions.request_for(self.a.client, self.a.membership(self.a.client)))
+        self.assertEqual([i.due for i in items], [vo.due_date])
+
+    def test_weekly_goes_on_mondays_only_and_off_stops_it(self):
+        from .models import DigestPreference
+        DigestPreference.set_for(self.a.client, DigestPreference.WEEKLY)
+        DigestPreference.set_for(self.a.sub, DigestPreference.OFF)
+        today = timezone.localdate()
+        monday = today - timedelta(days=today.weekday())
+        tuesday = monday + timedelta(days=1)
+        self.assertNotIn('client@alpha.test', self.run_digest(tuesday))
+        by = self.run_digest(monday)
+        self.assertIn('client@alpha.test', by)
+        self.assertIn('weekly', by['client@alpha.test'].subject)
+        self.assertNotIn('sub@alpha.test', by)
+        self.assertNotIn('sub@alpha.test', self.run_digest(tuesday))
+        self.assertIn('pm@alpha.test', self.run_digest(tuesday))  # no row: daily
+
+    def test_unsubscribe_link_works_without_login(self):
+        from . import digest
+        from .models import DigestPreference
+        body = self.run_digest()['client@alpha.test'].body
+        link = digest.unsubscribe_path(self.a.client)
+        self.assertIn('https://portal.test' + link, body)
+        self.client.logout()
+        r = self.client.get(link)
+        self.assertContains(r, 'Stop round-up emails')
+        self.assertEqual(DigestPreference.frequency_for(self.a.client), DigestPreference.DAILY)  # a GET changes nothing
+        r = self.client.post(link, {'frequency': 'OFF'})
+        self.assertContains(r, 'Saved')
+        self.assertEqual(DigestPreference.frequency_for(self.a.client), DigestPreference.OFF)
+        self.assertNotIn('client@alpha.test', self.run_digest())
+        self.client.post(link, {'frequency': 'WEEKLY'})
+        self.assertEqual(DigestPreference.frequency_for(self.a.client), DigestPreference.WEEKLY)
+
+    def test_tampered_unsubscribe_token_is_refused(self):
+        from . import digest
+        token = digest.unsubscribe_token(self.a.client)
+        forged = token[:-2] + ('aa' if not token.endswith('aa') else 'bb')
+        r = self.client.post(reverse('digest_unsubscribe', args=[forged]), {'frequency': 'OFF'})
+        self.assertEqual(r.status_code, 404)
+        from .models import DigestPreference
+        self.assertFalse(DigestPreference.objects.exists())
+        # A token for one person can't be turned into another's
+        self.assertNotEqual(digest.unsubscribe_token(self.a.client), digest.unsubscribe_token(self.a.sub))
+
+    def test_preference_on_profile_page_for_staff_and_externals(self):
+        from .models import DigestPreference
+        for user in (self.a.pm, self.a.client):
+            self.login(user)
+            r = self.client.get(reverse('profile'))
+            self.assertContains(r, 'Round-up email')
+            self.assertContains(r, 'value="DAILY" checked')
+            self.client.post(reverse('digest_preference'), {'frequency': 'WEEKLY'})
+            self.assertEqual(DigestPreference.frequency_for(user), DigestPreference.WEEKLY)
+            self.client.post(reverse('digest_preference'), {'frequency': 'NONSENSE'})
+            self.assertEqual(DigestPreference.frequency_for(user), DigestPreference.WEEKLY)
+        self.client.logout()
+        r = self.client.post(reverse('digest_preference'), {'frequency': 'OFF'})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('/login/', r['Location'])
+
+
+class ReviewFixTests(Base):
+    """Regression tests for the independent review of PR #15."""
+
+    def test_non_ascii_digit_project_filter_is_ignored_not_a_500(self):
+        self.login(self.a.client)
+        r = self.client.get(self.url('needs_me', self.a) + '?project=%C2%B2')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.context['items']), 3)
+
+    def test_bidder_switcher_links_tenders_to_the_tender_page(self):
+        from tenders.services import tender_url
+        self.login(self.a.bidder)
+        r = self.client.get(self.url('dashboard', self.a))
+        switcher = r.context['portal_switcher']
+        switcher = switcher() if callable(switcher) else switcher
+        self.assertEqual([(e['name'], e['url']) for e in switcher], [(self.a.bid.name, tender_url(self.a.bid))])
+        self.assertNotContains(r, f'href="{self.a.bid.get_absolute_url()}"')
+        self.login(self.a.client)
+        r = self.client.get(self.url('dashboard', self.a))
+        switcher = r.context['portal_switcher']
+        switcher = switcher() if callable(switcher) else switcher
+        self.assertEqual([e['url'] for e in switcher], [self.a.job.get_absolute_url()])
+
+    def test_no_silent_cap_and_needs_me_is_paginated(self):
+        from . import views
+        with org_context(self.a.org):
+            for n in range(205):
+                r = RFI(project=self.a.job, title=f'Bulk RFI {n}', question='?', ball_in_court_user=self.a.client)
+                r.save(actor=self.a.pm)
+        self.assertEqual(len([t for t in self.a.titles(self.a.client) if t.startswith('Bulk RFI')]), 205)
+        self.login(self.a.client)
+        r = self.client.get(self.url('needs_me', self.a))
+        self.assertEqual(len(r.context['items']), views.PER_PAGE)
+        self.assertEqual(r.context['shown_count'], 208)
+        self.assertContains(r, 'aria-label="Needs me: 208 waiting"')
+        self.assertContains(r, '<span class="n">99+</span>')
+        last = self.client.get(self.url('needs_me', self.a) + '?page=5')
+        self.assertEqual(len(last.context['items']), 208 - 4 * views.PER_PAGE)
+
+    def test_badge_count_filter(self):
+        from tenancy.templatetags.ui import badge_count
+        self.assertEqual([badge_count(0), badge_count(99), badge_count(100), badge_count('x')], ['0', '99', '99+', ''])
+
+    def test_amounts_to_approve_show_pence(self):
+        from tenancy.templatetags.ui import money_exact
+        self.assertEqual(money_exact(Decimal('1850.5'), '£'), '£1,850.50')
+        self.assertEqual(money_exact(Decimal('0.005'), '£'), '£0.01')
+        self.assertEqual(money_exact(None), '—')
+        self.login(self.a.client)
+        for name, args in (('dashboard', []), ('project_decisions', [self.a.job.pk]), ('needs_me', [])):
+            r = self.client.get(self.url(name, self.a, *args))
+            self.assertContains(r, '£1,850.50')
+        self.login(self.a.pm)
+        r = self.client.get(self.url('delivery_home', self.a))
+        self.assertContains(r, 'Sub variations to decide')
+        self.assertNotContains(r, '£640.00</div>')  # dashboard tiles stay short
+
+
+class HookProviderTests(Base):
+    """Hooks into apps on other branches list nothing until the module exists, then plug straight in."""
+
+    def test_missing_modules_list_nothing(self):
+        kinds = {p.kind for p in registry.providers()}
+        self.assertTrue({'coverage_alert', 'change', 'transmittal'} <= kinds)
+        for kind in ('coverage_alert', 'change', 'transmittal'):
+            p = next(p for p in registry.providers() if p.kind == kind)
+            for user in (self.a.owner, self.a.client):
+                with org_context(self.a.org):
+                    self.assertEqual(p.items(actions.request_for(user, self.a.membership(user))), [])
+
+    def test_a_hook_that_exists_is_used_and_access_filtered(self):
+        import sys
+        import types
+
+        from .providers import HookProvider
+        fake = types.ModuleType('zz_fake_hook')
+        a = self.a
+
+        def items(request):
+            return [{'title': 'Coverage: 1 bid on drylining', 'url': '/x', 'project': a.bid},
+                    {'title': 'Not yours', 'url': '/y', 'project': a.job}]
+        fake.items = items
+        row = a.items['job']['vo']
+        row.title = 'Transmittal T-001'
+        fake.pending = lambda user: [row]
+        sys.modules['zz_fake_hook'] = fake
+        try:
+            hook = HookProvider('zz', 'Test', 'zz_fake_hook.items', staff=True)
+            with org_context(a.org):
+                got = [i.title for i in hook.items(actions.request_for(a.est, a.membership(a.est)))]
+            self.assertEqual(got, ['Coverage: 1 bid on drylining'])  # the live job is outside the estimator's sections
+            ext = HookProvider('zz2', 'Test', 'zz_fake_hook.pending', takes='user', staff=False)
+            with org_context(a.org):
+                got = ext.items(actions.request_for(a.client, a.membership(a.client)))
+                self.assertEqual([i.title for i in got], ['Transmittal T-001'])
+                self.assertEqual(ext.items(actions.request_for(a.owner, a.membership(a.owner))), [])
+        finally:
+            del sys.modules['zz_fake_hook']
+
+    def test_a_broken_import_inside_an_existing_module_is_not_hidden(self):
+        from .providers import HookProvider
+        hook = HookProvider('zz', 'Test', 'actions.zz_missing_submodule.items')
+        self.assertIsNone(hook.resolve())  # the submodule itself is missing: fine
+        import sys
+        import types
+        broken = types.ModuleType('zz_broken')
+        sys.modules['zz_broken'] = broken
+        try:
+            self.assertIsNone(HookProvider('zz', 'Test', 'zz_broken.nothing_here').resolve())
+        finally:
+            del sys.modules['zz_broken']
 
 
 class NotificationLinkTests(Base):
