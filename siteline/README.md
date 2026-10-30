@@ -76,7 +76,7 @@ This is the part to keep intact as you add features.
    - `with unscoped():` when the code really means every company, as the platform admin (`tenancy.admin.TenantModelAdmin`) does. Inside it `TenantModel.objects` behaves like `all_objects` and `save()` needs an explicit organisation.
    - `Model.all_objects` for a lookup that is pinned some other way: a pk or token (invite links), a known organisation, or a file path.
 
-   Say why in a comment, and grep for `unscoped()` and `all_objects` when reviewing. Following a foreign key (`rfi.project`), `refresh_from_db()` and delete cascades use `all_objects` as the base manager; each is pinned to a row the code already holds, so it can't list another company's data. For backups use `manage.py dumpdata --all` (plain `dumpdata` reads through `objects` and stops with `TenantContextMissing`).
+   Say why in a comment, and grep for `unscoped()` and `all_objects` when reviewing. Following a foreign key (`rfi.project`), `refresh_from_db()` and delete cascades use `all_objects` as the base manager; each is pinned to a row the code already holds, so it can't list another company's data. For whole-database exports use `manage.py export_data` and `import_data`, which run `dumpdata`/`loaddata` inside `unscoped()` (plain `dumpdata`, even with `--all`, stops with `TenantContextMissing` on many-to-many fields).
 7. `User` is global (one login can belong to several companies). Any form field that picks a user must use `projects.access.assignable_users()` or `staff_users()`, never `User.objects.all()`.
 8. Uploaded files sit outside the web root and are only served by views that check permissions. **Never add a `/media/` static mapping.**
 

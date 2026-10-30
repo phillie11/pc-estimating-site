@@ -20,9 +20,10 @@ path = '/tmp/siteline-data.json.gz'
 print(f'Downloading s3://{bucket}/{key}', flush=True)
 boto3.client('s3').download_file(bucket, key, path)
 
-# One transaction: if anything fails, nothing is left half-loaded
+# One transaction: if anything fails, nothing is left half-loaded.
+# import_data runs loaddata across every company (the tenant managers fail closed otherwise).
 with transaction.atomic():
-    call_command('loaddata', path, verbosity=1)
+    call_command('import_data', path, verbosity=1)
     # loaddata already resets PostgreSQL sequences; doing it again for every table is harmless and certain
     statements = connection.ops.sequence_reset_sql(no_style(), apps.get_models(include_auto_created=True))
     with connection.cursor() as cursor:

@@ -16,7 +16,7 @@ Commands marked **PythonAnywhere** go in a PythonAnywhere *Bash console*. Everyt
 | Who is logged in (sessions) | Not moved. Everyone logs in again once. |
 | Login lockouts (django-axes) | Not moved. Any locked-out email starts fresh. |
 
-How it works: Django's `dumpdata` writes every row to one compressed file; `loaddata` reads it into a freshly built, empty PostgreSQL database in one go (if anything fails, nothing is loaded); then the ID counters are reset so new rows don't clash. `model_counts` prints how many rows each table has, on both sides, and `compare-counts.ps1` checks they match.
+How it works: `export_data` (Django's `dumpdata`, run across every company) writes every row to one compressed file; `import_data` (`loaddata`) reads it into a freshly built, empty PostgreSQL database in one go (if anything fails, nothing is loaded); then the ID counters are reset so new rows don't clash. `model_counts` prints how many rows each table has, on both sides, and `compare-counts.ps1` checks they match.
 
 The export uses `--all`, which reads every company's rows. Without it, Siteline's company-separation safety net refuses to run outside a company workspace. The row counts use the unscoped `all_objects` managers for the same reason.
 
@@ -67,7 +67,7 @@ Staging is about to hold a copy of real customer data. First stop it emailing an
    ```bash
    cd ~/siteline && source .venv/bin/activate
    python manage.py model_counts --exclude contenttypes auth.permission sessions axes > ~/counts-pythonanywhere.txt
-   python manage.py dumpdata --all --natural-foreign --exclude contenttypes --exclude auth.permission --exclude sessions --exclude axes --output ~/siteline-data.json.gz
+   python manage.py export_data --output ~/siteline-data.json.gz
    ls -lh ~/siteline-data.json.gz
    ```
    `--natural-foreign` writes links to Django's internal table list by name instead of number, because the numbers differ in the new database. IDs are kept, so links between rows don't change.

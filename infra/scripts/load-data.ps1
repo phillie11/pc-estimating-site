@@ -20,7 +20,7 @@ param(
 Assert-Tool aws
 
 if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { Fail "file not found: $File" }
-if (-not $File.EndsWith('.json.gz')) { Fail 'expected a .json.gz file made by dumpdata (see migrate-data.md).' }
+if (-not $File.EndsWith('.json.gz')) { Fail 'expected a .json.gz file made by export_data (see migrate-data.md).' }
 $File = (Resolve-Path -LiteralPath $File).Path
 
 $config = Get-DeployConfig $Environment

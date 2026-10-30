@@ -13,7 +13,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 ENV_NAME="${1:-}"
 FILE="${2:-}"
 [[ ( "$ENV_NAME" == staging || "$ENV_NAME" == prod ) && -f "$FILE" ]] || die "Usage: $0 staging|prod <export.json.gz>"
-[[ "$FILE" == *.json.gz ]] || die "expected a .json.gz file made by dumpdata (see migrate-data.md)"
+[[ "$FILE" == *.json.gz ]] || die "expected a .json.gz file made by export_data (see migrate-data.md)"
 
 export AWS_REGION=eu-west-2 AWS_DEFAULT_REGION=eu-west-2 AWS_PAGER=""
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
