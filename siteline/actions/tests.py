@@ -471,9 +471,12 @@ class StaffTabTests(Base):
         self.assertContains(r, 'class="tabmore')
         self.assertContains(r, 'data-tabbar')
         labels = [t[1] for t in r.context['tabs']]
-        self.assertIn('Variations to client', labels)
+        # Client variations now live under the Commercial tab (contracts/commercial.py)
+        self.assertIn('Commercial', labels)
         self.assertIn('Variations from subs', labels)
+        self.assertNotIn('Variations to client', labels)
         self.assertNotIn('Client variations', labels)
+        self.assertIn('commercial', [t[0] for t in row])
 
     def test_tab_in_overflow_shows_as_current_on_more(self):
         self.login(self.a.owner)

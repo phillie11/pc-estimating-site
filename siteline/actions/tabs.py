@@ -15,7 +15,8 @@ from django.urls import reverse
 MAX_STAFF_TABS = 8
 
 # The order tabs earn a place in the row; anything not listed goes after these
-STAFF_ORDER = ('overview', 'programme', 'documents', 'rfis', 'variations', 'subvariations', 'rams', 'issues',
+# 'commercial' (contract, change register, client variations) replaced the staff 'variations' tab
+STAFF_ORDER = ('overview', 'programme', 'documents', 'rfis', 'commercial', 'variations', 'subvariations', 'rams', 'issues',
                'tender', 'packages', 'tasks', 'team')
 # Estimating keeps its own order: the tender comes first on a bid
 BID_ORDER = ('overview', 'tender', 'packages', 'documents', 'team')
