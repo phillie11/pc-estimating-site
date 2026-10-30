@@ -329,8 +329,8 @@ class Command(BaseCommand):
                                             created_by=pm)
                 for rev in (['P01', 'C01'] if cat == 'DRAWING' else ['P01']):
                     content = ContentFile(demo_pdf(title, f'{ref} revision {rev}'), name=f'{ref}-{rev}.pdf')
-                    DocumentRevision.objects.create(document=d, revision=rev, file=content, original_name=f'{ref}-{rev}.pdf',
-                                                    size=content.size, uploaded_by=pm)
+                    d.add_revision(DocumentRevision(revision=rev, file=content, original_name=f'{ref}-{rev}.pdf',
+                                                    size=content.size, uploaded_by=pm))
 
             for verb, target, actor, internal in [('raised', f'{r1.reference} Bar back panelling', subu, False),
                                                   ('responded to', r3.reference, client, False),
@@ -346,8 +346,8 @@ class Command(BaseCommand):
                 d = Document.objects.create(project=kings, title=title, reference=ref, category='TENDER',
                                             tender_issue=True, created_by=est)
                 content = ContentFile(demo_pdf(title, f'{ref} · tender issue T1'), name=f'{ref}.pdf')
-                DocumentRevision.objects.create(document=d, revision='T1', file=content, original_name=f'{ref}.pdf',
-                                                size=content.size, uploaded_by=est)
+                d.add_revision(DocumentRevision(revision='T1', file=content, original_name=f'{ref}.pdf',
+                                                size=content.size, uploaded_by=est))
             scopes = {
                 'Drylining & partitions': 'Metal stud partitions, linings and bulkheads to levels 2 and 3 as drawings KW-A-100 '
                                           'and KW-A-300. Include fire-rated partitions to core and acoustic upgrade to meeting rooms.',

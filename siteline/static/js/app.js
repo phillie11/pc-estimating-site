@@ -23,10 +23,15 @@
     if (e.target.matches('[data-autosubmit]')) e.target.form.submit();
   });
 
-  // Pipeline drag and drop
+  // Pipeline drag and drop (mouse). Each card also has a "Move to" form for touch and keyboard users.
   var board = document.querySelector('[data-board]');
   if (board) {
     var dragged = null;
+    // Using the move form must not start a drag of its card
+    board.addEventListener('pointerdown', function (e) {
+      var card = e.target.closest('.bcard');
+      if (card) card.draggable = !e.target.closest('[data-move]');
+    });
     board.addEventListener('dragstart', function (e) {
       var card = e.target.closest('.bcard');
       if (!card) return;

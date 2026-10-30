@@ -6,13 +6,15 @@
     <div class="crumbs"><a href="{% url 'project_list' org.slug %}">Projects</a> / <span class="mono">{{ project.reference }}</span></div>
     <h1>{{ project.name }}</h1>
     <div class="row small dim" style="margin-top:4px">
-      {% badge project.get_stage_display project.stage_tone %}
+      {% badge project.get_stage_display project.stage_tone %}{% if project.is_archived %} {% badge 'Archived' 'muted' %}{% endif %}
       {% if project.client_name %}<span>{{ project.client_name }}</span>{% endif %}
       {% if project.site_address %}<span>{{ project.site_address }}</span>{% endif %}
     </div>
   </div>
   <div class="row">{% block project_actions %}{% endblock %}</div>
 </div>
+{% if project.is_archived %}<div class="banner">Archived {{ project.archived_at|date:"j M Y" }}{% if project.archived_by %} by {{ project.archived_by.full_name }}{% endif %}. Hidden from lists, the pipeline and your plan's project count; nothing was deleted.
+  {% if is_org_admin %}<form method="post" action="{% url 'project_archive' org.slug project.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="action" value="restore"><button class="btn sm">Restore</button></form>{% endif %}</div>{% endif %}
 <nav class="tabs">{% for code, label, url, n in tabs %}<a href="{{ url }}" class="{% if code == tab %}on{% endif %}">{{ label }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>
 {% block project_content %}{% endblock %}
 {% endblock %}

@@ -7,9 +7,13 @@
     <div class="form-actions"><button class="btn primary">{% if project %}Save{% else %}Create project{% endif %}</button><a class="btn ghost" href="{% if project %}{{ project.get_absolute_url }}{% else %}{% url 'project_list' org.slug %}{% endif %}">Cancel</a></div>
   </form>
 </div></div>
-{% if project and is_org_admin %}
+{% if project and is_org_admin and not project.is_archived %}{% if has_records %}
+<div class="card" style="max-width:900px;margin-top:1.25rem"><div class="card-body">
+  <h3>Archive project</h3><p class="dim small">Hides it from project lists, the pipeline, workload and your plan's project count, and removes collaborators' access. Its RFIs, variations, RAMS, documents and history are kept, and owners and admins can open or restore it from Archived.</p>
+  <form method="post" action="{% url 'project_archive' org.slug project.pk %}" data-confirm="Archive {{ project.reference }}?">{% csrf_token %}<button class="btn">Archive project</button></form>
+</div></div>{% else %}
 <div class="card" style="max-width:900px;margin-top:1.25rem;border-color:#EDBDB7"><div class="card-body">
-  <h3>Delete project</h3><p class="dim small">Removes the project with all its RFIs, variations, documents and portal access. This can't be undone.</p>
+  <h3>Delete project</h3><p class="dim small">Nothing has been recorded on this project yet, so it can be removed completely, with its portal access. This can't be undone. Once it has documents, RFIs, packages or other records it can only be archived.</p>
   <form method="post" action="{% url 'project_delete' org.slug project.pk %}" class="row">{% csrf_token %}<input type="text" name="confirm" placeholder="Type {{ project.reference }}" style="max-width:200px"><button class="btn danger">Delete permanently</button></form>
-</div></div>{% endif %}
+</div></div>{% endif %}{% endif %}
 {% endblock %}

@@ -18,7 +18,8 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required, estimating_required, internal_required
 
 from . import analytics, gantt
-from .access import can_see_variations, get_project, is_bidder, is_internal, require_internal, visible_projects
+from .access import (can_see_archived, can_see_variations, get_project, is_bidder, is_internal, require_internal,
+                     visible_projects)
 from .files import serve
 from .forms import (ActivityForm, AddStaffForm, CommentForm, HandoverForm, DocumentForm, IssueForm, ProjectForm, ProjectInviteForm,
                     RevisionForm, TaskForm)
@@ -72,7 +73,7 @@ def project_context(request, project, tab, **extra):
     if not internal:
         rfi_qs = rfi_qs.filter(is_shared=True)
         task_qs = task_qs.filter(assignee=request.user)
-        issue_qs = issue_qs.filter(assignee=request.user)
+        issue_qs = issue_qs.filter(assignee=request.user, status=Issue.STATUS_OPEN)
     tabs.append(('programme', 'Programme', url('programme'), None))
     if internal:
         open_pkgs = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES)
@@ -151,12 +152,16 @@ def project_list(request, org_slug, section=None):
         else:
             groups = {'live': Project.DELIVERY_STAGES, 'complete': (Project.STAGE_COMPLETE,),
                       'all': Project.DELIVERY_STAGES + (Project.STAGE_COMPLETE,)}
+        if can_see_archived(request):
+            groups['archived'] = groups['all']
         view = request.GET.get('view', 'open' if section == 'estimating' else 'live')
         view = view if view in groups else next(iter(groups))
     else:
         groups = {'active': Project.PIPELINE_STAGES + Project.DELIVERY_STAGES, 'live': Project.DELIVERY_STAGES,
                   'closed': Project.CLOSED_STAGES, 'all': tuple(dict(Project.STAGE_CHOICES))}
         view = request.GET.get('view', 'active')
+    if view == 'archived' and 'archived' in groups:
+        qs = visible_projects(request, include_archived=True).filter(archived_at__isnull=False)
     if view in groups:
         qs = qs.filter(stage__in=groups[view])
     if q:
@@ -184,7 +189,7 @@ def project_create(request, org_slug):
                'manager': None if stage in Project.ESTIMATING_STAGES else request.user}
     form = ProjectForm(request.POST or None, org=org, membership=request.membership, initial=initial)
     if request.method == 'POST' and form.is_valid():
-        if form.cleaned_data['stage'] not in Project.CLOSED_STAGES and not org.can_add_project():
+        if form.cleaned_data['stage'] not in Project.CLOSED_STAGES and not Project.plan_has_room(org):
             messages.error(request, f'Your {org.plan_config["name"]} plan allows {org.plan_config["max_active_projects"]} '
                                     'active projects. Close some or upgrade.')
         else:
@@ -212,7 +217,8 @@ def project_detail(request, org_slug, pk):
         'rfis_overdue': rfis.filter(status=RFI.STATUS_OPEN, due_date__lt=timezone.localdate()).count(),
         'tasks_open': Task.objects.filter(project=project, **({} if internal else {'assignee': request.user}))
         .exclude(status=Task.STATUS_DONE).count(),
-        'issues_open': Issue.objects.filter(project=project, **({} if internal else {'assignee': request.user}))
+        'issues_open': Issue.objects.filter(project=project, **({} if internal else {'assignee': request.user,
+                                                                                      'status': Issue.STATUS_OPEN}))
         .exclude(status=Issue.STATUS_CLOSED).count(),
         'docs': Document.objects.filter(project=project).count() if internal
         else Document.objects.filter(project=project, visibility=Document.VIS_SHARED).count(),
@@ -287,13 +293,18 @@ def project_edit(request, org_slug, pk):
             _close_tenders_if_lost(request, p)
         messages.success(request, 'Project saved.')
         return redirect(p)
-    return render(request, 'projects/project_form.html', {'form': form, 'project': project})
+    return render(request, 'projects/project_form.html', {'form': form, 'project': project,
+                                                          'has_records': project.has_records()})
 
 
 @require_POST
 @admin_required
 def project_delete(request, org_slug, pk):
+    """Only for a project with nothing on it, such as a lead added by mistake. Anything else is archived."""
     project = get_project(request, pk)
+    if project.has_records():
+        messages.error(request, f'{project.reference} has records on it, so it can only be archived.')
+        return redirect('project_edit', org_slug=org_slug, pk=pk)
     if request.POST.get('confirm') != project.reference:
         messages.error(request, f'Type {project.reference} to confirm deletion.')
         return redirect('project_edit', org_slug=org_slug, pk=pk)
@@ -302,6 +313,35 @@ def project_delete(request, org_slug, pk):
     log_activity(request, 'deleted project', name)
     messages.success(request, f'{name} deleted.')
     return redirect('project_list', org_slug=org_slug)
+
+
+@require_POST
+@admin_required
+def project_archive(request, org_slug, pk):
+    """
+    Take a project out of every list, the pipeline, workload and plan limits without
+    losing its RFIs, variations, RAMS, documents, audit trail or download log.
+    Collaborators lose access; owners and admins can still open and restore it.
+    """
+    project = get_project(request, pk)
+    if request.POST.get('action') == 'restore':
+        if not project.is_archived:
+            return redirect(project)
+        if project.stage not in Project.CLOSED_STAGES and not Project.plan_has_room(request.org):
+            messages.error(request, f'Your {request.org.plan_config["name"]} plan allows '
+                                    f'{request.org.plan_config["max_active_projects"]} active projects. '
+                                    'Close some or upgrade before restoring this one.')
+            return redirect(project)
+        project.restore()
+        log_activity(request, 'restored project', project.name, project=project, url=project.get_absolute_url())
+        messages.success(request, f'{project.reference} restored.')
+        return redirect(project)
+    if not project.is_archived:
+        project.archive(request.user)
+        log_activity(request, 'archived project', project.name, project=project, url=project.get_absolute_url())
+        messages.success(request, f'{project.reference} archived. Nothing was deleted; find it under Archived.')
+    return redirect(f'{reverse("bid_list" if project.section == "estimating" else "project_list", args=[org_slug])}'
+                    '?view=archived')
 
 
 # ---------------------------------------------------------------------------
@@ -317,42 +357,57 @@ def pipeline(request, org_slug):
         total = items.aggregate(s=Sum('value'))['s'] or Decimal('0')
         columns.append({'code': code, 'label': dict(Project.STAGE_CHOICES)[code], 'items': items, 'total': total})
     recent_closed = qs.filter(stage__in=[Project.STAGE_LOST, Project.STAGE_DECLINED]).order_by('-decided_at')[:10]
+    move_choices = [(c, dict(Project.STAGE_CHOICES)[c]) for c in Project.BOARD_STAGES]
     return render(request, 'projects/pipeline.html', {'columns': columns, 'recent_closed': recent_closed,
-                                                      'stage_choices': Project.STAGE_CHOICES,
+                                                      'stage_choices': Project.STAGE_CHOICES, 'move_choices': move_choices,
                                                       'section': use_section(request, 'estimating')})
 
 
 @require_POST
 @internal_required
 def project_stage(request, org_slug, pk):
+    """
+    Change a project's stage: JSON from a pipeline drag, or a plain form from the project
+    page's stage select or a pipeline card's "Move to" control (touch and keyboard users).
+    """
     project = get_project(request, pk)
+    is_json = request.content_type == 'application/json'
     try:
-        stage = json.loads(request.body or '{}').get('stage') if request.content_type == 'application/json' \
-            else request.POST.get('stage')
+        stage = json.loads(request.body or '{}').get('stage') if is_json else request.POST.get('stage')
     except json.JSONDecodeError:
         stage = None
+    back = redirect('pipeline', org_slug=org_slug) if request.POST.get('next') == 'pipeline' else redirect(project)
+
+    def refuse(error, status):
+        if is_json:
+            return JsonResponse({'ok': False, 'error': error}, status=status)
+        messages.error(request, error)
+        return back
+
     if stage not in dict(Project.STAGE_CHOICES):
-        return JsonResponse({'ok': False, 'error': 'Unknown stage'}, status=400)
-    if project.stage in Project.CLOSED_STAGES and stage not in Project.CLOSED_STAGES and not request.org.can_add_project():
-        return JsonResponse({'ok': False, 'error': 'Active project limit reached for your plan'}, status=402)
+        return refuse('Unknown stage', 400)
+    if project.stage in Project.CLOSED_STAGES and stage not in Project.CLOSED_STAGES and not Project.plan_has_room(request.org):
+        return refuse('Active project limit reached for your plan', 402)
     if _crosses_to_delivery(project.stage, stage):
         # Winning is estimating's call, made through the handover (which checks who may do it)
         url = reverse('project_handover', args=[org_slug, pk])
-        if request.content_type == 'application/json':
+        if is_json:
             return JsonResponse({'ok': True, 'redirect': url})
         return redirect(url)
     allowed = request.membership.can_estimate if stage in Project.ESTIMATING_STAGES else request.membership.can_deliver
     if not allowed:
-        return JsonResponse({'ok': False, 'error': 'That stage belongs to the other team.'}, status=403)
+        return refuse('That stage belongs to the other team.', 403)
     if project.stage != stage:
         project.stage = stage
         project.save()
         log_activity(request, f'moved to {project.get_stage_display()}', project.name, project=project,
                      url=project.get_absolute_url())
         _close_tenders_if_lost(request, project)
-    if request.content_type == 'application/json':
+        if not is_json and request.POST.get('next') == 'pipeline':
+            messages.success(request, f'{project.name} moved to {project.get_stage_display()}.')
+    if is_json:
         return JsonResponse({'ok': True, 'stage': stage})
-    return redirect(project)
+    return back
 
 
 def _crosses_to_delivery(old, new):
@@ -396,7 +451,7 @@ def project_handover(request, org_slug, pk):
 @estimating_required
 def tender_analytics(request, org_slug):
     # Outcomes span both sections: a won bid now belongs to the projects team but is still a win
-    data = analytics.tender_analytics(Project.objects.all(), request.GET.get('period', '12'),
+    data = analytics.tender_analytics(Project.objects.filter(archived_at__isnull=True), request.GET.get('period', '12'),
                                       today=timezone.localdate())
     return render(request, 'projects/analytics.html', {**data, 'periods': analytics.PERIODS,
                                                        'section': use_section(request, 'estimating')})
@@ -749,9 +804,9 @@ def document_list(request, org_slug, pk):
                 doc.visibility = Document.VIS_SHARED
             doc.save()
             f = form.cleaned_data['file']
-            DocumentRevision.objects.create(document=doc, file=f, original_name=f.name[:200], size=f.size,
-                                            revision=form.cleaned_data['revision'], notes=form.cleaned_data['notes'],
-                                            uploaded_by=request.user)
+            doc.add_revision(DocumentRevision(file=f, original_name=f.name[:200], size=f.size,
+                                              revision=form.cleaned_data['revision'], notes=form.cleaned_data['notes'],
+                                              uploaded_by=request.user))
             log_activity(request, 'uploaded', f'{doc.title} rev {form.cleaned_data["revision"]}', project=project,
                          url=reverse('document_detail', args=[org_slug, pk, doc.pk]),
                          internal_only=doc.visibility == Document.VIS_INTERNAL)
@@ -778,17 +833,29 @@ def document_detail(request, org_slug, pk, doc_id):
             return redirect('document_list', org_slug=org_slug, pk=pk)
         if not is_internal(request) and doc.created_by_id != request.user.pk:
             raise PermissionDenied
+        if request.POST.get('action') == 'make_current':
+            rev = get_object_or_404(DocumentRevision, document=doc, pk=request.POST.get('revision'))
+            doc.set_current(rev)
+            doc.save(update_fields=['updated_at'])
+            log_activity(request, 'made current', f'{doc.title} rev {rev.revision}', project=project,
+                         url=request.path, internal_only=doc.visibility == Document.VIS_INTERNAL)
+            messages.success(request, f'Revision {rev.revision} is now current.')
+            return redirect(request.path)
         form = RevisionForm(request.POST, request.FILES)
         if form.is_valid():
             rev = form.save(commit=False)
-            rev.document, rev.uploaded_by = doc, request.user
+            rev.uploaded_by = request.user
             rev.original_name, rev.size = rev.file.name[:200], rev.file.size
-            rev.save()
+            doc.add_revision(rev, make_current=form.cleaned_data['make_current'])
             doc.save(update_fields=['updated_at'])
             log_activity(request, 'uploaded new revision of', f'{doc.title} rev {rev.revision}', project=project,
                          url=request.path, internal_only=doc.visibility == Document.VIS_INTERNAL)
-            notify_collaborators_of_issue(request, project, doc, rev.revision)
-            messages.success(request, f'Revision {rev.revision} uploaded.')
+            if rev.is_current:
+                notify_collaborators_of_issue(request, project, doc, rev.revision)
+                messages.success(request, f'Revision {rev.revision} uploaded.')
+            else:
+                messages.info(request, f'Revision {rev.revision} uploaded. It is older than rev {doc.current.revision}, '
+                                       'which stays current; use "Make current" to change that.')
             return redirect(request.path)
     revisions = list(doc.revisions.select_related('uploaded_by'))
     downloads = None
@@ -798,7 +865,7 @@ def document_detail(request, org_slug, pk, doc_id):
         for d in downloads:
             d.revision = names.get(d.path)
     return render(request, 'projects/document_detail.html', project_context(
-        request, project, 'documents', doc=doc, revisions=revisions, form=form, downloads=downloads,
+        request, project, 'documents', doc=doc, revisions=revisions, current=doc.current, form=form, downloads=downloads,
         can_revise=is_internal(request) or doc.created_by_id == request.user.pk))
 
 

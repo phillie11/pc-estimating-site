@@ -33,6 +33,39 @@ def money_short(value, symbol='£'):
     return f'{symbol}{v:.0f}'
 
 
+# Text colours for anything drawn on the brand colour (--accent-ink); dark is the app's --ink
+INK_LIGHT, INK_DARK = '#FFFFFF', '#15191F'
+
+
+def relative_luminance(hex_colour):
+    """WCAG 2 relative luminance of '#RRGGBB', from 0 (black) to 1 (white). ValueError if it isn't one."""
+    h = (hex_colour or '').strip().lstrip('#')
+    if len(h) != 6:
+        raise ValueError(f'Not a #RRGGBB colour: {hex_colour!r}')
+    channels = []
+    for i in (0, 2, 4):
+        c = int(h[i:i + 2], 16) / 255
+        channels.append(c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4)
+    r, g, b = channels
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(a, b):
+    """WCAG contrast ratio between two colours, 1 to 21."""
+    la, lb = relative_luminance(a), relative_luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+@register.filter
+def readable_ink(background):
+    """White or near-black, whichever reads better on `background` (a company's brand colour)."""
+    try:
+        light, dark = contrast_ratio(background, INK_LIGHT), contrast_ratio(background, INK_DARK)
+    except ValueError:
+        return INK_LIGHT
+    return INK_LIGHT if light >= dark else INK_DARK
+
+
 @register.simple_tag
 def badge(text, tone='muted'):
     return format_html('<span class="badge {}">{}</span>', tone, text)

@@ -5,4 +5,13 @@
 <div class="card" style="max-width:900px"><div class="card-body">
 <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% if sub %}{{ sub.get_absolute_url }}{% else %}{% url 'sub_list' org.slug %}{% endif %}">Cancel</a></div></form>
 </div></div>
+{% if sub and is_org_admin and not sub.is_archived %}{% if has_records %}
+<div class="card" style="max-width:900px;margin-top:1.25rem"><div class="card-body">
+  <h3>Archive subcontractor</h3><p class="dim small">Takes them out of the supply chain list and tender invitations. Their quotes, RAMS, variations and history stay on every project, and owners and admins can restore them.</p>
+  <form method="post" action="{% url 'sub_archive' org.slug sub.pk %}" data-confirm="Archive {{ sub.company_name }}?">{% csrf_token %}<input type="hidden" name="action" value="archive"><button class="btn">Archive</button></form>
+</div></div>{% else %}
+<div class="card" style="max-width:900px;margin-top:1.25rem;border-color:#EDBDB7"><div class="card-body">
+  <h3>Delete subcontractor</h3><p class="dim small">They have no quotes, RAMS or variations on file, so they can be removed completely. This can't be undone.</p>
+  <form method="post" action="{% url 'sub_archive' org.slug sub.pk %}" data-confirm="Delete {{ sub.company_name }} permanently?">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn danger">Delete permanently</button></form>
+</div></div>{% endif %}{% endif %}
 {% endblock %}

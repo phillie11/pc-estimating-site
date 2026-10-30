@@ -34,12 +34,15 @@ def is_internal(request):
     return request.membership is not None and request.membership.is_internal
 
 
-def visible_projects(request):
+def visible_projects(request, include_archived=False):
     """
     External people see the projects they were invited to. Staff see the projects in the
     sections they work in: estimators see bids, the projects team sees won and live jobs.
+    Archived projects are left out unless asked for (only owners and admins may open them).
     """
     qs = Project.objects.all()
+    if not include_archived:
+        qs = qs.filter(archived_at__isnull=True)
     if not is_internal(request):
         qs = qs.filter(members__user=request.user)
     elif not request.membership.can_deliver:
@@ -58,8 +61,8 @@ def portal_projects(request):
 
 
 def get_project(request, pk, allow_bidder=False):
-    """Fetch a project the user may see; sets request.project_member."""
-    project = get_object_or_404(visible_projects(request), pk=pk)
+    """Fetch a project the user may see; sets request.project_member. Owners and admins can open archived ones."""
+    project = get_object_or_404(visible_projects(request, include_archived=can_see_archived(request)), pk=pk)
     request.project_member = ProjectMember.objects.filter(project=project, user=request.user) \
         .select_related('subcontractor').first()
     if not is_internal(request) and request.project_member is None:
@@ -67,6 +70,10 @@ def get_project(request, pk, allow_bidder=False):
     if is_bidder(request) and not allow_bidder:
         raise PermissionDenied
     return project
+
+
+def can_see_archived(request):
+    return is_internal(request) and request.membership.is_admin
 
 
 def is_bidder(request):

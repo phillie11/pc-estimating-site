@@ -2,8 +2,10 @@
 {% block title %}{{ sub.company_name }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="crumbs"><a href="{% url 'sub_list' org.slug %}">Supply chain</a></div><h1>{{ sub.company_name }}</h1>
-  <div class="row" style="margin-top:6px">{% badge sub.get_status_display sub.status_tone %}{% for t in sub.trades.all %}<span class="tag">{{ t.name }}</span>{% endfor %}</div></div>
+  <div class="row" style="margin-top:6px">{% badge sub.get_status_display sub.status_tone %}{% if sub.is_archived %}{% badge 'Archived' 'muted' %}{% endif %}{% for t in sub.trades.all %}<span class="tag">{{ t.name }}</span>{% endfor %}</div></div>
   <a class="btn" href="{% url 'sub_edit' org.slug sub.pk %}">Edit</a></div>
+{% if sub.is_archived %}<div class="banner">Archived {{ sub.archived_at|date:"j M Y" }}{% if sub.archived_by %} by {{ sub.archived_by.full_name }}{% endif %}. Hidden from the supply chain list and tender invitations; nothing was deleted.
+  <form method="post" action="{% url 'sub_archive' org.slug sub.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="action" value="restore"><button class="btn sm">Restore</button></form></div>{% endif %}
 <div class="grid split">
   <div class="stack">
     <div class="card"><div class="card-head"><h2>Packages</h2></div>

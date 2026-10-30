@@ -26,6 +26,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from projects.models import Project
 from tenancy.models import Organization
 from tenancy.permissions import admin_required
 
@@ -51,7 +52,7 @@ def billing(request, org_slug):
     plans = [{'code': code, **cfg} for code, cfg in settings.PLANS.items()]
     return render(request, 'billing/billing.html', {
         'plans': plans, 'stripe_ready': stripe_ready(), 'state': org.access_state(),
-        'staff_count': org.staff_count(), 'project_count': org.active_project_count(),
+        'staff_count': org.staff_count(), 'project_count': Project.active_count(org),
         'subscribed': org.subscription_status in (Organization.STATUS_ACTIVE, Organization.STATUS_TRIALING,
                                                   Organization.STATUS_PAST_DUE),
     })

@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import uuid
 from datetime import timedelta
@@ -132,6 +133,15 @@ class Project(TenantModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Archived instead of deleted once it holds records: hidden from lists, the pipeline, workload and plan
+    # limits, but kept (with its audit trail and download log) for owners and admins
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archived_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='+')
+
+    # Related records that mean a project must be archived, not deleted
+    RECORD_RELATIONS = ('rfis', 'variations', 'rams', 'sub_variations', 'packages', 'documents', 'file_access',
+                        'tasks', 'issues', 'activities', 'addenda', 'tender_queries')
 
     class Meta:
         ordering = ['-updated_at']
@@ -156,6 +166,33 @@ class Project(TenantModel):
 
     def get_absolute_url(self):
         return reverse('project_detail', args=[self.organization.slug, self.pk])
+
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
+
+    def has_records(self):
+        """Anything worth keeping hangs off it. Portal access, the activity feed and notifications don't count."""
+        return any(getattr(self, name).exists() for name in self.RECORD_RELATIONS)
+
+    def archive(self, user):
+        self.archived_at, self.archived_by = timezone.now(), user
+        self.save(update_fields=['archived_at', 'archived_by', 'updated_at'])
+
+    def restore(self):
+        self.archived_at, self.archived_by = None, None
+        self.save(update_fields=['archived_at', 'archived_by', 'updated_at'])
+
+    @classmethod
+    def active_count(cls, org):
+        """Projects counted against the plan limit: open and not archived."""
+        return cls.all_objects.filter(organization=org, archived_at__isnull=True) \
+            .exclude(stage__in=cls.CLOSED_STAGES).count()
+
+    @classmethod
+    def plan_has_room(cls, org):
+        limit = org.plan_config['max_active_projects']
+        return limit is None or cls.active_count(org) < limit
 
     @property
     def is_pipeline(self):
@@ -406,6 +443,10 @@ class Issue(TenantModel):
     def reference(self):
         return f'IS-{self.number:03d}'
 
+    @property
+    def status_tone(self):
+        return {self.STATUS_OPEN: 'accent', self.STATUS_READY: 'info', self.STATUS_CLOSED: 'good'}.get(self.status, 'muted')
+
     def save(self, *args, **kwargs):
         return save_with_number(self, super().save, *args, **kwargs)
 
@@ -420,7 +461,7 @@ class Document(TenantModel):
     VIS_SHARED = 'SHARED'
     VISIBILITY_CHOICES = [(VIS_INTERNAL, 'Internal only'), (VIS_SHARED, 'Shared with project collaborators')]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='documents')
+    project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='documents')
     title = models.CharField(max_length=200)
     reference = models.CharField('Doc / drawing no.', max_length=80, blank=True)
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, default='DRAWING')
@@ -439,7 +480,63 @@ class Document(TenantModel):
 
     @property
     def current(self):
-        return self.revisions.order_by('-uploaded_at').first()
+        """The revision people should build from: flagged when uploaded, or worked out for unflagged rows."""
+        revisions = list(self.revisions.all())  # uses prefetch_related('revisions') where the view set it up
+        return next((r for r in revisions if r.is_current), None) or latest_revision(revisions)
+
+    def add_revision(self, revision, make_current=False):
+        """
+        Save a new revision of this document. It becomes current unless it is older
+        than the current one (P02 uploaded after C01 stays a superseded revision),
+        or the uploader explicitly marks it current.
+        """
+        with transaction.atomic():
+            Document.all_objects.select_for_update().filter(pk=self.pk).first()
+            current = self.revisions.filter(is_current=True).first() or latest_revision(self.revisions.all())
+            revision.document = self
+            revision.is_current = make_current or current is None or not is_older_revision(revision, current)
+            revision.save()
+            if revision.is_current:
+                self.revisions.exclude(pk=revision.pk).filter(is_current=True).update(is_current=False)
+        return revision
+
+    def set_current(self, revision):
+        """Mark an existing revision current, e.g. to go back to an earlier issue."""
+        with transaction.atomic():
+            Document.all_objects.select_for_update().filter(pk=self.pk).first()
+            self.revisions.exclude(pk=revision.pk).filter(is_current=True).update(is_current=False)
+            self.revisions.filter(pk=revision.pk).update(is_current=True)
+        revision.is_current = True
+
+
+# Drawing revisions: preliminary (P01, P02 ... P10) come before construction (C01, C02 ...)
+REVISION_SERIES = {'P': 0, 'C': 1}
+_REVISION_RE = re.compile(r'^\s*([PC])\s*-?\s*(\d+)\s*$', re.IGNORECASE)
+
+
+def revision_rank(code):
+    """(series, number) for a P or C revision, so P10 sorts after P02 and before C01; None for 'A', 'rev 3'."""
+    m = _REVISION_RE.match(code or '')
+    return (REVISION_SERIES[m.group(1).upper()], int(m.group(2))) if m else None
+
+
+def is_older_revision(new, current):
+    """True when `new` is an earlier revision than `current`. Codes we can't rank fall back to upload order."""
+    a, b = revision_rank(new.revision), revision_rank(current.revision)
+    return a is not None and b is not None and a < b
+
+
+def latest_revision(revisions):
+    """
+    The revision that should be current: the highest P/C code, or, when any code
+    can't be ranked, the most recently uploaded. A data migration copies this rule.
+    """
+    revisions = list(revisions)
+    if not revisions:
+        return None
+    if all(revision_rank(r.revision) for r in revisions):
+        return max(revisions, key=lambda r: (revision_rank(r.revision), r.uploaded_at, r.pk))
+    return max(revisions, key=lambda r: (r.uploaded_at, r.pk))
 
 
 class DocumentRevision(TenantModel):
@@ -449,6 +546,8 @@ class DocumentRevision(TenantModel):
     original_name = models.CharField(max_length=200)
     size = models.PositiveBigIntegerField(default=0)
     notes = models.CharField(max_length=300, blank=True)
+    is_current = models.BooleanField('Current revision', default=False,
+                                     help_text='Set by Document.add_revision / set_current; one per document.')
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
@@ -477,7 +576,7 @@ class Comment(TenantModel):
 class FileAccess(TenantModel):
     """Who opened which file, and when: settles "we never received addendum 2"."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
-    project = models.ForeignKey(Project, null=True, blank=True, on_delete=models.CASCADE, related_name='file_access')
+    project = models.ForeignKey(Project, null=True, blank=True, on_delete=models.RESTRICT, related_name='file_access')
     label = models.CharField(max_length=255)
     path = models.CharField(max_length=500, db_index=True)
     ip = models.GenericIPAddressField(null=True, blank=True)

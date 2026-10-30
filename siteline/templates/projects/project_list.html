@@ -5,7 +5,7 @@
   <div>{% if is_internal %}<div class="eyebrow">{% if list_section == 'estimating' %}Estimating{% else %}Projects{% endif %}</div>{% endif %}<h1>{% if list_section == 'estimating' %}Bids{% else %}Projects{% endif %}</h1></div>
   <div class="row">{% if is_internal %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a href="{% url 'project_create' org.slug %}{% if list_section == 'estimating' %}?stage=LEAD{% else %}?stage=LIVE{% endif %}" class="btn primary">{% icon 'plus' %} {% if list_section == 'estimating' %}New bid{% else %}New project{% endif %}</a>{% endif %}</div></div>
 <div class="filters">
-  {% for code, stages in groups.items %}<a class="chip {% if view == code %}on{% endif %}" href="?view={{ code }}">{% if code == 'open' %}Open bids{% elif code == 'submitted' %}Submitted{% elif code == 'lost' %}Lost &amp; declined{% elif code == 'live' %}Won &amp; live{% elif code == 'complete' %}Complete{% elif code == 'active' %}Active{% elif code == 'closed' %}Closed{% else %}All{% endif %}</a>{% endfor %}
+  {% for code, stages in groups.items %}<a class="chip {% if view == code %}on{% endif %}" href="?view={{ code }}">{% if code == 'open' %}Open bids{% elif code == 'submitted' %}Submitted{% elif code == 'lost' %}Lost &amp; declined{% elif code == 'live' %}Won &amp; live{% elif code == 'complete' %}Complete{% elif code == 'active' %}Active{% elif code == 'closed' %}Closed{% elif code == 'archived' %}Archived{% else %}All{% endif %}</a>{% endfor %}
   <span class="spacer"></span>
   <form class="search" method="get"><input type="hidden" name="view" value="{{ view }}"><input type="search" name="q" value="{{ q }}" placeholder="Search name, client, address"></form>
 </div>
@@ -14,7 +14,7 @@
   {% for p in projects %}<tr>
     <td class="ref">{{ p.reference }}</td>
     <td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}{% if p.site_address %} · {{ p.site_address }}{% endif %}</span></td>
-    <td>{% badge p.get_stage_display p.stage_tone %}{% if is_internal and p.needs_handover %}<span class="sub">{% badge 'No project manager' 'warn' %}</span>{% endif %}</td>
+    <td>{% badge p.get_stage_display p.stage_tone %}{% if p.is_archived %} {% badge 'Archived' 'muted' %}{% elif is_internal and p.needs_handover %}<span class="sub">{% badge 'No project manager' 'warn' %}</span>{% endif %}</td>
     {% if is_internal %}<td class="small">{% if list_section == 'estimating' %}{{ p.owner|default:"—" }}{% else %}{{ p.manager|default:"—" }}{% endif %}</td><td class="num">{{ p.value|money:currency }}</td>{% endif %}
     <td class="small nowrap">{% if p.is_pipeline and p.tender_due %}<span class="{% if p.tender_overdue %}overdue{% endif %}">Return {{ p.tender_due|date:"j M" }}</span>{% elif p.start_date %}Start {{ p.start_date|date:"j M Y" }}{% if p.completion_date %}<span class="sub">PC {{ p.completion_date|date:"j M Y" }}</span>{% endif %}{% elif p.decided_at %}Decided {{ p.decided_at|date:"j M Y" }}{% else %}<span class="dim">—</span>{% endif %}</td>
   </tr>{% endfor %}</tbody></table></div>

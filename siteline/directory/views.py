@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -12,10 +13,16 @@ from projects.access import get_project
 from projects.models import ProjectMember
 from projects.views import project_context
 from tenancy.models import log_activity
-from tenancy.permissions import internal_required
+from tenancy.permissions import admin_required, internal_required
 
 from .forms import ContactForm, SubcontractorForm, TradeForm
 from .models import Package, Subcontractor, SubcontractorContact, Trade
+
+
+def _subs(request):
+    """The supply chain this person may open: archived subcontractors only for owners and admins."""
+    qs = Subcontractor.objects.all()
+    return qs if request.membership.is_admin else qs.filter(archived_at__isnull=True)
 
 
 @internal_required
@@ -25,6 +32,10 @@ def sub_list(request, org_slug):
     trade = request.GET.get('trade', '')
     status = request.GET.get('status', '')
     insurance = request.GET.get('insurance', '')
+    if status == 'ARCHIVED' and request.membership.is_admin:
+        qs = qs.filter(archived_at__isnull=False)
+    else:
+        qs = qs.filter(archived_at__isnull=True)
     if q:
         qs = qs.filter(Q(company_name__icontains=q) | Q(contact_name__icontains=q) | Q(regions__icontains=q)
                        | Q(email__icontains=q))
@@ -51,7 +62,8 @@ def sub_list(request, org_slug):
         return resp
     return render(request, 'directory/sub_list.html', {
         'subs': qs, 'trades': Trade.objects.annotate(n=Count('subcontractors')), 'q': q, 'trade': trade,
-        'status': status, 'insurance': insurance, 'status_choices': Subcontractor.STATUS_CHOICES,
+        'status': status, 'insurance': insurance, 'status_choices': Subcontractor.STATUS_CHOICES
+        + ([('ARCHIVED', 'Archived')] if request.membership.is_admin else []),
     })
 
 
@@ -68,18 +80,48 @@ def sub_create(request, org_slug):
 
 @internal_required
 def sub_edit(request, org_slug, pk):
-    sub = get_object_or_404(Subcontractor, pk=pk)
+    sub = get_object_or_404(_subs(request), pk=pk)
     form = SubcontractorForm(request.POST or None, instance=sub)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Saved.')
         return redirect(sub)
-    return render(request, 'directory/sub_form.html', {'form': form, 'sub': sub})
+    return render(request, 'directory/sub_form.html', {'form': form, 'sub': sub, 'has_records': sub.has_records()})
+
+
+@require_POST
+@admin_required
+def sub_archive(request, org_slug, pk):
+    """
+    Archive a subcontractor with quotes, RAMS or variations on file, keeping all of it;
+    restore one; or delete one with nothing on file (e.g. added twice by mistake).
+    """
+    sub = get_object_or_404(Subcontractor, pk=pk)
+    action = request.POST.get('action')
+    if action == 'restore':
+        sub.restore()
+        log_activity(request, 'restored subcontractor', sub.company_name, url=sub.get_absolute_url())
+        messages.success(request, f'{sub.company_name} restored.')
+        return redirect(sub)
+    if action == 'delete':
+        if sub.has_records():
+            messages.error(request, f'{sub.company_name} has quotes, RAMS or variations on file, so it can only be archived.')
+            return redirect('sub_edit', org_slug=org_slug, pk=pk)
+        name = sub.company_name
+        sub.delete()
+        log_activity(request, 'deleted subcontractor', name)
+        messages.success(request, f'{name} deleted.')
+        return redirect('sub_list', org_slug=org_slug)
+    if not sub.is_archived:
+        sub.archive(request.user)
+        log_activity(request, 'archived subcontractor', sub.company_name, url=sub.get_absolute_url())
+        messages.success(request, f'{sub.company_name} archived. Their quotes, RAMS and variations are kept.')
+    return redirect(f'{reverse("sub_list", args=[org_slug])}?status=ARCHIVED')
 
 
 @internal_required
 def sub_detail(request, org_slug, pk):
-    sub = get_object_or_404(Subcontractor.objects.prefetch_related('trades'), pk=pk)
+    sub = get_object_or_404(_subs(request).prefetch_related('trades'), pk=pk)
     contact_form = ContactForm()
     if request.method == 'POST':
         if request.POST.get('action') == 'contact':

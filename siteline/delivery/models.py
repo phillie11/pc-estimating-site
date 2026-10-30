@@ -31,8 +31,8 @@ class Rams(TenantModel):
     DECISIONS = [(APPROVED, 'Approve'), (COMMENTS, 'Approve with comments'), (REJECTED, 'Revise and resubmit')]
     ACCEPTED = (APPROVED, COMMENTS)
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='rams')
-    subcontractor = models.ForeignKey('directory.Subcontractor', on_delete=models.CASCADE, related_name='rams')
+    project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='rams')
+    subcontractor = models.ForeignKey('directory.Subcontractor', on_delete=models.RESTRICT, related_name='rams')
     package = models.ForeignKey('directory.Package', null=True, blank=True, on_delete=models.SET_NULL, related_name='rams')
     number = models.PositiveIntegerField(editable=False)
     revision = models.PositiveSmallIntegerField(default=1)
@@ -80,8 +80,8 @@ class SubVariation(TenantModel):
         ('SITE', 'Site condition'), ('DELAY', 'Delay or disruption'), ('OTHER', 'Other'),
     ]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='sub_variations')
-    subcontractor = models.ForeignKey('directory.Subcontractor', on_delete=models.CASCADE, related_name='variations')
+    project = models.ForeignKey(Project, on_delete=models.RESTRICT, related_name='sub_variations')
+    subcontractor = models.ForeignKey('directory.Subcontractor', on_delete=models.RESTRICT, related_name='variations')
     package = models.ForeignKey('directory.Package', null=True, blank=True, on_delete=models.SET_NULL,
                                 related_name='variations')
     number = models.PositiveIntegerField(editable=False)
