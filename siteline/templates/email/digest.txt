@@ -1,18 +1,23 @@
 Hi {{ user.get_short_name }},
 
 Your {{ org.name }} round-up for {% now "l j F" %}:
-{% if rfis %}
-RFIs overdue and waiting on you
-{% for r in rfis %}  - {{ r.reference }} {{ r.title }} ({{ r.project.name }}), due {{ r.due_date|date:"j M" }}
-{% endfor %}{% endif %}{% if tenders %}
+{% for label, rows in waiting %}
+{{ label }}
+{% for i in rows %}  - {% if i.ref %}{{ i.ref }} {% endif %}{{ i.title }}{% if i.project %} ({{ i.project.name }}){% endif %}{% if i.due %}, due {{ i.due|date:"j M" }}{% endif %}{% if i.amount is not None %}, {{ org.currency_symbol }}{{ i.amount|floatformat:2 }}{% endif %}
+    {{ i.action|default:"Open it" }}: {{ i.link }}
+{% endfor %}{% endfor %}{% if later %}
+{{ later }} more thing{{ later|pluralize }} due later. Everything waiting on you: {{ needs_me_link }}
+{% endif %}{% if tenders %}
 Tender returns in the next 3 days
 {% for p in tenders %}  - {{ p.name }}: {{ p.tender_due|date:"D j M H:i" }}
+    {{ SITE_URL }}{{ p.get_absolute_url }}
 {% endfor %}{% endif %}{% if insurance %}
 Subcontractor insurance expiring within 14 days
 {% for s in insurance %}  - {{ s.company_name }}: {{ s.next_insurance_expiry|date:"j M Y" }}
+    {{ SITE_URL }}{{ s.get_absolute_url }}
 {% endfor %}{% endif %}{% if trial_days is not None %}
 Your free trial ends in {{ trial_days }} day{{ trial_days|pluralize }}. Choose a plan: {{ SITE_URL }}/{{ org.slug }}/billing/
 {% endif %}
-{{ SITE_URL }}/{{ org.slug }}/
+{% if waiting %}Everything waiting on you: {{ needs_me_link }}{% else %}{{ SITE_URL }}/{{ org.slug }}/{% endif %}
 
 — {{ PRODUCT_NAME }}

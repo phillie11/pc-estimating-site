@@ -1,20 +1,24 @@
 {% extends "app.html" %}{% load ui %}
 {% block title %}Your projects{% endblock %}
 {% block content %}
-<div class="page-head"><div><div class="eyebrow">{{ org.name }} project portal</div><h1>Hello, {{ request.user.get_short_name }}</h1></div></div>
+<div class="page-head"><div><div class="eyebrow">{{ org.name }} project portal</div><h1>{% greeting %}, {{ request.user.get_short_name }}</h1></div></div>
 <div class="grid split">
   <div class="stack">
-    {% if tenders %}<div class="card"><div class="card-head"><h2>Tenders to price</h2></div>
-      <ul class="list">{% for t in tenders %}<li><span class="grow"><a href="{% url 'tender' org.slug t.project_id %}"><strong>{{ t.trade|default:"Package" }}</strong> · {{ t.project.name }}</a><br><span class="small dim">{% if t.status == 'QUOTED' %}Quote submitted {{ t.submitted_at|date:"j M" }}{% elif t.quote_due %}Quote due {{ t.quote_due|date:"D j M" }}{% else %}Awaiting your quote{% endif %}</span></span>{% if t.is_overdue %}{% badge 'Overdue' 'bad' %}{% elif t.status == 'QUOTED' %}{% badge 'Submitted' 'good' %}{% else %}{% badge 'To price' 'accent' %}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
-    <div class="card"><div class="card-head"><h2>Your projects</h2></div>
-      {% if projects %}<ul class="list">{% for p in projects %}<li><span class="ref">{{ p.reference }}</span><span class="grow"><a href="{{ p.get_absolute_url }}"><strong>{{ p.name }}</strong></a><br><span class="small dim">{{ p.site_address }}</span></span>{% badge p.get_stage_display p.stage_tone %}</li>{% endfor %}</ul>
-      {% else %}<div class="empty left">No active projects shared with you right now.</div>{% endif %}</div>
-    <div class="card"><div class="card-head"><h2>Waiting on you</h2></div>
-      {% if my_rfis or my_tasks or my_issues %}<ul class="list">
-        {% for r in my_rfis %}<li><span class="ref">{{ r.reference }}</span><span class="grow"><a href="{{ r.get_absolute_url }}">{{ r.title }}</a> <span class="dim small">· {{ r.project.name }}</span></span><span class="small {% if r.is_overdue %}overdue{% else %}dim{% endif %}">{{ r.due_date|date:"j M"|default:"" }}</span></li>{% endfor %}
-        {% for t in my_tasks %}<li><span class="ref">TASK</span><span class="grow"><a href="{% url 'task_list' org.slug t.project_id %}">{{ t.title }}</a> <span class="dim small">· {{ t.project.name }}</span></span></li>{% endfor %}
-        {% for i in my_issues %}<li><span class="ref">{{ i.reference }}</span><span class="grow"><a href="{% url 'issue_detail' org.slug i.project_id i.pk %}">{{ i.title }}</a> <span class="dim small">· {{ i.project.name }}</span></span></li>{% endfor %}
-      </ul>{% else %}<div class="empty left">Nothing waiting on you.</div>{% endif %}</div>
+    <section aria-labelledby="dw">
+      <div class="row between" style="margin-bottom:.5rem"><h2 id="dw" style="margin:0">Decisions waiting{% if waiting_count %} <span class="dim">· {{ waiting_count }}</span>{% endif %}</h2>{% if waiting_count %}<a class="small" href="{% url 'needs_me' org.slug %}">See all →</a>{% endif %}</div>
+      {% if waiting %}
+        {% if is_client and waiting_money %}<div class="money-strip"><span class="small">Variations waiting for your approval</span><span class="big">{{ waiting_money|money:currency }}</span></div>{% endif %}
+        <div class="decisions">{% for item in waiting %}{% include "partials/decision_panel.html" with item=item show_project=True %}{% endfor %}</div>
+        {% if waiting_count > waiting|length %}<p class="small"><a href="{% url 'needs_me' org.slug %}">{{ waiting_count|add:"-12" }} more waiting on you →</a></p>{% endif %}
+      {% else %}
+        <div class="card">{% include "partials/empty_state.html" with title="Nothing is waiting on you" message="When the team needs an approval, an answer, a price or a revised document from you, it appears here and you get an email with a link straight to it." left=True %}</div>
+      {% endif %}
+    </section>
+    {% if tenders %}<div class="card"><div class="card-head"><h2>Your tenders</h2></div>
+      <ul class="list">{% for t in tenders %}<li><span class="grow"><a href="{% url 'tender' org.slug t.project_id %}"><strong>{{ t.trade|default:"Package" }}</strong> · {{ t.project.name }}</a><br><span class="small dim">{% if t.status == 'QUOTED' %}Quote submitted {{ t.submitted_at|date:"j M" }}. You can revise it until a decision is made.{% elif t.quote_due %}Quote due {{ t.quote_due|date:"D j M" }}{% else %}Awaiting your quote{% endif %}</span></span>{% if t.is_overdue %}{% status_badge 'Overdue' 'bad' %}{% elif t.status == 'QUOTED' %}{% status_badge 'Submitted' 'good' %}{% else %}{% status_badge 'To price' 'accent' %}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+    <div class="card"><div class="card-head"><h2>Your projects</h2><a class="small" href="{% url 'project_list' org.slug %}">All →</a></div>
+      {% if projects %}<ul class="list">{% for p in projects %}<li><span class="ref">{{ p.reference }}</span><span class="grow"><a href="{{ p.get_absolute_url }}"><strong>{{ p.name }}</strong></a><br><span class="small dim">{{ p.site_address }}</span>{% if p.unseen %}<br><span class="small"><a href="{{ p.get_absolute_url }}">{{ p.unseen }} update{{ p.unseen|pluralize }} since your last visit</a></span>{% endif %}</span>{% badge p.get_stage_display p.stage_tone %}</li>{% endfor %}</ul>
+      {% else %}{% include "partials/empty_state.html" with message="No active projects are shared with you right now. When the team invites you to one, it appears here." left=True %}{% endif %}</div>
   </div>
   <div class="card"><div class="card-head"><h2>Latest updates</h2></div>{% include "partials/feed.html" with show_project=True %}</div>
 </div>

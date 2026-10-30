@@ -9,6 +9,7 @@
   <span class="spacer"></span>
   <form class="search" method="get"><input type="hidden" name="view" value="{{ view }}"><input type="search" name="q" value="{{ q }}" placeholder="Search name, client, address"></form>
 </div>
+{% if narrowed %}<div class="filters"><span class="chip on">Only {% if list_section == 'estimating' %}bids{% else %}jobs{% endif %} {{ narrowed|join:", " }}</span><a class="small" href="?view={{ view }}">Show all</a></div>{% endif %}
 <div class="card">{% if projects %}<div class="table-wrap"><table class="t">
   <thead><tr><th>Ref</th><th>{% if list_section == 'estimating' %}Bid{% else %}Project{% endif %}</th><th>Stage</th>{% if is_internal %}<th>{% if list_section == 'estimating' %}Bid lead{% else %}Project manager{% endif %}</th><th class="num">Value</th>{% endif %}<th>Key date</th></tr></thead><tbody>
   {% for p in projects %}<tr>
@@ -18,5 +19,5 @@
     {% if is_internal %}<td class="small">{% if list_section == 'estimating' %}{{ p.owner|default:"—" }}{% else %}{{ p.manager|default:"—" }}{% endif %}</td><td class="num">{{ p.value|money:currency }}</td>{% endif %}
     <td class="small nowrap">{% if p.is_pipeline and p.tender_due %}<span class="{% if p.tender_overdue %}overdue{% endif %}">Return {{ p.tender_due|date:"j M" }}</span>{% elif p.start_date %}Start {{ p.start_date|date:"j M Y" }}{% if p.completion_date %}<span class="sub">PC {{ p.completion_date|date:"j M Y" }}</span>{% endif %}{% elif p.decided_at %}Decided {{ p.decided_at|date:"j M Y" }}{% else %}<span class="dim">—</span>{% endif %}</td>
   </tr>{% endfor %}</tbody></table></div>
-  {% else %}<div class="empty"><h3>Nothing here</h3>{% if is_internal %}<p>{% if list_section == 'estimating' %}Add a lead or tender to start pricing.{% else %}Won bids appear here once estimating hands them over. You can also add a live job directly.{% endif %}</p>{% endif %}</div>{% endif %}</div>
+  {% else %}<div class="empty"><h3>Nothing here</h3>{% if narrowed %}<p>No {% if list_section == 'estimating' %}bids{% else %}jobs{% endif %} {{ narrowed|join:", " }} right now. <a href="?view={{ view }}">Show all</a></p>{% endif %}{% if is_internal %}<p>{% if list_section == 'estimating' %}Add a lead or tender to start pricing.{% else %}Won bids appear here once estimating hands them over. You can also add a live job directly.{% endif %}</p>{% endif %}</div>{% endif %}</div>
 {% endblock %}

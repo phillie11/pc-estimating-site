@@ -149,5 +149,17 @@ def rfi_register(request, org_slug):
         rfis = rfis.filter(visibility=RFI.VIS_SHARED)
     if request.GET.get('mine'):
         rfis = rfis.filter(ball_in_court_user=request.user)
+    # The filters the projects dashboard's RFI numbers link to
+    narrowed = []
+    if request.GET.get('status') == 'open':
+        rfis = rfis.filter(status=RFI.STATUS_OPEN)
+        narrowed.append('open (not yet answered)')
+    if request.GET.get('overdue'):
+        rfis = rfis.filter(due_date__lt=timezone.localdate())
+        narrowed.append('past their due date')
+    if request.GET.get('scope') == 'live':
+        from projects.models import Project
+        rfis = rfis.filter(project__stage__in=Project.DELIVERY_STAGES)
+        narrowed.append('on live jobs')
     return render(request, 'rfis/register.html', {'rfis': rfis.order_by('due_date'), 'today': timezone.localdate(),
-                                                  'mine': bool(request.GET.get('mine'))})
+                                                  'mine': bool(request.GET.get('mine')), 'narrowed': narrowed})
