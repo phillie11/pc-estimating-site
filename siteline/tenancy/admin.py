@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import models
 
 from .context import unscoped
 from .models import ActivityEvent, Membership, Organization, TeamInvite
@@ -46,6 +47,8 @@ class OrganizationAdmin(admin.ModelAdmin):
     search_fields = ['name', 'slug', 'stripe_customer_id']
     readonly_fields = ['created_at', 'project_counter']
     inlines = [MembershipInline]
+    # Django 6.0's default; 5.2 warns unless the scheme is explicit
+    formfield_overrides = {models.URLField: {'assume_scheme': 'https'}}
 
 
 @admin.register(TeamInvite)

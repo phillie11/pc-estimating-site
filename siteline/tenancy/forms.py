@@ -6,6 +6,9 @@ from .models import Membership, Organization, TeamInvite
 
 
 class OrganizationForm(forms.ModelForm):
+    # Explicit so a bare "example.com" becomes https:// (Django 6.0's default; 5.2 warns without it)
+    website = forms.URLField(required=False, max_length=200, assume_scheme='https')
+
     class Meta:
         model = Organization
         fields = ['name', 'logo', 'brand_colour', 'address', 'phone', 'website',
