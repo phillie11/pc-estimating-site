@@ -153,13 +153,19 @@ def commit(batch, row_ids, user, visibility=Document.VIS_INTERNAL, category='DRA
     """
     org = batch.organization
     added, held = [], {}
-    rows = list(batch.rows.filter(pk__in=row_ids, state=UploadRow.PENDING).order_by('pk'))
-    for row in rows:
-        ok, why = ready_to_commit(row, org)
-        if not ok:
-            held[row] = why
-            continue
-        with transaction.atomic():
+    with transaction.atomic():
+        # Two people pressing commit (or commit and cancel) at once: the second waits here, then
+        # sees only the rows still waiting, so nothing is added twice or added after a cancel
+        locked = UploadBatch.objects.select_for_update().filter(pk=batch.pk).first()
+        if locked is None or locked.status != UploadBatch.OPEN:
+            return added, held
+        rows = list(UploadRow.objects.select_for_update().filter(batch=batch, pk__in=row_ids,
+                                                                 state=UploadRow.PENDING).order_by('pk'))
+        for row in rows:
+            ok, why = ready_to_commit(row, org)
+            if not ok:
+                held[row] = why
+                continue
             doc = row.document
             if doc is None:
                 doc = Document.objects.filter(project=batch.project, reference__iexact=row.reference).first()
@@ -177,20 +183,25 @@ def commit(batch, row_ids, user, visibility=Document.VIS_INTERNAL, category='DRA
             row.save(update_fields=['state', 'committed_revision', 'document'])
             if not row.processed:
                 process_later('revision', rev)
-        added.append(rev)
-    if not batch.rows.filter(state=UploadRow.PENDING).exists():
-        batch.status, batch.committed_at = UploadBatch.DONE, timezone.now()
-        batch.save(update_fields=['status', 'committed_at'])
+            added.append(rev)
+        if not UploadRow.objects.filter(batch=batch, state=UploadRow.PENDING).exists():
+            batch.status, batch.committed_at = UploadBatch.DONE, timezone.now()
+            batch.save(update_fields=['status', 'committed_at'])
     classify(batch)
     return added, held
 
 
 def cancel(batch):
-    """Throw away the rows not committed, and their stored files."""
-    for row in batch.rows.filter(state=UploadRow.PENDING):
-        if row.file:
-            row.file.delete(save=False)
-        row.state = UploadRow.SKIPPED
-        row.save(update_fields=['state', 'file'])
-    batch.status = UploadBatch.CANCELLED
-    batch.save(update_fields=['status'])
+    """Throw away the rows not committed, and their stored files (once the cancel has committed)."""
+    with transaction.atomic():
+        locked = UploadBatch.objects.select_for_update().filter(pk=batch.pk).first()
+        if locked is None or locked.status != UploadBatch.OPEN:
+            return
+        for row in UploadRow.objects.select_for_update().filter(batch=batch, state=UploadRow.PENDING):
+            if row.file:
+                storage, name = row.file.storage, row.file.name
+                transaction.on_commit(lambda storage=storage, name=name: storage.delete(name))
+            row.state = UploadRow.SKIPPED
+            row.save(update_fields=['state'])
+        batch.status = UploadBatch.CANCELLED
+        batch.save(update_fields=['status'])

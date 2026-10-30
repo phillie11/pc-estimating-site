@@ -165,7 +165,8 @@ class CommitTests(BulkBase):
         row = self.rows(batch)['SLN-ABC-ZZ-02-DR-A-1001_P03.pdf']
         storage, name = row.file.storage, row.file.name
         self.assertTrue(storage.exists(name))
-        self.client.post(batch.get_absolute_url(), {'action': 'cancel'})
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(batch.get_absolute_url(), {'action': 'cancel'})
         self.assertFalse(storage.exists(name))
         with org_context(self.org_a):
             self.assertEqual(UploadBatch.objects.get(pk=batch.pk).status, UploadBatch.CANCELLED)

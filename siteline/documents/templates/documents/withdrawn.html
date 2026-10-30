@@ -1,0 +1,8 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}<div class="docs">
+<div class="card" style="max-width:620px"><div class="card-body">
+  <h2 style="margin-top:0">Rev {{ rev.revision }} has been withdrawn</h2>
+  <p><strong>{{ doc.reference|default:doc.title }}</strong> rev {{ rev.revision }} was withdrawn by {{ org.name }}, so it can't be downloaded any more. Don't use any copy you already have.</p>
+  <p class="small dim" style="margin:0"><a href="{% url 'document_detail' org.slug project.pk doc.pk %}">Back to the document</a> to see what you can use instead, or ask {{ org.name }}.</p>
+</div></div>
+</div>{% endblock %}

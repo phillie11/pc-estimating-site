@@ -23,9 +23,9 @@
     <div class="table-wrap"><table class="t"><thead><tr><th>Number</th><th>Title</th><th>Rev</th><th>Suit.</th><th></th></tr></thead><tbody>
     {% for i in items %}<tr><td class="ref nowrap">{{ i.reference|default:i.revision.document.reference|default:"—" }}</td>
       <td><a href="{% url 'revision_detail' org.slug project.pk i.revision.document_id i.revision_id %}">{{ i.title|default:i.revision.document.title }}</a>
-        {% if i.revision.is_superseded %}<span class="sub">{% badge 'Superseded' 'warn' %}{% if i.revision.superseded_by %} by {{ i.revision.superseded_by.revision }}{% endif %}</span>{% elif i.revision.is_withdrawn %}<span class="sub">{% badge 'Withdrawn' 'bad' %}</span>{% endif %}</td>
+        {% if i.revision.newer_hidden %}<span class="sub small dim">A newer revision is being prepared</span>{% elif i.revision.is_superseded %}<span class="sub">{% badge 'Superseded' 'warn' %}{% if i.revision.newer %} by {{ i.revision.newer.revision }}{% endif %}</span>{% elif i.revision.is_withdrawn %}<span class="sub">{% badge 'Withdrawn' 'bad' %}</span>{% endif %}</td>
       <td class="mono">{{ i.revision_code|default:i.revision.revision }}</td><td class="mono">{{ i.suitability|default:i.revision.suitability|default:"—" }}</td>
-      <td class="num"><a class="btn sm" href="{% url 'document_download' org.slug project.pk i.revision.document_id i.revision_id %}" aria-label="Download">{% icon 'download' %}</a></td></tr>
+      <td class="num">{% if is_internal or not i.revision.is_withdrawn %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk i.revision.document_id i.revision_id %}" aria-label="Download">{% icon 'download' %}</a>{% endif %}</td></tr>
     {% empty %}<tr><td colspan="5"><div class="empty left">No documents on this transmittal yet. {% if is_internal and transmittal.status == 'DRAFT' %}<a href="{% url 'transmittal_edit' org.slug project.pk transmittal.pk %}">Add some</a>.{% endif %}</div></td></tr>{% endfor %}
     </tbody></table></div>
   </div>

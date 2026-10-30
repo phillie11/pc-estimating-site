@@ -24,7 +24,7 @@ from projects.views import project_context
 from tenancy.models import log_activity
 
 from . import bulk, naming, services
-from .access import display_revision, revisions_for, visible_documents, visible_revisions
+from .access import annotate, display_revision, revisions_for, visible_documents, visible_ids, visible_revisions
 from .forms import (CodeForm, DistributionRuleForm, DocumentDetailsForm, DocumentUploadForm, RegisterSettingsForm,
                     RevisionUploadForm, TransmittalForm)
 from .models import (CodeList, DistributionRule, RegisterSettings, Transmittal, UploadBatch, UploadRow, code_lists,
@@ -58,9 +58,10 @@ def register_rows(request, project, params):
     by_doc = defaultdict(list)
     for r in visible_revisions(request, project).select_related('superseded_by'):
         by_doc[r.document_id].append(r)
+    seen = visible_ids(request, project)
     rows = []
     for d in docs:
-        d._revs = by_doc.get(d.pk, [])
+        d._revs = annotate(request, by_doc.get(d.pk, []), seen)
         d._rev_ids = {r.pk for r in d._revs}
         rows.append((d, display_revision(d._revs) if d._revs else None))
     all_rows = rows
@@ -241,7 +242,7 @@ def document_detail(request, org_slug, pk, doc_id):
         form = RevisionUploadForm(request.POST, request.FILES, project=project, external=not internal)
         if form.is_valid():
             return _upload_revision(request, project, doc, form)
-    revisions = list(revisions_for(request, project, doc))
+    revisions = annotate(request, list(revisions_for(request, project, doc)), visible_ids(request, project))
     current = display_revision(revisions) if revisions else None
     downloads = None
     if internal:
@@ -277,7 +278,8 @@ def _upload_revision(request, project, doc, form):
     if rev.is_current:
         messages.success(request, f'Revision {rev.revision} uploaded.')
     else:
-        messages.info(request, f'Revision {rev.revision} uploaded. It is older than rev {doc.current.revision}, '
+        newer = f'rev {doc.current.revision}' if internal else 'the current revision'
+        messages.info(request, f'Revision {rev.revision} uploaded. It is older than {newer}, '
                                'which stays current; use "Make current" to change that.')
     if internal and form.cleaned_data.get('issue_now'):
         _quick_issue(request, project, [rev], form.cleaned_data.get('purpose'))
@@ -288,15 +290,25 @@ def revision_detail(request, org_slug, pk, doc_id, rev_id):
     project = get_project(request, pk)
     doc = get_object_or_404(visible_documents(request, project), pk=doc_id)
     rev = get_object_or_404(revisions_for(request, project, doc), pk=rev_id)
+    seen = visible_ids(request, project)
+    annotate(request, [rev], seen)
+    current = rev.current_revision
+    if current is not None and seen is not None and current.pk not in seen:
+        current = None  # not issued to them: don't name it
     trs = services.transmittals_for(request, project).filter(items__revision=rev).distinct()
     return render(request, 'documents/revision_detail.html', docs_context(
-        request, project, 'register', doc=doc, rev=rev, current=rev.current_revision, transmittals=trs))
+        request, project, 'register', doc=doc, rev=rev, current=current, transmittals=trs,
+        can_download=is_internal(request) or not rev.is_withdrawn))
 
 
 def document_download(request, org_slug, pk, doc_id, rev_id):
     project = get_project(request, pk)
     doc = get_object_or_404(visible_documents(request, project), pk=doc_id)
     rev = get_object_or_404(revisions_for(request, project, doc), pk=rev_id)
+    if rev.is_withdrawn and not is_internal(request):
+        # Owner decision: externals may see that it was withdrawn, but not take a copy
+        return render(request, 'documents/withdrawn.html', docs_context(request, project, 'register', doc=doc,
+                                                                         rev=rev), status=403)
     return serve(request, rev.file, rev.original_name, project=project,
                  label=f'{doc.reference or doc.title} rev {rev.revision}')
 
@@ -486,9 +498,12 @@ def transmittal_detail(request, org_slug, pk, tr_id):
                 messages.success(request, 'Thanks: receipt recorded.' if n else 'Already acknowledged.')
             elif action == 'record_receipt' and internal:
                 rec = get_object_or_404(tr.recipients, pk=posted_id(request, 'recipient'))
-                services.acknowledge(request.user, tr, recipient=rec, note=request.POST.get('note', '').strip()[:200]
-                                     or 'Recorded by staff')
-                messages.success(request, f'Receipt recorded for {rec.name}.')
+                n = services.acknowledge(request.user, tr, recipient=rec,
+                                         note=request.POST.get('note', '').strip()[:200] or 'Recorded by staff')
+                if n:
+                    messages.success(request, f'Receipt recorded for {rec.name}.')
+                else:
+                    messages.error(request, 'Receipt can only be recorded once the transmittal has been issued.')
             elif action == 'issue' and internal:
                 services.issue(request.user, tr)
                 messages.success(request, f'{tr.reference} issued.')
@@ -503,6 +518,7 @@ def transmittal_detail(request, org_slug, pk, tr_id):
             messages.error(request, 'Someone else changed this transmittal just now. Try again.')
         return redirect(request.path)
     items = list(tr.items.select_related('revision__document', 'revision__superseded_by'))
+    annotate(request, [i.revision for i in items], visible_ids(request, project))
     recipients = list(tr.recipients.select_related('user', 'subcontractor', 'acknowledged_by'))
     mine = tr.status == Transmittal.STATUS_ISSUED and pending_acknowledgements(request.user, project) \
         .filter(pk=tr.pk).exists()

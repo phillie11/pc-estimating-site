@@ -41,9 +41,10 @@ class ExternalVisibilityTests(DocBase):
         for code in ('P01', 'P03'):
             self.assertEqual(self.client.get(self.purl('document_download', d.pk, revs[code].pk)).status_code, 404)
             self.assertEqual(self.client.get(self.purl('revision_detail', d.pk, revs[code].pk)).status_code, 404)
-        # P02 has since been superseded: they're told so
+        # P02 has since been superseded by a P03 they haven't been issued: told one is coming, not its number
         r = self.client.get(self.purl('revision_detail', d.pk, revs['P02'].pk))
-        self.assertContains(r, 'Superseded by P03')
+        self.assertContains(r, 'A newer revision is being prepared')
+        self.assertNotContains(r, 'P03')
         self.assertContains(self.register(self.sub1b), 'Joinery details')  # same company
         for u in (self.sub2, self.cli, self.con):
             self.assertNotContains(self.register(u), 'Joinery details')

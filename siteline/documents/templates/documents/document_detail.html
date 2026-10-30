@@ -18,10 +18,10 @@
     {% for r in revisions %}<tr>
       <td class="mono"><a href="{% url 'revision_detail' org.slug project.pk doc.pk r.pk %}">{{ r.revision }}</a>{% if r.pk == current.pk %} <span class="badge good plain">Current</span>{% endif %}</td>
       <td class="mono">{{ r.suitability|default:"—" }}</td>
-      <td>{% badge r.get_status_display r.status_tone %}{% if r.is_superseded and r.superseded_by %}<span class="sub">by {{ r.superseded_by.revision }}</span>{% endif %}</td>
+      <td>{% badge r.shown_status r.shown_tone %}{% if r.newer %}<span class="sub">by {{ r.newer.revision }}</span>{% elif r.newer_hidden %}<span class="sub">newer one being prepared</span>{% endif %}</td>
       <td class="small">{{ r.original_name }}<span class="sub">{{ r.size|filesize }}{% if r.page_count %} · {{ r.page_count }} page{{ r.page_count|pluralize }}{% endif %}{% if r.notes %} · {{ r.notes }}{% endif %}</span></td>
       <td class="small nowrap">{{ r.uploaded_at|date:"j M Y H:i" }}<span class="sub">{{ r.uploaded_by|default:"" }}</span></td>
-      <td class="num nowrap"><a class="btn sm" href="{% url 'document_download' org.slug project.pk doc.pk r.pk %}" aria-label="Download rev {{ r.revision }}">{% icon 'download' %}</a>
+      <td class="num nowrap">{% if is_internal or not r.is_withdrawn %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk doc.pk r.pk %}" aria-label="Download rev {{ r.revision }}">{% icon 'download' %}</a>{% endif %}
         {% if can_revise and r.pk != current.pk and not r.is_withdrawn %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="make_current"><input type="hidden" name="revision" value="{{ r.pk }}"><button class="btn sm">Make current</button></form>{% endif %}
         {% if is_internal and not r.is_withdrawn %}<form method="post" class="inline" data-confirm="Withdraw rev {{ r.revision }}? Everyone who can see it will be told not to use it.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><input type="hidden" name="revision" value="{{ r.pk }}"><button class="btn sm">Withdraw</button></form>{% endif %}
       </td></tr>
