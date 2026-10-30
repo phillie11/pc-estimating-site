@@ -1,0 +1,7 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Change register{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Change register</h1><p class="dim" style="margin:4px 0 0">Early warnings and change events across your live jobs. Internal only.</p></div></div>
+{% include "changes/_filters.html" %}
+{% with show_project=True %}{% include "changes/_tables.html" %}{% endwith %}
+{% endblock %}

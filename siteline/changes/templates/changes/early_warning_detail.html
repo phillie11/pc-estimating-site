@@ -1,0 +1,27 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% url 'early_warning_edit' org.slug project.pk ew.pk %}">Edit</a>
+{% for t in transitions %}<form method="post"{% if t.name == 'escalate' %} data-confirm="Escalate {{ ew.reference }}? A change event is raised from it for you to price, and the warning is marked escalated."{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="{{ t.name }}"><button class="btn{% if t.name == 'escalate' %} primary{% else %} ghost{% endif %}">{% if t.name == 'escalate' %}Escalate to a change event{% else %}{{ t.label|capfirst }}{% endif %}</button></form>{% endfor %}{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small"><a href="{% url 'change_register' org.slug project.pk %}?show=ew">← Early warnings</a></p>
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-body">
+      <div class="row"><span class="ref">{{ ew.reference }}</span>{% badge ew.get_status_display ew.status_tone %}{% badge 'Internal' 'muted' %}</div>
+      <h2 style="margin:8px 0 12px">{{ ew.title }}</h2>
+      <div class="quote">{{ ew.description|linebreaksbr }}</div>
+      {% if ew.mitigation %}<h3 style="margin-top:12px">How to avoid or reduce it</h3><div class="quote">{{ ew.mitigation|linebreaksbr }}</div>{% endif %}
+    </div></div>
+    {% include "partials/comments.html" %}
+  </div>
+  <div class="card"><div class="card-body"><dl class="dl">
+    <dt>Raised by</dt><dd>{{ ew.get_raised_by_side_display }}</dd>
+    <dt>Risk to</dt><dd>{{ ew.risks|join:", "|default:"Not stated" }}</dd>
+    <dt>{{ vocab.early_warning_meeting|capfirst }}</dt><dd>{{ ew.meeting_date|date:"j M Y"|default:"Not booked" }}</dd>
+    <dt>Owner</dt><dd>{{ ew.ball_in_court_user|default:"—" }}</dd>
+    {% if ew.due_date %}<dt>Review by</dt><dd>{{ ew.due_date|date:"j M Y" }}</dd>{% endif %}
+    {% if change_events %}<dt>Became</dt><dd>{% for idx in change_events %}<a href="{{ idx.url }}">{{ idx.ref }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    <dt>Logged</dt><dd>{{ ew.created_at|date:"j M Y" }} by {{ ew.created_by|default:"—" }}</dd>
+  </dl></div></div>
+</div>
+{% endblock %}

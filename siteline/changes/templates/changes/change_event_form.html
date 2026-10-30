@@ -1,0 +1,9 @@
+{% extends "project_base.html" %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<div class="card" style="max-width:900px"><div class="card-head"><h2>{% if ce %}Edit {{ ce.reference }}{% else %}New change event{% endif %}</h2></div><div class="card-body">
+<p class="small dim">Internal. {% if contract.is_nec %}The dates drive the advisory NEC4 clocks: notify within 8 weeks of becoming aware, quote within 3 weeks of the instruction.{% elif contract.is_jct %}If it could delay completion, record when you gave notice of delay.{% else %}Set up the contract to get the advisory notice clocks for this job.{% endif %}</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% if ce %}{{ ce.get_absolute_url }}{% else %}{% url 'change_register' org.slug project.pk %}{% endif %}">Cancel</a></div></form>
+</div></div>
+{% endblock %}

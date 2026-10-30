@@ -85,7 +85,9 @@ def project_context(request, project, tab, **extra):
     if can_see_variations(request):
         from variations.models import Variation
         vo_qs = Variation.objects.filter(project=project, status=Variation.STATUS_SUBMITTED)
-        tabs.append(('variations', 'Client variations' if internal else 'Variations', url('variation_list'), vo_qs.count()))
+        # Staff: one Commercial tab (contract, change register, client variations; contracts/commercial.py)
+        tabs.append(('commercial', 'Commercial', url('contract_detail'), vo_qs.count()) if internal else
+                    ('variations', 'Variations', url('variation_list'), vo_qs.count()))
     if can_use_site_portal(request):
         counts = site_counts(request, project)
         tabs += [('subvariations', 'Sub variations' if internal else 'Variations', url('subvariation_list'), counts['subvariations']),

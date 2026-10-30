@@ -1,0 +1,8 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% url 'early_warning_create' org.slug project.pk %}">{% icon 'plus' %} Early warning</a><a class="btn primary" href="{% url 'change_event_create' org.slug project.pk %}">{% icon 'plus' %} Change event</a>{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small dim">Internal: clients and subcontractors never see this register. {% if contract %}Clocks follow the {{ contract.form_label }}.{% else %}<a href="{% url 'contract_edit' org.slug project.pk %}">Set up the contract</a> to turn on the notice clocks.{% endif %} <a href="{% url 'company_change_register' org.slug %}">All jobs</a></p>
+{% include "changes/_filters.html" %}
+{% include "changes/_tables.html" %}
+{% endblock %}

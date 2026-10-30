@@ -2,6 +2,7 @@ from django.urls import include, path
 
 from actions import views as actions
 from billing import views as billing
+from changes import urls as changes_urls
 from delivery import views as delivery
 from directory import views as directory
 from documents import urls as documents_urls
@@ -79,6 +80,7 @@ urlpatterns = [
     path(P + 'variations/<int:vo_id>/', variations.variation_detail, name='variation_detail'),
     path(P + 'variations/<int:vo_id>/edit/', variations.variation_edit, name='variation_edit'),
     path(P + 'variations/<int:vo_id>/file/', variations.variation_attachment, name='variation_attachment'),
+    path(P + 'variations/<int:vo_id>/evidence/', variations.variation_evidence, name='variation_evidence'),
 
     path(P + 'packages/', directory.package_list, name='package_list'),
     path(P + 'rams/', delivery.rams_list, name='rams_list'),
@@ -98,5 +100,9 @@ urlpatterns = [
     path('directory/<int:pk>/', directory.sub_detail, name='sub_detail'),
     path('directory/<int:pk>/edit/', directory.sub_edit, name='sub_edit'),
     path('directory/<int:pk>/archive/', directory.sub_archive, name='sub_archive'),
+
+    # Commercial tab: contract set-up, change register, early warnings, change events (changes/urls.py)
+    *changes_urls.project_patterns(P),
+    *changes_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

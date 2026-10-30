@@ -100,6 +100,10 @@ class SubVariation(TenantModel):
     decided_at = models.DateTimeField(null=True, blank=True)
     client_variation = models.ForeignKey('variations.Variation', null=True, blank=True, on_delete=models.SET_NULL,
                                          related_name='sub_variations', verbose_name='Recovered from client as')
+    # The change event this came out of. A plain FK until sub variations move onto core.RecordBase
+    # (ADR 0001 migration plan step 2); then it becomes a RecordLink like the rest of the change chain.
+    change_event = models.ForeignKey('changes.ChangeEvent', null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name='sub_variations', verbose_name='Change event')
     submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
 
