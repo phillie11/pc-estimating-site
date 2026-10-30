@@ -181,6 +181,84 @@ resource "aws_iam_role_policy" "task_files" {
   })
 }
 
+# --- Transfer bucket: hands the database export to a one-off task during the data move ------
+# Private, encrypted, and everything in it is deleted automatically after 7 days.
+
+resource "aws_s3_bucket" "transfer" {
+  bucket        = "${var.name}-transfer-${local.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_public_access_block" "transfer" {
+  bucket                  = aws_s3_bucket.transfer.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "transfer" {
+  bucket = aws_s3_bucket.transfer.id
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "transfer" {
+  bucket = aws_s3_bucket.transfer.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "transfer" {
+  bucket = aws_s3_bucket.transfer.id
+  rule {
+    id     = "delete-after-7-days"
+    status = "Enabled"
+    filter {}
+    expiration {
+      days = 7
+    }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "transfer" {
+  bucket = aws_s3_bucket.transfer.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "HttpsOnly"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [aws_s3_bucket.transfer.arn, "${aws_s3_bucket.transfer.arn}/*"]
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
+  })
+  depends_on = [aws_s3_bucket_public_access_block.transfer]
+}
+
+resource "aws_iam_role_policy" "task_transfer" {
+  name = "read-transfer-bucket"
+  role = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadTransferFiles"
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = "${aws_s3_bucket.transfer.arn}/*"
+    }]
+  })
+}
+
 # ECS Exec (infra/scripts/run-command.sh --exec) needs these
 resource "aws_iam_role_policy" "task_exec" {
   name = "ecs-exec"
@@ -512,6 +590,7 @@ resource "aws_ssm_parameter" "deploy_config" {
     security_groups = [var.app_security_group_id]
     log_group       = aws_cloudwatch_log_group.app.name
     cpu_arch        = var.cpu_architecture
+    transfer_bucket = aws_s3_bucket.transfer.bucket
   })
 }
 

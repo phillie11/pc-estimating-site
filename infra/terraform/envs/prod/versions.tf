@@ -13,8 +13,8 @@ terraform {
   }
 
   # State lives in the bucket made by infra/terraform/bootstrap. The bucket name contains your
-  # AWS account number, so it is given when you run init (infra/README.md step 9):
-  #   terraform init -backend-config="bucket=siteline-terraform-state-123456789012"
+  # AWS account number, so it is given when you run init (infra/README.md step 8):
+  #   terraform init "-backend-config=bucket=siteline-terraform-state-123456789012"
   backend "s3" {
     key          = "siteline/prod/terraform.tfstate"
     region       = "eu-west-2"

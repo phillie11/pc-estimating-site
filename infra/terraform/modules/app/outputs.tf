@@ -30,3 +30,7 @@ output "certificate_dns_records" {
     value   = trimsuffix(o.resource_record_value, ".")
   }]
 }
+
+output "transfer_bucket" {
+  value = aws_s3_bucket.transfer.bucket
+}

@@ -35,3 +35,7 @@ output "database_instance_id" {
 output "log_group_name" {
   value = module.siteline.log_group_name
 }
+
+output "transfer_bucket" {
+  value = module.siteline.transfer_bucket
+}

@@ -1,4 +1,4 @@
-# Run once per AWS account, before staging and prod (infra/README.md step 8).
+# Run once per AWS account, before staging and prod (infra/README.md step 7).
 # Creates: the bucket that holds Terraform's memory ("state") for staging and prod,
 # the GitHub OpenID Connect provider (so GitHub Actions can deploy without stored keys),
 # and an account-wide monthly budget alert.

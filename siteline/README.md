@@ -254,6 +254,10 @@ python manage.py migrate && python manage.py collectstatic --noinput
 ```
 Then reload on the Web tab.
 
+## Deploy on AWS (London)
+
+The move from PythonAnywhere to AWS (ECS Fargate, RDS PostgreSQL, SES) is scripted in `infra/`. Follow `infra/README.md`; the data move is in `infra/scripts/migrate-data.md`.
+
 ## Running the platform
 
 - Admin is at `/<ADMIN_PATH>/` (default `platform-admin`). From there you can see every company, its plan and status, extend a trial (`trial_ends_at`) or suspend a workspace (`is_suspended`).

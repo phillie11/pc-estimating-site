@@ -52,3 +52,7 @@ output "database_instance_id" {
 output "ses_configuration_set" {
   value = module.email.configuration_set_name
 }
+
+output "transfer_bucket" {
+  value = module.app.transfer_bucket
+}

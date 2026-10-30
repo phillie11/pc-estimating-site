@@ -5,5 +5,5 @@ output "state_bucket" {
 
 output "init_command" {
   description = "Run this in infra/terraform/envs/staging and again in infra/terraform/envs/prod"
-  value       = "terraform init -backend-config=\"bucket=${aws_s3_bucket.state.bucket}\""
+  value       = "terraform init \"-backend-config=bucket=${aws_s3_bucket.state.bucket}\""
 }
