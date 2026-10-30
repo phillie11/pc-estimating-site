@@ -687,6 +687,10 @@ class DocumentRevision(TenantModel):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, blank=True, db_index=True,
                               help_text='Left blank, it is worked out on save from the suitability and sharing.')
     status_changed_at = models.DateTimeField(null=True, blank=True)
+    # When it first left work in progress (or was transmitted). Never cleared: externals' "shared to
+    # their role" route is gated on this, so a revision that was only ever WIP stays internal even
+    # after it is superseded or withdrawn.
+    shared_at = models.DateTimeField(null=True, blank=True, editable=False)
     superseded_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     file = models.FileField(upload_to=upload_document)
     original_name = models.CharField(max_length=200)
@@ -734,7 +738,13 @@ class DocumentRevision(TenantModel):
             self.status = self.live_status()
         if self.status_changed_at is None:
             self.status_changed_at = timezone.now()
+        if self.shared_at is None and self.status in (self.SHARED, self.PUBLISHED):
+            self.shared_at = self.status_changed_at
         super().save(*args, **kwargs)
+
+    @property
+    def was_shared(self):
+        return self.shared_at is not None
 
     def supersede(self, by):
         """Mark this revision superseded by `by` (left alone if withdrawn)."""
@@ -749,7 +759,9 @@ class DocumentRevision(TenantModel):
         """Back in use (made current again): its live status, no longer superseded."""
         if self.status not in (self.SUPERSEDED, self.WITHDRAWN) and self.superseded_by_id is None:
             return
-        self.status, self.superseded_by = self.live_status(), None
+        # Never shared: back to work in progress, not to "shared because the document is"
+        self.status = self.live_status() if self.shared_at else self.WIP
+        self.superseded_by = None
         self.status_changed_at = timezone.now()
         DocumentRevision.objects.filter(pk=self.pk).update(status=self.status, superseded_by=None,
                                                             status_changed_at=self.status_changed_at)
@@ -758,7 +770,16 @@ class DocumentRevision(TenantModel):
         if status == self.status:
             return
         self.status, self.status_changed_at = status, timezone.now()
-        DocumentRevision.objects.filter(pk=self.pk).update(status=status, status_changed_at=self.status_changed_at)
+        fields = {'status': status, 'status_changed_at': self.status_changed_at}
+        if self.shared_at is None and status in (self.SHARED, self.PUBLISHED):
+            self.shared_at = fields['shared_at'] = self.status_changed_at
+        DocumentRevision.objects.filter(pk=self.pk).update(**fields)
+
+    def mark_shared(self):
+        """Record that it has gone outside the company (on a transmittal), whatever its status says."""
+        if self.shared_at is None:
+            self.shared_at = timezone.now()
+            DocumentRevision.objects.filter(pk=self.pk, shared_at__isnull=True).update(shared_at=self.shared_at)
 
     @property
     def current_revision(self):

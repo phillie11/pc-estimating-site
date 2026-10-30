@@ -33,8 +33,8 @@ def recipient_choices(project):
     from directory.models import Subcontractor
     from projects.access import assignable_users
     members = ProjectMember.objects.filter(project=project).exclude(role=ProjectMember.ROLE_BIDDER)
-    users = assignable_users(project).exclude(
-        project_memberships__project=project, project_memberships__role=ProjectMember.ROLE_BIDDER)
+    bidders = ProjectMember.objects.filter(project=project, role=ProjectMember.ROLE_BIDDER).values('user_id')
+    users = assignable_users(project).exclude(pk__in=bidders)
     companies = Subcontractor.objects.filter(pk__in=members.filter(subcontractor__isnull=False)
                                              .values('subcontractor_id')).order_by('company_name')
     return users, companies
@@ -51,23 +51,35 @@ def usual_recipients(project, documents):
     rules = [r for r in DistributionRule.objects.filter(project=project).select_related('user', 'subcontractor')
              if not r.discipline or r.discipline.strip().lower() in disciplines]
     if rules:
-        return _dedupe([r.user for r in rules if r.user], [r.subcontractor for r in rules if r.subcontractor])
+        return _dedupe([r.user for r in rules if r.user], [r.subcontractor for r in rules if r.subcontractor], project)
     last = Transmittal.objects.filter(project=project, status__in=Transmittal.SENT_STATUSES,
                                       items__revision__document__in=[d.pk for d in documents]) \
         .order_by('-issued_at', '-number').first()
     if last is not None:
         rows = list(last.recipients.select_related('user', 'subcontractor'))
-        return _dedupe([r.user for r in rows if r.user], [r.subcontractor for r in rows if r.subcontractor])
+        return _dedupe([r.user for r in rows if r.user], [r.subcontractor for r in rows if r.subcontractor], project)
     members = ProjectMember.objects.filter(project=project, role__in=[
         ProjectMember.ROLE_CLIENT, ProjectMember.ROLE_CONSULTANT, ProjectMember.ROLE_SUBCONTRACTOR]).select_related('user')
-    return _dedupe([m.user for m in members], [])
+    return _dedupe([m.user for m in members], [], project)
 
 
-def _dedupe(users, companies):
+def eligible(project, users, companies):
+    """
+    The people and companies who can still receive this project's documents: active staff of
+    the company, or active collaborators still on the project (not as a tenderer); companies with
+    someone still on the project. Rules and old transmittals can name people who have since left.
+    """
+    allowed_users, allowed_companies = recipient_choices(project)
+    user_ids = set(allowed_users.filter(pk__in=[u.pk for u in users if u]).values_list('pk', flat=True))
+    company_ids = set(allowed_companies.filter(pk__in=[c.pk for c in companies if c]).values_list('pk', flat=True))
+    return [u for u in users if u and u.pk in user_ids], [c for c in companies if c and c.pk in company_ids]
+
+
+def _dedupe(users, companies, project=None):
     seen_u, seen_c = set(), set()
     users = [u for u in users if u.is_active and not (u.pk in seen_u or seen_u.add(u.pk))]
     companies = [c for c in companies if not (c.pk in seen_c or seen_c.add(c.pk))]
-    return users, companies
+    return eligible(project, users, companies) if project is not None else (users, companies)
 
 
 def describe(users, companies):
@@ -116,16 +128,26 @@ def issue(actor, transmittal):
         raise IssueRefused('Add at least one document before issuing.')
     if not recipients:
         raise IssueRefused('Add at least one recipient before issuing.')
+    users, companies = eligible(transmittal.project, [r.user for r in recipients if r.user_id],
+                                [r.subcontractor for r in recipients if r.subcontractor_id])
+    keep = {('u', u.pk) for u in users} | {('c', c.pk) for c in companies}
+    leavers = [r for r in recipients if (('u', r.user_id) if r.user_id else ('c', r.subcontractor_id)) not in keep]
+    if len(leavers) == len(recipients):
+        raise IssueRefused('Everyone it is addressed to is no longer on this project. Choose new recipients.')
     withdrawn = [i for i in items if i.revision.status == DocumentRevision.WITHDRAWN]
     if withdrawn:
         raise IssueRefused(f'{withdrawn[0].revision.document.label} rev {withdrawn[0].revision.revision} '
                            'has been withdrawn, so it can\'t be issued.')
     with transaction.atomic():
+        for r in leavers:  # left the project since the draft was made: it doesn't go to them
+            r.delete()
+        recipients = [r for r in recipients if r not in leavers]
         for item in items:
             item.snapshot()
             item.save()
             if item.revision.status == DocumentRevision.WIP:
                 item.revision.set_status(DocumentRevision.SHARED)
+            item.revision.mark_shared()
         _set_ball(transmittal)
         apply_transition(transmittal, 'issue', actor)
         jobs.enqueue('documents.transmittal_sheet', {'transmittal_id': transmittal.pk}, org=transmittal.organization,
@@ -159,7 +181,9 @@ def acknowledge(actor, transmittal, recipient=None, note=''):
     """
     now = timezone.now()
     with transaction.atomic():
-        Transmittal.objects.select_for_update().filter(pk=transmittal.pk).first()
+        locked = Transmittal.objects.select_for_update().filter(pk=transmittal.pk).first()
+        if locked is None or locked.status != Transmittal.STATUS_ISSUED:
+            return 0  # drafts, cancelled and fully received transmittals take no receipts
         if recipient is not None:
             rows = transmittal.recipients.filter(pk=recipient.pk, acknowledged_at__isnull=True)
         else:

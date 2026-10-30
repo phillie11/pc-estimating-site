@@ -8,10 +8,14 @@ following the naming; anything else (including numbers that don't split into sev
 such as "1203-A-100") is marked "needs checking" with a note, so someone can fix or accept
 it from the register. Blank numbers stay blank.
 
-Revisions: the current revision is shared if its document was shared (published if it is a
-construction issue, C01 and up), or work in progress if the document was internal. Every
-other revision is superseded by its document's current one. So everything externals could
-see before, they still see.
+`reference` is never changed (not even its case or spacing), so reversing loses nothing.
+
+Revisions: the current revision (flagged, or else the highest P/C code as latest_revision()
+picks it) is shared if its document was shared (published if it is a construction issue,
+C01 and up), or work in progress if the document was internal. Every other revision is
+superseded by its document's current one. Every revision of a shared document gets
+`shared_at` (its upload time), so everything externals could see before, they still see,
+and nothing on an internal document becomes visible.
 
 The parser below is a frozen copy of documents.naming, so later changes there can't alter
 this migration. Reversing it empties the new fields again.
@@ -60,9 +64,27 @@ def warnings_for(parts):
     return out
 
 
+SERIES = {'P': 0, 'C': 1}
+RANK_RE = re.compile(r'^\s*([PC])\s*-?\s*(\d+)\s*$', re.IGNORECASE)
+
+
+def rank(code):
+    """Frozen copy of projects.models.revision_rank."""
+    m = RANK_RE.match(code or '')
+    return (SERIES[m.group(1).upper()], int(m.group(2))) if m else None
+
+
+def latest(revisions):
+    """Frozen copy of projects.models.latest_revision: highest P/C code, else the latest upload."""
+    if all(rank(r.revision) for r in revisions):
+        return max(revisions, key=lambda r: (rank(r.revision), r.uploaded_at, r.pk))
+    return max(revisions, key=lambda r: (r.uploaded_at, r.pk))
+
+
 def fill(apps, schema_editor):
     Document = apps.get_model('projects', 'Document')
     DocumentRevision = apps.get_model('projects', 'DocumentRevision')
+    # `reference` itself is left exactly as typed; only the new fields are filled from it
     for doc in Document._base_manager.iterator():
         ref = (doc.reference or '').strip()
         if not ref:
@@ -74,37 +96,41 @@ def fill(apps, schema_editor):
         else:
             for f in FIELDS:
                 setattr(doc, f, parts[f])
-            doc.reference = '-'.join(parts[f] for f in FIELDS)
             found = warnings_for(parts)
             doc.naming = 'UNPARSED' if found else 'OK'
             doc.naming_notes = ' '.join(found)[:500]
             if not doc.discipline:
                 doc.discipline = ROLES.get(parts['role'], '')
-        doc.save(update_fields=['reference', 'naming', 'naming_notes', 'discipline', *FIELDS])
+        doc.save(update_fields=['naming', 'naming_notes', 'discipline', *FIELDS])
 
     shared = set(Document._base_manager.filter(visibility='SHARED').values_list('pk', flat=True))
     by_doc = {}
     for r in DocumentRevision._base_manager.only('pk', 'document_id', 'revision', 'is_current', 'uploaded_at').iterator():
         by_doc.setdefault(r.document_id, []).append(r)
     for doc_id, revisions in by_doc.items():
-        current = next((r for r in revisions if r.is_current), None) or max(revisions, key=lambda r: (r.uploaded_at, r.pk))
+        current = next((r for r in revisions if r.is_current), None) or latest(revisions)
+        # Everything on a shared document was visible to collaborators before, so it counts as shared
+        shared_at = {'shared_at': None}
         for r in revisions:
+            if doc_id in shared:
+                shared_at = {'shared_at': r.uploaded_at}
             if r.pk == current.pk:
                 if doc_id in shared:
                     status = 'PUBLISHED' if CONSTRUCTION_RE.match(r.revision or '') else 'SHARED'
                 else:
                     status = 'WIP'
-                DocumentRevision._base_manager.filter(pk=r.pk).update(status=status, status_changed_at=r.uploaded_at)
+                DocumentRevision._base_manager.filter(pk=r.pk).update(status=status, status_changed_at=r.uploaded_at,
+                                                                       **shared_at)
             else:
                 DocumentRevision._base_manager.filter(pk=r.pk).update(status='SUPERSEDED', superseded_by=current,
-                                                                       status_changed_at=r.uploaded_at)
+                                                                       status_changed_at=r.uploaded_at, **shared_at)
 
 
 def empty(apps, schema_editor):
     Document = apps.get_model('projects', 'Document')
     DocumentRevision = apps.get_model('projects', 'DocumentRevision')
     Document._base_manager.update(naming='', naming_notes='', discipline='', **{f: '' for f in FIELDS})
-    DocumentRevision._base_manager.update(status='', status_changed_at=None, superseded_by=None)
+    DocumentRevision._base_manager.update(status='', status_changed_at=None, superseded_by=None, shared_at=None)
 
 
 class Migration(migrations.Migration):

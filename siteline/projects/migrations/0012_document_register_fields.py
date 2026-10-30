@@ -153,6 +153,11 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name="documentrevision",
+            name="shared_at",
+            field=models.DateTimeField(blank=True, editable=False, null=True),
+        ),
+        migrations.AddField(
+            model_name="documentrevision",
             name="suitability",
             field=models.CharField(blank=True, max_length=4),
         ),

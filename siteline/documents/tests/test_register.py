@@ -300,14 +300,14 @@ class ReferenceMigrationTests(TestCase):
         # Start from "before": clear what the model filled in on save
         Document._base_manager.update(project_code='', originator='', volume='', level='', doc_type='', role='',
                                       number='', naming='', naming_notes='', discipline='')
-        DocumentRevision._base_manager.update(status='', superseded_by=None)
+        DocumentRevision._base_manager.update(status='', superseded_by=None, shared_at=None)
 
         migration.fill(global_apps, None)
         iso, odd, bad, blank, revs, internal = made[org.pk]
         get = lambda m, pk: m._base_manager.get(pk=pk)  # noqa: E731
         d = get(Document, iso.pk)
         self.assertEqual((d.reference, d.doc_type, d.number, d.naming, d.discipline),
-                         ('SLN-ABC-ZZ-02-DR-A-1001', 'DR', '1001', 'OK', 'Architect'))
+                         ('sln-abc-zz-02-dr-a-1001', 'DR', '1001', 'OK', 'Architect'))  # reference as typed
         d = get(Document, odd.pk)
         self.assertEqual((d.reference, d.naming, d.number), ('1203-A-100', 'UNPARSED', ''))
         self.assertIn('couldn\'t be read', d.naming_notes)
@@ -319,6 +319,10 @@ class ReferenceMigrationTests(TestCase):
         self.assertEqual((p01.status, p01.superseded_by_id), ('SUPERSEDED', c01.pk))
         self.assertEqual(c01.status, 'PUBLISHED')
         self.assertEqual(get(DocumentRevision, internal.pk).status, 'WIP')
+        # Everything on a shared document was visible before, so it counts as shared; nothing internal does
+        self.assertIsNotNone(p01.shared_at)
+        self.assertIsNotNone(c01.shared_at)
+        self.assertIsNone(get(DocumentRevision, internal.pk).shared_at)
         # The other company's rows were done too, each against its own documents
         iso2 = get(Document, made[org2.pk][0].pk)
         self.assertEqual(iso2.naming, 'OK')
