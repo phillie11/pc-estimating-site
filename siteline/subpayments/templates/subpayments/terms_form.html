@@ -1,0 +1,9 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<div class="card" style="max-width:820px"><div class="card-head"><h2>Payment terms: {{ sc.subcontractor.company_name }}</h2>{% badge 'Advisory' 'warn' %}</div><div class="card-body">
+<p class="small">These started from your company defaults. Set them to match the signed subcontract. Changes apply to applications received from now on; ones already received keep their dates. {{ advisory }}</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save terms</button><a class="btn ghost" href="{{ sc.get_absolute_url }}">Cancel</a></div></form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Subcontract payment terms{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / Subcontract payments</div><h1>Default subcontract payment terms</h1><p class="dim" style="margin:4px 0 0">Every subcontract starts from these when it is first opened; each can then be changed to match the signed subcontract.</p></div></div>
+<div class="card" style="max-width:820px"><div class="card-body">
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save defaults</button></div></form>
+  <p class="small dim">{% badge 'Advisory' 'warn' %} {{ advisory }} The starting figures follow JCT subcontract terms: due 7 days after the valuation date, final date 21 days after the due date, our payment notice within 5 days of the due date, a pay less notice no later than 5 days before the final date.</p>
+</div></div>
+<p style="margin-top:14px"><a class="btn" style="min-height:44px" href="{% url 'subpay_tax_list' org.slug %}">Subcontractors' CIS and VAT</a> <a class="btn" style="min-height:44px" href="{% url 'subpay_cis' org.slug %}">CIS monthly summary</a></p>
+{% endblock %}

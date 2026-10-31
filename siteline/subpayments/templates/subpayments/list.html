@@ -1,0 +1,40 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+{% if staff and late_count %}<div class="banner bad-banner" role="alert"><strong class="overdue">{{ late_count }} application{{ late_count|pluralize }} stand{{ late_count|pluralize:"s," }} as the notified sum.</strong> We gave no payment notice in time, so what the subcontractor applied for must be paid by the final date unless we give a pay less notice by its deadline (HGCRA s110B). <a href="?show=stands">Show them</a> {% badge 'Advisory' 'warn' %}</div>{% endif %}
+{% if not staff %}<p class="small">Apply for payment on your package below. {{ org.name }} tells you the sum it considers due (its payment notice), and you can see each payment advice here once you are paid.</p>{% endif %}
+
+<div class="card"><div class="card-head"><h2>{% if staff %}Subcontracts{% else %}Your packages{% endif %}</h2></div>
+{% if rows %}<div class="table-wrap"><table class="t register">
+  <thead><tr><th>Package</th>{% if staff %}<th>CIS</th>{% endif %}<th>Terms</th><th class="num">Sum due to date</th><th class="num">Paid to date (gross)</th><th class="num">Retention held</th><th></th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td>{{ r.package.subcontractor.company_name }}<span class="sub">{{ r.package.trade|default:"Package" }}{% if staff and r.order %} · {{ r.order.ref }}{% elif staff %} · <span class="overdue">no order in Costs yet</span>{% endif %}</span></td>
+    {% if staff %}<td>{% badge r.tax.get_cis_status_display r.tax.cis_tone %}{% if r.tax.reverse_charge %}<span class="sub">Reverse charge</span>{% endif %}</td>{% endif %}
+    <td class="small">{% if r.sc %}{% if r.sc.cycle_kind == 'MONTHLY' %}Monthly, day {{ r.sc.valuation_day }}{% else %}Listed dates{% endif %} · retention {{ r.sc.retention_percent|floatformat:"-2" }}%{% else %}<span class="dim">Company defaults until opened</span>{% endif %}</td>
+    <td class="num">{% if r.summary %}{{ r.summary.certified|money_exact:currency }}{% else %}—{% endif %}</td>
+    <td class="num">{% if r.summary %}{{ r.summary.paid|money_exact:currency }}{% else %}—{% endif %}</td>
+    <td class="num">{% if r.summary %}{{ r.summary.retention|money_exact:currency }}{% else %}—{% endif %}</td>
+    <td class="nowrap">{% if staff %}{% if r.sc %}<a class="btn sm" style="min-height:44px" href="{{ r.sc.get_absolute_url }}">Open</a>{% elif not read_only %}<form method="post" action="{% url 'subpay_open' org.slug project.pk r.package.pk %}" class="inline">{% csrf_token %}<button class="btn sm" style="min-height:44px">Set up terms</button></form>{% endif %}{% endif %}
+      {% if not read_only %}<a class="btn sm{% if not staff %} primary{% endif %}" style="min-height:44px" href="{% url 'subpay_apply' org.slug project.pk r.package.pk %}">{% if staff %}Record application{% else %}Apply for payment{% endif %}</a>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+{% elif staff %}<div class="card-body">{% url 'package_list' org.slug project.pk as pkg_url %}{% include "partials/empty_state.html" with title="No appointed subcontractors" message="Sub payments start once a package is appointed. Appoint one from the Packages tab, then commit its order under Costs." cta_url=pkg_url cta_label="Go to packages" cta_plain=1 left=1 %}</div>
+{% else %}<div class="card-body">{% include "partials/empty_state.html" with title="No appointed package" message="You can apply for payment once you are appointed on a package on this job." left=1 %}</div>{% endif %}
+</div>
+
+<nav class="filters" aria-label="Show">{% for code, label in filters %}<a class="chip {% if shown == code %}on{% endif %}" href="{% if code %}?show={{ code }}{% else %}?{% endif %}" style="min-height:44px;display:inline-flex;align-items:center">{{ label }}</a>{% endfor %}</nav>
+<div class="card">{% if applications %}<div class="table-wrap"><table class="t register">
+  <thead><tr><th>Ref</th><th>Application</th><th>Status</th><th>Dates</th><th class="num">Applied (ex VAT)</th><th class="num">Sum due (ex VAT)</th><th class="num">Still to pay (gross)</th></tr></thead>
+  <tbody>{% for a in applications %}<tr>
+    <td class="ref">{{ a.reference }}</td>
+    <td><a class="rowlink" href="{{ a.get_absolute_url }}">{{ a.title }}</a>{% if staff and a.stands_as_notified %}<span class="sub overdue">No payment notice from us: stands as notified</span>{% endif %}</td>
+    <td>{% if a.is_overdue %}{% badge 'Payment overdue' 'bad' %}{% elif staff %}{% status_badge a %}{% else %}{% badge a.sub_status_label a.status_tone %}{% endif %}</td>
+    <td class="small nowrap"><span class="dim">Payment notice</span> {{ a.payment_notice_by|date:"j M" }}<br><span class="dim">Pay less</span> {{ a.pay_less_by|date:"j M" }}<br><span class="dim">Final date</span> <span class="{% if a.is_overdue %}overdue{% endif %}">{{ a.final_date|date:"j M Y" }}</span></td>
+    <td class="num">{{ a.amount_due|money_exact:currency }}</td>
+    <td class="num">{{ a.notified_sum|money_exact:currency }}</td>
+    <td class="num">{{ a.outstanding|money_exact:currency }}</td>
+  </tr>{% endfor %}</tbody></table></div>
+{% elif all_count %}{% include "partials/empty_state.html" with title="Nothing matches" message="No application is in this state." cta_url="?" cta_label="Show all" cta_plain=1 %}
+{% elif staff %}{% include "partials/empty_state.html" with title="No sub applications yet" message="Subcontractors apply for payment in their portal, or record one they sent by email with Record application above." %}
+{% else %}{% include "partials/empty_state.html" with title="No applications yet" message="Use Apply for payment on your package above. You'll see our payment notice and each payment advice here." %}{% endif %}</div>
+<p class="small dim">{{ advisory }}{% if staff %} {{ hmrc_check }}{% endif %}</p>
+{% endblock %}

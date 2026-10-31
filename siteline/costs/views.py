@@ -309,6 +309,10 @@ def commitment_detail(request, org_slug, pk, commitment_id):
                                          source_type=ContentType.objects.get_for_model(ActualCost),
                                          source_id__in=[a.pk for a in actuals])
     invoiced = entries.aggregate(s=Sum('amount'))['s'] or Decimal('0')
+    from django.apps import apps
+    if apps.is_installed('subpayments'):  # payments to the subcontractor, net of reversals, from the ledger
+        from subpayments.summary import payment_ledger_total
+        invoiced += payment_ledger_total(c)
     reversed_ids = set(entries.filter(reverses__isnull=False).values_list('source_id', flat=True))
     return render(request, 'costs/commitment_detail.html', costs_context(
         request, project, 'commitments', c=c, form=form, adjustments=adjustments, actuals=actuals,

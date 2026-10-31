@@ -1,0 +1,87 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if can_withdraw %}<form method="post" data-confirm="Withdraw {{ app.reference }}? It can't be used again{% if staff %}, and the subcontractor will be told{% else %}, and {{ org.name }} will be told{% endif %}.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn ghost">Withdraw</button></form>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small"><a href="{{ app.subcontract.get_absolute_url }}">← {{ app.subcontract.subcontractor.company_name }}</a></p>
+{% if staff and app.late_warning %}<div class="banner bad-banner" role="alert"><strong class="overdue">Our payment notice is late: the application stands as the notified sum.</strong> {{ app.late_warning }}</div>{% endif %}
+{% if app.is_overdue %}<div class="banner bad-banner" role="alert"><strong class="overdue">Payment overdue.</strong> The final date for payment was {{ app.final_date|date:"D j M Y" }} and {{ app.outstanding|money_exact:currency }} (gross) is still to pay.{% if staff %} The subcontractor may be entitled to interest and to suspend work after 7 days' notice (HGCRA s112).{% endif %} {% badge 'Advisory' 'warn' %}</div>{% endif %}
+{% if no_order %}<div class="banner bad-banner" role="note"><strong>No order in Costs for this package.</strong> Payments post to its cost code: commit the order under <a href="{% url 'cost_commitments' org.slug project.pk %}">Costs → Orders</a> first.</div>{% endif %}
+<div class="grid split">
+<div class="stack">
+  <div class="card"><div class="card-body">
+    <div class="row"><span class="ref">{{ app.reference }}</span>{% if staff %}{% if app.stands_as_notified %}{% badge 'Stands as notified' 'bad' %}{% else %}{% status_badge app %}{% endif %}{% else %}{% badge app.sub_status_label app.status_tone %}{% endif %}{% if app.kind == 'RELEASE' %}{% badge 'Retention release' 'info' %}{% endif %}{% if app.reverse_charge %}{% badge 'Reverse charge' 'info' %}{% endif %}</div>
+    <h2 style="margin:8px 0 12px">{{ app.title }}</h2>
+    <div class="table-wrap"><table class="t figures"><tbody>
+      <tr><td>Gross value of work to date</td><td class="num">{{ app.gross_to_date|money_exact:currency }}</td></tr>
+      <tr><td>Approved variations to {{ app.valuation_date|date:"j M Y" }}</td><td class="num">{{ app.variations_value|money_exact:currency }}</td></tr>
+      <tr class="sum"><th>Gross valuation</th><th class="num">{{ app.gross_valuation|money_exact:currency }}</th></tr>
+      <tr><td>Less retention at {{ app.retention_percent|floatformat:"-2" }}%<span class="sub">{{ stage_label }}</span></td><td class="num">{% if app.retention %}−{% endif %}{{ app.retention|money_exact:currency }}</td></tr>
+      <tr><td>Less previous amounts</td><td class="num">{% if app.previous_certified %}−{% endif %}{{ app.previous_certified|money_exact:currency }}</td></tr>
+      <tr class="sum"><th>Applied for this time (ex VAT)</th><th class="num">{{ app.amount_due|money_exact:currency }}</th></tr>
+      <tr><td>Cost of materials stated{% if app.materials != app.materials_stated %}<span class="sub">Adjusted to {{ app.materials|money_exact:currency }} for CIS</span>{% endif %}</td><td class="num">{{ app.materials_stated|money_exact:currency }}</td></tr>
+    </tbody></table></div>
+    <p class="small dim">Received {{ app.received_on|date:"j M Y" }}{% if app.applied_by_sub %} through the portal{% else %}, recorded by staff{% endif %}.</p>
+    {% if app.notes %}<h3>Notes</h3><div class="quote">{{ app.notes }}</div>{% endif %}
+  </div></div>
+
+  {% if app.payment_notice_on %}<div class="card"><div class="card-head"><h2>{% if staff %}Our payment notice{% else %}Payment notice{% endif %}</h2>{% if app.payment_notice_on > app.payment_notice_by %}{% badge 'Given late' 'bad' %}{% else %}{% badge 'In time' 'good' %}{% endif %}</div><div class="card-body">
+    <p><strong class="mono">{{ app.payment_notice_amount|money_exact:currency }}</strong> considered due (ex VAT), given {{ app.payment_notice_on|date:"D j M Y" }}.</p>
+    <div class="quote">{{ app.payment_notice_basis }}</div></div></div>{% endif %}
+  {% if app.pay_less_on %}<div class="card"><div class="card-head"><h2>Pay less notice</h2>{% badge 'In time' 'good' %}</div><div class="card-body">
+    <p><strong class="mono">{{ app.pay_less_amount|money_exact:currency }}</strong> now considered due (ex VAT), given {{ app.pay_less_on|date:"D j M Y" }}.</p>
+    <div class="quote">{{ app.pay_less_basis }}</div></div></div>{% endif %}
+
+  {% if can_notice %}<div class="card" style="border:2px solid var(--accent)" id="payment-notice"><div class="card-head"><h2>Give our payment notice</h2><span class="small dim">by {{ app.payment_notice_by|date:"D j M Y" }}</span></div><div class="card-body">
+    {% if notice_late %}<p class="small overdue">The deadline has passed. A late payment notice is recorded but does not change the notified sum: the application stands. To pay less, give a pay less notice by {{ app.pay_less_by|date:"D j M Y" }}.</p>
+    {% else %}<p class="small">The sum we consider due this time and how we worked it out. If we don't give it by <strong>{{ app.payment_notice_by|date:"D j M Y" }}</strong>, the subcontractor's application stands as the sum due. The subcontractor is told straight away. {{ advisory }}</p>{% endif %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="payment_notice">{% with form=notice_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Give payment notice</button></div></form>
+  </div></div>{% endif %}
+  {% if can_pay_less %}<div class="card" id="pay-less"><div class="card-head"><h2>Pay less notice</h2><span class="small dim">by {{ app.pay_less_by|date:"D j M Y" }}</span></div><div class="card-body">
+    <p class="small">Only if we intend to pay less than the notified sum ({{ app.notified_sum|money_exact:currency }} ex VAT), no later than <strong>{{ app.pay_less_by|date:"D j M Y" }}</strong>. After that it has no effect. {{ advisory }}</p>
+    <details{% if pay_less_form.is_bound %} open{% endif %}><summary class="btn" style="min-height:44px">Give a pay less notice</summary>
+    <form method="post" style="margin-top:12px" data-confirm="Give a pay less notice on {{ app.reference }}? The subcontractor will be told the sum we now consider due.">{% csrf_token %}<input type="hidden" name="action" value="pay_less">{% with form=pay_less_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Give pay less notice</button></div></form></details>
+  </div></div>
+  {% elif pay_less_late and not app.pay_less_on %}<div class="card"><div class="card-head"><h2>Pay less notice</h2>{% badge 'Deadline passed' 'muted' %}</div><div class="card-body small"><p>{{ pay_less_refusal }}</p></div></div>{% endif %}
+
+  <div class="card" id="payments"><div class="card-head"><h2>{% if staff %}Payments made{% else %}Payments to you{% endif %}</h2></div><div class="card-body">
+    {% if payments %}<div class="table-wrap"><table class="t"><thead><tr><th>Paid</th><th class="num">Gross</th><th class="num">Materials</th><th class="num">CIS</th><th class="num">VAT</th><th class="num">Net</th><th></th></tr></thead><tbody>
+    {% for p in payments %}<tr{% if p.is_reversed %} class="dim"{% endif %}><td class="nowrap">{{ p.paid_on|date:"j M Y" }}{% if p.reference %}<span class="sub">{{ p.reference }}</span>{% endif %}{% if p.is_reversed %}<span class="sub">{% badge 'Reversed' 'muted' %} {{ p.reversal_reason }}</span>{% endif %}</td>
+      <td class="num">{{ p.gross|money_exact:currency }}</td><td class="num">{{ p.materials|money_exact:currency }}</td><td class="num">{{ p.cis_deduction|money_exact:currency }}<span class="sub">{{ p.cis_rate|floatformat:"-2" }}%</span></td>
+      <td class="num">{% if p.reverse_charge %}RC{% else %}{{ p.vat|money_exact:currency }}{% endif %}</td><td class="num"><strong>{{ p.net|money_exact:currency }}</strong></td>
+      <td><a class="btn sm" style="min-height:44px" href="{% url 'subpay_advice' org.slug project.pk p.pk %}" target="_blank" rel="noopener">{% icon 'download' %} Advice</a>
+      {% if can_reverse and not p.is_reversed %}<details class="small" style="margin-top:6px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer">Reverse</summary><form method="post" data-confirm="Reverse this payment? It stays on record, struck through, and its cost ledger entry is reversed.">{% csrf_token %}<input type="hidden" name="action" value="reverse_payment"><input type="hidden" name="payment" value="{{ p.pk }}">{% with form=reversal_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Reverse payment</button></div></form></details>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<p class="small dim">Nothing paid yet.</p>{% endif %}
+    {% if can_pay %}<details{% if payment_form.is_bound %} open{% endif %} style="margin-top:12px"><summary class="btn primary" style="min-height:44px">{% icon 'plus' %} Record a payment</summary>
+      {% if projected %}<div class="table-wrap" style="margin-top:12px"><table class="t figures"><caption class="small dim" style="text-align:left">Paying everything still due now would be:</caption><tbody>
+        <tr><td>Gross due (ex VAT)</td><td class="num">{{ projected.gross|money_exact:currency }}</td></tr>
+        <tr><td>Materials</td><td class="num">{{ projected.materials|money_exact:currency }}</td></tr>
+        <tr><td>Labour</td><td class="num">{{ projected.labour|money_exact:currency }}</td></tr>
+        <tr><td>CIS deduction at {{ projected.cis_rate|floatformat:"-2" }}%<span class="sub">{{ tax.get_cis_status_display }}</span></td><td class="num">−{{ projected.cis|money_exact:currency }}</td></tr>
+        <tr><td>{% if projected.reverse_charge %}VAT: reverse charge, we account for it{% else %}VAT at {{ projected.vat_rate|floatformat:"-2" }}%{% endif %}</td><td class="num">{{ projected.vat|money_exact:currency }}</td></tr>
+        <tr class="sum"><th>Net payable</th><th class="num">{{ projected.net|money_exact:currency }}</th></tr>
+      </tbody></table></div>{% endif %}
+      <p class="small"><strong>{{ hmrc_check }}</strong> CIS status on file: {% badge tax.get_cis_status_display tax.cis_tone %}{% if tax.verified_on %} verified {{ tax.verified_on|date:"j M Y" }}{% endif %}.</p>
+      <form method="post" style="margin-top:12px">{% csrf_token %}<input type="hidden" name="action" value="payment">{% with form=payment_form %}{% include "partials/form_fields.html" %}{% endwith %}<p class="small dim">The gross amount posts to the cost ledger as an actual cost on the order's cost code (CIS is a tax deduction, not a saving). Part payments are fine.</p><div class="form-actions"><button class="btn primary">Record payment</button></div></form></details>{% endif %}
+  </div></div>
+</div>
+
+<div class="stack">
+  <div class="card"><div class="card-head"><h2>Sum due</h2></div><div class="card-body"><dl class="dl">
+    <dt>Notified sum</dt><dd class="mono"><strong>{{ app.notified_sum|money_exact:currency }}</strong> ex VAT</dd>
+    <dt>Based on</dt><dd class="small">{% if app.basis == 'pay_less' %}{% if staff %}our{% else %}the{% endif %} pay less notice{% elif app.basis == 'payment_notice' %}{% if staff %}our{% else %}the{% endif %} payment notice{% elif app.stands_as_notified %}the application: no payment notice in time (s110B){% else %}the application, until a payment notice is given{% endif %}</dd>
+    {% if app.discount %}<dt>Less discount {{ app.discount_percent|floatformat:"-2" }}%</dt><dd class="mono">−{{ app.discount|money_exact:currency }}</dd>{% endif %}
+    <dt>Paid (gross)</dt><dd class="mono">{{ app.paid_gross|money_exact:currency }}</dd>
+    <dt>Still to pay (gross)</dt><dd class="mono{% if app.is_overdue %} overdue{% endif %}">{{ app.outstanding|money_exact:currency }}</dd>
+    <dt>VAT</dt><dd class="small">{% if app.reverse_charge %}Domestic reverse charge: no VAT is added; {% if staff %}we account{% else %}{{ org.name }} accounts{% endif %} for it{% else %}{{ app.vat_rate|floatformat:"-2" }}% added to each payment{% endif %}</dd>
+  </dl>
+  {% if app.reverse_charge %}<p class="small">{% badge 'Advisory' 'warn' %} {{ reverse_charge_note }}</p>{% endif %}
+  {% if can_materials %}<details style="margin-top:8px"{% if materials_form.is_bound %} open{% endif %}><summary class="btn sm" style="min-height:44px">Adjust materials for CIS</summary>
+    <form method="post" style="margin-top:10px">{% csrf_token %}<input type="hidden" name="action" value="materials">{% with form=materials_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Save materials</button></div></form></details>{% endif %}
+  </div></div>
+  <div class="card"><div class="card-head"><h2>Payment dates</h2>{% badge 'Advisory' 'warn' %}</div><div class="card-body">
+    {% for c in clocks %}<div class="row" style="align-items:flex-start;margin-bottom:10px">{% badge c.label c.tone %}<div><strong>{{ c.deadline|date:"D j M Y" }}</strong> {% if staff %}<span class="{% if c.is_late %}overdue{% endif %}">{{ c.message }}</span> <span class="small dim">({{ c.clause }})</span>{% endif %}</div></div>{% endfor %}
+    <p class="small dim">{{ advisory }} Days leave out Christmas Day, Good Friday and {{ app.subcontract.get_region_display }} bank holidays.</p>
+  </div></div>
+</div>
+</div>
+{% endblock %}

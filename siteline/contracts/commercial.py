@@ -34,6 +34,8 @@ def commercial_context(request, project, sub, **extra):
         from costs.access import can_view_costs  # Costs: the job's PM or QS, owners and admins only
         if can_view_costs(request, project):
             ctx['commercial_nav'].append(('costs', 'Costs', reverse('cost_report', args=[org, pk])))
+            # Sub payments: the same people as Costs (subpayments/access.py)
+            ctx['commercial_nav'].append(('subpayments', 'Sub payments', reverse('subpay_list', args=[org, pk])))
         ctx['commercial_sub'] = sub
     return ctx
 

@@ -57,13 +57,11 @@ def seed(*, leeds, pm, owner, demo_pdf=None):
                                  description='Scissor lift and towers, 8 weeks', order_date=today - timedelta(days=26))
     mats = services.place_order(leeds, pm, codes['400'], 'Travis Perkins', Decimal('11250'), reference='PO-1047',
                                 description='Timber, fixings and sundries', order_date=today - timedelta(days=21))
-    inv = ContentFile(demo_pdf('Invoice 88213', 'Lund Joinery Ltd · Valuation 1'), name='lund-88213.pdf') \
-        if demo_pdf else None
-    services.record_actual(leeds, pm, codes['220'], 'INVOICE', 'Lund Joinery Ltd', Decimal('62000'),
-                           reference='88213', cost_date=today - timedelta(days=4), description='Valuation 1',
-                           commitment=join_order, file=inv)
+    # Lund Joinery's valuations are paid through Sub payments (subpayments/demo.py), which posts
+    # their actual cost, so no invoice is entered here against their order (it would count twice).
+    inv = ContentFile(demo_pdf('Invoice SH-55120', 'Speedy Hire'), name='speedy-55120.pdf') if demo_pdf else None
     services.record_actual(leeds, pm, codes['500'], 'INVOICE', 'Speedy Hire', Decimal('2150'), reference='SH-55120',
-                           cost_date=today - timedelta(days=12), commitment=plant)
+                           cost_date=today - timedelta(days=12), commitment=plant, file=inv)
     services.record_actual(leeds, pm, codes['400'], 'INVOICE', 'Travis Perkins', Decimal('4380.12'),
                            reference='TP-771904', cost_date=today - timedelta(days=9), commitment=mats)
     services.record_actual(leeds, pm, codes['300'], 'TIMESHEET', 'Site joiners (2)', Decimal('8640'),
