@@ -65,11 +65,15 @@ class Preset:
     # The Scheme itself (Part II para 4(b)): an interim payment falls due on the later of the period's due
     # date and the day the claim is made. Only the real Scheme sets it; bespoke terms that borrow its periods don't.
     is_scheme: bool = False
+    # The payment cycle runs from a monthly valuation (or NEC assessment) date, so the contract needs its day
+    # of the month: JCT IC, ICD, SBC and DB (Interim Valuation Dates) and NEC4 (assessment dates). Never
+    # defaulted: it comes from the Contract Particulars or Contract Data.
+    valuation_dates: bool = False
 
     def values(self):
         """The MainContract fields this preset fills."""
         d = asdict(self)
-        for name in ('label', 'note', 'is_scheme'):
+        for name in ('label', 'note', 'is_scheme', 'valuation_dates'):
             d.pop(name)
         return d
 
@@ -77,7 +81,7 @@ class Preset:
 _MW = dict(due_date_offset_days=0, final_date_offset_days=14, pay_less_notice_days=5,
            retention_percent=Decimal('5'), defects_period_months=3)
 _JCT = dict(due_date_offset_days=7, final_date_offset_days=14, pay_less_notice_days=5,
-            retention_percent=Decimal('3'), defects_period_months=6)
+            retention_percent=Decimal('3'), defects_period_months=6, valuation_dates=True)
 # IC/ICD: interim certificates are for 95% of the value before Practical Completion unless the
 # Contract Particulars state another percentage, i.e. 5% retention. Default confirmed by the product
 # owner (30 Oct 2026) for the 2016 and 2024 editions.
@@ -100,7 +104,7 @@ PRESETS = {
     'JCT_SBC': Preset('JCT Standard Building Contract', **_JCT),
     'JCT_DB': Preset('JCT Design and Build', **_JCT),
     'NEC4_ECC': Preset('NEC4 ECC with Option Y(UK)2', due_date_offset_days=7, final_date_offset_days=14,
-                       pay_less_notice_days=7, payment_notice_days=0, lads_period='DAY',
+                       pay_less_notice_days=7, payment_notice_days=0, lads_period='DAY', valuation_dates=True,
                        note='Assessment dates at intervals of no more than five weeks. Retention only under '
                             'Option X16; the defects date is in Contract Data.'),
     'BESPOKE': BESPOKE,
@@ -110,6 +114,11 @@ PRESETS = {
 def preset_for(form):
     """The standard terms for a MainContract.form value; the Scheme for anything unknown."""
     return PRESETS.get(form, SCHEME)
+
+
+def uses_valuation_dates(form):
+    """True when this form's payment cycle runs from a monthly valuation or assessment date."""
+    return preset_for(form).valuation_dates
 
 
 def valuation_date_in(year, month, day):

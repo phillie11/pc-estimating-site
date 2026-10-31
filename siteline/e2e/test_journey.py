@@ -273,6 +273,8 @@ class JourneyTest(TestCase):
             self.assertEqual(badge, len(out[who]) + extra, f'badge for {who} after phase {n}')
         expected = {who: set() for who in out}
         expected.update(self.EXPECTED_NEEDS.get(n, {}))
+        if 5 <= n <= 9:  # from the contract's valuation day until AP-001 goes in
+            expected['pm'] = expected.get('pm', set()) | {self.ap_due()}
         self.assertEqual(out, expected, f'Needs me after phase {n}')
 
     # Needs me for every role once each phase has finished (diary days aside, checked by count above).
@@ -283,6 +285,10 @@ class JourneyTest(TestCase):
         10: {'client': {('transmittal', 'TR-001')}},
         11: {'client': {('transmittal', 'TR-001')}},
     }
+
+    def ap_due(self):
+        """The PM's prompt to submit this month's application: the valuation day is today's day of the month."""
+        return ('payment', f'Application for payment for {TODAY().day} {TODAY():%b %Y}')
 
     # 1 -----------------------------------------------------------------
 
@@ -469,11 +475,18 @@ class JourneyTest(TestCase):
         data.update({'form': 'JCT_IC', 'edition': '2016', 'contract_sum': '250000.00', 'retention_percent': '',
                      'valuation_day': '', 'due_date_offset_days': '', 'final_date_offset_days': '',
                      'pay_less_notice_days': '', 'payment_notice_days': '', 'defects_period_months': ''})
+        # JCT IC pays from Interim Valuation Dates, so the day of the month is needed and never guessed
+        r = self.post('pm', self.pu('contract_edit'), data, status=200)
+        self.assertIn('Enter the valuation day', text(r))
+        data['valuation_day'] = str(TODAY().day)
         r = self.post('pm', self.pu('contract_edit'), data, follow=True, status=200)
         page = text(r)
         self.assertIn('Contract set up', page)
         self.assertIn('JCT Intermediate', page)
         self.assertIn('advisory', page.lower())
+        self.assertIn(f'Day {TODAY().day} of each month', page)
+        # With the day set, this month's application is on the PM's Needs me
+        self.assertNeeds('pm', {self.ap_due()})
         # Budget from the tender: 250,000 less 10% = 225,000, spread over codes
         r = self.get('pm', self.pu('cost_budget_setup'))
         codes = r.context['form'].codes
@@ -507,7 +520,7 @@ class JourneyTest(TestCase):
     # 6 -----------------------------------------------------------------
 
     def phase6_procurement(self):
-        self.assertNeeds('pm', set())
+        self.assertNeeds('pm', {self.ap_due()})
         self.assertNeeds('sub', set())
         # A schedule line from the package: required on site in 4 weeks + 3 days, 4 weeks' lead time
         r = self.get('pm', self.pu('procurement_line_create') + f'?package={self.pkg_oak.pk}')
@@ -520,7 +533,7 @@ class JourneyTest(TestCase):
         self.assertIn('Joinery', page)
         self.assertIn('Oak & Ash Joinery', page)
         # Order-by is within a week, so it is on the PM's Needs me
-        self.assertNeeds('pm', {('order_by', 'Order Joinery')})
+        self.assertNeeds('pm', {('order_by', 'Order Joinery'), self.ap_due()})
         self.get('client', self.pu('procurement_schedule'), status=403)  # clients see nothing of procurement
 
         # The sub sees the line coming up in their portal and sends shop drawings
@@ -534,7 +547,7 @@ class JourneyTest(TestCase):
         page = text(self.get('pm', sub_url))
         self.assertIn('SUB-001', page)
         self.assertIn('bar-front-shop-dwg.pdf', page)
-        self.assertNeeds('pm', {('order_by', 'Order Joinery'), ('submittal', 'SUB-001')})
+        self.assertNeeds('pm', {('order_by', 'Order Joinery'), ('submittal', 'SUB-001'), self.ap_due()})
         self.assertNeeds('sub', set())
 
         # C: revise and resubmit, which puts the ball back with the sub
@@ -544,7 +557,7 @@ class JourneyTest(TestCase):
         page = text(self.get('sub', sub_url))
         self.assertIn('Show the LED channel detail', page)
         self.assertNeeds('sub', {('submittal', 'SUB-001')})
-        self.assertNeeds('pm', {('order_by', 'Order Joinery')})
+        self.assertNeeds('pm', {('order_by', 'Order Joinery'), self.ap_due()})
         # Can't order while a submittal waits for an A or B
         r = self.post('pm', reverse('procurement_line', args=[self.org.slug, self.pk, line_id]),
                       {'action': 'ordered'}, follow=True, status=200)
@@ -560,7 +573,7 @@ class JourneyTest(TestCase):
         self.assertIn('Approved', text(self.get('pm', self.pu('procurement_schedule'))))
         self.post('pm', reverse('procurement_line', args=[self.org.slug, self.pk, line_id]), {'action': 'ordered'})
         self.assertIn('Ordered', text(self.get('pm', self.pu('procurement_schedule'))))
-        self.assertNeeds('pm', set())
+        self.assertNeeds('pm', {self.ap_due()})
 
     # 7 -----------------------------------------------------------------
 
@@ -577,7 +590,7 @@ class JourneyTest(TestCase):
         missing = self._diary_missing()
         badge, items = self.needs('pm')
         self.assertEqual({i for i in items if i[0] == 'diary_missing'}, missing)
-        self.assertEqual(badge, len(missing))
+        self.assertEqual(badge, len(missing) + 1)  # and this month's application
         self.assertEqual(self.needs('owner')[0], 0)
         self.get('sub', self.pu('diary_register'), status=403)
         self.get('client', self.pu('diary_register'), status=403)
@@ -737,12 +750,12 @@ class JourneyTest(TestCase):
         # Forecast final account on the overview: 250,000 + 6,000
         self.assertIn('256,000', text(self.get('pm', self.pu('contract_detail'))))
         # The answered RFI and the change event wait on the PM until closed out
-        self.assertNeeds('pm', {('rfi', 'RFI-001'), ('change', 'CE-001')})
+        self.assertNeeds('pm', {('rfi', 'RFI-001'), ('change', 'CE-001'), self.ap_due()})
         self.post('pm', self.pu('rfi_detail', rfi.pk), {'action': 'close'})
         for step in ('notify', 'quote', 'agree', 'implement'):
             self.post('pm', ce_url, {'action': step})
         self.assertIn('Implemented', text(self.get('pm', ce_url)))
-        self.assertNeeds('pm', set())
+        self.assertNeeds('pm', {self.ap_due()})
 
     # 10 ----------------------------------------------------------------
 
@@ -759,7 +772,9 @@ class JourneyTest(TestCase):
         for figure in ('AP-001', 'Draft', '£66,000.00', '−£3,300.00', '£62,700.00', '£12,540.00', '£75,240.00'):
             self.assertIn(figure, page)
         self.get('client', ap_url, status=404)  # a draft is ours
+        self.assertNeeds('pm', {('payment', 'AP-001')})  # this month's prompt now points at the draft
         self.post('pm', ap_url, {'action': 'submit'})
+        self.assertNeeds('pm', set())
         self.assertIn('Application for payment AP-001 submitted to you',
                       text(self.get('client', self.u('notifications'))))
         self.assertIn(('payment', 'AP-001'), self.needs('client')[1])

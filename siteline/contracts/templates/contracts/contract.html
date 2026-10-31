@@ -26,7 +26,7 @@
   <div class="card"><div class="card-head"><h2>Payment terms</h2></div><div class="card-body">
     <p class="small">{% badge 'Advisory' 'warn' %} {{ advisory }} These start from the standard {{ contract.preset.label }} terms; the Contract Particulars and any amendments override them.</p>
     <dl class="dl">
-      <dt>{{ vocab.valuation_date|capfirst }}</dt><dd>{% if contract.valuation_day %}Day {{ contract.valuation_day }} of each month{% else %}—{% endif %}</dd>
+      <dt>{{ vocab.valuation_date|capfirst }}</dt><dd>{% if contract.valuation_day %}Day {{ contract.valuation_day }} of each month{% elif contract.needs_valuation_day %}{% badge 'Not set' 'warn' %} <a href="{% url 'contract_edit' org.slug project.pk %}#id_valuation_day">Set the valuation day</a><br><span class="small dim">Needed for reminders to submit applications for payment.</span>{% else %}—{% endif %}</dd>
       <dt>Due date</dt><dd>{% if contract.due_date_offset_days is not None %}{{ contract.due_date_offset_days }} day{{ contract.due_date_offset_days|pluralize }} after the {{ vocab.valuation_date }}{% else %}—{% endif %}</dd>
       <dt>Final date for payment</dt><dd>{% if contract.final_date_offset_days is not None %}{{ contract.final_date_offset_days }} days after the due date{% else %}—{% endif %}</dd>
       <dt>Pay less notice</dt><dd>{% if contract.pay_less_notice_days is not None %}No later than {{ contract.pay_less_notice_days }} days before the final date{% else %}—{% endif %}</dd>

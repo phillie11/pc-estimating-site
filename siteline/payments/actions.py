@@ -7,6 +7,8 @@ Contractor (owners, admins and the job's PM; the PM only when the job has one):
   - an application due to be submitted: a valuation date within the next 7 days, or passed,
     with nothing submitted for it (a draft is pointed to so it can be finished)
   - payment overdue: the final date for payment has passed with money outstanding
+  - set the valuation day: the contract pays from a monthly valuation (assessment) date but has no
+    day saved (one set up before the day was required), so no application could be prompted
 Payer (the project's client, or the consultant named on the contract as administrator):
   - an application to respond to: give the payment notice, by its deadline
   - the pay less deadline approaching (while a pay less notice can still be given)
@@ -62,6 +64,16 @@ def _contractor(request):
     out = []
     for p in jobs:
         contract = contracts.get(p.pk)
+        if contract is not None and contract.needs_valuation_day:
+            # No day, no application prompts: ask for the day itself (a contract saved before it was required)
+            out.append(Item(
+                kind='payment', title=f'Set the valuation day for {p.name}',
+                url=reverse('contract_edit', args=[request.org.slug, p.pk]) + '#id_valuation_day', project=p,
+                action='Enter the day from the contract', status_label='Not set', tone='warn',
+                detail=f'{contract.form_label}: reminders to submit applications start once the '
+                       f'{contract.vocabulary["valuation_date"]} day is set',
+                kind_label='Contract set-up', key=f'valuation-day:{p.pk}'))
+            continue
         if contract is None or not contract.valuation_day:
             continue
         for valuation in rules.submission_window(contract.valuation_day, today, WARN_DAYS):

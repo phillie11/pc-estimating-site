@@ -416,6 +416,62 @@ class NeedsMeTests(PaymentsTestBase):
         self.assertContains(self.client.get(self.url('needs_me')), 'Give your payment notice')
 
 
+class ValuationDayNeedsMeTests(PaymentsTestBase):
+    """A contract saved before the valuation day was required: the PM is asked to set it, linking to the set-up."""
+
+    def items(self, user, org=None):
+        with org_context(org or self.org_a):
+            return payment_actions.items(self.request_for(user, org=org))
+
+    def clear_day(self, form='JCT_IC'):
+        with org_context(self.org_a):
+            MainContract.objects.filter(pk=self.contract.pk).update(valuation_day=None, form=form)
+
+    def test_pm_is_asked_to_set_the_day(self):
+        self.clear_day()
+        got = self.items(self.pat)
+        self.assertEqual([(i.kind, i.title, i.url, i.due) for i in got],
+                         [('payment', 'Set the valuation day for Alpha job',
+                           self.url('contract_edit', self.pa.pk) + '#id_valuation_day', None)])
+        # Nobody else: not other staff, not the owner (the job has a PM), not the client or the sub
+        for user in (self.stan, self.alice, self.carla, self.sid):
+            self.assertEqual(self.items(user), [], user)
+        # On the Needs me page, and the link opens the set-up for the PM
+        self.login(self.pat)
+        r = self.client.get(self.url('needs_me'))
+        self.assertContains(r, 'Set the valuation day for Alpha job')
+        self.assertEqual(self.client.get(self.url('contract_edit', self.pa.pk)).status_code, 200)
+
+    def test_owner_is_asked_when_the_job_has_no_pm(self):
+        self.clear_day()
+        with org_context(self.org_a):
+            Project.objects.filter(pk=self.pa.pk).update(manager=None)
+        self.assertEqual([i.title for i in self.items(self.alice)], ['Set the valuation day for Alpha job'])
+
+    def test_cleared_once_the_day_is_set(self):
+        self.clear_day()
+        self.login(self.pat)
+        data = {'form': 'JCT_IC', 'edition': '2016', 'lads_period': 'WEEK', 'retention_released_at_pc_percent': '50',
+                'bank_holiday_region': 'england-and-wales', 'client_response_days': '14',
+                'valuation_day': str(min(timezone.localdate().day, 28))}
+        self.assertEqual(self.client.post(self.url('contract_edit', self.pa.pk), data).status_code, 302)
+        titles = [i.title for i in self.items(self.pat)]
+        self.assertFalse(any(t.startswith('Set the valuation day') for t in titles))
+        self.assertTrue(any(t.startswith('Application for payment') for t in titles))
+
+    def test_forms_without_valuation_dates_are_not_flagged(self):
+        self.clear_day(form='JCT_MW')
+        self.assertEqual(self.items(self.pat), [])
+
+    def test_another_company_never_sees_it(self):
+        self.clear_day()
+        self.assertEqual(self.items(self.bob, org=self.org_b), [])
+        self.login(self.bob)
+        self.assertEqual(self.client.get(self.url('contract_edit', self.pa.pk)).status_code, 404)
+        r = self.client.get(self.url('needs_me', org=self.org_b))
+        self.assertNotContains(r, 'Set the valuation day')
+
+
 class PdfTests(PaymentsTestBase):
     def test_pdf_is_a_pdf_with_the_letterhead(self):
         a = self.make(submit=True)

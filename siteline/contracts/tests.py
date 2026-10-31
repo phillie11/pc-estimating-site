@@ -217,7 +217,7 @@ class ContractViewTests(CommercialTestBase):
         self.login(self.pat)
         self.client.post(self.url('contract_edit', self.pa.pk), {
             'form': 'NEC4_ECC', 'nec_main_option': 'A', 'lads_period': 'WEEK', 'bank_holiday_region': 'scotland',
-            'client_response_days': '10', 'retention_released_at_pc_percent': '50'})
+            'client_response_days': '10', 'retention_released_at_pc_percent': '50', 'valuation_day': '25'})
         with org_context(self.org_a):
             c = MainContract.objects.get(project=self.pa)
         self.assertEqual((c.lads_period, c.bank_holiday_region, c.client_response_days), ('DAY', 'scotland', 10))
@@ -279,3 +279,67 @@ class ContractTenancyTests(CommercialTestBase):
     def test_no_org_context_fails_closed(self):
         with self.assertRaises(TenantContextMissing):
             MainContract.objects.count()
+
+
+class ValuationDayTests(CommercialTestBase):
+    """JCT IC, ICD, SBC, DB and NEC4 pay from a monthly valuation (assessment) date: the day is required, never guessed."""
+    TABLE = {'JCT_MW': False, 'JCT_MWD': False, 'JCT_IC': True, 'JCT_ICD': True, 'JCT_SBC': True, 'JCT_DB': True,
+             'NEC4_ECC': True, 'BESPOKE': False}
+
+    def post(self, form, **extra):
+        data = {'form': form, 'edition': '2016' if form.startswith('JCT_') else '', 'nec_main_option': 'A',
+                'lads_period': 'WEEK', 'retention_released_at_pc_percent': '50',
+                'bank_holiday_region': 'england-and-wales', 'client_response_days': '14', **extra}
+        return self.client.post(self.url('contract_edit', self.pa.pk), data)
+
+    def test_table(self):
+        self.assertEqual(set(self.TABLE), {code for code, _ in MainContract.FORM_CHOICES})
+        for form, needed in self.TABLE.items():
+            with self.subTest(form=form):
+                self.assertIs(presets.uses_valuation_dates(form), needed)
+        self.assertNotIn('valuation_day', presets.preset_for('JCT_IC').values())  # never defaulted
+
+    def test_required_on_set_up_and_on_save(self):
+        self.login(self.pat)
+        for form, needed in self.TABLE.items():
+            with self.subTest(form=form):
+                r = self.post(form)
+                if needed:
+                    self.assertEqual(r.status_code, 200)
+                    self.assertContains(r, 'Enter the valuation day')
+                    with org_context(self.org_a):
+                        self.assertFalse(MainContract.objects.exists())
+                else:
+                    self.assertEqual(r.status_code, 302)
+                    with org_context(self.org_a):
+                        MainContract.objects.all().delete()
+        r = self.post('JCT_IC', valuation_day='25')
+        self.assertEqual(r.status_code, 302)
+        with org_context(self.org_a):
+            self.assertEqual(MainContract.objects.get(project=self.pa).valuation_day, 25)
+        # Saving it again without the day is refused too
+        r = self.post('JCT_IC', valuation_day='')
+        self.assertContains(r, 'Enter the valuation day')
+        with org_context(self.org_a):
+            self.assertEqual(MainContract.objects.get(project=self.pa).valuation_day, 25)
+
+    def test_help_text_on_the_form(self):
+        self.login(self.pat)
+        r = self.client.get(self.url('contract_edit', self.pa.pk))
+        self.assertContains(r, 'Interim Valuation Dates in the JCT Contract Particulars')
+
+    def test_out_of_range_day_is_refused_once(self):
+        self.login(self.pat)
+        r = self.post('JCT_IC', valuation_day='32')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'Enter the valuation day')  # the range error, not a second message
+
+    def test_contract_page_asks_for_a_missing_day(self):
+        with org_context(self.org_a):
+            c = MainContract.objects.create(project=self.pa, form='JCT_IC')
+            self.assertTrue(c.needs_valuation_day)
+            self.assertFalse(MainContract(form='JCT_MW').needs_valuation_day)
+        self.login(self.pat)
+        r = self.client.get(self.url('contract_detail', self.pa.pk))
+        self.assertContains(r, 'Set the valuation day')
+        self.assertContains(r, self.url('contract_edit', self.pa.pk))
