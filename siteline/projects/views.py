@@ -37,6 +37,23 @@ def use_section(request, section):
     return section
 
 
+def count_together(**querysets):
+    """
+    {name: COUNT(*)} for several querysets in one database query, each as a scalar subquery. The
+    querysets keep their tenant filter (it is compiled into each subquery).
+    """
+    from django.db.models import F, Func, IntegerField, Subquery
+    from django.db.models.functions import Coalesce
+    from tenancy.models import Organization
+    from tenancy.context import get_current_org
+    annotations = {
+        f'n_{name}': Coalesce(Subquery(qs.order_by().annotate(_n=Func(F('pk'), function='COUNT'))
+                                       .values('_n')[:1], output_field=IntegerField()), 0)
+        for name, qs in querysets.items()}
+    row = Organization.objects.filter(pk=get_current_org().pk).annotate(**annotations).values(*annotations).get()
+    return {name: row[f'n_{name}'] for name in querysets}
+
+
 def project_context(request, project, tab, **extra):
     """
     Context every project tab needs: the project, tabs and badge counts.
@@ -76,18 +93,21 @@ def project_context(request, project, tab, **extra):
         task_qs = task_qs.filter(assignee=request.user)
         issue_qs = issue_qs.filter(assignee=request.user, status=Issue.STATUS_OPEN)
     tabs.append(('programme', 'Programme', url('programme'), None))
+    # The tab badges, counted together in one query (they're on every project page)
+    from variations.models import Variation
+    open_pkgs = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES)
+    badges = count_together(
+        quoted=open_pkgs.filter(status=Package.QUOTED), open_pkgs=open_pkgs, rfis=rfi_qs, issues=issue_qs,
+        tasks=task_qs, vos=Variation.objects.filter(project=project, status=Variation.STATUS_SUBMITTED))
     if internal:
-        open_pkgs = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES)
-        tabs.append(('packages', 'Packages', url('package_list'), open_pkgs.filter(status=Package.QUOTED).count()))
-        if open_pkgs.exists():
+        tabs.append(('packages', 'Packages', url('package_list'), badges['quoted']))
+        if badges['open_pkgs']:
             tabs.append(('tender', 'Sub tenders', url('tender'), None))
-    tabs.append(('rfis', 'RFIs', url('rfi_list'), rfi_qs.count()))
+    tabs.append(('rfis', 'RFIs', url('rfi_list'), badges['rfis']))
     if can_see_variations(request):
-        from variations.models import Variation
-        vo_qs = Variation.objects.filter(project=project, status=Variation.STATUS_SUBMITTED)
         # Staff: one Commercial tab (contract, change register, client variations; contracts/commercial.py)
-        tabs.append(('commercial', 'Commercial', url('contract_detail'), vo_qs.count()) if internal else
-                    ('variations', 'Variations', url('variation_list'), vo_qs.count()))
+        tabs.append(('commercial', 'Commercial', url('contract_detail'), badges['vos']) if internal else
+                    ('variations', 'Variations', url('variation_list'), badges['vos']))
     from payments.access import client_tab  # the client's applications for payment, under Decisions
     payments_tab = client_tab(request, project)
     if payments_tab:
@@ -109,8 +129,8 @@ def project_context(request, project, tab, **extra):
         if can_use_diary(request, project):
             tabs.append(('diary', 'Diary', url('diary_register'), None))
     tabs += [
-        ('issues', 'Snags & issues', url('issue_list'), issue_qs.count()),
-        ('tasks', 'Tasks', url('task_list'), task_qs.count()),
+        ('issues', 'Snags & issues', url('issue_list'), badges['issues']),
+        ('tasks', 'Tasks', url('task_list'), badges['tasks']),
         ('documents', 'Documents', url('document_list'), None),
         ('team', 'Team', url('project_team'), None),
     ]
@@ -252,27 +272,27 @@ def project_detail(request, org_slug, pk):
     rfis = RFI.objects.filter(project=project)
     if not internal:
         rfis = rfis.filter(visibility=RFI.VIS_SHARED)
-    stats = {
-        'rfis_open': rfis.filter(status=RFI.STATUS_OPEN).count(),
-        'rfis_overdue': rfis.filter(status=RFI.STATUS_OPEN, due_date__lt=timezone.localdate()).count(),
-        'tasks_open': Task.objects.filter(project=project, **({} if internal else {'assignee': request.user}))
-        .exclude(status=Task.STATUS_DONE).count(),
-        'issues_open': Issue.objects.filter(project=project, **({} if internal else {'assignee': request.user,
-                                                                                      'status': Issue.STATUS_OPEN}))
-        .exclude(status=Issue.STATUS_CLOSED).count(),
-        'docs': visible_documents(request, project).count(),
-    }
+    vos = Variation.objects.filter(project=project)
+    at_risk = vos.filter(proceed_at_risk=True).exclude(status__in=[Variation.STATUS_APPROVED,
+                                                                   Variation.STATUS_WITHDRAWN])
+    stats = count_together(  # one query for the five tiles (and the variations at risk, for staff)
+        rfis_open=rfis.filter(status=RFI.STATUS_OPEN),
+        rfis_overdue=rfis.filter(status=RFI.STATUS_OPEN, due_date__lt=timezone.localdate()),
+        tasks_open=Task.objects.filter(project=project, **({} if internal else {'assignee': request.user}))
+        .exclude(status=Task.STATUS_DONE),
+        issues_open=Issue.objects.filter(project=project, **({} if internal else {'assignee': request.user,
+                                                                                   'status': Issue.STATUS_OPEN}))
+        .exclude(status=Issue.STATUS_CLOSED),
+        docs=visible_documents(request, project),
+        **({'at_risk': at_risk} if internal else {}))
     commercial = None
     if internal:
-        vos = Variation.objects.filter(project=project)
-        approved = vos.filter(status=Variation.STATUS_APPROVED).aggregate(
-            s=Sum('approved_value'))['s'] or Decimal('0')
-        pending = vos.filter(status=Variation.STATUS_SUBMITTED).aggregate(s=Sum('value'))['s'] or Decimal('0')
+        sums = vos.aggregate(approved=Sum('approved_value', filter=Q(status=Variation.STATUS_APPROVED)),
+                             pending=Sum('value', filter=Q(status=Variation.STATUS_SUBMITTED)))
+        approved, pending = sums['approved'] or Decimal('0'), sums['pending'] or Decimal('0')
         commercial = {
             'contract': project.value or Decimal('0'), 'approved': approved, 'pending': pending,
-            'forecast': (project.value or Decimal('0')) + approved,
-            'at_risk': vos.filter(proceed_at_risk=True).exclude(
-                status__in=[Variation.STATUS_APPROVED, Variation.STATUS_WITHDRAWN]).count(),
+            'forecast': (project.value or Decimal('0')) + approved, 'at_risk': stats.pop('at_risk'),
         }
     activity = project.activity.select_related('actor')
     if not internal:

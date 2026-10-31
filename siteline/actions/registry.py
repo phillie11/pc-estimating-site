@@ -171,5 +171,6 @@ def request_for(user, membership):
 
 def invalidate(request):
     """Forget the cached list (after an action changed what is waiting)."""
-    if hasattr(request, '_needs_me'):
-        del request._needs_me
+    for attr in ('_needs_me', '_needs_me_portal_ids'):
+        if hasattr(request, attr):
+            delattr(request, attr)

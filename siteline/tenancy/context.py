@@ -64,3 +64,41 @@ def unscoped():
     finally:
         _unscoped.reset(flag)
         _current_org.reset(token)
+
+
+# ---------------------------------------------------------------------------
+# Per-request memo
+# ---------------------------------------------------------------------------
+# Lookups many parts of one page repeat (which companies a subcontractor represents on each
+# project, the jobs a PM runs) are worked out once per request. TenantMiddleware opens the memo
+# for each request and closes it afterwards; outside a request (jobs, commands, tests calling a
+# function directly) nothing is remembered. Any save or delete of a TenantModel clears it
+# (tenancy.apps), so a request that changes something never reads a value from before the change.
+
+_request_memo = contextvars.ContextVar('tenancy_request_memo', default=None)
+
+
+def request_memo(key, compute):
+    """compute(), remembered for the rest of this request under key (a tuple naming what it is)."""
+    memo = _request_memo.get()
+    if memo is None:
+        return compute()
+    org = _current_org.get()
+    key = (getattr(org, 'pk', None), *key)
+    if key not in memo:
+        memo[key] = compute()
+    return memo[key]
+
+
+def open_request_memo():
+    return _request_memo.set({})
+
+
+def close_request_memo(token):
+    _request_memo.reset(token)
+
+
+def clear_request_memo(**kwargs):
+    memo = _request_memo.get()
+    if memo:
+        memo.clear()

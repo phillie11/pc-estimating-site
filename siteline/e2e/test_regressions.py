@@ -116,3 +116,32 @@ class BidderJoiningIsStaffOnlyTests(TestCase):
         staff.force_login(self.owner, backend='django.contrib.auth.backends.ModelBackend')
         self.assertIn('Bea Bidder', staff.get(reverse('project_team', args=[self.org.slug, self.project.pk]))
                       .content.decode())
+
+
+class RfiRegisterPagesTests(TestCase):
+    """
+    Performance defect: the company RFI register rendered every live RFI on one page (2,250 rows and
+    over two seconds for a company two years in). It now shows 100 a page, soonest due first.
+    """
+
+    def test_register_is_paged(self):
+        from rfis.models import RFI
+        from rfis.views import REGISTER_PAGE
+        owner = User.objects.create_user(email='o@r.test', password=PW, full_name='Owner')
+        org = create_organization('Regress Fitout', owner)
+        today = timezone.localdate()
+        with org_context(org):
+            project = Project.objects.create(name='Big job', stage=Project.STAGE_LIVE)
+            for i in range(REGISTER_PAGE + 5):
+                RFI(project=project, title=f'Question {i:03d}', question='?',
+                    due_date=today + timedelta(days=i)).save(actor=owner)
+        c = Client()
+        c.force_login(owner, backend='django.contrib.auth.backends.ModelBackend')
+        url = reverse('rfi_register', args=[org.slug])
+        first = c.get(url)
+        self.assertEqual(len(first.context['rfis']), REGISTER_PAGE)
+        self.assertContains(first, f'1 to {REGISTER_PAGE} of {REGISTER_PAGE + 5}')
+        self.assertContains(first, 'Question 000')
+        second = c.get(url + '?mine=&page=2')
+        self.assertEqual(len(second.context['rfis']), 5)
+        self.assertContains(second, f'Question {REGISTER_PAGE + 4:03d}')

@@ -142,7 +142,9 @@ class LedgerEntry(AppendOnlyModel):
     class Meta(AppendOnlyModel.Meta):
         ordering = ['date', 'pk']
         verbose_name_plural = 'ledger entries'
-        indexes = [models.Index(fields=['project', 'cost_code', 'kind'], name='costs_ledger_proj_code_kind')]
+        indexes = [models.Index(fields=['project', 'cost_code', 'kind'], name='costs_ledger_proj_code_kind'),
+                   # Many jobs' totals at once (cost margin on Needs me), within the company
+                   models.Index(fields=['organization', 'project', 'kind'], name='costs_ledger_org_proj_kind')]
 
     def __str__(self):
         return f'{self.get_kind_display()} {self.amount} on {self.cost_code_id} ({self.date})'

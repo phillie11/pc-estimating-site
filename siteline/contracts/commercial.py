@@ -46,9 +46,11 @@ def commercial_position(project):
     and paid to date from applications for payment (payments.summary). Staff only.
     """
     from variations.models import Variation
-    vos = Variation.objects.filter(project=project)
-    approved = vos.filter(status=Variation.STATUS_APPROVED).aggregate(s=Sum('approved_value'))['s'] or Decimal('0')
-    pending = vos.filter(status=Variation.STATUS_SUBMITTED).aggregate(s=Sum('value'))['s'] or Decimal('0')
+    from django.db.models import Q
+    sums = Variation.objects.filter(project=project).aggregate(
+        approved=Sum('approved_value', filter=Q(status=Variation.STATUS_APPROVED)),
+        pending=Sum('value', filter=Q(status=Variation.STATUS_SUBMITTED)))
+    approved, pending = sums['approved'] or Decimal('0'), sums['pending'] or Decimal('0')
     contract = project.value or Decimal('0')
     from payments.summary import certified_and_paid
     certified, paid = certified_and_paid(project)

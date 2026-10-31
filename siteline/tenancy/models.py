@@ -520,8 +520,34 @@ class TenantManager(models.Manager.from_queryset(TenantQuerySet)):
         return super().get_queryset()._scoped()
 
 
+class _CurrentOrgDescriptor(models.fields.related_descriptors.ForwardManyToOneDescriptor):
+    """
+    `row.organization` without a query when the row belongs to the current organisation: hand back
+    the organisation already loaded for the request (or job). Every `get_absolute_url()` builds its
+    link from `self.organization.slug` or `self.project.organization.slug`, so without this a list
+    of 50 records ran 50 identical SELECTs on tenancy_organization (one per row, and again for each
+    item behind the Needs me badge on every page).
+    """
+
+    def __get__(self, instance, cls=None):
+        if instance is not None and not self.is_cached(instance):
+            org = get_current_org()
+            if org is not None and org.pk == instance.organization_id:
+                self.field.set_cached_value(instance, org)
+        return super().__get__(instance, cls)
+
+
+class TenantOrganizationField(models.ForeignKey):
+    """The organisation foreign key on every TenantModel. A plain ForeignKey in migrations."""
+    forward_related_accessor_class = _CurrentOrgDescriptor
+
+    def deconstruct(self):
+        name, _path, args, kwargs = super().deconstruct()
+        return name, 'django.db.models.ForeignKey', args, kwargs
+
+
 class TenantModel(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, editable=False, related_name='+')
+    organization = TenantOrganizationField(Organization, on_delete=models.CASCADE, editable=False, related_name='+')
 
     objects = TenantManager()
     # Unscoped escape hatch: admin, webhooks, token lookups, cross-company commands only.
@@ -562,6 +588,8 @@ class ActivityEvent(TenantModel):
 
     class Meta:
         ordering = ['-created_at']
+        # The activity feed: newest first within the company (the organisation filter is on every query)
+        indexes = [models.Index(fields=['organization', 'created_at'], name='activity_org_created')]
 
     def __str__(self):
         return f'{self.actor} {self.verb} {self.target}'

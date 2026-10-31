@@ -18,7 +18,6 @@ from django.urls import reverse
 from django.utils import timezone
 
 from actions.registry import PRIORITY_HIGH, PRIORITY_NORMAL, Item
-from costs.access import cost_projects, runs_job
 from directory.models import Package
 from projects.access import is_internal, visible_projects
 from projects.models import Project, ProjectMember
@@ -41,8 +40,12 @@ def _money(org, value):
 
 def _staff(request):
     today = timezone.localdate()
-    jobs = [p for p in cost_projects(request)
-            if runs_job(request.user, p) or (request.membership.is_admin and p.manager_id is None)]
+    # The job's PM or QS (costs.access.runs_job), or owners and admins where the job has no PM, from the
+    # one shared query of the person's jobs (actions.providers.my_jobs)
+    from actions.providers import my_jobs
+    admin, me = request.membership.is_admin, request.user.pk
+    jobs = [p for p in my_jobs(request)
+            if p.manager_id == me or p.on_team_pm or p.on_team_qs or (admin and p.manager_id is None)]
     if not jobs:
         return []
     by_pk = {p.pk: p for p in jobs}
@@ -76,30 +79,39 @@ def _staff(request):
 
 
 def _sub(request):
+    """Fixed queries whatever the number of jobs and packages (it runs behind the badge on every page)."""
     today = timezone.localdate()
-    mine = ProjectMember.objects.filter(user=request.user, role=ProjectMember.ROLE_SUBCONTRACTOR,
-                                        subcontractor__isnull=False,
-                                        project__in=visible_projects(request).values('pk')).select_related('project')
+    pairs = list(ProjectMember.objects.filter(
+        user=request.user, role=ProjectMember.ROLE_SUBCONTRACTOR, subcontractor__isnull=False,
+        project__in=visible_projects(request).filter(stage__in=Project.DELIVERY_STAGES).values('pk'))
+        .values_list('project_id', 'subcontractor_id'))
+    if not pairs:
+        return []
+    from django.db.models import Q
+    q = Q()
+    for project_id, sub_id in pairs:
+        q |= Q(project_id=project_id, subcontractor_id=sub_id)
+    packages = list(Package.objects.filter(q, status=Package.APPOINTED).select_related('trade', 'project'))
+    subcontracts = {sc.package_id: sc for sc in Subcontract.objects.filter(package__in=packages)}
+    latest_app = {}
+    for sc_id, valuation in SubApplication.objects.filter(subcontract__in=subcontracts.values()) \
+            .exclude(status=SubApplication.WITHDRAWN).values_list('subcontract_id', 'valuation_date'):
+        latest_app[sc_id] = max(valuation, latest_app.get(sc_id, valuation))
     out = []
-    for m in mine:
-        p = m.project
-        if p.stage not in Project.DELIVERY_STAGES:
+    for pkg in packages:
+        p = pkg.project
+        sc = subcontracts.get(pkg.pk)
+        if sc is None:
+            continue  # terms not set up yet: the contractor hasn't opened this subcontract
+        latest, nxt = sc.around(today)
+        target = nxt if nxt and (nxt - today).days <= WARN_DAYS else latest
+        if target is None or (p.start_date and target < p.start_date - timedelta(days=31)):
             continue
-        for pkg in Package.objects.filter(project=p, subcontractor_id=m.subcontractor_id, status=Package.APPOINTED) \
-                .select_related('trade'):
-            sc = Subcontract.objects.filter(package=pkg).first()
-            if sc is None:
-                continue  # terms not set up yet: the contractor hasn't opened this subcontract
-            latest, nxt = sc.around(today)
-            target = nxt if nxt and (nxt - today).days <= WARN_DAYS else latest
-            if target is None or (p.start_date and target < p.start_date - timedelta(days=31)):
-                continue
-            if SubApplication.objects.filter(subcontract=sc, valuation_date__gte=target - timedelta(days=12)) \
-                    .exclude(status=SubApplication.WITHDRAWN).exists():
-                continue
-            url = reverse('subpay_apply', args=[request.org.slug, p.pk, pkg.pk]) + f'?valuation_date={target}'
-            out.append(Item(kind='subpayment', title=f'Apply for payment: {pkg.trade or "your package"}', url=url,
-                            project=p, due=target, action='Apply for payment', status_label='To apply',
-                            tone='accent', detail=f'Valuation date {target.day} {target:%b %Y}',
-                            kind_label='Applications for payment', key=f'sa-due:{pkg.pk}:{target}'))
+        if sc.pk in latest_app and latest_app[sc.pk] >= target - timedelta(days=12):
+            continue
+        url = reverse('subpay_apply', args=[request.org.slug, p.pk, pkg.pk]) + f'?valuation_date={target}'
+        out.append(Item(kind='subpayment', title=f'Apply for payment: {pkg.trade or "your package"}', url=url,
+                        project=p, due=target, action='Apply for payment', status_label='To apply',
+                        tone='accent', detail=f'Valuation date {target.day} {target:%b %Y}',
+                        kind_label='Applications for payment', key=f'sa-due:{pkg.pk}:{target}'))
     return out

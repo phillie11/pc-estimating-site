@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from actions.registry import PRIORITY_HIGH, Item
-from projects.access import is_internal, visible_projects
+from projects.access import is_internal
 from projects.models import Project
 
 from . import rules
@@ -42,16 +42,23 @@ def items(request, now=None):
     if request.membership is None or not is_internal(request):
         return []
     now = now or timezone.localtime().replace(tzinfo=None)
-    projects = list(visible_projects(request).filter(stage=Project.STAGE_LIVE, manager=request.user))
+    from actions.providers import my_jobs  # one shared query behind the badge
+    projects = [p for p in my_jobs(request) if p.stage == Project.STAGE_LIVE and p.manager_id == request.user.pk]
     if not projects:
         return []
     saturday = DiarySettings.for_org(request.org).saturday_counts
     regions = _region([p.pk for p in projects])
+    # The expected days for every job first, then which of them have entries, in one query
+    expected = {p.pk: rules.expected_days(now, saturday, regions.get(p.pk), start=p.start_date)
+                for p in projects if p.start_date is not None}  # no start on site date: nothing is chased
+    days = {d for ds in expected.values() for d in ds}
+    have = set(DiaryEntry.objects.filter(project_id__in=[pk for pk, ds in expected.items() if ds], entry_date__in=days)
+               .values_list('project_id', 'entry_date')) if days else set()
     out = []
     for project in projects:
-        if project.start_date is None:
-            continue  # no start on site date: nothing to measure from, so nothing is chased
-        for day in missing_days(project, now, saturday, regions.get(project.pk)):
+        if project.pk not in expected:
+            continue
+        for day in [d for d in expected[project.pk] if (project.pk, d) not in have]:
             due = rules.next_working_day(day, saturday, regions.get(project.pk))
             out.append(Item(
                 kind='diary_missing', ref='Diary', title=f'Site diary missing for {day:%a} {day.day} {day:%b}',

@@ -787,7 +787,7 @@ class JourneyTest(TestCase):
         self.post('owner', self.u('subpay_tax', self.oak.pk), data)
         # The PM sets up the subcontract's payment terms from the company defaults
         self.post('pm', self.pu('subpay_open', self.pkg_oak.pk))
-        self.assertIn(('subpayment', f'Apply for payment: Joinery'), self.needs('sub')[1])
+        self.assertIn(('subpayment', 'Apply for payment: Joinery'), self.needs('sub')[1])
         # The sub applies through the portal: 20,000 gross to date, 5,000 of it materials
         apply_url = self.pu('subpay_apply', self.pkg_oak.pk)
         r = self.get('sub', apply_url)

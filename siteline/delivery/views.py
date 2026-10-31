@@ -229,20 +229,30 @@ def subvariation_file(request, org_slug, pk, sv_id):
 
 
 def subcontract_summary(project, subcontractor_id=None):
-    """Appointed value plus approved variations, per subcontractor."""
-    pkgs = Package.objects.filter(project=project, status=Package.APPOINTED).select_related('subcontractor', 'trade')
+    """Appointed value plus approved variations, per subcontractor. Three queries however many packages."""
+    pkgs = list(Package.objects.filter(project=project, status=Package.APPOINTED).select_related('subcontractor', 'trade'))
     if subcontractor_id:
-        pkgs = pkgs.filter(subcontractor_id=subcontractor_id)
+        pkgs = [p for p in pkgs if p.subcontractor_id == subcontractor_id]
+    subs = {p.subcontractor_id for p in pkgs}
+    money = {}  # (subcontractor, status) -> sum
+    for row in SubVariation.objects.filter(project=project, subcontractor_id__in=subs,
+                                           status__in=(SubVariation.APPROVED, SubVariation.SUBMITTED)) \
+            .values('subcontractor_id', 'status').annotate(approved=Sum('approved_value'), quoted=Sum('value')):
+        money[(row['subcontractor_id'], row['status'])] = row['approved' if row['status'] == SubVariation.APPROVED
+                                                              else 'quoted']
+    rams = {}  # subcontractor -> {status: count}
+    for sub_id, status in Rams.objects.filter(project=project, subcontractor_id__in=subs) \
+            .exclude(status=Rams.SUPERSEDED).values_list('subcontractor_id', 'status'):
+        rams.setdefault(sub_id, {}).setdefault(status, 0)
+        rams[sub_id][status] += 1
     rows = []
     for p in pkgs:
-        approved = SubVariation.objects.filter(project=project, subcontractor_id=p.subcontractor_id,
-                                               status=SubVariation.APPROVED).aggregate(s=Sum('approved_value'))['s'] or Decimal('0')
-        pending = SubVariation.objects.filter(project=project, subcontractor_id=p.subcontractor_id,
-                                              status=SubVariation.SUBMITTED).aggregate(s=Sum('value'))['s'] or Decimal('0')
-        rams = Rams.objects.filter(project=project, subcontractor_id=p.subcontractor_id).exclude(status=Rams.SUPERSEDED)
+        approved = money.get((p.subcontractor_id, SubVariation.APPROVED)) or Decimal('0')
+        pending = money.get((p.subcontractor_id, SubVariation.SUBMITTED)) or Decimal('0')
+        counts = rams.get(p.subcontractor_id, {})
         rows.append({'package': p, 'order': p.quote_value or Decimal('0'), 'approved': approved, 'pending': pending,
                      'total': (p.quote_value or Decimal('0')) + approved,
-                     'rams_ok': rams.filter(status__in=Rams.ACCEPTED).count(),
-                     'rams_waiting': rams.filter(status=Rams.SUBMITTED).count(),
-                     'rams_rejected': rams.filter(status=Rams.REJECTED).count()})
+                     'rams_ok': sum(counts.get(s, 0) for s in Rams.ACCEPTED),
+                     'rams_waiting': counts.get(Rams.SUBMITTED, 0),
+                     'rams_rejected': counts.get(Rams.REJECTED, 0)})
     return rows

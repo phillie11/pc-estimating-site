@@ -159,10 +159,12 @@ def tab_for(request, project):
     if who == STAFF:
         from django.utils import timezone
         # The badge: submittals waiting for our review, plus lines already late to order (red)
-        waiting = Submittal.objects.filter(project=project, status=Submittal.SUBMITTED).count()
-        late = ScheduleLine.objects.filter(project=project, order_by__lt=timezone.localdate()) \
-            .exclude(status__in=ScheduleLine.DONE_STATUSES).count()
-        return ('procurement', 'Procurement', reverse('procurement_schedule', args=[org, pk]), waiting + late)
+        from projects.views import count_together  # both in one query
+        n = count_together(
+            waiting=Submittal.objects.filter(project=project, status=Submittal.SUBMITTED),
+            late=ScheduleLine.objects.filter(project=project, order_by__lt=timezone.localdate())
+            .exclude(status__in=ScheduleLine.DONE_STATUSES))
+        return ('procurement', 'Procurement', reverse('procurement_schedule', args=[org, pk]), n['waiting'] + n['late'])
     if who == SUB:
         n = submittals_for(request, project).filter(status__in=Submittal.TO_SUBMIT).count()
         return ('submittals', 'Submittals', reverse('submittal_list', args=[org, pk]), n)

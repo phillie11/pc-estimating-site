@@ -25,8 +25,8 @@ from projects.access import is_internal, visible_projects
 from projects.models import Project, ProjectMember
 
 from . import rules
-from .access import is_payer, is_project_pm
 from .models import Application
+from .summary import prime_paid_totals
 
 WARN_DAYS = 7
 NEAR = timedelta(days=12)  # an application within this of a valuation date counts as "for" it
@@ -39,13 +39,15 @@ def items(request):
 
 
 def _my_jobs(request):
-    """Live jobs whose payments wait on this person: the PM; owners and admins where the job has no PM."""
-    projects = visible_projects(request).filter(stage__in=Project.DELIVERY_STAGES)
-    mine = []
-    for p in projects:
-        if is_project_pm(request.user, p) or (request.membership.is_admin and p.manager_id is None):
-            mine.append(p)
-    return mine
+    """
+    Live jobs whose payments wait on this person: the PM (the job's manager or a PM on its team, as
+    payments.access.is_project_pm); owners and admins where the job has no PM. From the one shared
+    query of the person's jobs (actions.providers.my_jobs), as this runs behind the badge on every page.
+    """
+    from actions.providers import my_jobs
+    admin, me = request.membership.is_admin, request.user.pk
+    return [p for p in my_jobs(request) if p.stage in Project.DELIVERY_STAGES
+            and (p.manager_id == me or p.on_team_pm or (admin and p.manager_id is None))]
 
 
 def _contractor(request):
@@ -55,7 +57,8 @@ def _contractor(request):
         return []
     by_pk = {p.pk: p for p in jobs}
     contracts = {c.project_id: c for c in MainContract.objects.filter(project__in=jobs)}
-    apps = list(Application.objects.filter(project__in=jobs).exclude(status=Application.STATUS_WITHDRAWN))
+    apps = prime_paid_totals(list(Application.objects.filter(project__in=jobs)
+                                  .exclude(status=Application.STATUS_WITHDRAWN)))
     out = []
     for p in jobs:
         contract = contracts.get(p.pk)
@@ -94,13 +97,24 @@ def _client(request):
     today = timezone.localdate()
     mine = ProjectMember.objects.filter(user=request.user, role__in=(ProjectMember.ROLE_CLIENT,
                                                                      ProjectMember.ROLE_CONSULTANT),
-                                        project__in=visible_projects(request).values('pk')).select_related('project')
-    # Clients, and a consultant only on a job whose contract names them as its administrator
-    projects = [m.project_id for m in mine if is_payer(request.user, m.project)]
-    qs = Application.objects.filter(project_id__in=projects, status__in=Application.AWAITING_PAYMENT,
-                                    visibility=Application.VIS_SHARED).select_related('project', 'project__organization')
+                                        project__in=visible_projects(request).values('pk')).values_list('project_id', 'role')
+    # Clients, and a consultant only on a job whose contract names them as its administrator (as
+    # payments.access.is_payer, for an active external member, which the request already established)
+    mine = list(mine)
+    projects = [pid for pid, role in mine if role == ProjectMember.ROLE_CLIENT]
+    consulting = [pid for pid, role in mine if role == ProjectMember.ROLE_CONSULTANT]
+    if consulting:
+        from django.db.models import F
+        projects += list(MainContract.objects.filter(
+            project_id__in=consulting, administrator__user=request.user, administrator__role=ProjectMember.ROLE_CONSULTANT,
+            administrator__project_id=F('project_id')).values_list('project_id', flat=True))
+    if not projects:
+        return []
+    qs = prime_paid_totals(list(Application.objects.filter(
+        project_id__in=projects, status__in=Application.AWAITING_PAYMENT, visibility=Application.VIS_SHARED)
+        .select_related('project', 'project__organization').order_by('valuation_date')))
     out = []
-    for a in qs.order_by('valuation_date'):
+    for a in qs:
         common = dict(kind='payment', url=a.get_absolute_url(), ref=a.reference, project=a.project, key=f'ap:{a.pk}')
         if a.status == Application.STATUS_SUBMITTED and a.payment_notice_by and today <= a.payment_notice_by:
             out.append(Item(title=a.title, due=a.payment_notice_by, action='Give your payment notice',
