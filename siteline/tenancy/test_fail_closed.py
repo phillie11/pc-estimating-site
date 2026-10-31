@@ -363,6 +363,30 @@ class FileCommandTests(FileStorageMixin, Base):
 
 
 class SeedDemoTests(Base):
+    def test_deleting_a_company_can_order_its_deletes(self):
+        # MySQL checks foreign keys per statement, so Django must delete children before parents. A cycle in
+        # the delete dependencies makes it give up ordering and delete the organisation first (CI on MySQL only).
+        from django.db.models.deletion import Collector
+        with self.settings(MEDIA_ROOT=self.make_media()):
+            call_command('seed_demo', stdout=io.StringIO())
+        with unscoped():
+            collector = Collector(using='default')
+            collector.collect([Organization.objects.get(slug='northbank-interiors')])
+        deps = {model: set(d) for model, d in collector.dependencies.items()}
+        done, visiting = set(), []
+
+        def visit(model):
+            self.assertNotIn(model, visiting, f'delete cycle: {[m._meta.label for m in visiting + [model]]}')
+            if model in done:
+                return
+            visiting.append(model)
+            for dep in deps.get(model, ()):
+                visit(dep)
+            visiting.pop()
+            done.add(model)
+        for model in list(deps):
+            visit(model)
+
     def test_seed_and_reset_leave_other_companies_alone(self):
         with self.settings(MEDIA_ROOT=self.make_media()):
             call_command('seed_demo', stdout=io.StringIO())
