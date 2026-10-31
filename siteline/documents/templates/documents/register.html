@@ -1,4 +1,4 @@
-{% extends "project_base.html" %}{% load ui %}
+{% extends "project_base.html" %}{% load ui viewer_tags %}
 {% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Register CSV</a><a class="btn" href="{% qs export='pdf' %}">{% icon 'download' %} Issue sheet PDF</a>{% if is_internal %}<a class="btn primary" href="{% url 'bulk_upload' org.slug project.pk %}">{% icon 'plus' %} Bulk upload</a>{% endif %}{% endblock %}
 {% block project_content %}<div class="docs">
 {% include "documents/_nav.html" %}
@@ -24,7 +24,7 @@
         <td>{% if cur %}{% badge cur.shown_status cur.shown_tone %}{% endif %}</td>
         <td class="small nowrap">{{ cur.uploaded_at|date:"j M Y" }}</td>
         {% if is_internal %}<td>{% if d.visibility == 'SHARED' %}{% badge 'Shared' 'info' %}{% else %}<span class="dim small">Internal</span>{% endif %}{% if d.tender_issue %} {% badge 'Tender' 'accent' %}{% endif %}</td>{% endif %}
-        <td class="num">{% if cur and is_internal or cur and not cur.is_withdrawn %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk d.pk cur.pk %}" aria-label="Download {{ d.reference|default:d.title }} rev {{ cur.revision }}">{% icon 'download' %}</a>{% endif %}</td>
+        <td class="num nowrap">{% if cur|viewable:is_internal %}<a class="btn sm" href="{% url 'drawing_viewer' org.slug project.pk d.pk cur.pk %}" aria-label="View {{ d.reference|default:d.title }} rev {{ cur.revision }}">View</a> {% endif %}{% if cur and is_internal or cur and not cur.is_withdrawn %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk d.pk cur.pk %}" aria-label="Download {{ d.reference|default:d.title }} rev {{ cur.revision }}">{% icon 'download' %}</a>{% endif %}</td>
       </tr>{% endfor %}</tbody></table></div>
       {% elif filtered %}<div class="empty"><h3>Nothing matches these filters</h3><p>{{ total }} document{{ total|pluralize }} on the register, none with these filters. <a href="?">Clear the filters</a> to see them all.</p></div>
       {% elif is_internal %}<div class="empty"><h3>The register is empty</h3><p>Upload drawings, specs and reports one at a time here, or drop a whole pack on <a href="{% url 'bulk_upload' org.slug project.pk %}">Bulk upload</a>: numbers and revisions are read from the file names.</p></div>

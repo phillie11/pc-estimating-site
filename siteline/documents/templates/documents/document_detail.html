@@ -1,5 +1,5 @@
-{% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}{% if is_internal %}
+{% extends "project_base.html" %}{% load ui viewer_tags %}
+{% block project_actions %}{% if current|viewable:is_internal %}<a class="btn primary" href="{% url 'drawing_viewer' org.slug project.pk doc.pk current.pk %}">View drawing</a>{% endif %}{% if is_internal %}
   {% if current %}<a class="btn" href="{% url 'transmittal_create' org.slug project.pk %}?rev={{ current.pk }}">Add to a transmittal</a>{% endif %}
   <form method="post">{% csrf_token %}<input type="hidden" name="action" value="visibility"><button class="btn">{% if doc.visibility == 'SHARED' %}Make internal only{% else %}Share with collaborators{% endif %}</button></form>
   <form method="post" data-confirm="Delete this document and every revision? This can't be undone.">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn danger">Delete</button></form>{% endif %}{% endblock %}
@@ -21,7 +21,8 @@
       <td>{% badge r.shown_status r.shown_tone %}{% if r.newer %}<span class="sub">by {{ r.newer.revision }}</span>{% elif r.newer_hidden %}<span class="sub">newer one being prepared</span>{% endif %}</td>
       <td class="small">{{ r.original_name }}<span class="sub">{{ r.size|filesize }}{% if r.page_count %} · {{ r.page_count }} page{{ r.page_count|pluralize }}{% endif %}{% if r.notes %} · {{ r.notes }}{% endif %}</span></td>
       <td class="small nowrap">{{ r.uploaded_at|date:"j M Y H:i" }}<span class="sub">{{ r.uploaded_by|default:"" }}</span></td>
-      <td class="num nowrap">{% if is_internal or not r.is_withdrawn %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk doc.pk r.pk %}" aria-label="Download rev {{ r.revision }}">{% icon 'download' %}</a>{% endif %}
+      <td class="num nowrap">{% if r|viewable:is_internal %}<a class="btn sm" href="{% url 'drawing_viewer' org.slug project.pk doc.pk r.pk %}" aria-label="View rev {{ r.revision }}">View</a>{% endif %}
+        {% if is_internal or not r.is_withdrawn %}<a class="btn sm" href="{% url 'document_download' org.slug project.pk doc.pk r.pk %}" aria-label="Download rev {{ r.revision }}">{% icon 'download' %}</a>{% endif %}
         {% if can_revise and r.pk != current.pk and not r.is_withdrawn %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="make_current"><input type="hidden" name="revision" value="{{ r.pk }}"><button class="btn sm">Make current</button></form>{% endif %}
         {% if is_internal and not r.is_withdrawn %}<form method="post" class="inline" data-confirm="Withdraw rev {{ r.revision }}? Everyone who can see it will be told not to use it.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><input type="hidden" name="revision" value="{{ r.pk }}"><button class="btn sm">Withdraw</button></form>{% endif %}
       </td></tr>

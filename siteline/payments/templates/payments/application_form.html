@@ -1,0 +1,17 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<div class="card" style="max-width:900px"><div class="card-head"><h2>{% if creating %}New application for payment{% else %}Edit {{ app.reference }}{% endif %}</h2></div><div class="card-body">
+<p class="small">Enter work done to date as one figure, or by section below. Approved client {{ vocab.change_plural }}, retention{% if contract and contract.retention_percent %} ({{ contract.retention_rule }}){% endif %}, previous amounts and VAT{% if contract and contract.vat_reverse_charge %} (domestic reverse charge){% endif %} are worked out for you from the contract. It stays a draft until you submit it. {{ advisory }}</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+  <h3 style="margin-top:16px">Work done by section <span class="small dim">(optional)</span></h3>
+  <p class="small dim">If you fill in any lines, work done to date becomes their total. Tick "Delete" to remove a line.</p>
+  {{ formset.management_form }}
+  {% if formset.non_form_errors %}<ul class="errorlist">{% for e in formset.non_form_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <div class="lines">{% for f in formset %}<div class="form-grid line-row">{% for h in f.hidden_fields %}{{ h }}{% endfor %}
+    {% for field in f.visible_fields %}{% if field.name == 'DELETE' %}{% if f.instance.pk %}{% include "partials/field.html" %}{% endif %}{% else %}{% include "partials/field.html" %}{% endif %}{% endfor %}
+  </div>{% endfor %}</div>
+  <div class="form-actions"><button class="btn primary">Save draft</button><a class="btn ghost" href="{% if app %}{{ app.get_absolute_url }}{% else %}{% url 'application_list' org.slug project.pk %}{% endif %}">Cancel</a></div>
+</form>
+</div></div>
+{% endblock %}

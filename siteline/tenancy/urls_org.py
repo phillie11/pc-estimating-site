@@ -9,11 +9,13 @@ from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
 from levelling import urls as levelling_urls
+from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import views as projects
 from rfis import views as rfis
 from tenders import views as tenders
 from variations import views as variations
+from viewer import urls as viewer_urls
 
 from . import views
 
@@ -72,6 +74,8 @@ urlpatterns = [
 
     # Documents tab (documents/urls.py), listed flat so every project URL is a named pattern here
     *[path(P + 'documents/' + str(u.pattern), u.callback, name=u.name) for u in documents_urls.urlpatterns],
+    # Drawing viewer and snag/RFI pins on drawings (viewer/urls.py)
+    *viewer_urls.project_patterns(P),
 
     path(P + 'rfis/', rfis.rfi_list, name='rfi_list'),
     path(P + 'rfis/new/', rfis.rfi_create, name='rfi_create'),
@@ -108,6 +112,8 @@ urlpatterns = [
     # Commercial tab: contract set-up, change register, early warnings, change events (changes/urls.py)
     *changes_urls.project_patterns(P),
     *changes_urls.org_patterns,
+    # Applications for payment (payments/urls.py): Commercial -> Applications for staff, Decisions for the client
+    *payments_urls.project_patterns(P),
     # Procurement tab: schedule and submittals (procurement/urls.py)
     *procurement_urls.project_patterns(P),
     # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)

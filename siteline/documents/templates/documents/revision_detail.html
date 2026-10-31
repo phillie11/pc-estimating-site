@@ -1,4 +1,4 @@
-{% extends "project_base.html" %}{% load ui %}
+{% extends "project_base.html" %}{% load ui viewer_tags %}
 {% block project_content %}<div class="docs">
 {% include "documents/_nav.html" %}
 <p class="small"><a href="{% url 'document_detail' org.slug project.pk doc.pk %}">← {{ doc.reference|default:doc.title }}</a></p>
@@ -15,7 +15,7 @@
     </dl>
     {% if rev.notes %}<p class="small" style="margin-top:10px">{{ rev.notes }}</p>{% endif %}
     {% if is_internal and rev.sha256 %}<p class="small dim mono" style="margin-top:6px;word-break:break-all">SHA-256 {{ rev.sha256 }}</p>{% endif %}
-    {% if can_download %}<div class="form-actions"><a class="btn primary" href="{% url 'document_download' org.slug project.pk doc.pk rev.pk %}">{% icon 'download' %} Open {{ rev.original_name }}</a></div>{% endif %}
+    {% if can_download %}<div class="form-actions">{% if rev|viewable:is_internal %}<a class="btn primary" href="{% url 'drawing_viewer' org.slug project.pk doc.pk rev.pk %}">View drawing</a>{% endif %}<a class="btn" href="{% url 'document_download' org.slug project.pk doc.pk rev.pk %}">{% icon 'download' %} Open {{ rev.original_name }}</a></div>{% endif %}
   </div>
   {% if transmittals %}<div class="card-head" style="border-top:1px solid var(--line)"><h3>Issued on</h3></div>
     <ul class="list">{% for t in transmittals %}<li><span class="grow"><a href="{{ t.get_absolute_url }}">{{ t.reference }}</a> {{ t.get_purpose_display }}</span><span class="small dim nowrap">{{ t.issued_at|date:"j M Y" }}</span></li>{% endfor %}</ul>{% endif %}

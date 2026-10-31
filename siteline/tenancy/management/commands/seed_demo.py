@@ -335,6 +335,9 @@ class Command(BaseCommand):
             # Drawing register: ISO-numbered drawings, superseded revisions and transmittals (documents app)
             from documents.demo import seed as seed_documents
             seed_documents(leeds, pm, client, subu, s_join, demo_pdf)
+            # Drawing viewer: three snag pins and an RFI pin on the ground floor GA (viewer/demo.py)
+            from viewer.demo import seed as seed_pins
+            seed_pins(leeds, pm, subu, r1)
 
             for verb, target, actor, internal in [('raised', f'{r1.reference} Bar back panelling', subu, False),
                                                   ('responded to', r3.reference, client, False),
@@ -345,6 +348,10 @@ class Command(BaseCommand):
             # Commercial: contracts (Leeds on JCT IC, Salford on NEC4 Option A), early warnings, change events
             from changes.demo import seed as seed_commercial
             seed_commercial(leeds=leeds, pm=pm, client=client)
+            # Applications for payment: Leeds AP-001 paid, AP-002 certified, AP-003 draft; Salford AP-001 (payments/demo.py)
+            from payments.demo import seed as seed_payments
+            seed_payments(leeds=leeds, pm=pm, client=client)
+
             # Cost control: budgets, orders and actuals on Leeds and Salford (costs/demo.py)
             from costs.demo import seed as seed_costs
             seed_costs(leeds=leeds, pm=pm, owner=owner, demo_pdf=demo_pdf)
