@@ -538,3 +538,15 @@ tr.dim td { color: var(--ink-3); }
 .plate-meta .badge { margin-left: auto; }
 .plate-title { display: block; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .plate-detail { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+/* ---------- Quote levelling (levelling/) ---------- */
+.lv-head { margin: 0 0 1rem; }
+.lv-page > .card, .lv-page > .grid { margin-bottom: 1rem; }
+.lv-note { display: block; }
+.lv-grid td.lv-missing { background: var(--bad-bg); }
+.lv-plugs { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; margin-top: 4px; }
+.lv-plugs .btn { min-height: 44px; white-space: nowrap; }
+.lv-exc { flex-wrap: wrap; }
+.lv-exc-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lv-exc-form select, .lv-exc-form input { min-height: 44px; width: auto; }
+.lv-rates input[inputmode] { min-height: 44px; width: 8rem; }
+.lv-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }

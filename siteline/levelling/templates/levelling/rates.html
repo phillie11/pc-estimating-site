@@ -1,0 +1,24 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block title %}Prices: {{ package.subcontractor }} · {{ trade }}{% endblock %}
+{% block project_content %}<div class="lv-page">
+<div class="lv-head">
+  <div class="crumbs small"><a href="{% url 'levelling_index' org.slug project.pk %}">Levelling</a> / <a href="{{ sheet_url }}">{{ trade }}</a></div>
+  <h2 style="margin:2px 0 4px">{{ package.subcontractor }}: prices for {{ trade }}</h2>
+  <p class="small dim" style="margin:0">Give a rate (multiplied by the qty), or a sum for the line, or tick Included if their quote covers it elsewhere. Leave a line blank if they haven't priced it: it shows as missing.</p>
+</div>
+{% if has_errors %}<div class="flash error">Some prices weren't numbers. Nothing was saved; correct the lines marked below.</div>{% endif %}
+<div class="card">{% if rows %}
+<form method="post">{% csrf_token %}
+<div class="table-wrap"><table class="t lv-rates"><thead><tr><th>Line</th><th class="num">Qty</th><th>Rate (£)</th><th>Sum (£)</th><th>Included</th></tr></thead><tbody>
+{% for r in rows %}<tr>
+  <td style="min-width:160px"><span class="mono small">{{ r.line.ref }}</span> {{ r.line.description }}{% if r.error %}<span class="sub overdue">{{ r.error }}</span>{% endif %}</td>
+  <td class="num small nowrap">{% if r.line.qty is not None %}{{ r.line.qty.normalize }} {{ r.line.unit }}{% else %}{{ r.line.unit|default:"Item" }}{% endif %}</td>
+  <td><input name="rate_{{ r.line.pk }}" value="{{ r.rate }}" inputmode="decimal" aria-label="Rate for {{ r.line.description }}"{% if not editable %} disabled{% endif %}></td>
+  <td><input name="sum_{{ r.line.pk }}" value="{{ r.sum }}" inputmode="decimal" aria-label="Sum for {{ r.line.description }}"{% if not editable %} disabled{% endif %}></td>
+  <td><label class="lv-check"><input type="checkbox" name="incl_{{ r.line.pk }}" value="1"{% if r.incl %} checked{% endif %}{% if not editable %} disabled{% endif %}> Incl.</label></td>
+</tr>{% endfor %}
+</tbody></table></div>
+{% if editable %}<div class="card-body"><div class="form-actions"><button class="btn primary">Save prices</button><a class="btn ghost" href="{{ sheet_url }}">Cancel</a></div></div>{% endif %}
+</form>
+{% else %}{% include "partials/empty_state.html" with title="No scope lines yet" message="Add or import the package's scope lines on the levelling sheet first, then enter each subcontractor's prices against them." cta_url=sheet_url cta_label="Back to the sheet" %}{% endif %}</div>
+</div>{% endblock %}

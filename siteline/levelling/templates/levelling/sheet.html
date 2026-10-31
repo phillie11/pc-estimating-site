@@ -1,0 +1,127 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block title %}Level quotes: {{ trade }} · {{ project.name }}{% endblock %}
+{% block project_actions %}<a class="btn" href="{% url 'levelling_csv' org.slug project.pk trade.pk %}">{% icon 'download' %} CSV</a><a class="btn" href="{% url 'levelling_pdf' org.slug project.pk trade.pk %}">{% icon 'download' %} PDF summary</a>{% endblock %}
+{% block project_content %}<div class="lv-page">
+<div class="lv-head">
+  <div class="crumbs small"><a href="{% url 'package_list' org.slug project.pk %}">Sub quotes</a> / <a href="{% url 'levelling_index' org.slug project.pk %}">Levelling</a></div>
+  <h2 style="margin:2px 0 4px">Level quotes: {{ trade }}</h2>
+  <p class="small dim" style="margin:0">Internal only. Subcontractors never see this page, each other's prices or the levelling.</p>
+</div>
+{% if not editable %}<div class="banner">{{ project.name }} is {{ project.get_stage_display|lower }}, so this levelling is kept as it was and is read only.</div>{% endif %}
+{% if view.appointed %}<div class="banner">{{ view.appointed.subcontractor }} is appointed for {{ trade }}.</div>{% endif %}
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Quotes levelled</div><div class="value{% if view.levelled_count < 2 %} bad{% endif %}">{{ view.levelled_count }}</div><div class="note">{% if view.levelled_count < 2 %}Not levelled: fewer than 2 priced line by line{% else %}of {{ view.columns|length }} quote{{ view.columns|length|pluralize }} in{% endif %}</div></div>
+  <div class="kpi"><div class="label">Lowest levelled</div><div class="value">{{ view.summary.lowest|money }}</div><div class="note">{% if view.ranked %}{{ view.ranked.0.package.subcontractor }}{% else %}No quotes yet{% endif %}</div></div>
+  <div class="kpi"><div class="label">Average levelled</div><div class="value">{{ view.summary.average|money }}</div><div class="note">Of every ranked quote</div></div>
+  <a class="kpi" href="#lines"><div class="label">Missing items</div><div class="value{% if view.missing_total %} bad{% endif %}">{{ view.missing_total }}</div><div class="note">Blank cells not plugged</div></a>
+  <a class="kpi" href="#exclusions"><div class="label">Unpriced exclusions</div><div class="value{% if view.unpriced_total %} bad{% endif %}">{{ view.unpriced_total }}</div><div class="note">Risk until priced or accepted</div></a>
+</div>
+
+<div class="card" id="summary">
+  <div class="card-head"><h2>Levelled totals</h2><span class="small dim">Levelled = quoted + adjustments</span></div>
+  {% if view.columns %}<div class="table-wrap"><table class="t"><thead><tr><th>Rank</th><th>Subcontractor</th><th class="num">Quoted</th><th class="num">Adjustments</th><th class="num">Levelled</th><th class="num">v lowest</th><th class="num">v average</th><th>Checks</th></tr></thead><tbody>
+  {% for c in view.ranked %}{% include "levelling/_summary_row.html" %}{% endfor %}
+  {% for c in view.columns %}{% if not c.result.rank %}{% include "levelling/_summary_row.html" %}{% endif %}{% endfor %}
+  </tbody></table></div>
+  {% else %}{% url 'tender' org.slug project.pk as tender_url %}{% include "partials/empty_state.html" with title="No quotes to level yet" message="A subcontractor appears here once they submit a quote in the portal, or once you import their priced copy below. Invited subcontractors still to quote are listed under Import." left=True %}{% endif %}
+</div>
+
+<div class="card" id="carry">
+  <div class="card-head"><h2>Carried in tender</h2>{% if view.carried %}{% badge 'Carried' 'good' %}{% else %}{% badge 'Nobody carried yet' 'warn' %}{% endif %}</div>
+  <div class="card-body">
+    {% if view.carried %}
+      <p style="margin-top:0"><strong>{{ view.carried.package.subcontractor }}</strong> at <strong>{{ view.carried.levelled|money_exact }}</strong> levelled{% if view.carried.result.is_lowest %} (lowest levelled){% else %}, {{ view.carried.result.var_lowest|money_exact }} above the lowest{% endif %}.{% if view.sheet.carried_by %} <span class="dim small">{{ view.sheet.carried_by.full_name }}, {{ view.sheet.carried_at|date:"j M Y" }}</span>{% endif %}</p>
+      {% if view.sheet.carried_reason %}<p class="small">Why: {{ view.sheet.carried_reason }}</p>{% endif %}
+    {% endif %}
+    {% if editable and carry_form.fields.package.queryset.exists %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="carry">{% with form=carry_form %}{% include "partials/form_fields.html" %}{% endwith %}
+        <div class="form-actions"><button class="btn primary">{% if view.carried %}Change who is carried{% else %}Carry in tender{% endif %}</button></div>
+        <p class="small dim" style="margin:6px 0 0">Carrying tells nobody anything. It is the price in our tender, shown at handover; the projects team appoints after the bid is won.</p></form>
+      {% if view.carried %}<form method="post" class="inline" style="margin-top:8px">{% csrf_token %}<input type="hidden" name="action" value="uncarry"><button class="linkbtn">Carry nobody</button></form>{% endif %}
+    {% elif not view.carried %}<p class="small dim" style="margin:0">{% if editable %}Once a quote is in, pick the subcontractor to carry in our tender here.{% else %}Nobody was carried.{% endif %}</p>{% endif %}
+  </div>
+</div>
+
+<div class="card" id="lines">
+  <div class="card-head"><h2>Scope lines</h2><span class="small dim">{{ view.lines|length }} line{{ view.lines|length|pluralize }} · blank cells are missing items</span></div>
+  {% if view.lines %}<div class="table-wrap"><table class="t lv-grid"><thead><tr><th>Ref</th><th>Description</th><th class="num">Qty</th>
+    {% for c in view.columns %}<th class="num">{{ c.package.subcontractor }}{% if editable %}<span class="sub"><a href="{% url 'levelling_rates' org.slug project.pk trade.pk c.package.pk %}">Enter prices</a></span>{% endif %}</th>{% endfor %}{% if editable %}<th></th>{% endif %}</tr></thead><tbody>
+  {% for row in view.lines %}<tr>
+    <td class="mono small nowrap">{{ row.line.ref|default:"—" }}</td>
+    <td style="min-width:180px">{{ row.line.description }}</td>
+    <td class="num small nowrap">{% if row.line.qty is not None %}{{ row.line.qty.normalize }} {{ row.line.unit }}{% else %}{{ row.line.unit|default:"Item" }}{% endif %}</td>
+    {% for x in row.cells %}<td class="num lv-cell{% if x.missing %} lv-missing{% endif %}">
+      {% if x.value is not None %}{% if x.cell.included %}<span class="dim">Incl.</span>{% else %}{{ x.value|money_exact }}{% if row.lowest and x.value == row.lowest %}<span class="sub">lowest</span>{% endif %}{% endif %}{% if x.cell.rate is not None and x.cell.amount is None and row.line.qty is not None %}<span class="sub">@ {{ x.cell.rate|money_exact }}</span>{% endif %}
+        {% if x.plug_stale %}<span class="sub">{% badge 'Priced now: remove the plug' 'warn' %}</span>{% endif %}
+      {% elif x.plug %}<span title="{{ x.plug.reason }}">{{ x.plug.amount|money_exact }}</span><span class="sub">{% badge 'Plugged' 'info' %} {{ x.plug.get_basis_display }}</span>
+      {% else %}{% badge 'Missing' 'bad' %}
+        {% if editable and x.plug_average is not None %}<span class="sub lv-plugs">
+          <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="plug"><input type="hidden" name="line" value="{{ row.line.pk }}"><input type="hidden" name="package" value="{{ x.package.pk }}"><input type="hidden" name="basis" value="AVERAGE"><button class="btn sm" title="Use the average of the others">Avg {{ x.plug_average|money_exact }}</button></form>
+          {% if x.plug_highest != x.plug_average %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="plug"><input type="hidden" name="line" value="{{ row.line.pk }}"><input type="hidden" name="package" value="{{ x.package.pk }}"><input type="hidden" name="basis" value="HIGHEST"><button class="btn sm" title="Use the highest of the others">High {{ x.plug_highest|money_exact }}</button></form>{% endif %}
+        </span>{% elif editable %}<span class="sub">Nobody else priced it</span>{% endif %}
+      {% endif %}</td>{% endfor %}
+    {% if editable %}<td class="num"><form method="post" class="inline" data-confirm="Remove this line, with every subcontractor's price for it and any plug?">{% csrf_token %}<input type="hidden" name="action" value="delete_line"><input type="hidden" name="line" value="{{ row.line.pk }}"><button class="linkbtn" title="Remove line" aria-label="Remove line {{ row.line.ref }}">✕</button></form></td>{% endif %}
+  </tr>{% endfor %}
+  </tbody><tfoot>
+    <tr><th colspan="3">Lines total</th>{% for c in view.columns %}<td class="num">{{ c.lines_total|money_exact }}</td>{% endfor %}{% if editable %}<td></td>{% endif %}</tr>
+    <tr><th colspan="3">Quoted total</th>{% for c in view.columns %}<td class="num">{{ c.quoted|money_exact }}{% if c.quoted_from == 'lines' %}<span class="sub">from lines</span>{% endif %}</td>{% endfor %}{% if editable %}<td></td>{% endif %}</tr>
+    <tr><th colspan="3">Adjustments</th>{% for c in view.columns %}<td class="num">{{ c.result.adjustments|money_exact }}</td>{% endfor %}{% if editable %}<td></td>{% endif %}</tr>
+    <tr><th colspan="3">Levelled total</th>{% for c in view.columns %}<td class="num"><strong>{{ c.levelled|money_exact }}</strong></td>{% endfor %}{% if editable %}<td></td>{% endif %}</tr>
+    <tr><th colspan="3">Rank</th>{% for c in view.columns %}<td class="num">{{ c.result.rank|default:"—" }}{% if c.result.tied %}={% endif %}</td>{% endfor %}{% if editable %}<td></td>{% endif %}</tr>
+  </tfoot></table></div>
+  {% elif editable %}{% include "partials/empty_state.html" with title="No scope lines yet" message="Import the package's bill or schedule (ref, description, qty, unit) below, or add lines one at a time. Each subcontractor's rates then go against them." left=True %}
+  {% else %}{% include "partials/empty_state.html" with title="No scope lines" message="This trade was not levelled line by line." left=True %}{% endif %}
+  {% if editable %}<div class="card-body" style="border-top:1px solid var(--line)">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_line">{% with form=line_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">{% icon 'plus' %} Add line</button></div></form>
+  </div>{% endif %}
+</div>
+
+<div class="grid split">
+<div class="card" id="adjustments">
+  <div class="card-head"><h2>Adjustments</h2><span class="small dim">Each with a reason</span></div>
+  {% for c in view.columns %}{% if c.adjustments or c.lines_differ %}
+    <div class="card-body" style="padding-bottom:0"><strong>{{ c.package.subcontractor }}</strong> <span class="small dim">{{ c.result.adjustments|money_exact }} in all</span></div>
+    {% if c.lines_differ and editable %}<div class="card-body small" style="padding-bottom:0">{% badge 'Check' 'warn' %} Their lines add up to {{ c.lines_total|money_exact }}, not the {{ c.quoted|money_exact }} quoted.
+      <form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="correction"><input type="hidden" name="package" value="{{ c.package.pk }}"><button class="btn sm">Add {{ c.correction|money_exact }} correction</button></form></div>{% endif %}
+    <ul class="list">{% for a in c.adjustments %}<li><span class="grow">{{ a.get_kind_display }}<span class="lv-note small dim">{{ a.reason }}</span></span><span class="mono small nowrap">{{ a.amount|money_exact }}</span>
+      {% if editable %}{% if a.kind == 'EXCLUSION' %}<a class="small" href="#exclusions">In register</a>{% else %}<form method="post" class="inline" data-confirm="Remove this adjustment?">{% csrf_token %}<input type="hidden" name="action" value="delete_adjustment"><input type="hidden" name="adjustment" value="{{ a.pk }}"><button class="linkbtn" aria-label="Remove adjustment">✕</button></form>{% endif %}{% endif %}</li>{% endfor %}</ul>
+  {% endif %}{% empty %}{% endfor %}
+  {% if not view.columns %}<div class="empty left"><p>Adjustments go against a quote once one is in.</p></div>
+  {% elif editable %}<div class="card-body" style="border-top:1px solid var(--line)">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="adjust">{% with form=adj_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Add adjustment</button></div></form>
+    <p class="small dim" style="margin:6px 0 0">Missing items are plugged from the sheet above with one click (average or highest of the others). Exclusions priced by us also appear here.</p>
+  </div>{% endif %}
+</div>
+
+<div class="card" id="exclusions">
+  <div class="card-head"><h2>Exclusions and qualifications</h2>{% if view.unpriced_total %}{% badge view.unpriced_total|stringformat:"s"|add:" not priced" 'bad' %}{% endif %}</div>
+  {% if view.unpriced_total %}<div class="card-body small" style="padding-bottom:0"><span class="overdue">Risk:</span> exclusions not priced or accepted are costs we may be carrying without knowing. Price each in, or accept it at no cost.</div>{% endif %}
+  {% for c in view.columns %}
+    <div class="card-body" style="padding-bottom:0"><strong>{{ c.package.subcontractor }}</strong>{% if c.unpriced_exclusions %} {% badge c.unpriced_exclusions|length|stringformat:"s"|add:" unpriced" 'bad' %}{% endif %}
+      {% if editable and c.package.exclusions %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="copy_exclusions"><input type="hidden" name="package" value="{{ c.package.pk }}"><button class="btn sm">Bring in from their quote</button></form>{% endif %}</div>
+    {% if c.exclusions %}<ul class="list">{% for e in c.exclusions %}<li class="lv-exc"><span class="grow">{{ e.text }}<span class="sub">{% badge e.get_status_display e.status_tone %}{% if e.amount is not None %} {{ e.amount|money_exact }}{% endif %}</span></span>
+      {% if editable %}<form method="post" class="lv-exc-form">{% csrf_token %}<input type="hidden" name="action" value="exclusion_status"><input type="hidden" name="exclusion" value="{{ e.pk }}">
+        <select name="status" aria-label="What we have done">{% for code, label in exclusion_choices %}<option value="{{ code }}"{% if e.status == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <input name="amount" inputmode="decimal" placeholder="£ if priced" value="{{ e.amount|default_if_none:'' }}" aria-label="Priced by us (£)" style="width:7rem">
+        <button class="btn sm">Save</button></form>
+        <form method="post" class="inline" data-confirm="Remove this from the register?">{% csrf_token %}<input type="hidden" name="action" value="delete_exclusion"><input type="hidden" name="exclusion" value="{{ e.pk }}"><button class="linkbtn" aria-label="Remove exclusion">✕</button></form>{% endif %}</li>{% endfor %}</ul>
+    {% else %}<div class="card-body small dim" style="padding-top:4px">None recorded.{% if c.package.exclusions %} Their quote lists: “{{ c.package.exclusions|truncatechars:120 }}”{% endif %}</div>{% endif %}
+  {% empty %}<div class="empty left"><p>Exclusions are recorded against a quote once one is in.</p></div>{% endfor %}
+  {% if editable and view.columns %}<div class="card-body" style="border-top:1px solid var(--line)">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="exclusion">{% with form=exc_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Add to register</button></div></form>
+  </div>{% endif %}
+</div>
+</div>
+
+{% if editable %}<div class="card" id="import">
+  <div class="card-head"><h2>Import</h2><span class="small dim">Excel (.xlsx) or CSV</span></div>
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data" action="{% url 'levelling_import' org.slug project.pk trade.pk %}">{% csrf_token %}{% with form=import_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Import</button></div></form>
+    <p class="small dim">Columns: ref, description, qty, unit, and for a priced copy rate and total. A header row naming them can be anywhere in the first 15 rows; without one, columns A to F are read in that order. Only the first sheet and the first 2,000 rows are read. Formulas are never run: a formula cell gives the value Excel last saved. Lines are matched by ref, then by description; an import never removes a line.</p>
+    {% if quote_files %}<p class="small" style="margin-bottom:4px"><strong>From quotes sent through the portal:</strong></p>
+      <div class="row">{% for p in quote_files %}<form method="post" class="inline" action="{% url 'levelling_import' org.slug project.pk trade.pk %}">{% csrf_token %}<input type="hidden" name="action" value="from_quote"><input type="hidden" name="package" value="{{ p.pk }}"><button class="btn sm">Fill {{ p.subcontractor }} from their workbook</button></form>{% endfor %}</div>{% endif %}
+    {% if view.others %}<p class="small dim" style="margin-bottom:0">Still to quote: {% for p in view.others %}{{ p.subcontractor }}{% if not forloop.last %}, {% endif %}{% endfor %}. Import their priced copy if it came by email.</p>{% endif %}
+  </div>
+</div>{% endif %}
+</div>{% endblock %}

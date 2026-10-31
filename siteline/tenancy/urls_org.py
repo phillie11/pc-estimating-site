@@ -8,6 +8,7 @@ from delivery import views as delivery
 from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
+from levelling import urls as levelling_urls
 from procurement import urls as procurement_urls
 from projects import views as projects
 from rfis import views as rfis
@@ -115,5 +116,7 @@ urlpatterns = [
     # Commercial > Costs and Settings > Cost control (costs/urls.py)
     *costs_urls.project_patterns(P),
     *costs_urls.org_patterns,
+    # Sub quotes > Level quotes on a bid (levelling/urls.py)
+    *levelling_urls.project_patterns(P),
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

@@ -1,0 +1,11 @@
+{% load ui %}<tr>
+  <td class="nowrap">{% if c.result.rank %}<strong>{{ c.result.rank }}{% if c.result.tied %}={% endif %}</strong>{% else %}—{% endif %}</td>
+  <td>{{ c.package.subcontractor }}{% if view.sheet.carried_id == c.package.pk %} {% badge 'Carried' 'good' %}{% endif %}{% if c.package.status == 'APPOINTED' %} {% badge 'Appointed' 'good' %}{% elif c.package.status == 'UNSUCCESSFUL' %} {% badge 'Unsuccessful' 'muted' %}{% endif %}
+    <span class="sub">{% if c.quoted_from == 'lines' %}Quoted total from their lines{% elif c.package.submitted_at %}Quote in {{ c.package.submitted_at|date:"j M" }}{% endif %}</span></td>
+  <td class="num nowrap">{{ c.quoted|money_exact }}</td>
+  <td class="num nowrap">{{ c.result.adjustments|money_exact }}</td>
+  <td class="num nowrap"><strong>{{ c.levelled|money_exact }}</strong>{% if c.result.is_lowest %}<span class="sub">{% badge 'Lowest' 'good' %}</span>{% endif %}</td>
+  <td class="num nowrap">{% if c.result.var_lowest is not None %}{{ c.result.var_lowest|money_exact }}<span class="sub">{{ c.result.var_lowest_pct }}%</span>{% else %}—{% endif %}</td>
+  <td class="num nowrap">{% if c.result.var_average is not None %}{{ c.result.var_average|money_exact }}<span class="sub">{{ c.result.var_average_pct }}%</span>{% else %}—{% endif %}</td>
+  <td class="small">{% if c.missing %}{% badge c.missing|stringformat:"s"|add:" missing" 'bad' %} {% endif %}{% if c.unpriced_exclusions %}{% badge c.unpriced_exclusions|length|stringformat:"s"|add:" exclusion(s) unpriced" 'bad' %}{% endif %}{% if not c.is_levelled %}{% badge 'Not priced line by line' 'warn' %}{% elif not c.missing and not c.unpriced_exclusions %}{% badge 'Like for like' 'good' %}{% endif %}</td>
+</tr>
