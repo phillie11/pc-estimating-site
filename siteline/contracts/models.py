@@ -80,6 +80,19 @@ class MainContract(TenantModel):
                                                               null=True, blank=True)
     pay_less_notice_days = models.PositiveSmallIntegerField('Pay less notice (days before final date)',
                                                             null=True, blank=True)
+    payment_notice_days = models.PositiveSmallIntegerField(
+        'Payment notice (days after due date)', null=True, blank=True,
+        help_text="When the client's payment notice (Interim Certificate, NEC payment certificate) is due. "
+                  '5 under JCT and the Scheme, 0 under NEC4 Y(UK)2.')
+    vat_reverse_charge = models.BooleanField(
+        'VAT domestic reverse charge applies', default=False,
+        help_text='Tick if the client is a VAT-registered contractor who uses the works for onward supply '
+                  '(construction domestic reverse charge). Applications then show no VAT. Advisory: check '
+                  'with the client and your accountant.')
+    practical_completion_on = models.DateField(
+        'Practical completion certified on', null=True, blank=True,
+        help_text='The actual date (Practical Completion under JCT, Completion under NEC). Applications '
+                  'after it hold the reduced retention.')
 
     bank_holiday_region = models.CharField(
         'Bank holidays', max_length=20, choices=REGION_CHOICES, default=DEFAULT_REGION,
@@ -102,7 +115,8 @@ class MainContract(TenantModel):
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name='+')
 
-    PAYMENT_FIELDS = ('due_date_offset_days', 'final_date_offset_days', 'pay_less_notice_days', 'retention_percent',
+    PAYMENT_FIELDS = ('due_date_offset_days', 'final_date_offset_days', 'pay_less_notice_days', 'payment_notice_days',
+                      'retention_percent',
                       'retention_released_at_pc_percent', 'defects_period_months', 'lads_period')
 
     class Meta(TenantModel.Meta):

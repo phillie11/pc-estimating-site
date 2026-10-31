@@ -22,7 +22,8 @@ class ContractForm(StyledModelForm):
         fields = ['form', 'edition', 'nec_main_option', 'contract_sum', 'start_date', 'completion_date',
                   'administrator', 'bank_holiday_region', 'client_response_days', 'lads_rate', 'lads_period', 'retention_percent', 'retention_released_at_pc_percent',
                   'defects_period_months', 'valuation_day', 'due_date_offset_days', 'final_date_offset_days',
-                  'pay_less_notice_days', 'amendments']
+                  'pay_less_notice_days', 'payment_notice_days', 'vat_reverse_charge', 'practical_completion_on',
+                  'amendments']
         widgets = {'amendments': forms.Textarea(attrs={'rows': 5})}
 
     def __init__(self, *args, project=None, **kwargs):

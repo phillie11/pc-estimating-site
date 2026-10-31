@@ -7,6 +7,8 @@
   <div class="kpi"><div class="label">Approved {{ vocab.change_plural }}</div><div class="value">{{ position.approved|money:currency }}</div></div>
   <div class="kpi"><div class="label">Awaiting client decision</div><div class="value">{{ position.pending|money:currency }}</div></div>
   <div class="kpi"><div class="label">Forecast final account</div><div class="value">{{ position.forecast|money:currency }}</div></div>
+  {% if can_see_applications %}<a class="kpi" href="{% url 'application_list' org.slug project.pk %}"><div class="label">Certified to date (ex VAT)</div><div class="value">{{ position.certified|money:currency }}</div></a>
+  <a class="kpi" href="{% url 'application_list' org.slug project.pk %}?show=paid"><div class="label">Paid to date (inc VAT)</div><div class="value">{{ position.paid|money:currency }}</div></a>{% endif %}
 </div>
 <p class="small dim"><a href="{% url 'change_register' org.slug project.pk %}">{{ changes.change_events }} live change event{{ changes.change_events|pluralize }}</a> (estimated revenue {{ changes.revenue|money:currency }}) and {{ changes.early_warnings }} open early warning{{ changes.early_warnings|pluralize }}. Not in the forecast until they become approved client {{ vocab.change_plural }}.</p>
 {% if contract %}
@@ -17,6 +19,7 @@
     <dt>{{ vocab.completion_date|capfirst }}</dt><dd>{{ contract.completion_date|date:"j M Y"|default:"—" }}</dd>
     <dt>{{ vocab.damages|capfirst }}</dt><dd>{% if contract.lads_rate is not None %}<span class="mono">{{ contract.lads_rate|money:currency }}</span> {{ contract.get_lads_period_display }}{% else %}—{% endif %}</dd>
     <dt>Retention</dt><dd>{{ contract.retention_rule|default:"—" }}</dd>
+    {% if contract.practical_completion_on %}<dt>{{ vocab.completion|capfirst }} certified</dt><dd>{{ contract.practical_completion_on|date:"j M Y" }}</dd>{% endif %}
     <dt>{{ vocab.defects_period|capfirst }}</dt><dd>{% if contract.defects_period_months %}{{ contract.defects_period_months }} month{{ contract.defects_period_months|pluralize }}{% else %}—{% endif %}</dd>
     {% if contract.amendments %}<dt>Amendments</dt><dd><div class="quote">{{ contract.amendments|linebreaksbr }}</div></dd>{% endif %}
   </dl></div></div>
@@ -27,6 +30,8 @@
       <dt>Due date</dt><dd>{% if contract.due_date_offset_days is not None %}{{ contract.due_date_offset_days }} day{{ contract.due_date_offset_days|pluralize }} after the {{ vocab.valuation_date }}{% else %}—{% endif %}</dd>
       <dt>Final date for payment</dt><dd>{% if contract.final_date_offset_days is not None %}{{ contract.final_date_offset_days }} days after the due date{% else %}—{% endif %}</dd>
       <dt>Pay less notice</dt><dd>{% if contract.pay_less_notice_days is not None %}No later than {{ contract.pay_less_notice_days }} days before the final date{% else %}—{% endif %}</dd>
+      <dt>Payment notice</dt><dd>{% if contract.payment_notice_days is not None %}{% if contract.payment_notice_days %}No later than {{ contract.payment_notice_days }} day{{ contract.payment_notice_days|pluralize }} after the due date{% else %}By the due date{% endif %}{% else %}—{% endif %}</dd>
+      <dt>VAT</dt><dd>{% if contract.vat_reverse_charge %}Domestic reverse charge applies{% else %}Standard rate{% endif %}</dd>
       <dt>Bank holidays</dt><dd>{{ contract.get_bank_holiday_region_display }}</dd>
       <dt>Client decides {{ vocab.change_plural }} within</dt><dd>{{ contract.client_response_days }} days of submission</dd>
     </dl>
