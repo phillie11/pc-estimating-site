@@ -214,16 +214,19 @@ def commitments(request, org_slug, pk):
     codes = list(CostCode.objects.filter(is_active=True).order_by('code'))
     to_commit = []
     if not project.is_archived:
-        for p in Package.objects.filter(project=project, status=Package.APPOINTED, commitment__isnull=True) \
-                .select_related('subcontractor', 'trade'):
-            to_commit.append((p, _guess_code(p, codes)))
+        waiting = list(Package.objects.filter(project=project, status=Package.APPOINTED, commitment__isnull=True)
+                       .select_related('subcontractor', 'trade'))
+        levelled = services.levelled_totals(project) if waiting else {}
+        for p in waiting:
+            value, basis = services.order_value_for(p, levelled)
+            to_commit.append((p, _guess_code(p, codes), value, basis))
     sv_waiting = SubVariation.objects.filter(
         project=project, status=SubVariation.APPROVED, approved_value__isnull=False, cost_adjustment__isnull=True,
         package__commitment__isnull=False).select_related('package__commitment', 'subcontractor')
     rows = [(o, o.original_value + (o.adjusted or 0)) for o in orders]
     return render(request, 'costs/commitments.html', costs_context(
         request, project, 'commitments', rows=rows, kind=kind, kind_choices=Commitment.KIND_CHOICES,
-        to_commit=to_commit, codes=codes, sv_waiting=sv_waiting if not project.is_archived else [],
+        to_commit=to_commit, codes=codes, basis_levelled=Commitment.BASIS_LEVELLED, sv_waiting=sv_waiting if not project.is_archived else [],
         total=sum((v for _, v in rows), 0)))
 
 
@@ -240,7 +243,10 @@ def commit_package(request, org_slug, pk):
     except CostError as e:
         messages.error(request, str(e))
     else:
-        messages.success(request, f'{c.ref} committed: {c.supplier} at £{c.original_value:,.2f} against {code}.')
+        basis = ('the levelled total from quote levelling' if c.value_basis == Commitment.BASIS_LEVELLED
+                 else 'the quoted value, as there is no levelled total')
+        messages.success(request, f'{c.ref} committed: {c.supplier} at £{c.original_value:,.2f} ({basis}) '
+                                  f'against {code}.')
     return redirect('cost_commitments', org_slug=org_slug, pk=pk)
 
 

@@ -392,6 +392,11 @@ class JourneyTest(TestCase):
         rates(self.pkg_cheap, {f'sum_{lines["J1"]}': '29000', f'rate_{lines["J2"]}': '1250'})
         page = text(self.get('est', sheet))
         self.assertIn('48,500', page)
+        # Oak's quote excludes ironmongery: the estimator prices it in, so Oak levels at 48,500 + 1,250 = 49,750
+        self.post('est', sheet, {'action': 'exclusion', 'exc-package': self.pkg_oak.pk, 'exc-text': 'Ironmongery',
+                                 'exc-status': 'PRICED', 'exc-amount': '1250.00'})
+        page = text(self.get('est', sheet))
+        self.assertIn('49,750', page)
         # Carrying Oak, not the lowest levelled, needs a reason
         r = self.post('est', sheet, {'action': 'carry', 'carry-package': self.pkg_oak.pk, 'carry-reason': ''}, status=200)
         self.assertIn('Say why', text(r))
@@ -445,7 +450,7 @@ class JourneyTest(TestCase):
         self.assertIn('Leeds Bar Fit-out', page)
         self.assertIn('Oak & Ash Joinery', page)  # who's who: the appointed sub
         # Commercial figures, handover notes and who else priced the work stay internal
-        for secret in ('48,500', '250,000', 'Christmas', 'Cal Cheap', 'Cheapside'):
+        for secret in ('48,500', '49,750', '250,000', 'Christmas', 'Cal Cheap', 'Cheapside'):
             self.assertNotIn(secret, page)
         # The sub now has the live-job portal, and can't tell who they beat
         page = text(self.get('sub', self.pu('project_detail')))
@@ -479,16 +484,25 @@ class JourneyTest(TestCase):
             f'amt_{self.joinery_code.pk}': '50000.00', f'amt_{self.prelims_code.pk}': '175000.00'})
         page = text(self.get('pm', self.pu('cost_report')))
         self.assertIn('225,000', page)
-        # The order, committed from the appointed package
+        # The order, committed from the appointed package at the levelled total, with the quote shown alongside
         r = self.get('pm', self.pu('cost_commitments'))
-        self.assertIn('Oak & Ash Joinery', text(r))
+        page = text(r)
+        self.assertIn('Oak & Ash Joinery', page)
+        self.assertIn('£49,750.00 Levelled total · quoted £48,500.00', page)
         data = form_data(r, 'cost_code')
         self.assertEqual(int(data['package']), self.pkg_oak.pk)
         self.assertEqual(int(data['cost_code']), self.joinery_code.pk)  # guessed from the trade
-        self.post('pm', self.pu('cost_commit_package'), data)
-        page = text(self.get('pm', self.pu('cost_commitments')))
-        self.assertIn('48,500.00', page)
+        r = self.post('pm', self.pu('cost_commit_package'), data, follow=True, status=200)
+        page = text(r)
+        self.assertIn('ORD-001 committed: Oak & Ash Joinery at £49,750.00 (the levelled total from quote levelling)',
+                      page)
+        self.assertIn('49,750.00', page)
         self.assertIn('Joinery subcontract', page)
+        with org_context(self.org):
+            order = self.pkg_oak.commitment
+        page = text(self.get('pm', order.get_absolute_url()))
+        self.assertIn('Placed at £49,750.00 Levelled total from quote levelling', page)
+        self.assertIn('Original quote £48,500.00', page)
 
     # 6 -----------------------------------------------------------------
 
@@ -774,6 +788,7 @@ class JourneyTest(TestCase):
         page = text(self.get('client', ap_url))
         self.assertIn('Paid', page)
         self.assertNotIn('48,500', page)
+        self.assertNotIn('49,750', page)
 
     # 11 ----------------------------------------------------------------
 
@@ -800,6 +815,7 @@ class JourneyTest(TestCase):
         self.assertIn('SA-001', page)
         self.assertIn('£19,000.00', page)  # 20,000 less 5% retention
         self.assertNotIn('48,500', page)  # nothing of our order or costs
+        self.assertNotIn('49,750', page)
         self.assertIn('Oak & Ash Joinery applied for payment: SA-001', text(self.get('pm', self.u('notifications'))))
         self.assertIn(('subpayment', 'SA-001'), self.needs('pm')[1])
         # Our payment notice, then the payment with CIS
@@ -828,11 +844,11 @@ class JourneyTest(TestCase):
         budget = sum(t['BUDGET'] for t in totals.values())
         committed = sum(t['COMMITMENT'] for t in totals.values())
         actual = sum(t['ACTUAL'] for t in totals.values())
-        self.assertEqual((budget, committed, actual), (Decimal('225000.00'), Decimal('48500.00'), Decimal('19000.00')))
+        self.assertEqual((budget, committed, actual), (Decimal('225000.00'), Decimal('49750.00'), Decimal('19000.00')))
         data = report.context['data']
         t = data['total']
         self.assertEqual((t.budget, t.committed, t.actual), (budget, committed, actual))
-        # Forecast per code is the larger of budget, committed and actual: 50,000 + 175,000
+        # Forecast per code is the larger of budget, committed and actual: joinery 50,000 (over 49,750 committed) + 175,000
         self.assertEqual(data['final_cost'], Decimal('225000.00'))
         self.assertEqual(data['final_account'], Decimal('256000.00'))
         self.assertEqual(data['margin'], Decimal('31000.00'))
@@ -843,7 +859,7 @@ class JourneyTest(TestCase):
         self.assertEqual(Decimal(next(r for r in rows if len(r) > 1 and r[1] == 'Forecast final account')[3]),
                          Decimal('256000.00'))
         page = text(report)
-        for figure in ('225,000', '48,500', '19,000'):
+        for figure in ('225,000', '49,750', '19,000'):
             self.assertIn(figure, page)
         self.assertIn('19,000', text(ledger))
         # Commercial position: 250,000 + approved 6,000 = 256,000, the same on the contract page and the report
