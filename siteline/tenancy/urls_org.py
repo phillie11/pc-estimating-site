@@ -4,6 +4,7 @@ from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
 from delivery import views as delivery
+from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
 from projects import views as projects
@@ -104,5 +105,8 @@ urlpatterns = [
     # Commercial tab: contract set-up, change register, early warnings, change events (changes/urls.py)
     *changes_urls.project_patterns(P),
     *changes_urls.org_patterns,
+    # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)
+    *diary_urls.project_patterns(P),
+    *diary_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]
