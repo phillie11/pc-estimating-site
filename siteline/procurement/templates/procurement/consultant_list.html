@@ -1,0 +1,10 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="card"><div class="card-head"><h2>Submittals for your comment</h2></div>
+{% if waiting %}<ul class="list">{% for s in waiting %}<li style="flex-wrap:wrap;align-items:center"><span class="grow" style="flex-basis:12rem"><a href="{{ s.get_absolute_url }}"><span class="ref">{{ s.ref }}</span> {{ s.title }}</a><br><span class="small dim">{{ s.get_kind_display }} · rev {{ s.revision_label }}</span></span>
+  <span class="small nowrap {% if s.is_overdue %}overdue{% else %}dim{% endif %}">{% if s.due_date %}{% if s.is_overdue %}Was due{% else %}Comments by{% endif %} {{ s.due_date|date:"D j M" }}{% endif %}</span>
+  <a class="btn primary sm" href="{{ s.get_absolute_url }}" style="min-height:44px">Comment</a></li>{% endfor %}</ul>
+{% else %}<div class="empty left"><p>Nothing waiting for your comment. {{ org.name }} sends submittals here when they want the design team's view before giving a status.</p></div>{% endif %}
+</div>
+{% if done %}<div class="card"><div class="card-head"><h2>Already with {{ org.name }}</h2></div><ul class="list">{% for s in done %}<li><span class="grow"><a href="{{ s.get_absolute_url }}"><span class="ref">{{ s.ref }}</span> {{ s.title }}</a></span>{% status_badge s %}</li>{% endfor %}</ul></div>{% endif %}
+{% endblock %}

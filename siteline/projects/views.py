@@ -78,7 +78,7 @@ def project_context(request, project, tab, **extra):
     tabs.append(('programme', 'Programme', url('programme'), None))
     if internal:
         open_pkgs = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES)
-        tabs.append(('packages', 'Procurement', url('package_list'), open_pkgs.filter(status=Package.QUOTED).count()))
+        tabs.append(('packages', 'Packages', url('package_list'), open_pkgs.filter(status=Package.QUOTED).count()))
         if open_pkgs.exists():
             tabs.append(('tender', 'Sub tenders', url('tender'), None))
     tabs.append(('rfis', 'RFIs', url('rfi_list'), rfi_qs.count()))
@@ -92,6 +92,10 @@ def project_context(request, project, tab, **extra):
         counts = site_counts(request, project)
         tabs += [('subvariations', 'Sub variations' if internal else 'Variations', url('subvariation_list'), counts['subvariations']),
                  ('rams', 'RAMS', url('rams_list'), counts['rams'])]
+    from procurement.access import tab_for  # staff: Procurement; appointed subs and designers: Submittals
+    procurement_tab = tab_for(request, project)
+    if procurement_tab:
+        tabs.append(procurement_tab)
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), issue_qs.count()),
         ('tasks', 'Tasks', url('task_list'), task_qs.count()),

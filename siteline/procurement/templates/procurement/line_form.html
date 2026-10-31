@@ -1,0 +1,33 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "procurement/_subnav.html" %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>{% if line %}{{ line.title }}{% else %}Add to the procurement schedule{% endif %}</h2>{% if line %}{% status_badge line %}{% endif %}</div><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">{% if line %}Save{% else %}Add line{% endif %}</button><a class="btn" href="{% url 'procurement_schedule' org.slug project.pk %}">Cancel</a></div>
+    </form>
+  </div></div>
+  <div class="stack">
+    {% if line %}<div class="card"><div class="card-head"><h2>Key dates</h2>{% badge line.rag_label line.rag_tone %}</div><div class="card-body">
+      <dl class="dl">
+        <dt>Required on site</dt><dd>{{ line.required_on_site|date:"D j M Y"|default:"Not set" }}</dd>
+        <dt>Order by</dt><dd><strong>{{ line.order_by|date:"D j M Y"|default:"Add a required-on-site date" }}</strong></dd>
+        <dt>Submittals due</dt><dd>{{ line.submittals_due|date:"D j M Y"|default:"—" }}</dd>
+        <dt>Design information by</dt><dd>{{ line.design_info_by|date:"D j M Y"|default:"—" }}{% if line.design_info_late %} {% badge 'After submittals are due' 'warn' %}{% endif %}</dd>
+        {% if line.ordered_on %}<dt>Ordered on</dt><dd>{{ line.ordered_on|date:"j M Y" }}</dd>{% endif %}
+      </dl>
+      {% if not line.is_done %}<form method="post" class="form-actions">{% csrf_token %}<input type="hidden" name="action" value="ordered"><button class="btn">Mark as ordered</button></form>{% endif %}
+    </div></div>
+    <div class="card"><div class="card-head"><h2>Submittals</h2><a class="btn sm" href="{% url 'submittal_create' org.slug project.pk %}?line={{ line.pk }}">{% icon 'plus' %} Ask for one</a></div>
+      {% if submittals %}<ul class="list">{% for s in submittals %}<li><span class="grow"><a href="{{ s.get_absolute_url }}"><span class="ref">{{ s.ref }}</span> {{ s.title }}</a><br><span class="small dim">Rev {{ s.revision_label }}{% if s.is_open %} · with {{ s.ball_label }}{% if s.due_date %}, due {{ s.due_date|date:"j M" }}{% endif %}{% endif %}</span></span>{% status_badge s %}</li>{% endfor %}</ul>
+      {% else %}<div class="empty left"><p>No submittals yet. Ask the subcontractor for shop drawings, samples or product data; they upload them in their portal{% if line.submittals_due %} by {{ line.submittals_due|date:"j M" }}{% endif %}.</p></div>{% endif %}
+    </div>
+    {% if not submittals %}<form method="post" data-confirm="Remove this line from the schedule? This can't be undone.">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn sm">Remove from schedule</button></form>{% endif %}
+    {% else %}<div class="card"><div class="card-head"><h2>How the dates work</h2></div><div class="card-body small">
+      <p>Order by = required on site − lead time − approval period.</p>
+      <p>Submittals due = order by − approval period.</p>
+      <p style="margin:0">Weeks are working weeks. A date on a weekend or bank holiday moves back to the working day before. The project manager is reminded in Needs me a week before the order-by date. {% badge 'Advisory' 'warn' %}</p>
+    </div></div>{% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -16,7 +16,7 @@ MAX_STAFF_TABS = 8
 
 # The order tabs earn a place in the row; anything not listed goes after these
 # 'commercial' (contract, change register, client variations) replaced the staff 'variations' tab
-STAFF_ORDER = ('overview', 'programme', 'documents', 'rfis', 'commercial', 'variations', 'subvariations', 'rams', 'issues',
+STAFF_ORDER = ('overview', 'programme', 'documents', 'rfis', 'commercial', 'variations', 'subvariations', 'rams', 'procurement', 'issues',
                'tender', 'packages', 'tasks', 'team')
 # Estimating keeps its own order: the tender comes first on a bid
 BID_ORDER = ('overview', 'tender', 'packages', 'documents', 'team')
@@ -30,7 +30,7 @@ STAFF_LABELS = {
 # External tab groups, in row order
 EXTERNAL_GROUPS = (
     ('overview', 'Overview', ('overview', 'team')),
-    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'subvariations', 'rams', 'tasks')),
+    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'subvariations', 'rams', 'submittals', 'tasks')),
     ('documents', 'Documents', ('documents',)),
     ('programme', 'Programme', ('programme',)),
     ('snags', 'Snags', ('issues',)),
@@ -42,6 +42,7 @@ EXTERNAL_LABELS = {
     'variations': 'Variations',
     'subvariations': 'Your variations',
     'rams': 'Your RAMS',
+    'submittals': 'Submittals',
     'tasks': 'Your tasks',
     'issues': 'Your snags',
 }

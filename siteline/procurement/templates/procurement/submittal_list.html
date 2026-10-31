@@ -1,0 +1,30 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a class="btn primary" href="{% url 'submittal_create' org.slug project.pk %}">{% icon 'plus' %} Ask for a submittal</a>{% endblock %}
+{% block project_content %}
+{% include "procurement/_subnav.html" %}
+<div class="filters" aria-label="Show">
+  <a class="chip {% if filters.status == 'open' and not filters.ball and not filters.overdue %}on{% endif %}" href="?">Open</a>
+  <a class="chip {% if filters.ball == 'mine' %}on{% endif %}" href="?ball=mine">With me</a>
+  <a class="chip {% if filters.ball == 'subs' %}on{% endif %}" href="?ball=subs">With subcontractors</a>
+  <a class="chip {% if filters.ball == 'designer' %}on{% endif %}" href="?ball=designer">With the designer</a>
+  <a class="chip {% if filters.overdue %}on{% endif %}" href="?overdue=1">Overdue</a>
+  <a class="chip {% if filters.status == 'all' %}on{% endif %}" href="?status=all">Everything</a>
+</div>
+<form method="get" class="filters">
+  <label class="small">Status <select name="status"><option value="open"{% if filters.status == 'open' %} selected{% endif %}>Open</option><option value="all"{% if filters.status == 'all' %} selected{% endif %}>Everything</option>{% for code, label in status_choices %}<option value="{{ code }}"{% if filters.status == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label class="small">Type <select name="kind"><option value="">Any</option>{% for code, label in kind_choices %}<option value="{{ code }}"{% if filters.kind == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  {% if filters.ball %}<input type="hidden" name="ball" value="{{ filters.ball }}">{% endif %}
+  <button class="btn sm" style="min-height:44px">Filter</button>
+</form>
+<div class="card">{% if submittals %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Submittal</th><th>Subcontractor</th><th>Status</th><th>Ball in court</th><th>Due</th></tr></thead><tbody>
+{% for s in submittals %}<tr><td class="ref nowrap">{{ s.ref }}<span class="sub">Rev {{ s.revision_label }}</span></td>
+  <td><a class="rowlink" href="{{ s.get_absolute_url }}">{{ s.title }}</a><span class="sub">{{ s.get_kind_display }}{% if s.line %} · {{ s.line.title }}{% endif %}</span></td>
+  <td class="small">{{ s.subcontractor|default:"—" }}</td>
+  <td>{% status_badge s %}</td>
+  <td class="small">{{ s.ball_label|default:"—" }}</td>
+  <td class="small nowrap{% if s.is_overdue %} overdue{% endif %}">{% if s.is_open %}{{ s.due_date|date:"D j M"|default:"—" }}{% if s.is_overdue %}<span class="sub">Overdue</span>{% endif %}{% else %}—{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% elif total %}{% include "partials/empty_state.html" with title="Nothing matches" message="No submittals match these filters." cta_url="?status=all" cta_label="Show everything" cta_plain=True %}
+{% else %}{% url 'submittal_create' org.slug project.pk as add_url %}{% include "partials/empty_state.html" with title="No submittals yet" message="Ask an appointed subcontractor for shop drawings, samples, product data or O&M information. They upload them in their portal, you give each one an A, B or C, and approvals move the procurement line on." cta_url=add_url cta_label="Ask for a submittal" %}{% endif %}</div>
+<p class="small dim">Review period on this job: <strong>{{ settings_row.review_days }} working days</strong>; resubmission: {{ settings_row.resubmit_days }} working days; reviewer: {{ reviewer.full_name|default:"the project manager" }}. <a href="{% url 'procurement_settings' org.slug project.pk %}">Change</a></p>
+{% endblock %}

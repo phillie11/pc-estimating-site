@@ -1,0 +1,62 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if staff %}<a class="btn" href="{% url 'submittal_edit' org.slug project.pk s.pk %}">Edit</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "procurement/_subnav.html" %}
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-head"><h2><span class="ref">{{ s.ref }}</span> {{ s.title }}</h2>{% status_badge s %}</div><div class="card-body">
+      {% if s.is_open %}<p class="{% if s.is_overdue %}overdue{% endif %}"><strong>Ball in court:</strong> {{ ball }}{% if s.due_date %} · {% if s.is_overdue %}was due{% else %}due{% endif %} {{ s.due_date|date:"D j M Y" }}{% endif %}</p>{% endif %}
+      <dl class="dl">
+        <dt>Type</dt><dd>{{ s.get_kind_display }}</dd>
+        <dt>Revision</dt><dd>{% if revisions %}{{ s.revision_label }}{% else %}Not sent yet{% endif %}</dd>
+        {% if s.subcontractor %}<dt>Subcontractor</dt><dd>{{ s.subcontractor }}</dd>{% endif %}
+        {% if s.line %}<dt>Procurement line</dt><dd>{% if staff %}<a href="{{ s.line.get_absolute_url }}">{{ s.line.title }}</a> {% status_badge s.line %}{% else %}{{ s.line.title }}{% endif %}</dd>{% endif %}
+        {% if s.spec_reference %}<dt>Reference</dt><dd>{{ s.spec_reference }}</dd>{% endif %}
+      </dl>
+      {% if s.description %}<hr><h3>What is needed</h3><p style="white-space:pre-line">{{ s.description }}</p>{% endif %}
+    </div></div>
+
+    {% if can_submit %}<div class="card"><div class="card-head"><h2>{% if s.status == 'REJECTED' %}Resubmit as revision {{ s.revision|add:1|stringformat:"02d" }}{% else %}Send for review{% endif %}</h2></div><div class="card-body">
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="submit">{% with form=submit_form %}{% include "partials/form_fields.html" %}{% endwith %}
+        <div class="form-actions"><button class="btn primary">{% if s.status == 'REJECTED' %}Send revision {{ s.revision|add:1|stringformat:"02d" }}{% else %}Send for review{% endif %}</button></div>
+        <p class="small dim">{{ org.name }} has {{ settings_row.review_days }} working days to review it and give it A (approved), B (approved with comments) or C (revise and resubmit). You'll be told the outcome.</p>
+      </form>
+    </div></div>{% endif %}
+
+    {% if can_review %}<div class="card"><div class="card-head"><h2>Give it a status</h2></div><div class="card-body">
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="review">{% with form=review_form %}{% include "partials/form_fields.html" %}{% endwith %}
+        <div class="form-actions"><button class="btn primary">Send status</button></div>
+        <p class="small dim">A and B let them proceed (B: incorporate your comments){% if s.line %} and move the procurement line to Approved once everything on it is approved{% endif %}. C sends it back{% if s.subcontractor %} to {{ s.subcontractor }}{% endif %} for revision {{ s.revision|add:1|stringformat:"02d" }}, due in {{ settings_row.resubmit_days }} working days.</p>
+      </form>
+    </div></div>{% endif %}
+
+    {% if can_forward %}<div class="card"><div class="card-head"><h2>Ask the designer first (optional)</h2></div><div class="card-body">
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="forward">{% with form=forward_form %}{% include "partials/form_fields.html" %}{% endwith %}
+        <div class="form-actions"><button class="btn">Send for comment</button></div>
+        <p class="small dim">They see this revision only, and comment within the same review period. It comes back to you to give the final status.</p>
+      </form>
+    </div></div>{% endif %}
+
+    {% if can_reply %}<div class="card"><div class="card-head"><h2>{% if staff %}Record the designer's comments{% else %}Your comments{% endif %}</h2></div><div class="card-body">
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="designer_reply">{% with form=reply_form %}{% include "partials/form_fields.html" %}{% endwith %}
+        <div class="form-actions"><button class="btn primary">Send comments to {{ org.name }}</button></div>
+        <p class="small dim">{{ org.name }} gives the final status. The subcontractor doesn't see your comments directly.</p>
+      </form>
+    </div></div>{% endif %}
+
+    {% if staff and s.is_open %}<form method="post" data-confirm="Withdraw {{ s.ref }}? Nobody will be asked for it any more.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="linkbtn small">Withdraw this submittal</button></form>{% endif %}
+  </div>
+
+  <div class="card"><div class="card-head"><h2>Revisions</h2></div>
+    {% if revisions %}<ul class="list">{% for rev in revisions %}<li style="display:block">
+      <div class="row" style="justify-content:space-between"><strong>Rev {{ rev.label }}</strong>{% if rev.code %}{% badge rev.get_code_display rev.code_tone %}{% elif rev.number == s.revision and s.status == 'WITH_CONSULTANT' %}{% badge 'With designer' 'info' %}{% elif rev.number == s.revision and s.status == 'SUBMITTED' %}{% badge 'In review' 'accent' %}{% endif %}</div>
+      <div class="small dim">Sent {{ rev.submitted_at|date:"j M Y" }}{% if rev.submitted_by %} by {{ rev.submitted_by.full_name }}{% endif %}{% if rev.review_due and not rev.code %} · review due {{ rev.review_due|date:"j M" }}{% endif %}</div>
+      {% if rev.note %}<p class="small" style="white-space:pre-line">{{ rev.note }}</p>{% endif %}
+      {% for f in rev.visible_files %}{% if f.role == 'SUBMISSION' %}<div class="small"><a href="{% url 'submittal_file' org.slug project.pk s.pk f.pk %}">{{ f.original_name }}</a> <span class="dim">{{ f.size|filesize }}</span></div>{% endif %}{% endfor %}
+      {% if who != 'sub' and rev.forwarded_to %}<div class="quote" style="margin-top:8px"><div class="small dim">{% if who == 'staff' %}Sent to {{ rev.forwarded_to.full_name }} for comment {{ rev.forwarded_at|date:"j M" }}{% else %}Sent to you for comment {{ rev.forwarded_at|date:"j M" }}{% endif %}{% if rev.forward_note %}: {{ rev.forward_note }}{% endif %}</div>{% if rev.consultant_comments %}<p class="small" style="margin:.4rem 0 0"><strong>Designer's comments:</strong> {{ rev.consultant_comments }}</p>{% endif %}{% for f in rev.visible_files %}{% if f.role == 'CONSULTANT' %}<div class="small"><a href="{% url 'submittal_file' org.slug project.pk s.pk f.pk %}">{{ f.original_name }}</a> <span class="dim">designer's mark-up</span></div>{% endif %}{% endfor %}</div>{% endif %}
+      {% if rev.code and who != 'consultant' %}<div class="quote {% if rev.code != 'C' %}answer{% endif %}" style="margin-top:8px"><div class="small dim">{{ rev.get_code_display }} · {{ rev.reviewed_at|date:"j M Y" }}{% if who == 'staff' and rev.reviewed_by %} by {{ rev.reviewed_by.full_name }}{% endif %}</div>{% if rev.review_comments %}<p class="small" style="margin:.4rem 0 0">{{ rev.review_comments }}</p>{% endif %}{% for f in rev.visible_files %}{% if f.role == 'MARKUP' %}<div class="small"><a href="{% url 'submittal_file' org.slug project.pk s.pk f.pk %}">{{ f.original_name }}</a> <span class="dim">marked up</span></div>{% endif %}{% endfor %}</div>{% endif %}
+    </li>{% endfor %}</ul>
+    {% else %}<div class="empty left"><p>Nothing sent yet.{% if s.due_date %} Due {{ s.due_date|date:"D j M Y" }}.{% endif %}</p></div>{% endif %}
+  </div>
+</div>
+{% endblock %}
