@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Register CSV</a><a class="btn primary" href="{% url 'rfi_create' org.slug project.pk %}">{% icon 'plus' %} Raise RFI</a>{% endblock %}
+{% block project_actions %}<a class="btn" href="{% url 'rfi_list' org.slug project.pk %}?export=csv" title="Every RFI on this project you can see, whatever the filter, with their dates">{% icon 'download' %} Export CSV</a><a class="btn primary" href="{% url 'rfi_create' org.slug project.pk %}">{% icon 'plus' %} Raise RFI</a>{% endblock %}
 {% block project_content %}
 <div class="filters">
   <a class="chip {% if status == 'live' %}on{% endif %}" href="?status=live">Live</a>
