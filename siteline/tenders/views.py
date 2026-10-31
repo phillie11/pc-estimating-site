@@ -227,6 +227,8 @@ def _internal(request, project):
         d.opened_by = sorted(opened.get(cur.file.name, set())) if cur else []
     settings = TenderSettings.for_org(request.org)
     rows = coverage.trade_rows(project, target=settings.min_quotes, packages=packages)
+    from levelling.coverage import annotate
+    annotate([(project, rows)])  # "Not levelled" on trades with fewer than 2 quotes levelled
     for r in rows:
         r.suggestions = coverage.suggest(project, r.trade) if r.thin else []
     today = timezone.localdate()

@@ -17,7 +17,7 @@
       <p style="margin:0">Subcontractors who priced at tender stay in procurement, so the projects team can appoint them or re-tender without starting again.{% if winning %} Estimating keeps the result in its win rate and analytics.{% endif %}</p>
     </div></div>
     {% if quotes %}<div class="card"><div class="card-head"><h2>Sub quotes from the tender</h2></div>
-      <ul class="list">{% for q in quotes %}<li><span class="grow">{{ q.subcontractor }}<br><span class="small dim">{{ q.trade|default:"Package" }}</span></span><span class="mono small">{{ q.quote_value|money:currency }}</span></li>{% endfor %}</ul></div>{% endif %}
+      <ul class="list">{% for q in quotes %}<li><span class="grow">{{ q.subcontractor }}{% if q.carried %} {% badge 'Carried in tender' 'good' %}{% endif %}<br><span class="small dim">{{ q.trade|default:"Package" }}</span></span><span class="mono small">{{ q.quote_value|money:currency }}{% if q.carried and q.levelled is not None %}<br><span class="dim">{{ q.levelled|money:currency }} levelled</span>{% endif %}</span></li>{% endfor %}</ul></div>{% endif %}
   </div>
 </div>
 {% endblock %}

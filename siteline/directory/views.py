@@ -225,6 +225,14 @@ def package_list(request, org_slug, pk):
     groups = {}
     for p in packages:
         groups.setdefault(p.trade_id, {'trade': p.trade, 'rows': []})['rows'].append(p)
+    # Quote levelling (levelling app): who estimating carried in the tender, per trade, so the projects team
+    # appoints with it in view. The levelling itself opens for estimators only.
+    from levelling.models import LevellingSheet
+    can_level = request.membership.can_estimate
+    carried = dict(LevellingSheet.objects.filter(project=project, carried__isnull=False)
+                   .values_list('trade_id', 'carried_id'))
+    for trade_id, g in groups.items():
+        g['carried_id'] = carried.get(trade_id)
     for g in groups.values():
         quoted = [p.quote_value for p in g['rows'] if p.quote_value and p.status != Package.DECLINED]
         g['lowest'] = min(quoted) if quoted else None
@@ -235,4 +243,4 @@ def package_list(request, org_slug, pk):
                 if g['lowest'] and p.quote_value and p.quote_value != g['lowest'] else None
     ordered = sorted(groups.values(), key=lambda g: g['trade'].name if g['trade'] else '')
     return render(request, 'directory/packages.html', project_context(
-        request, project, 'packages', groups=ordered, form=form, today=timezone.localdate()))
+        request, project, 'packages', groups=ordered, form=form, today=timezone.localdate(), can_level=can_level))

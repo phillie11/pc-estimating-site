@@ -4,13 +4,13 @@
   <div class="stack">
     {% for g in groups %}
     <div class="card">
-      <div class="card-head"><h2>{{ g.trade|default:"No trade" }}</h2><span class="small dim">{% if g.appointed %}appointed {{ g.appointed.subcontractor }}{% elif g.lowest %}lowest {{ g.lowest|money:currency }}{% else %}awaiting quotes{% endif %}</span></div>
+      <div class="card-head"><h2>{{ g.trade|default:"No trade" }}</h2><span class="small dim">{% if g.appointed %}appointed {{ g.appointed.subcontractor }}{% elif g.lowest %}lowest {{ g.lowest|money:currency }}{% else %}awaiting quotes{% endif %}{% if can_level and g.trade %} · <a href="{% url 'levelling_sheet' org.slug project.pk g.trade.pk %}">Level quotes</a>{% endif %}</span></div>
       <div class="table-wrap"><table class="t"><thead><tr><th>Subcontractor</th><th>Status</th><th class="num">Quote</th><th>Terms</th><th></th></tr></thead><tbody>
       {% for p in g.rows %}<tr>
         <td><a class="rowlink" href="{{ p.subcontractor.get_absolute_url }}">{{ p.subcontractor.company_name }}</a>
           <span class="sub">{% if p.viewed_at %}Opened {{ p.viewed_at|date:"j M" }}{% elif p.sent_at %}Invited {{ p.sent_at|date:"j M" }}, not opened yet{% endif %}{% if p.quote_due %} · due {{ p.quote_due|date:"j M" }}{% endif %}</span>
           {% if p.subcontractor.insurance_status != 'OK' %}<span class="sub">{% badge p.subcontractor.insurance_label p.subcontractor.insurance_tone %}</span>{% endif %}</td>
-        <td>{% if p.status == 'ENQUIRY' and p.is_overdue %}{% badge 'Overdue' 'bad' %}{% else %}{% badge p.get_status_display p.status_tone %}{% endif %}{% if p.submitted_late %} {% badge 'Late' 'warn' %}{% endif %}{% if p.decline_reason %}<span class="sub">{{ p.decline_reason }}</span>{% endif %}</td>
+        <td>{% if p.status == 'ENQUIRY' and p.is_overdue %}{% badge 'Overdue' 'bad' %}{% else %}{% badge p.get_status_display p.status_tone %}{% endif %}{% if p.submitted_late %} {% badge 'Late' 'warn' %}{% endif %}{% if g.carried_id == p.pk %} {% badge 'Carried in tender' 'good' %}{% endif %}{% if p.decline_reason %}<span class="sub">{{ p.decline_reason }}</span>{% endif %}</td>
         <td class="num">{% if p.quote_value %}<strong>{{ p.quote_value|money:currency }}</strong>{% if p.quote_value == g.lowest %}<span class="sub">{% badge 'Lowest' 'good' %}</span>{% elif p.over_lowest %}<span class="sub">+{{ p.over_lowest }}%</span>{% endif %}{% else %}—{% endif %}</td>
         <td class="small" style="min-width:160px">{% if p.submitted_at %}{% if p.valid_until %}Valid to {{ p.valid_until|date:"j M y" }}<br>{% endif %}{% if p.programme_weeks %}{{ p.programme_weeks }} weeks on site<br>{% endif %}{% if p.exclusions %}<span title="{{ p.exclusions }}">Excl: {{ p.exclusions|truncatechars:60 }}</span><br>{% endif %}{% if p.quote_file %}<a href="{% url 'quote_file' org.slug project.pk p.pk %}">Quote document</a>{% endif %}{% else %}<span class="dim">—</span>{% endif %}</td>
         <td class="num nowrap">

@@ -202,6 +202,8 @@ def coverage_board(request, org_slug):
         projects = projects.filter(owner_id=int(lead))
     show = 'thin' if request.GET.get('show') == 'thin' else 'all'
     tenders = coverage.open_tenders(projects, today=timezone.localdate())
+    from levelling.coverage import annotate
+    annotate(tenders)  # "Not levelled" on trades with fewer than 2 quotes levelled
     if show == 'thin':
         tenders = [(p, [r for r in rows if r.thin]) for p, rows in tenders if p.thin_rows]
     return render(request, 'tenders/coverage.html', {
