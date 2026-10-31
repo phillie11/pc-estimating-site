@@ -1,0 +1,30 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
+{% block project_actions %}{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Download CSV</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "diary/_subnav.html" with sub='delays' %}
+<p class="small dim">Every delay logged in the site diary, newest first. Keep this up to date: it is the day-by-day record behind any extension of time claim. Internal only.</p>
+<div class="kpis">
+  <div class="kpi"><div class="label">Hours lost</div><div class="value">{{ total|floatformat:"-1" }}</div><div class="note">{{ rows|length }} delay{{ rows|length|pluralize }} logged{% if filtered %} (filtered){% endif %}</div></div>
+  {% for label, hours in by_cause|slice:":3" %}<div class="kpi"><div class="label">{{ label }}</div><div class="value">{{ hours|floatformat:"-1" }}</div><div class="note">hours</div></div>{% endfor %}
+</div>
+<form method="get" class="filters touch">
+  <label class="small">From <input type="date" name="from" value="{{ filters.from|date:'Y-m-d' }}"></label>
+  <label class="small">To <input type="date" name="to" value="{{ filters.to|date:'Y-m-d' }}"></label>
+  <label class="small">Cause <select name="cause"><option value="">Any</option>{% for code, label in causes %}<option value="{{ code }}"{% if filters.cause == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <button class="btn sm">Filter</button>{% if filtered %}<a class="btn ghost sm" href="?">Clear</a>{% endif %}
+</form>
+<div class="card">
+{% if rows %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Date</th><th>Cause</th><th class="num">Hours lost</th><th>What happened</th><th>Logged by</th></tr></thead>
+  <tbody>{% for d in rows %}<tr>
+    <td class="nowrap"><a class="rowlink" href="{{ d.entry.get_absolute_url }}">{{ d.entry.entry_date|date:"D j M Y" }}</a><span class="sub mono">{{ d.entry.reference }}</span></td>
+    <td>{% badge d.get_cause_display 'warn' %}</td>
+    <td class="num">{{ d.hours_lost|floatformat:"-1" }}</td>
+    <td class="small wrap-any" style="white-space:pre-wrap">{{ d.description }}{% if d.trades_affected %}<span class="sub">Affected: {{ d.trades_affected }}</span>{% endif %}</td>
+    <td class="small">{{ d.created_by.full_name|default:"—" }}</td>
+  </tr>{% endfor %}</tbody></table></div>
+{% elif filtered %}{% include "partials/empty_state.html" with title="No delays match" message="Nothing matches these filters." cta_url="?" cta_label="Clear filters" cta_plain=True %}
+{% else %}{% url 'diary_today' org.slug project.pk as today_url %}{% include "partials/empty_state.html" with title="No delays logged" message="Nothing has been logged as stopping or slowing work. When something does (weather, late information, no access), log it from Today on site with the hours lost." cta_url=today_url cta_label="Today on site" %}{% endif %}
+</div>
+{% endblock %}

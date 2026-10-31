@@ -1,0 +1,10 @@
+{% extends "app.html" %}
+{% block title %}Site diary settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a></div><h1>Site diary settings</h1></div></div>
+<div class="card" style="max-width:720px"><div class="card-body">
+<p class="small dim">Project managers are reminded under "Needs me" when a live job has no diary entry for a working day by 10:00 the next working day. Sundays and bank holidays never count.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button></div></form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
+{% block project_content %}
+{% if is_today %}{% include "diary/_subnav.html" with sub='today' %}{% else %}{% include "diary/_subnav.html" with sub='register' %}{% endif %}
+<div class="site-mode touch">
+  <div class="day-nav">
+    <a class="btn" href="{% url 'diary_day' org.slug project.pk prev_day|date:'Y-m-d' %}" aria-label="Previous day">‹</a>
+    <h2>{% if is_today %}Today, {% endif %}{{ day|date:"l j F" }}</h2>
+    {% if next_day %}<a class="btn" href="{% url 'diary_day' org.slug project.pk next_day|date:'Y-m-d' %}" aria-label="Next day">›</a>{% else %}<span class="btn ghost" aria-hidden="true">&nbsp;</span>{% endif %}
+  </div>
+
+  <p class="small dim">{% if entry %}<span class="mono">{{ entry.reference }}</span> · {% status_badge entry.lock_label.0 entry.lock_label.1 %} · Started by {{ entry.created_by.full_name|default:"someone" }}{% if entry.written_late %} · {% badge 'Written late' 'warn' %}{% endif %}{% if not locked %} · Open for changes until the end of {{ entry.editable_until|date:"D j M" }}{% endif %} · <a href="{% url 'diary_pdf' org.slug project.pk day|date:'Y-m-d' %}">PDF</a>
+  {% else %}Nothing logged for this day yet. Tap a button to start the diary entry.{% endif %}</p>
+
+  {% if entry and locked %}<div class="card lock-box" style="margin-bottom:1rem"><div class="card-body">
+    <strong>This day is locked.</strong> Diary entries can be changed on the day and the day after, so they stand up as a record later.
+    {% if can_unlock %}<form method="post" action="{% url 'diary_lock' org.slug project.pk day|date:'Y-m-d' %}" style="margin-top:10px">{% csrf_token %}<input type="hidden" name="action" value="unlock">
+      {% include "partials/field.html" with field=unlock_form.reason full=True %}
+      <div class="form-actions"><button class="btn">Unlock for correction</button><span class="small dim">It stays open until the end of tomorrow, then locks again. Your reason goes in the audit trail.</span></div></form>
+    {% else %}<p class="small dim" style="margin:6px 0 0">If something needs correcting, ask the project manager to unlock it.</p>{% endif %}
+  </div></div>{% elif entry and entry.active_unlock %}<div class="card lock-box" style="margin-bottom:1rem"><div class="card-body">
+    <strong>Unlocked for correction</strong> until the end of {{ entry.unlocked_until|date:"D j M" }}: <span class="wrap-any">{{ entry.unlock_reason }}</span>
+    {% for t in transitions %}{% if t.name == 'relock' %}<form method="post" action="{% url 'diary_lock' org.slug project.pk day|date:'Y-m-d' %}" style="margin-top:8px">{% csrf_token %}<input type="hidden" name="action" value="relock"><button class="btn sm">Lock it again now</button></form>{% endif %}{% endfor %}
+  </div></div>{% endif %}
+
+  {% if not locked %}
+  <div class="tap-grid">
+    <a class="tap primary" href="{% url 'diary_line_add' org.slug project.pk day|date:'Y-m-d' 'labour' %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="7" r="3.5"/><path d="M2 21v-1a6 6 0 0 1 12 0v1M17 11v6M14 14h6"/></svg>Add labour</a>
+    <a class="tap" href="{% url 'diary_line_add' org.slug project.pk day|date:'Y-m-d' 'deliveries' %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M1 6h13v10H1zM14 10h4l3 3v3h-7"/><circle cx="5" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>Add delivery</a>
+    <a class="tap" href="{% url 'diary_line_add' org.slug project.pk day|date:'Y-m-d' 'visitors' %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17a4 4 0 0 1 8 0"/></svg>Add visitor</a>
+    <a class="tap warn" href="{% url 'diary_line_add' org.slug project.pk day|date:'Y-m-d' 'delays' %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>Log a delay</a>
+    <a class="tap" href="{% url 'diary_photo_upload' org.slug project.pk %}?date={{ day|date:'Y-m-d' }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="4"/></svg>Take photos</a>
+    <a class="tap" href="{% url 'issue_create' org.slug project.pk %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4h11l-2 4 2 4H5"/></svg>Raise a snag</a>
+  </div>
+  <div class="tap-more">
+    <a class="btn" href="{% url 'diary_edit' org.slug project.pk day|date:'Y-m-d' %}">Weather, hours &amp; notes</a>
+    <a class="btn" href="{% url 'diary_line_add' org.slug project.pk day|date:'Y-m-d' 'plant' %}">Add plant</a>
+    <a class="btn" href="{% url 'diary_line_add' org.slug project.pk day|date:'Y-m-d' 'instructions' %}">Add instruction</a>
+    <a class="btn" href="{% url 'diary_edit' org.slug project.pk day|date:'Y-m-d' %}#id_hs_incident">Health &amp; safety</a>
+  </div>
+  {% endif %}
+
+  <div class="stack day-section">
+    <div class="card"><div class="card-head"><h2>Weather and hours</h2>{% if not locked %}<a class="btn sm" href="{% url 'diary_edit' org.slug project.pk day|date:'Y-m-d' %}">Edit</a>{% endif %}</div><div class="card-body">
+      {% if entry and entry.weather_am or entry.weather_pm or entry.weather_note or entry.site_start or entry.site_finish or entry.own_staff_count %}<dl class="dl">
+        <dt>Weather</dt><dd>{% if entry.weather_am %}AM {{ entry.get_weather_am_display }}{% endif %}{% if entry.weather_am and entry.weather_pm %} · {% endif %}{% if entry.weather_pm %}PM {{ entry.get_weather_pm_display }}{% endif %}{% if entry.weather_note %}<span class="sub">{{ entry.weather_note }}</span>{% endif %}{% if not entry.weather_am and not entry.weather_pm and not entry.weather_note %}<span class="dim">Not recorded</span>{% endif %}</dd>
+        <dt>Site hours</dt><dd>{% if entry.site_start or entry.site_finish %}{{ entry.site_start|default:"?" }} to {{ entry.site_finish|default:"?" }}{% else %}<span class="dim">Not recorded</span>{% endif %}</dd>
+        <dt>Our people</dt><dd>{{ entry.own_staff_count }}{% if entry.own_staff %}<span class="sub" style="white-space:pre-wrap">{{ entry.own_staff }}</span>{% endif %}</dd>
+      </dl>{% else %}<div class="empty left">No weather, site hours or own staff recorded yet.</div>{% endif %}
+    </div></div>
+
+    {% for kind, title, rows, add_label in sections %}
+    <div class="card"><div class="card-head"><h2>{{ title }}{% if kind == 'labour' and rows %} · {{ sub_total }} {% if sub_total == 1 %}person{% else %}people{% endif %}{% elif kind == 'delays' and rows %} · {{ hours_lost|floatformat:"-1" }} h lost{% endif %}</h2>{% if not locked %}<a class="btn sm" href="{% url 'diary_line_add' org.slug project.pk day|date:'Y-m-d' kind %}">{{ add_label }}</a>{% endif %}</div>
+      {% if rows %}<ul class="list">{% for line in rows %}{% include "diary/_line.html" %}{% endfor %}</ul>
+      {% else %}<div class="empty left">None recorded.</div>{% endif %}</div>
+    {% endfor %}
+
+    <div class="card"><div class="card-head"><h2>Health and safety</h2>{% if entry.hs_incident %}{% badge 'Incident reported' 'bad' %}{% endif %}</div><div class="card-body">
+      {% if entry.hs_incident or entry.hs_notes %}<div style="white-space:pre-wrap" class="wrap-any">{% if not entry.hs_incident %}No incident. {% endif %}{{ entry.hs_notes }}</div>{% else %}<span class="dim">No incident or notes recorded.</span>{% endif %}
+    </div></div>
+    <div class="card"><div class="card-head"><h2>General notes</h2></div><div class="card-body">{% if entry.notes %}<div style="white-space:pre-wrap" class="wrap-any">{{ entry.notes }}</div>{% else %}<span class="dim">None.</span>{% endif %}</div></div>
+
+    <div class="card"><div class="card-head"><h2>Photos</h2>{% if not locked %}<a class="btn sm" href="{% url 'diary_photo_upload' org.slug project.pk %}?date={{ day|date:'Y-m-d' }}">Add photos</a>{% endif %}</div><div class="card-body">
+      {% if day_photos or loose_photos %}<div class="photo-grid">{% for p in day_photos %}{% include "diary/_thumb.html" %}{% endfor %}{% for p in loose_photos %}{% include "diary/_thumb.html" %}{% endfor %}</div>
+      {% if loose_photos %}<p class="small dim" style="margin-bottom:0">Some photos from this day were added to the job only, not to the diary.</p>{% endif %}
+      {% else %}<div class="empty left">No photos for this day.</div>{% endif %}
+    </div></div>
+
+    {% if audit %}<details class="card"><summary class="card-head" style="cursor:pointer"><h2>Changes to this entry</h2><span class="small dim">{{ audit|length }} most recent</span></summary>
+      <ul class="list audit">{% for a in audit %}<li><span class="grow wrap-any"><strong>{{ a.action|capfirst }}</strong>{% if a.note %}: {{ a.note }}{% endif %}<span class="sub">{{ a.actor.full_name|default:a.actor_name|default:"System" }} · {{ a.at|date:"D j M H:i" }}</span></span></li>{% endfor %}</ul></details>{% endif %}
+  </div>
+</div>
+{% endblock %}

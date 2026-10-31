@@ -1,0 +1,22 @@
+{% extends "project_base.html" %}{% load static %}
+{% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
+{% block project_content %}
+<div class="site-mode touch">
+<div class="card"><div class="card-head"><h2>Add site photos</h2></div><div class="card-body">
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+  {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <div class="form-grid">
+    <div class="field full file-pick"><label for="{{ form.camera.id_for_label }}">{{ form.camera.label }}</label>{{ form.camera }}<div class="help">Opens the camera. Take as many as you need.</div>{% for e in form.camera.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>
+    <div class="field full file-pick"><label for="{{ form.library.id_for_label }}">{{ form.library.label }}</label>{{ form.library }}<div class="help">Pick several photos taken earlier. JPEG, PNG, WebP or GIF, up to 20 at a time.</div>{% for e in form.library.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>
+    {% include "partials/field.html" with field=form.caption %}
+    {% include "partials/field.html" with field=form.area %}
+    {% include "partials/field.html" with field=form.taken_on %}
+    {% include "partials/field.html" with field=form.attach %}
+  </div>
+  <datalist id="diary-areas">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist>
+  <p class="small dim">Photos stay internal. You can share a photo with the client afterwards from the gallery.</p>
+  <div class="form-actions"><button class="btn primary">Upload</button><a class="btn ghost" href="{% url 'diary_day' org.slug project.pk day|date:'Y-m-d' %}">Cancel</a></div>
+</form>
+</div></div>
+</div>
+{% endblock %}

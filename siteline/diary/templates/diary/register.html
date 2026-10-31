@@ -1,0 +1,37 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
+{% block project_actions %}<a class="btn" href="{% url 'diary_delays' org.slug project.pk %}">Delays</a><a class="btn primary" href="{% url 'diary_today' org.slug project.pk %}">Today on site</a>{% endblock %}
+{% block project_content %}
+{% include "diary/_subnav.html" with sub='register' %}
+<div class="touch">
+<a class="btn primary today-link" href="{% url 'diary_today' org.slug project.pk %}">Today on site: {{ today|date:"D j M" }}</a>
+{% if missing %}<div class="banner">Not written yet: {% for d in missing %}<a href="{% url 'diary_day' org.slug project.pk d|date:'Y-m-d' %}">{{ d|date:"D j M" }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}. Entries are due by 10:00 the next working day.</div>{% endif %}
+
+<form method="get" class="filters">
+  <label class="small">From <input type="date" name="from" value="{{ filters.from|date:'Y-m-d' }}"></label>
+  <label class="small">To <input type="date" name="to" value="{{ filters.to|date:'Y-m-d' }}"></label>
+  {% if authors %}<label class="small">Written by <select name="author"><option value="">Anyone</option>{% for u in authors %}<option value="{{ u.pk }}"{% if filters.author == u.pk|stringformat:"s" %} selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select></label>{% endif %}
+  <label class="small">State <select name="lock"><option value="">Any</option><option value="open"{% if filters.lock == 'open' %} selected{% endif %}>Open for changes</option><option value="locked"{% if filters.lock == 'locked' %} selected{% endif %}>Locked</option></select></label>
+  <label class="small check"><input type="checkbox" name="delays" value="1"{% if filters.delays %} checked{% endif %}> With delays</label>
+  <label class="small check"><input type="checkbox" name="incident" value="1"{% if filters.incident %} checked{% endif %}> With an incident</label>
+  <button class="btn sm">Filter</button>{% if filtered %}<a class="btn ghost sm" href="?">Clear</a>{% endif %}
+</form>
+</div>
+
+<div class="card">
+{% if entries %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Date</th><th>Written by</th><th class="num">Labour</th><th>Delays</th><th class="num">Photos</th><th>State</th></tr></thead>
+  <tbody>{% for e in entries %}<tr>
+    <td><a class="rowlink" href="{{ e.get_absolute_url }}">{{ e.entry_date|date:"D j M Y" }}</a><span class="sub mono">{{ e.reference }}{% if e.hs_incident %} · <span class="bad">incident</span>{% endif %}{% if e.written_late %} · written late{% endif %}</span></td>
+    <td class="small">{{ e.created_by.full_name|default:"—" }}</td>
+    <td class="num">{{ e.total_labour }}</td>
+    <td class="small">{% if e.delay_count %}{{ e.delay_count }} · {{ e.delay_hours|floatformat:"-1" }} h lost{% else %}<span class="dim">None</span>{% endif %}</td>
+    <td class="num">{{ e.photo_count }}</td>
+    <td>{% status_badge e.lock_label.0 e.lock_label.1 %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% if page.has_other_pages %}<div class="card-foot row between small">{% if page.has_previous %}<a class="btn sm" href="{% qs page=page.previous_page_number %}">Newer</a>{% else %}<span></span>{% endif %}<span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn sm" href="{% qs page=page.next_page_number %}">Older</a>{% else %}<span></span>{% endif %}</div>{% endif %}
+{% elif filtered %}{% include "partials/empty_state.html" with title="No diary entries match" message="Nothing matches these filters. Clear them to see every day." cta_url="?" cta_label="Clear filters" cta_plain=True %}
+{% else %}{% url 'diary_today' org.slug project.pk as today_url %}{% include "partials/empty_state.html" with title="No diary entries yet" message="The site diary is written on site, one entry a day: who was on site, deliveries, visitors, delays and photos. Start today's from your phone." cta_url=today_url cta_label="Start today's diary" %}{% endif %}
+</div>
+<p class="small dim">Entries can be changed on the day and the day after; then they lock. The project manager or an admin can unlock one for correction, with a reason. Every change is kept in the entry's history.{% if is_admin %} <a href="{% url 'diary_settings' org.slug %}">Diary settings</a> (whether Saturday is a working day).{% endif %}</p>
+{% endblock %}
