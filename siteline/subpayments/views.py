@@ -92,16 +92,23 @@ FILTERS = [('', 'All'), ('awaiting', 'Awaiting our payment notice'), ('stands', 
 def subpay_list(request, org_slug, pk):
     project = get_project(request, pk)
     who = require(request, project)
-    packages = list(packages_for(request, project))
+    packages = list(packages_for(request, project).select_related('commitment') if who == STAFF
+                    else packages_for(request, project))
     subcontracts = {sc.package_id: sc for sc in Subcontract.objects.filter(package__in=packages)
                     .prefetch_related('applications__payments')}
+    taxes = {t.subcontractor_id: t for t in SubcontractorTax.objects.filter(
+        subcontractor_id__in={p.subcontractor_id for p in packages})}  # one query, not one per package
     rows = []
     for pkg in packages:
         sc = subcontracts.get(pkg.pk)
-        rows.append({'package': pkg, 'sc': sc, 'tax': tax_for(pkg.subcontractor),
+        tax = taxes.get(pkg.subcontractor_id) or SubcontractorTax(subcontractor=pkg.subcontractor,
+                                                                  organization_id=pkg.organization_id)
+        rows.append({'package': pkg, 'sc': sc, 'tax': tax,
                      'summary': _summary(sc) if sc else None,
                      'order': getattr(pkg, 'commitment', None) if who == STAFF else None})
     apps = list(applications_for(request, project).prefetch_related('payments').order_by('-valuation_date', '-number'))
+    for a in apps:  # paid so far from the prefetched payments, not a SUM query per application
+        a._paid_gross = sum((p.gross for p in a.payments.all() if not p.is_reversed), ZERO)
     shown = request.GET.get('show', '') if request.GET.get('show', '') in dict(FILTERS) else ''
     filtered = {
         'awaiting': [a for a in apps if a.status == SubApplication.RECEIVED and not a.stands_as_notified],

@@ -78,6 +78,8 @@ class DiaryEntry(RecordBase):
         verbose_name = 'site diary entry'
         verbose_name_plural = 'site diary entries'
         constraints = [models.UniqueConstraint(fields=['project', 'entry_date'], name='diary_one_entry_per_day')]
+        # Needs me (missing diary days) checks many jobs' recent days at once, within the company
+        indexes = [models.Index(fields=['organization', 'project', 'entry_date'], name='diary_org_proj_date')]
 
     def __str__(self):
         return f'{self.reference} {self.title}'

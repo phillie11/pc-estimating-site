@@ -29,10 +29,11 @@ def scope(request):
 
 def site_counts(request, project):
     from .models import Rams, SubVariation
+    from projects.views import count_together  # both counts in one query
     rams, subvars = Rams.objects.filter(project=project), SubVariation.objects.filter(project=project)
     if is_internal(request):
-        return {'rams': rams.filter(status=Rams.SUBMITTED).count(),
-                'subvariations': subvars.filter(status=SubVariation.SUBMITTED).count()}
+        return count_together(rams=rams.filter(status=Rams.SUBMITTED),
+                              subvariations=subvars.filter(status=SubVariation.SUBMITTED))
     sub = subcontractor_id(request)
-    return {'rams': rams.filter(subcontractor_id=sub, status=Rams.REJECTED).count(),
-            'subvariations': subvars.filter(subcontractor_id=sub, status=SubVariation.SUBMITTED).count()}
+    return count_together(rams=rams.filter(subcontractor_id=sub, status=Rams.REJECTED),
+                          subvariations=subvars.filter(subcontractor_id=sub, status=SubVariation.SUBMITTED))

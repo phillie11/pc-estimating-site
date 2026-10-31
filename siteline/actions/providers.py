@@ -35,12 +35,46 @@ def _portal(request):
     return portal_projects(request)
 
 
+def _portal_ids(request):
+    """The pks of portal_projects, worked out once per request: every hook provider checks its items against it."""
+    ids = getattr(request, '_needs_me_portal_ids', None)
+    if ids is None:
+        ids = set(_portal(request).values_list('pk', flat=True))
+        try:
+            request._needs_me_portal_ids = ids
+        except AttributeError:  # pragma: no cover - a request that won't take attributes
+            pass
+    return ids
+
+
 def _my_memberships(request, roles):
     """This external user's ProjectMember rows with these roles, on projects they can open."""
     from projects.access import visible_projects
     from projects.models import ProjectMember
     return ProjectMember.objects.filter(user=request.user, role__in=roles,
                                         project__in=visible_projects(request).values('pk'))
+
+
+def my_jobs(request):
+    """
+    Won, live and complete jobs this member of staff can open, with what they are on each one:
+    `is_manager`, `on_team_pm`, `on_team_qs` and `has_ledger`. One query per request, shared by
+    the providers that list a job's payments, sub payments, costs and diary (each applies its own
+    rule to these flags), because all of them run behind the badge on every page.
+    """
+    from projects.access import visible_projects
+    from projects.models import Project, ProjectMember
+    from tenancy.context import request_memo
+
+    def fetch():
+        from costs.models import LedgerEntry
+        member = ProjectMember.objects.filter(project=OuterRef('pk'), user=request.user)
+        return list(visible_projects(request).filter(
+            stage__in=Project.DELIVERY_STAGES + (Project.STAGE_COMPLETE,)).annotate(
+            on_team_pm=Exists(member.filter(role=ProjectMember.ROLE_PM)),
+            on_team_qs=Exists(member.filter(role=ProjectMember.ROLE_QS)),
+            has_ledger=Exists(LedgerEntry.objects.filter(project=OuterRef('pk')))))
+    return request_memo(('needs_me_jobs', request.user.pk), fetch)
 
 
 def jobs_i_run(request):
@@ -198,14 +232,26 @@ class AddendumProvider:
         from tenders.models import Addendum, AddendumReceipt
         from tenders.services import tender_url
         pairs = _bidding(request)
+        if not pairs:
+            return []
+        q = Q()
+        for project_id, sub_id in pairs:
+            q |= Q(project_id=project_id, subcontractor_id=sub_id)
+        # Nothing left to price on a tender means an addendum there no longer needs them
+        pricing = set(Package.objects.filter(q, status__in=Package.OPEN_STATUSES)
+                      .values_list('project_id', 'subcontractor_id'))
+        pairs = [pair for pair in pairs if pair in pricing]
+        if not pairs:
+            return []
+        addenda = list(Addendum.objects.filter(project_id__in={p for p, _ in pairs})
+                       .select_related('project', 'project__organization').order_by('number'))
+        acked = set(AddendumReceipt.objects.filter(addendum__in=addenda, subcontractor_id__in={s for _, s in pairs})
+                    .values_list('addendum_id', 'subcontractor_id'))
         out = []
         for project_id, sub_id in pairs:
-            if not Package.objects.filter(project_id=project_id, subcontractor_id=sub_id,
-                                          status__in=Package.OPEN_STATUSES).exists():
-                continue  # nothing left to price here, so an addendum no longer needs them
-            acked = AddendumReceipt.objects.filter(addendum=OuterRef('pk'), subcontractor_id=sub_id)
-            for a in Addendum.objects.filter(project_id=project_id).exclude(Exists(acked)) \
-                    .select_related('project', 'project__organization').order_by('number'):
+            for a in addenda:
+                if a.project_id != project_id or (a.pk, sub_id) in acked:
+                    continue
                 out.append(Item(
                     kind=self.kind, title=a.title, url=tender_url(a.project) + '#addenda', ref=a.reference,
                     project=a.project, priority=PRIORITY_HIGH, action='Read it and confirm your price allows for it',
@@ -310,7 +356,7 @@ class HookProvider:
                 continue
             if item.project is not None:
                 if allowed is None:
-                    allowed = set(_portal(request).values_list('pk', flat=True))
+                    allowed = _portal_ids(request)
                 if item.project.pk not in allowed:
                     continue
             item.kind = self.kind

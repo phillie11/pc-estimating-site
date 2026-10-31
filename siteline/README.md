@@ -191,6 +191,13 @@ All in `security/`; the route lists are in `security/middleware.py` and `securit
 - **The visitor's IP address** for limits and lockouts comes from `REMOTE_ADDR` unless `CLIENT_IP_HEADER` says otherwise: set `CLIENT_IP_HEADER=X-Real-IP` on PythonAnywhere. AWS needs nothing (`config/alb_wsgi.py`). **Only set it when the app can't be reached except through the proxy that sets that header**: if the server also answers directly (on its own IP address, say), anyone can send the header themselves and pick any address, dodging the limits and the login lockout. `check --deploy` warns (`security.W003`) if the header is set and `ALLOWED_HOSTS` contains a bare IP address.
 - **Tests.** The test runner (`security/testing.py`) switches two-factor enforcement off so the other apps' tests can sign in with `force_login`; `security/tests/` switches it back on.
 
+## Performance and the end-to-end journey
+
+- `e2e/test_journey.py` drives one job through every module by HTTP only, as the estimator, PM, owner, two subcontractors and the client, and checks what each sees and their Needs me after every step. Run it after any change that crosses modules: `DEBUG=1 python manage.py test e2e`.
+- `manage.py seed_scale` builds a company two years in on a throwaway database (200 jobs, 40 staff, 300 subcontractors, about 20,000 ledger entries, 3,000 RFIs, 5,000 diary entries, 12,500 documents and revisions, 2,000 applications; `tenancy/scale.py`). Use it to measure pages before a release.
+- Lists and the Needs me badge run on every page, so they take a fixed number of queries however much data there is. `e2e/test_query_counts.py` fails if a page takes more queries in a company three times the size. Things that help: `select_related`/`prefetch_related`, `projects.views.count_together()` for several counts in one query, and `tenancy.context.request_memo()` for a lookup several parts of one page repeat (it lasts one request and is cleared by any save).
+- `row.organization` costs no query inside the request's organisation (`tenancy.models.TenantOrganizationField`), so `get_absolute_url()` on a list is free.
+
 ## Run it locally
 
 ```bash
@@ -452,6 +459,8 @@ diary/        site diary (one entry a day, lock window, unlock), site photos, de
 docs/adr/     architecture decision records
 jobs/         background job queue and worker (run_worker, jobs_status), email outbox
 actions/      "Needs me" registry and providers, project tab layout, portal visits, dashboard filters
+e2e/          tests only: one job lead to final account by HTTP as every role (test_journey), query counts that
+              must not grow with company size (test_query_counts), accessibility and defect regressions
 security/     two-factor sign-in, step-up, rate limits, security headers
 templates/    shared templates; app-specific ones live in each app
 static/       app.css (single stylesheet; --accent is set from each company's brand colour, --accent-ink to white or near-black, whichever contrasts more), app.js

@@ -91,10 +91,13 @@ def mark_unsuccessful(request, pkg, tell=True):
     pkg.status, pkg.decided_at = Package.UNSUCCESSFUL, timezone.now()
     pkg.save(update_fields=['status', 'decided_at'])
     if tell:
+        # Not tied to the project: they lose access to it just below, and the bell hides alerts on projects
+        # someone can't open (projects.access.openable), so the outcome would never show in the portal.
+        # It links to their dashboard and names the project in its title.
         notify.alert(sub_members(pkg.project, [pkg.subcontractor_id]),
                      f'Tender outcome: {pkg.trade or "package"} on {pkg.project.name}. Thank you for pricing; '
                      f'on this occasion your quote was not successful.',
-                     reverse('dashboard', args=[pkg.project.organization.slug]), project=pkg.project,
+                     reverse('dashboard', args=[pkg.project.organization.slug]), project=None,
                      actor=request.user, org=request.org)
     revoke_if_finished(pkg.project, pkg.subcontractor)
 
@@ -126,6 +129,6 @@ def close_all(request, project):
         pkg.save(update_fields=['status', 'decided_at'])
         notify.alert(sub_members(project, [pkg.subcontractor_id]),
                      f'Tender closed: {project.name} will not be going ahead with us. Thank you for pricing.',
-                     reverse('dashboard', args=[project.organization.slug]), project=project, actor=request.user,
-                     org=request.org)
+                     reverse('dashboard', args=[project.organization.slug]), project=None, actor=request.user,
+                     org=request.org)  # not tied to the project: as mark_unsuccessful, they lose access to it next
         revoke_if_finished(project, pkg.subcontractor)

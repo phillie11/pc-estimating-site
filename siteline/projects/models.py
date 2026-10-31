@@ -364,6 +364,8 @@ class Task(TenantModel):
 
     class Meta:
         ordering = ['status', 'due_date', '-created_at']
+        # Needs me: tasks assigned to someone, by status, within the company
+        indexes = [models.Index(fields=['organization', 'assignee', 'status'], name='task_org_assignee_status')]
 
     def __str__(self):
         return self.title
@@ -447,6 +449,8 @@ class Issue(TenantModel):
     class Meta:
         ordering = ['status', '-created_at']
         unique_together = [('project', 'number')]
+        # Needs me: snags assigned to someone, by status, within the company
+        indexes = [models.Index(fields=['organization', 'assignee', 'status'], name='issue_org_assignee_status')]
 
     def __str__(self):
         return f'{self.reference} {self.title}'

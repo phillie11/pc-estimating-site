@@ -169,5 +169,11 @@ def rfi_register(request, org_slug):
         from projects.models import Project
         rfis = rfis.filter(project__stage__in=Project.DELIVERY_STAGES)
         narrowed.append('on live jobs')
-    return render(request, 'rfis/register.html', {'rfis': rfis.order_by('due_date'), 'today': timezone.localdate(),
+    # A page at a time: a company two years in has thousands of live RFIs, too many for one page
+    from django.core.paginator import Paginator
+    page = Paginator(rfis.order_by('due_date', 'pk'), REGISTER_PAGE).get_page(request.GET.get('page'))
+    return render(request, 'rfis/register.html', {'rfis': page.object_list, 'page': page, 'today': timezone.localdate(),
                                                   'mine': bool(request.GET.get('mine')), 'narrowed': narrowed})
+
+
+REGISTER_PAGE = 100

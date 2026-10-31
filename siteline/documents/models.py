@@ -310,12 +310,17 @@ def recipient_q(user, prefix='', project=None):
     the model being filtered ('recipients__' from Transmittal).
     """
     from projects.models import ProjectMember
+    from tenancy.context import request_memo
     q = models.Q(**{f'{prefix}user': user})
-    links = ProjectMember.objects.filter(user=user, subcontractor__isnull=False) \
-        .exclude(role=ProjectMember.ROLE_BIDDER)
+
+    def company_links():
+        links = ProjectMember.objects.filter(user=user, subcontractor__isnull=False) \
+            .exclude(role=ProjectMember.ROLE_BIDDER)
+        return list(links.values_list('project_id', 'subcontractor_id'))
+    links = request_memo(('recipient_links', user.pk), company_links)  # asked several times a page
     if project is not None:
-        links = links.filter(project=project)
-    for project_id, sub_id in links.values_list('project_id', 'subcontractor_id'):
+        links = [(p, s) for p, s in links if p == project.pk]
+    for project_id, sub_id in links:
         q |= models.Q(**{f'{prefix}subcontractor_id': sub_id, f'{prefix}transmittal__project_id': project_id})
     return q
 

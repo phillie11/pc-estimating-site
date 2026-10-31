@@ -28,8 +28,14 @@ STAFF, SUB = 'staff', 'sub'
 
 def role(request, project):
     """STAFF (owners, admins, the job's PM/QS), SUB (appointed on a package on this job), or None."""
+    from tenancy.context import request_memo
     if project.stage not in COST_STAGES:
         return None
+    # Asked several times a page (the view, the tab, the access checks): once per request
+    return request_memo(('subpay_role', request.user.pk, project.pk), lambda: _role(request, project))
+
+
+def _role(request, project):
     if is_internal(request):
         return STAFF if can_view_costs(request, project) else None
     sub = subcontractor_id(request)

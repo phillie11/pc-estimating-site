@@ -17,7 +17,7 @@
     </div>
   </details>
   <nav class="pnav" aria-label="Portal">
-    <a href="{% url 'dashboard' org.slug %}" class="{% if u == 'dashboard' %}on{% endif %}">{% icon 'home' %}<span class="t">Home</span></a>
+    <a href="{% url 'dashboard' org.slug %}" class="{% if u == 'dashboard' %}on{% endif %}" aria-label="Home">{% icon 'home' %}<span class="t">Home</span></a>
     <a href="{% url 'needs_me' org.slug %}" class="{% if u == 'needs_me' %}on{% endif %}" aria-label="Needs me: {{ needs_me_count }} waiting">{% icon 'inbox' %}<span class="t">Needs me</span>{% if needs_me_count %}<span class="n">{{ needs_me_count|badge_count }}</span>{% endif %}</a>
     <a href="{% url 'notifications' org.slug %}" class="{% if u == 'notifications' %}on{% endif %}" aria-label="Notifications{% if unread_notifications %}: {{ unread_notifications }} unread{% endif %}">{% icon 'bell' %}{% if unread_notifications %}<span class="n">{{ unread_notifications }}</span>{% endif %}</a>
     <details class="pacct" data-menu>

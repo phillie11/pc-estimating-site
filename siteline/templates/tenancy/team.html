@@ -7,7 +7,7 @@
     <div class="card"><div class="card-head"><h2>Staff</h2></div><div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Role</th><th>Works in</th><th></th></tr></thead><tbody>
       {% for m in staff %}<tr><td><strong>{{ m.user.full_name }}</strong><span class="sub">{{ m.user.email }}{% if m.user.job_title %} · {{ m.user.job_title }}{% endif %}</span></td>
         <td>{% if is_org_admin and m.user != request.user %}<form method="post" action="{% url 'member_update' org.slug m.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="action" value="role">
-          <select name="role" data-autosubmit style="width:auto">{% for v, l in role_form.fields.role.choices %}<option value="{{ v }}" {% if v == m.role %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form>
+          <select name="role" data-autosubmit style="width:auto" aria-label="Role for {{ m.user.full_name|default:m.user.email }}">{% for v, l in role_form.fields.role.choices %}<option value="{{ v }}" {% if v == m.role %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form>
           {% else %}{{ m.get_role_display }}{% endif %}</td>
         <td>{% if m.is_admin %}<span class="small dim">Both (admin)</span>{% elif is_org_admin %}<form method="post" action="{% url 'member_update' org.slug m.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="action" value="area">
           <select name="area" data-autosubmit style="width:auto" aria-label="Works in">{% for v, l in area_choices %}<option value="{{ v }}" {% if v == m.area %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form>

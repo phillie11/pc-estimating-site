@@ -182,6 +182,8 @@ class Package(TenantModel):
 
     class Meta:
         ordering = ['trade__name', 'quote_value']
+        # Packages on a job by status (appointed, quoted, open), within the company
+        indexes = [models.Index(fields=['organization', 'project', 'status'], name='package_org_proj_status')]
 
     def __str__(self):
         return f'{self.trade or "Package"} · {self.subcontractor}'

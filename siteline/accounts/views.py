@@ -198,7 +198,10 @@ def accept_project_invite(request, token):
             )
             invite.status = ProjectInvite.STATUS_ACCEPTED
             invite.save(update_fields=['status'])
-            log_activity(user, 'joined the project', project.name, project=project, internal_only=False)
+            # A tendering subcontractor joining is staff-only news: shown to the client or the other
+            # subcontractors on the job, it would tell them who else was pricing the work
+            log_activity(user, 'joined the project', project.name, project=project,
+                         internal_only=invite.role == ProjectMember.ROLE_BIDDER)
         messages.success(request, f'You now have access to {project.name}.')
         return redirect('project_detail', org_slug=org.slug, pk=project.pk)
 

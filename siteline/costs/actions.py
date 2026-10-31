@@ -12,31 +12,27 @@ It runs on every page (the count by the bell), so it works out every job's margi
 fixed number of queries (costs.report.forecast_costs / final_accounts), with the same rules as the
 cost report.
 """
-from django.db.models import Exists, OuterRef, Q
 from django.urls import reverse
 
 from actions.registry import PRIORITY_HIGH, Item
 from projects.access import is_internal
-from projects.models import ProjectMember
 
-from .access import cost_projects, settings_for
-from .models import LedgerEntry
+from .access import settings_for
 from .money import margin
 from .report import final_accounts, forecast_costs, is_below
 
 
 def _alert_projects(request):
-    qs = cost_projects(request)
-    if not request.membership.is_admin:
-        pm = ProjectMember.objects.filter(project=OuterRef('pk'), user=request.user, role=ProjectMember.ROLE_PM)
-        qs = qs.filter(Q(manager=request.user) | Q(Exists(pm)))
-    return qs.filter(Exists(LedgerEntry.objects.filter(project=OuterRef('pk'))))
+    """Owners and admins: every job; otherwise the job's manager or a PM on its team. Jobs with costs only."""
+    from actions.providers import my_jobs  # one shared query behind the badge
+    admin, me = request.membership.is_admin, request.user.pk
+    return [p for p in my_jobs(request) if p.has_ledger and (admin or p.manager_id == me or p.on_team_pm)]
 
 
 def items(request):
     if request.membership is None or not is_internal(request):
         return []
-    projects = list(_alert_projects(request))
+    projects = _alert_projects(request)
     if not projects:
         return []
     threshold = settings_for(request.org).margin_threshold

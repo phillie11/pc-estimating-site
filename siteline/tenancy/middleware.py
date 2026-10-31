@@ -1,9 +1,10 @@
+from django.db import connection
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from .context import reset_current_org, set_current_org
-from .models import Membership, Organization
+from .context import clear_memo_on_write, close_request_memo, open_request_memo, reset_current_org, set_current_org
+from .models import Membership
 
 # Views under an org that stay reachable when the subscription has lapsed,
 # so an admin can pay and get back in.
@@ -28,12 +29,15 @@ class TenantMiddleware:
         request.org = None
         request.membership = None
         request._org_token = None
+        memo = open_request_memo()
         try:
-            return self.get_response(request)
+            with connection.execute_wrapper(clear_memo_on_write):
+                return self.get_response(request)
         finally:
             if request._org_token is not None:
                 reset_current_org(request._org_token)
                 request._org_token = None
+            close_request_memo(memo)
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         slug = view_kwargs.get('org_slug')
@@ -42,17 +46,15 @@ class TenantMiddleware:
         if not request.user.is_authenticated:
             return redirect(f"{reverse('login')}?next={request.get_full_path()}")
 
-        try:
-            org = Organization.objects.get(slug=slug)
-        except Organization.DoesNotExist:
-            raise Http404
+        # One query for both: no such workspace and not a member are the same 404
         membership = (
-            Membership.objects.filter(organization=org, user=request.user, is_active=True)
+            Membership.objects.filter(organization__slug=slug, user=request.user, is_active=True)
             .select_related('organization')
             .first()
         )
         if membership is None:
             raise Http404
+        org = membership.organization
 
         request.org = org
         request.membership = membership

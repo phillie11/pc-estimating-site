@@ -6,5 +6,9 @@
 <div class="card">{% if rfis %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Subject</th><th>Project</th><th>Ball in court</th><th>Required</th><th>Status</th></tr></thead><tbody>
 {% for r in rfis %}<tr><td class="ref">{{ r.reference }}</td><td><a class="rowlink" href="{{ r.get_absolute_url }}">{{ r.title }}</a></td><td class="small">{{ r.project.name }}</td><td class="small">{{ r.ball_in_court_user|default:"—" }}</td>
 <td class="small nowrap {% if r.is_overdue %}overdue{% endif %}">{{ r.due_date|date:"j M"|default:"—" }}</td><td>{% badge r.get_status_display r.status_tone %}</td></tr>{% endfor %}
-</tbody></table></div>{% else %}<div class="empty">{% if narrowed %}No RFIs {{ narrowed|join:", " }}. <a href="?">Show every live RFI</a>{% else %}No live RFIs. RFIs raised on your projects appear here until they are closed.{% endif %}</div>{% endif %}</div>
+</tbody></table></div>{% if page.has_other_pages %}<nav class="filters card-body" aria-label="Pages">
+  <span class="small dim">{{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>
+  {% if page.has_previous %}<a class="chip" href="{% qs page=page.previous_page_number %}">Sooner</a>{% endif %}
+  {% if page.has_next %}<a class="chip" href="{% qs page=page.next_page_number %}">Later</a>{% endif %}
+</nav>{% endif %}{% else %}<div class="empty">{% if narrowed %}No RFIs {{ narrowed|join:", " }}. <a href="?">Show every live RFI</a>{% else %}No live RFIs. RFIs raised on your projects appear here until they are closed.{% endif %}</div>{% endif %}</div>
 {% endblock %}
