@@ -1,0 +1,106 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}
+  <a class="btn" href="{% url 'application_pdf' org.slug project.pk app.pk %}" target="_blank" rel="noopener">{% icon 'download' %} PDF</a>
+  {% if manages %}
+    {% if app.status == 'DRAFT' %}<a class="btn" href="{% url 'application_edit' org.slug project.pk app.pk %}">Edit</a>
+    <form method="post" data-confirm="Submit {{ app.reference }} to the client? Its figures and dates are then fixed, the client is told and can see it in their portal, and the payment notice clock starts.">{% csrf_token %}<input type="hidden" name="action" value="submit"><button class="btn primary">Submit to client</button></form>{% endif %}
+    {% if app.status == 'DRAFT' or app.status == 'SUBMITTED' %}<form method="post" data-confirm="Withdraw {{ app.reference }}? It can't be submitted again{% if app.status == 'SUBMITTED' %}, and the client will be told{% endif %}.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn ghost">Withdraw</button></form>{% endif %}
+  {% endif %}
+{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small"><a href="{% url 'application_list' org.slug project.pk %}">← Applications for payment</a></p>
+{% if app.is_overdue %}<div class="banner" role="alert"><strong class="overdue">Payment overdue.</strong> The final date for payment was {{ app.final_date|date:"D j M Y" }} and {{ app.outstanding|money_exact:currency }} is still outstanding. {% badge 'Advisory' 'warn' %} {{ advisory }}</div>{% endif %}
+{% if app.stands_as_notified and app.status == 'SUBMITTED' %}<div class="banner"><strong>No payment notice was given by {{ app.payment_notice_by|date:"D j M Y" }}</strong>, so this application stands as the notified sum: {{ app.notified_total|money_exact:currency }} is payable by the final date unless a pay less notice is given by {{ app.pay_less_by|date:"D j M Y" }} (Housing Grants, Construction and Regeneration Act 1996 s110B, default payment notice). {% badge 'Advisory' 'warn' %} {{ advisory }}</div>{% endif %}
+<div class="grid split">
+  <div class="stack">
+    <div class="card"><div class="card-body">
+      <div class="row"><span class="ref">{{ app.reference }}</span>{% if app.is_overdue %}{% badge 'Payment overdue' 'bad' %}{% else %}{% status_badge app %}{% endif %}{% if app.reverse_charge %}{% badge 'Reverse charge' 'info' %}{% endif %}</div>
+      <h2 style="margin:8px 0 12px">{{ app.title }}</h2>
+      {% if lines %}<div class="table-wrap"><table class="t"><thead><tr><th>Section</th><th class="num">Value to date</th></tr></thead><tbody>{% for l in lines %}<tr><td>{{ l.section }}</td><td class="num">{{ l.value|money_exact:currency }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+      <div class="table-wrap"><table class="t figures"><tbody>
+        <tr><td>Work done to date</td><td class="num">{{ app.work_done|money_exact:currency }}</td></tr>
+        <tr><td>Approved {{ vocab.change_plural }} to date</td><td class="num">{{ app.variations_value|money_exact:currency }}</td></tr>
+        <tr><td>Materials on site</td><td class="num">{{ app.materials_on_site|money_exact:currency }}</td></tr>
+        <tr><td>Materials off site</td><td class="num">{{ app.materials_off_site|money_exact:currency }}</td></tr>
+        <tr class="sum"><th>Gross valuation</th><th class="num">{{ app.gross_valuation|money_exact:currency }}</th></tr>
+        <tr><td>Less retention at {{ app.retention_percent|floatformat:"-2" }}%<span class="sub">{{ stage_label }}</span></td><td class="num">{% if app.retention %}−{% endif %}{{ app.retention|money_exact:currency }}</td></tr>
+        <tr class="sum"><th>Net valuation</th><th class="num">{{ app.net_valuation|money_exact:currency }}</th></tr>
+        <tr><td>Less previous amounts certified or notified</td><td class="num">{% if app.previous_certified %}−{% endif %}{{ app.previous_certified|money_exact:currency }}</td></tr>
+        <tr class="sum"><th>Amount due this time (ex VAT)</th><th class="num">{{ app.amount_due|money_exact:currency }}</th></tr>
+        <tr><td>{% if app.reverse_charge %}VAT: domestic reverse charge{% else %}VAT at {{ app.vat_rate|floatformat:"-2" }}%{% endif %}</td><td class="num">{% if app.reverse_charge %}Nil{% else %}{{ app.vat|money_exact:currency }}{% endif %}</td></tr>
+        <tr class="sum"><th>Total applied for</th><th class="num">{{ app.total|money_exact:currency }}</th></tr>
+      </tbody></table></div>
+      {% if app.retention_released %}<p class="small">Retention released this time: <strong>{{ app.retention_released|money_exact:currency }}</strong> ({{ stage_label|lower }}).</p>{% endif %}
+      {% if app.reverse_charge %}<p class="small">{% badge 'Advisory' 'warn' %} {{ reverse_charge_note }}</p>{% endif %}
+      <p class="small dim">No CIS deduction is shown here.{% if app.status == 'DRAFT' %} Draft figures follow the contract and approved {{ vocab.change_plural }} until it is submitted; then they are fixed.{% endif %}</p>
+      {% if app.notes %}<h3>Notes</h3><div class="quote">{{ app.notes }}</div>{% endif %}
+    </div></div>
+
+    {% if app.payment_notice_on %}<div class="card"><div class="card-head"><h2>Payment notice</h2>{% if app.payment_notice_on > app.payment_notice_by %}{% badge 'Given late' 'bad' %}{% else %}{% badge 'In time' 'good' %}{% endif %}</div><div class="card-body">
+      <p><strong class="mono">{{ app.payment_notice_amount|money_exact:currency }}</strong> considered due (ex VAT), given {{ app.payment_notice_on|date:"D j M Y" }}{% if app.payment_notice_given_by %} by {{ app.payment_notice_given_by }}{% endif %}.</p>
+      {% if app.payment_notice_on_behalf %}<p class="small">{% badge 'Recorded on behalf of the client' 'warn' %}{% if app.payment_notice_evidence %} <a href="{% url 'application_evidence' org.slug project.pk app.pk 'payment-notice' %}">The client's notice</a>{% endif %}</p>{% endif %}
+      <div class="quote">{{ app.payment_notice_basis }}</div>
+    </div></div>{% endif %}
+    {% if app.pay_less_on %}<div class="card"><div class="card-head"><h2>Pay less notice</h2>{% badge 'In time' 'good' %}</div><div class="card-body">
+      <p><strong class="mono">{{ app.pay_less_amount|money_exact:currency }}</strong> now considered due (ex VAT), given {{ app.pay_less_on|date:"D j M Y" }}{% if app.pay_less_given_by %} by {{ app.pay_less_given_by }}{% endif %}.</p>
+      {% if app.pay_less_on_behalf %}<p class="small">{% badge 'Recorded on behalf of the client' 'warn' %}{% if app.pay_less_evidence %} <a href="{% url 'application_evidence' org.slug project.pk app.pk 'pay-less' %}">The client's notice</a>{% endif %}</p>{% endif %}
+      <div class="quote">{{ app.pay_less_basis }}</div>
+    </div></div>{% endif %}
+
+    {% if can_notice %}<div class="card" style="border:2px solid var(--accent)" id="payment-notice"><div class="card-head"><h2>{% if client %}Give your payment notice{% else %}Record the client's payment notice{% endif %}</h2></div><div class="card-body">
+      {% if client %}<p class="small">Say what sum you consider due this time and how you worked it out. {% if app.payment_notice_by %}Give it by <strong>{{ app.payment_notice_by|date:"D j M Y" }}</strong>: if you don't, the application stands as the sum due.{% endif %} {{ org.name }} is told straight away. You can still give a pay less notice later, up to {{ app.pay_less_by|date:"D j M Y" }}. {{ advisory }}</p>
+      {% else %}<p class="small dim">Owners and admins only. Use this when the client gave their notice by email or letter: give the date they gave it, say how, and attach it. It's logged under your name as recorded on behalf of the client, and the client is told.</p>{% endif %}
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="payment_notice">{% with form=notice_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">{% if client %}Give payment notice{% else %}Record payment notice{% endif %}</button></div></form>
+    </div></div>{% endif %}
+
+    {% if can_pay_less %}<div class="card" id="pay-less"><div class="card-head"><h2>{% if client %}Pay less notice{% else %}Record the client's pay less notice{% endif %}</h2><span class="small dim">by {{ app.pay_less_by|date:"D j M Y" }}</span></div><div class="card-body">
+      {% if client %}<p class="small">Only if you intend to pay less than the notified sum ({{ app.notified_sum|money_exact:currency }} ex VAT). Give the sum you now consider due and how you worked it out, no later than <strong>{{ app.pay_less_by|date:"D j M Y" }}</strong>. After that a pay less notice has no effect. {{ advisory }}</p>
+      {% else %}<p class="small dim">Owners and admins only, with the date the client gave it, how, and their email or letter. A notice given after {{ app.pay_less_by|date:"D j M Y" }} is refused.</p>{% endif %}
+      <details{% if pay_less_form.is_bound %} open{% endif %}><summary class="btn" style="min-height:44px">{% if client %}Give a pay less notice{% else %}Record a pay less notice{% endif %}</summary>
+      <form method="post" enctype="multipart/form-data" style="margin-top:12px" data-confirm="Give a pay less notice on {{ app.reference }}? {{ org.name }} will be told the sum you now consider due.">{% csrf_token %}<input type="hidden" name="action" value="pay_less">{% with form=pay_less_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">{% if client %}Give pay less notice{% else %}Record pay less notice{% endif %}</button></div></form></details>
+    </div></div>
+    {% elif pay_less_late and not app.pay_less_on %}<div class="card"><div class="card-head"><h2>Pay less notice</h2>{% badge 'Deadline passed' 'muted' %}</div><div class="card-body small"><p>{{ pay_less_refusal }}</p></div></div>{% endif %}
+
+    {% if manages and app.status != 'DRAFT' and app.status != 'WITHDRAWN' or client and payments %}<div class="card" id="payments"><div class="card-head"><h2>Payments received</h2></div><div class="card-body">
+      {% if payments %}<div class="table-wrap"><table class="t"><thead><tr><th>Received</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>
+        {% for p in payments %}<tr><td class="nowrap">{{ p.received_on|date:"j M Y" }}</td><td>{{ p.reference|default:"—" }}</td><td class="num">{{ p.amount|money_exact:currency }}</td></tr>{% endfor %}
+        <tr class="sum"><th colspan="2">Paid</th><th class="num">{{ app.paid_total|money_exact:currency }}</th></tr>
+      </tbody></table></div>{% else %}<p class="small dim">Nothing received yet.</p>{% endif %}
+      {% if can_record_payment %}<details{% if payment_form.is_bound %} open{% endif %} style="margin-top:12px"><summary class="btn" style="min-height:44px">{% icon 'plus' %} Record a payment</summary>
+        <form method="post" style="margin-top:12px">{% csrf_token %}<input type="hidden" name="action" value="payment">{% with form=payment_form %}{% include "partials/form_fields.html" %}{% endwith %}<p class="small dim">Part payments are fine: record each one. It is marked paid once the notified sum including VAT is covered.</p><div class="form-actions"><button class="btn primary">Record payment</button></div></form></details>{% endif %}
+    </div></div>{% endif %}
+  </div>
+
+  <div class="stack">
+    {% if app.status != 'DRAFT' and app.status != 'WITHDRAWN' %}<div class="card"><div class="card-head"><h2>Sum due</h2></div><div class="card-body"><dl class="dl">
+      <dt>Notified sum</dt><dd class="mono"><strong>{{ app.notified_sum|money_exact:currency }}</strong> ex VAT</dd>
+      <dt>{% if app.reverse_charge %}VAT{% else %}VAT at {{ app.vat_rate|floatformat:"-2" }}%{% endif %}</dt><dd class="mono">{% if app.reverse_charge %}Reverse charge{% else %}{{ app.notified_vat|money_exact:currency }}{% endif %}</dd>
+      <dt>To pay</dt><dd class="mono"><strong>{{ app.notified_total|money_exact:currency }}</strong></dd>
+      <dt>Paid</dt><dd class="mono">{{ app.paid_total|money_exact:currency }}</dd>
+      <dt>Outstanding</dt><dd class="mono{% if app.is_overdue %} overdue{% endif %}">{{ app.outstanding|money_exact:currency }}{% if app.is_overdue %} overdue{% endif %}</dd>
+      <dt>Based on</dt><dd class="small">{{ app.notified_basis|capfirst }}</dd>
+    </dl></div></div>{% endif %}
+    <div class="card"><div class="card-head"><h2>Payment dates</h2>{% badge 'Advisory' 'warn' %}</div><div class="card-body">
+      {% if clocks %}{% for c in clocks %}<div class="row" style="align-items:flex-start;margin-bottom:10px">{% badge c.label c.tone %}<div><strong>{{ c.deadline|date:"D j M Y" }}</strong> <span class="{% if c.is_late %}overdue{% endif %}">{{ c.message }}</span> <span class="small dim">({{ c.clause }})</span></div></div>{% endfor %}
+      {% elif draft_cycle %}<p class="small">If submitted now (draft, not fixed yet):</p><dl class="dl">
+        <dt>{{ vocab.valuation_date|capfirst }}</dt><dd>{{ draft_cycle.valuation_date|date:"D j M Y" }}</dd>
+        <dt>Due date</dt><dd>{{ draft_cycle.due_date|date:"D j M Y" }}</dd>
+        <dt>Payment notice by</dt><dd>{{ draft_cycle.payment_notice_by|date:"D j M Y" }}</dd>
+        <dt>Pay less notice by</dt><dd>{{ draft_cycle.pay_less_by|date:"D j M Y" }}</dd>
+        <dt>Final date for payment</dt><dd>{{ draft_cycle.final_date|date:"D j M Y" }}</dd>
+      </dl>{% else %}<p class="small dim">No dates: this application was withdrawn.</p>{% endif %}
+      <p class="small dim">{{ advisory }} Days are counted as the Construction Act counts them: Christmas Day, Good Friday and {% if contract %}{{ contract.get_bank_holiday_region_display }}{% else %}England and Wales{% endif %} bank holidays are left out.{% if not contract %} No contract is set up, so the Scheme for Construction Contracts applies.{% endif %}</p>
+    </div></div>
+    <div class="card"><div class="card-body"><dl class="dl">
+      <dt>{{ vocab.valuation_date|capfirst }}</dt><dd>{{ app.valuation_date|date:"j M Y" }}</dd>
+      <dt>Retention</dt><dd>{{ app.retention_percent|floatformat:"-2" }}%, {{ stage_label|lower }}</dd>
+      {% if app.submitted_at %}<dt>Submitted</dt><dd>{{ app.submitted_at|date:"j M Y" }}</dd>{% endif %}
+      {% if manages %}<dt>Made up by</dt><dd>{{ app.created_by|default:"—" }}</dd>
+      {% if app.ball_in_court_user and app.status == 'SUBMITTED' %}<dt>Waiting on</dt><dd>{{ app.ball_in_court_user }}</dd>{% endif %}{% endif %}
+    </dl>
+    {% if manages and no_client %}<p class="small dim">No client is on this project yet, so nobody can be told when you submit. Invite them from the Team tab, or send the PDF.</p>{% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

@@ -30,7 +30,7 @@ STAFF_LABELS = {
 # External tab groups, in row order
 EXTERNAL_GROUPS = (
     ('overview', 'Overview', ('overview', 'team')),
-    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'subvariations', 'rams', 'tasks')),
+    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'payments', 'subvariations', 'rams', 'tasks')),
     ('documents', 'Documents', ('documents',)),
     ('programme', 'Programme', ('programme',)),
     ('snags', 'Snags', ('issues',)),
@@ -40,6 +40,7 @@ EXTERNAL_LABELS = {
     'team': "Who's who",
     'rfis': 'RFIs',
     'variations': 'Variations',
+    'payments': 'Applications for payment',
     'subvariations': 'Your variations',
     'rams': 'Your RAMS',
     'tasks': 'Your tasks',

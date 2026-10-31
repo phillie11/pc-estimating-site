@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'documents',
     'jobs',
     'actions',
+    'payments',
     'security',
 ]
 

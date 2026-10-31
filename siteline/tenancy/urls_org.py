@@ -6,6 +6,7 @@ from changes import urls as changes_urls
 from delivery import views as delivery
 from directory import views as directory
 from documents import urls as documents_urls
+from payments import urls as payments_urls
 from projects import views as projects
 from rfis import views as rfis
 from tenders import views as tenders
@@ -104,5 +105,7 @@ urlpatterns = [
     # Commercial tab: contract set-up, change register, early warnings, change events (changes/urls.py)
     *changes_urls.project_patterns(P),
     *changes_urls.org_patterns,
+    # Applications for payment (payments/urls.py): Commercial -> Applications for staff, Decisions for the client
+    *payments_urls.project_patterns(P),
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]
