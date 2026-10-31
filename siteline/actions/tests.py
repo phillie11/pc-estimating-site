@@ -665,7 +665,10 @@ class DigestTests(Base):
         self.assertIn('weekly', by['client@alpha.test'].subject)
         self.assertNotIn('sub@alpha.test', by)
         self.assertNotIn('sub@alpha.test', self.run_digest(tuesday))
-        self.assertIn('pm@alpha.test', self.run_digest(tuesday))  # no row: daily
+        # No row: daily. Run it on a weekday near the real date, since the test items' due dates are
+        # set from today and a Tuesday days in the past can leave the PM with nothing urgent.
+        not_monday = today if today.weekday() != 0 else today + timedelta(days=1)
+        self.assertIn('pm@alpha.test', self.run_digest(not_monday))
 
     def test_weekly_is_a_full_summary_even_with_nothing_urgent(self):
         from .models import DigestPreference
