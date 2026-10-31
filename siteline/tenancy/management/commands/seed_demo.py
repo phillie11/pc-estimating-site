@@ -352,6 +352,9 @@ class Command(BaseCommand):
             # Cost control: budgets, orders and actuals on Leeds and Salford (costs/demo.py)
             from costs.demo import seed as seed_costs
             seed_costs(leeds=leeds, pm=pm, owner=owner, demo_pdf=demo_pdf)
+            # Paying subcontractors: CIS statuses, Lund SA-001 paid and SA-002 awaiting our notice (subpayments/demo.py)
+            from subpayments.demo import seed as seed_subpayments
+            seed_subpayments(leeds=leeds, pm=pm, owner=owner)
 
             # Site diary: the last 10 working days on Leeds, with placeholder photos (diary/demo.py)
             from diary.demo import seed as seed_diary
