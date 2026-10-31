@@ -19,10 +19,12 @@ from tenancy.models import TenantModel
 
 class LevellingSheet(TenantModel):
     project = models.ForeignKey('projects.Project', on_delete=models.CASCADE, related_name='levelling_sheets')
-    trade = models.ForeignKey('directory.Trade', on_delete=models.CASCADE, related_name='+')
+    # RESTRICT, not CASCADE: deleting a trade or a package must never take levelling with it. RESTRICT
+    # rather than PROTECT so deleting a whole workspace (which cascades to both sides) still works.
+    trade = models.ForeignKey('directory.Trade', on_delete=models.RESTRICT, related_name='levelling_sheets')
     # The subcontractor carried in our tender for this trade (one per sheet). Carrying is not
     # appointing: nobody is told anything until the bid is won and the projects team appoints.
-    carried = models.ForeignKey('directory.Package', null=True, blank=True, on_delete=models.SET_NULL,
+    carried = models.ForeignKey('directory.Package', null=True, blank=True, on_delete=models.RESTRICT,
                                 related_name='+')
     carried_reason = models.TextField('Why this one', blank=True)
     carried_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
@@ -60,7 +62,7 @@ class QuoteCell(TenantModel):
     "included" (priced elsewhere in their quote). Blank everywhere means missing.
     """
     line = models.ForeignKey(ScopeLine, on_delete=models.CASCADE, related_name='cells')
-    package = models.ForeignKey('directory.Package', on_delete=models.CASCADE, related_name='+')
+    package = models.ForeignKey('directory.Package', on_delete=models.RESTRICT, related_name='+')
     rate = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     amount = models.DecimalField('Sum', max_digits=14, decimal_places=2, null=True, blank=True)
     included = models.BooleanField('Included elsewhere', default=False)
@@ -79,7 +81,7 @@ class Exclusion(TenantModel):
     STATUS_CHOICES = [(OPEN, 'Not priced yet'), (PRICED, 'Priced by us'), (ACCEPTED, 'Accepted, no cost')]
 
     sheet = models.ForeignKey(LevellingSheet, on_delete=models.CASCADE, related_name='exclusions')
-    package = models.ForeignKey('directory.Package', on_delete=models.CASCADE, related_name='+')
+    package = models.ForeignKey('directory.Package', on_delete=models.RESTRICT, related_name='+')
     text = models.CharField('Exclusion or qualification', max_length=500)
     status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=OPEN)
     amount = models.DecimalField('Priced by us', max_digits=14, decimal_places=2, null=True, blank=True)
@@ -109,7 +111,7 @@ class Adjustment(TenantModel):
     BASIS_CHOICES = [(AVERAGE, 'average of the others'), (HIGHEST, 'highest of the others')]
 
     sheet = models.ForeignKey(LevellingSheet, on_delete=models.CASCADE, related_name='adjustments')
-    package = models.ForeignKey('directory.Package', on_delete=models.CASCADE, related_name='+')
+    package = models.ForeignKey('directory.Package', on_delete=models.RESTRICT, related_name='+')
     kind = models.CharField(max_length=13, choices=KIND_CHOICES)
     amount = models.DecimalField(max_digits=14, decimal_places=2, help_text='Negative to take money off.')
     reason = models.CharField(max_length=500)

@@ -8,6 +8,7 @@
   <p class="small dim" style="margin:0">Internal only. Subcontractors never see this page, each other's prices or the levelling.</p>
 </div>
 {% if not editable %}<div class="banner">{{ project.name }} is {{ project.get_stage_display|lower }}, so this levelling is kept as it was and is read only.</div>{% endif %}
+{% if view.reason_needed %}<div class="flash error" id="reason-needed">{{ view.carried.package.subcontractor }} is carried in the tender but is no longer the lowest levelled price. {% if submitting %}Give a reason below before the bid can be submitted.{% else %}Give a reason for carrying them{% if editable %} below{% endif %}; the bid can't be submitted until there is one.{% endif %}</div>{% endif %}
 {% if view.appointed %}<div class="banner">{{ view.appointed.subcontractor }} is appointed for {{ trade }}.</div>{% endif %}
 
 <div class="kpis">

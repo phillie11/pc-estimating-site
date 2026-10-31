@@ -100,3 +100,19 @@ class LevelTable(SimpleTestCase):
         s = maths.level([('A', D('0'), []), ('B', D('50'), [])])
         self.assertIsNone(s.get('B').var_lowest_pct)
         self.assertEqual(s.get('B').var_lowest, D('50.00'))
+
+    def test_negative_lowest_has_no_percentage(self):
+        s = maths.level([('A', D('100'), [D('-150')]), ('B', D('50'), [])])
+        self.assertEqual(s.lowest, D('-50.00'))
+        self.assertIsNone(s.get('B').var_lowest_pct)
+        self.assertIsNone(s.get('A').var_average_pct)   # average 0.00
+
+    def test_plug_counts_only_while_the_line_is_missing(self):
+        # Line missing: plug of 1,659 counts. Line later priced at 1,680: the plug is dropped, not added on top.
+        self.assertTrue(maths.plug_counts(None))
+        self.assertFalse(maths.plug_counts(D('1680.00')))
+        self.assertFalse(maths.plug_counts(D('0.00')))   # "included" is priced too
+        lines = [D('14400'), D('1680'), D('1500')]
+        plugs = [D('1659')] if maths.plug_counts(D('1680')) else []
+        s = maths.level([('Lund', sum(lines), plugs)])
+        self.assertEqual(s.get('Lund').levelled, D('17580.00'))

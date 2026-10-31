@@ -16,15 +16,21 @@ import re
 import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 MAX_ROWS = 2000
 MAX_COLS = 26             # A to Z
 MAX_BYTES = 5 * 1024 * 1024
 MAX_UNZIPPED = 25 * 1024 * 1024
+MAX_PART = {'xl/sharedstrings.xml': 5 * 1024 * 1024, 'xl/styles.xml': 5 * 1024 * 1024}  # parsed whole by openpyxl
+MAX_RATIO = 100           # unpacked : packed, per part
+MAX_SHARED_STRINGS = 50000
 HEADER_SCAN = 15          # rows searched for the header row
 MAX_CELL_TEXT = 500
-MAX_MONEY = Decimal('1000000000000')  # anything this big is a typo or an attack
+MAX_MONEY = Decimal('1000000000000')  # anything this big is a typo or an attack; DECIMAL(14, 2) holds < 10^12
+MAX_QTY = Decimal('100000000000')     # ScopeLine.qty is DECIMAL(14, 3): < 10^11
+DTD = re.compile(rb'<!\s*(DOCTYPE|ENTITY)', re.I)
+UNIQUE_COUNT = re.compile(rb'uniqueCount\s*=\s*["\'](\d+)', re.I)
 
 ALLOWED = {'.xlsx', '.csv'}
 REFUSED = {
@@ -107,14 +113,54 @@ def _check_zip(data):
         if any(n.endswith('vbaproject.bin') or n.startswith('xl/activex') for n in names):
             raise WorkbookRefused('That workbook contains macros, so it was refused. Save it as an Excel workbook '
                                   '(.xlsx) without macros and upload that.')
-        if sum(i.file_size for i in infos) > MAX_UNZIPPED:
-            raise WorkbookRefused('That workbook is too large once unpacked. Copy the scope lines into a new '
+        too_big = WorkbookRefused('That workbook is too large once unpacked. Copy the scope lines into a new '
                                   'workbook and upload that.')
+        if sum(i.file_size for i in infos) > MAX_UNZIPPED:
+            raise too_big
+        for i in infos:
+            name = i.filename.lower()
+            if i.file_size > MAX_PART.get(name, MAX_UNZIPPED):
+                raise too_big
+            # A part that unpacks to over 100 times its packed size is built to amplify, not to hold a bill
+            if i.file_size > MAX_RATIO * max(i.compress_size, 1) and i.file_size > 64 * 1024:
+                raise too_big
+        for i in infos:
+            name = i.filename.lower()
+            if not (name.endswith('.xml') or name.endswith('.rels')):
+                continue
+            data = _read_part(zf, i)
+            if data[:2] in (b'\xff\xfe', b'\xfe\xff'):
+                data = data.decode('utf-16', errors='replace').encode('utf-8')
+            if DTD.search(data):
+                raise WorkbookRefused('That workbook contains a document type declaration, which Excel never writes, '
+                                      'so it was refused. Save it again from Excel as .xlsx.')
+            if name == 'xl/sharedstrings.xml':
+                m = UNIQUE_COUNT.search(data[:4096])
+                if m and int(m.group(1)) > MAX_SHARED_STRINGS:
+                    raise WorkbookRefused('That workbook has too much text to read safely. Copy the scope lines into '
+                                          'a new workbook and upload that.')
+                if data.count(b'<si') > MAX_SHARED_STRINGS:
+                    raise WorkbookRefused('That workbook has too much text to read safely. Copy the scope lines into '
+                                          'a new workbook and upload that.')
         if '[content_types].xml' in names:
             types = zf.read(next(i for i in infos if i.filename.lower() == '[content_types].xml'))
             if b'macroEnabled' in types or b'vbaProject' in types:
                 raise WorkbookRefused('That workbook is macro-enabled, so it was refused. Save it as an Excel '
                                       'workbook (.xlsx) and upload that.')
+
+
+def _read_part(zf, info):
+    """One part, never more than its declared (already checked) size, whatever the stream really holds."""
+    try:
+        with zf.open(info) as fh:
+            return fh.read(info.file_size + 1)[:info.file_size]
+    except Exception:  # bad CRC, sizes that lie, unsupported compression: all a damaged or crafted file
+        raise WorkbookRefused('That workbook couldn\'t be read. Save it as .xlsx from Excel and try again.')
+
+
+def _clean(text):
+    """No NUL characters: PostgreSQL text can't hold them."""
+    return text.replace('\x00', '')
 
 
 def _cell(v):
@@ -129,7 +175,7 @@ def _cell(v):
         return Decimal(repr(v))
     if isinstance(v, (datetime, date)):
         return v.isoformat()
-    return str(v)[:MAX_CELL_TEXT]
+    return _clean(str(v))[:MAX_CELL_TEXT]
 
 
 def _xlsx_rows(data):
@@ -148,6 +194,10 @@ def _xlsx_rows(data):
         # max_row and max_col bound the read whatever size the sheet claims to be
         for values in ws.iter_rows(min_row=1, max_row=MAX_ROWS + 1, max_col=MAX_COLS, values_only=True):
             rows.append([_cell(v) for v in values])
+    except WorkbookRefused:
+        raise
+    except Exception:  # a crafted sheet (bad shared-string index, a "date" that isn't) fails inside openpyxl
+        raise WorkbookRefused('That workbook couldn\'t be read. Save it as .xlsx from Excel and try again.')
     finally:
         wb.close()
     return rows
@@ -167,7 +217,8 @@ def _csv_rows(data):
         for i, row in enumerate(csv.reader(io.StringIO(text))):
             if i > MAX_ROWS:
                 break
-            rows.append([(c[:MAX_CELL_TEXT] if c.strip() else None) for c in row[:MAX_COLS]])
+            row = [_clean(c) for c in row[:MAX_COLS]]
+            rows.append([(c[:MAX_CELL_TEXT] if c.strip() else None) for c in row])
     except csv.Error:
         raise WorkbookRefused('That CSV file couldn\'t be read. Save it as CSV (UTF-8) and try again.')
     return rows
@@ -239,6 +290,24 @@ def parse_number(v):
     return d
 
 
+def parse_money(v):
+    """A rate or sum, to the penny half up, or None when it isn't one or won't fit the money columns."""
+    d = parse_number(v)
+    if d is None:
+        return None
+    d = d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return d if abs(d) < MAX_MONEY else None
+
+
+def parse_qty(v):
+    """A quantity, to 3 decimal places half up, or None when it isn't one or won't fit ScopeLine.qty."""
+    d = parse_number(v)
+    if d is None:
+        return None
+    d = d.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
+    return d if abs(d) < MAX_QTY else None
+
+
 def is_included(v):
     return isinstance(v, str) and v.strip().lower() in INCLUDED_WORDS
 
@@ -257,9 +326,9 @@ def parse(rows):
         if not any(v not in (None, '') for v in row):
             continue
         r = Row(ref=_text(get(row, 'ref'), 40), description=_text(get(row, 'description'), 500),
-                unit=_text(get(row, 'unit'), 20), qty=parse_number(get(row, 'qty')))
+                unit=_text(get(row, 'unit'), 20), qty=parse_qty(get(row, 'qty')))
         rate_v, total_v = get(row, 'rate'), get(row, 'total')
-        r.rate, r.total = parse_number(rate_v), parse_number(total_v)
+        r.rate, r.total = parse_money(rate_v), parse_money(total_v)
         r.included = r.rate is None and r.total is None and (is_included(rate_v) or is_included(total_v))
         if not r.description and not r.ref:
             continue

@@ -4,7 +4,7 @@
   <div class="stack">
     {% for g in groups %}
     <div class="card">
-      <div class="card-head"><h2>{{ g.trade|default:"No trade" }}</h2><span class="small dim">{% if g.appointed %}appointed {{ g.appointed.subcontractor }}{% elif g.lowest %}lowest {{ g.lowest|money:currency }}{% else %}awaiting quotes{% endif %}{% if can_level and g.trade %} · <a href="{% url 'levelling_sheet' org.slug project.pk g.trade.pk %}">Level quotes</a>{% endif %}</span></div>
+      <div class="card-head"><h2>{{ g.trade|default:"No trade" }}</h2><span class="small dim">{% if g.appointed %}appointed {{ g.appointed.subcontractor }}{% elif g.lowest %}lowest {{ g.lowest|money:currency }}{% else %}awaiting quotes{% endif %}{% if can_level and g.trade %} · <a href="{% url 'levelling_sheet' org.slug project.pk g.trade.pk %}">{% if project.section == 'estimating' %}Level quotes{% else %}Tender levelling{% endif %}</a>{% endif %}</span></div>
       <div class="table-wrap"><table class="t"><thead><tr><th>Subcontractor</th><th>Status</th><th class="num">Quote</th><th>Terms</th><th></th></tr></thead><tbody>
       {% for p in g.rows %}<tr>
         <td><a class="rowlink" href="{{ p.subcontractor.get_absolute_url }}">{{ p.subcontractor.company_name }}</a>

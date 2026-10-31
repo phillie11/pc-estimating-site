@@ -119,8 +119,9 @@ class RoleTests(LevellingBase):
                     self.assertEqual(self.client.get(url).status_code, 200)
 
     def test_everyone_else_is_refused(self):
-        # Projects-only staff, client, consultant, subcontractor, tendering subcontractor: 403; another company: 404
-        for user, code in ((self.pm, 403), (self.client_u, 403), (self.cons, 403), (self.subu, 403),
+        # Client, consultant, subcontractor, tendering subcontractor: 403. Projects-only staff can't see a bid
+        # at all (404, like every bid page); another company: 404
+        for user, code in ((self.pm, 404), (self.client_u, 403), (self.cons, 403), (self.subu, 403),
                            (self.bidu, 403), (self.bob, 404)):
             self.login(user)
             for url in self.urls():

@@ -94,6 +94,10 @@ def bid_gate(request, org_slug, pk):
             if review.score is not None:
                 log_activity(request, 'scored bid/no-bid', f'{project.name}: {review.score} ({review.get_result_display()})',
                              project=project, url=project.get_absolute_url())
+            if moving and to == Project.STAGE_SUBMITTED and (url := gate.levelling_reason_url(project)):
+                messages.error(request, 'Bid/no-bid saved, but not submitted: a subcontractor carried in the '
+                                        'tender is no longer the lowest levelled price. Give a reason first.')
+                return redirect(url)
             if moving:
                 gate.apply_stage(request, project, to)
                 verdict = f'Scored {review.score}: {review.get_result_display()}. ' if review.score is not None else ''

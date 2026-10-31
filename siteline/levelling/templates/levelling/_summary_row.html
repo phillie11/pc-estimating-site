@@ -5,7 +5,7 @@
   <td class="num nowrap">{{ c.quoted|money_exact }}</td>
   <td class="num nowrap">{{ c.result.adjustments|money_exact }}</td>
   <td class="num nowrap"><strong>{{ c.levelled|money_exact }}</strong>{% if c.result.is_lowest %}<span class="sub">{% badge 'Lowest' 'good' %}</span>{% endif %}</td>
-  <td class="num nowrap">{% if c.result.var_lowest is not None %}{{ c.result.var_lowest|money_exact }}<span class="sub">{{ c.result.var_lowest_pct }}%</span>{% else %}—{% endif %}</td>
-  <td class="num nowrap">{% if c.result.var_average is not None %}{{ c.result.var_average|money_exact }}<span class="sub">{{ c.result.var_average_pct }}%</span>{% else %}—{% endif %}</td>
+  <td class="num nowrap">{% if c.result.var_lowest is not None %}{{ c.result.var_lowest|money_exact }}<span class="sub">{% if c.result.var_lowest_pct is not None %}{{ c.result.var_lowest_pct }}%{% else %}—{% endif %}</span>{% else %}—{% endif %}</td>
+  <td class="num nowrap">{% if c.result.var_average is not None %}{{ c.result.var_average|money_exact }}<span class="sub">{% if c.result.var_average_pct is not None %}{{ c.result.var_average_pct }}%{% else %}—{% endif %}</span>{% else %}—{% endif %}</td>
   <td class="small">{% if c.missing %}{% badge c.missing|stringformat:"s"|add:" missing" 'bad' %} {% endif %}{% if c.unpriced_exclusions %}{% badge c.unpriced_exclusions|length|stringformat:"s"|add:" exclusion(s) unpriced" 'bad' %}{% endif %}{% if not c.is_levelled %}{% badge 'Not priced line by line' 'warn' %}{% elif not c.missing and not c.unpriced_exclusions %}{% badge 'Like for like' 'good' %}{% endif %}</td>
 </tr>

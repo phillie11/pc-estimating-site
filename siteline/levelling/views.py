@@ -1,10 +1,21 @@
 """
-Quote levelling pages, under a bid's Sub quotes tab. Staff who work in estimating only:
-subcontractors (tendering or appointed), clients and consultants never reach any of it.
+Quote levelling pages, under a bid's Sub quotes tab.
+
+  who                                       levelling
+  ----------------------------------------  ------------------------------------------
+  staff who work in estimating (owners and  open and change it while the bid is in the
+  admins always)                            pipeline; read only once it is decided
+  the job's project manager or QS, once     read only, from the live job (Packages tab,
+  the bid is won                            handover page)
+  other staff                               no (403, or 404 where they can't see the job)
+  client, consultant, subcontractor,        never (403)
+  tendering subcontractor
+  another company                           404
 """
 from decimal import Decimal
 
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -15,7 +26,6 @@ from directory.models import Package, Trade
 from projects.access import get_project, posted_id
 from projects.views import project_context
 from tenancy.models import log_activity
-from tenancy.permissions import estimating_required
 
 from . import exports, importer, services
 from .forms import AdjustmentForm, CarryForm, ExclusionForm, ExclusionStatusForm, ImportForm, LineForm
@@ -26,9 +36,29 @@ def _sheet_url(project, trade):
     return reverse('levelling_sheet', args=[project.organization.slug, project.pk, trade.pk])
 
 
+SAFE = ('GET', 'HEAD')
+
+
+def _project(request, pk):
+    """
+    get_project() plus the table above. Estimators (and owners/admins) get the levelling; after the win
+    the job's PM or QS may read it. Nobody else, and nobody but estimating may change anything.
+    """
+    m = request.membership
+    if m is None or not m.is_internal:
+        raise PermissionDenied
+    project = get_project(request, pk)
+    if m.can_estimate:
+        return project
+    from costs.access import COST_STAGES, runs_job
+    if request.method in SAFE and project.stage in COST_STAGES and runs_job(request.user, project):
+        return project
+    raise PermissionDenied('Quote levelling is for estimating, and read only for the job\'s project manager.')
+
+
 def _load(request, pk, trade_id):
     """The project first (so an archived project refuses a write before anything else), then the trade."""
-    project = get_project(request, pk)
+    project = _project(request, pk)
     trade = get_object_or_404(Trade, pk=trade_id)
     if not Package.objects.filter(project=project, trade=trade).exists():
         from django.http import Http404
@@ -46,10 +76,9 @@ def _closed(request, project, url):
     return redirect(url)
 
 
-@estimating_required
 def levelling_index(request, org_slug, pk):
     """Every trade out to subcontractors on this bid, and how far its levelling has got."""
-    project = get_project(request, pk)
+    project = _project(request, pk)
     trades = {}
     for p in Package.objects.filter(project=project, trade__isnull=False).select_related('trade'):
         trades.setdefault(p.trade_id, p.trade)
@@ -74,7 +103,6 @@ def levelling_index(request, org_slug, pk):
         carried_count=sum(1 for r in rows if r['view'].carried), editable=_editable(project)))
 
 
-@estimating_required
 def levelling_sheet(request, org_slug, pk, trade_id):
     project, trade = _load(request, pk, trade_id)
     sheet = services.sheet_for(project, trade)
@@ -180,6 +208,11 @@ def _post(request, project, trade, sheet, view, columns, url, forms):
         pkg = get_object_or_404(Package, pk=posted_id(request, 'package'), pk__in=[p.pk for p in columns])
         col = view.column(pkg.pk)
         if col and col.correction:
+            try:
+                services.check_money(col.correction, 'That correction')
+            except services.Refused as e:
+                messages.error(request, str(e))
+                return redirect(url + '#adjustments')
             Adjustment.objects.create(sheet=sheet, package=pkg, kind=Adjustment.CORRECTION, amount=col.correction,
                                       reason=f'Their lines add up to £{col.lines_total:,}, not the £{col.quoted:,} '
                                              'quoted', created_by=actor)
@@ -214,6 +247,7 @@ def _render(request, project, trade, view, editable, forms):
     carry_initial = {'package': view.sheet.carried_id} if view.sheet.carried_id else {}
     return render(request, 'levelling/sheet.html', project_context(
         request, project, 'packages', trade=trade, view=view, editable=editable,
+        submitting=request.GET.get('submit') == '1',
         line_form=forms.get('line') or LineForm(prefix='line'),
         adj_form=forms.get('adj') or AdjustmentForm(packages=columns, prefix='adj'),
         exc_form=forms.get('exc') or ExclusionForm(packages=columns, prefix='exc'),
@@ -224,7 +258,6 @@ def _render(request, project, trade, view, editable, forms):
         exclusion_choices=Exclusion.STATUS_CHOICES))
 
 
-@estimating_required
 def levelling_rates(request, org_slug, pk, trade_id, package_id):
     """Type one subcontractor's rates or sums against each line, from a quote that came in on paper or PDF."""
     project, trade = _load(request, pk, trade_id)
@@ -245,14 +278,17 @@ def levelling_rates(request, org_slug, pk, trade_id, package_id):
         for line in lines:
             raw_rate = request.POST.get(f'rate_{line.pk}', '').strip()
             raw_sum = request.POST.get(f'sum_{line.pk}', '').strip()
-            rate, total = importer.parse_number(raw_rate), importer.parse_number(raw_sum)
+            rate, total = importer.parse_money(raw_rate), importer.parse_money(raw_sum)
             if (raw_rate and rate is None) or (raw_sum and total is None):
-                errors[line.pk] = 'Enter a number, like 1250.50.'
+                errors[line.pk] = 'Enter a number under £1,000,000,000,000, like 1250.50.'
             parsed[line.pk] = (rate, total, request.POST.get(f'incl_{line.pk}') == '1')
         if not errors:
+            dropped = []
             for line in lines:
                 rate, total, incl = parsed[line.pk]
-                services.set_cell(line, pkg, rate=rate, amount=total, included=incl and rate is None and total is None)
+                services.set_cell(line, pkg, rate=rate, amount=total, included=incl and rate is None and total is None,
+                                  dropped=dropped)
+            _log_dropped(request, project, pkg, dropped, url)
             log_activity(request, 'entered rates', f'{pkg.subcontractor} · {trade}', project=project, url=url)
             messages.success(request, f'{pkg.subcontractor}\'s prices saved.')
             return redirect(url + '#lines')
@@ -269,7 +305,6 @@ def levelling_rates(request, org_slug, pk, trade_id, package_id):
 
 
 @require_POST
-@estimating_required
 def levelling_import(request, org_slug, pk, trade_id):
     project, trade = _load(request, pk, trade_id)
     url = _sheet_url(project, trade)
@@ -303,13 +338,23 @@ def levelling_import(request, org_slug, pk, trade_id):
     return _apply_priced(request, project, sheet, form.cleaned_data['package'], rows, url)
 
 
+def _log_dropped(request, project, pkg, dropped, url):
+    """A plug removed because the line is now priced: on the activity trail, so the change in total is explained."""
+    for plug in dropped:
+        log_activity(request, 'removed plug, line now priced',
+                     f'{pkg.subcontractor} · {plug.reason[:120]} (£{plug.amount:,})', project=project, url=url)
+
+
 def _apply_priced(request, project, sheet, pkg, rows, url):
     if not sheet.lines.exists():
         messages.error(request, 'Import our scope lines first, then each subcontractor\'s priced copy.')
         return redirect(url + '#import')
     result = services.import_priced(sheet, pkg, rows)
     log_activity(request, 'imported priced copy', f'{pkg.subcontractor} · {sheet.trade}', project=project, url=url)
+    _log_dropped(request, project, pkg, result.dropped, url)
     msg = f'{pkg.subcontractor}: {result.filled} line{"s" if result.filled != 1 else ""} priced.'
+    if result.dropped:
+        msg += f' {len(result.dropped)} plug{"s" if len(result.dropped) != 1 else ""} removed: those lines are priced now.'
     if result.sums_differ:
         msg += f' {len(result.sums_differ)} line{"s" if len(result.sums_differ) != 1 else ""} where qty × rate ' \
                'isn\'t their sum: their sum is used. Check them for an arithmetic correction.'
@@ -344,7 +389,6 @@ def _import_quote_file(request, project, sheet, pkg, url):
     return _apply_priced(request, project, services.ensure_saved(sheet), pkg, rows, url)
 
 
-@estimating_required
 def levelling_csv(request, org_slug, pk, trade_id):
     project, trade = _load(request, pk, trade_id)
     view = services.build(services.sheet_for(project, trade))
@@ -353,7 +397,6 @@ def levelling_csv(request, org_slug, pk, trade_id):
     return resp
 
 
-@estimating_required
 def levelling_pdf(request, org_slug, pk, trade_id):
     project, trade = _load(request, pk, trade_id)
     view = services.build(services.sheet_for(project, trade))

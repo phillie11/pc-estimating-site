@@ -36,6 +36,10 @@ def pct(v):
     return '' if v is None else f'{v}%'
 
 
+def pct_or_dash(v):
+    return '—' if v is None else f'{v}%'
+
+
 def _cell_text(cell):
     if cell.plug is not None and cell.value is None:
         return f'plug {money(cell.plug.amount)}'
@@ -139,8 +143,8 @@ def pdf_bytes(view):
         name = c.package.subcontractor.company_name + (' (carried)' if c is carried else '')
         rows.append([para(name), gbp(c.quoted), gbp(r.adjustments), gbp(r.levelled),
                      f'{r.rank or "-"}{"=" if r.tied else ""}',
-                     '-' if r.var_lowest is None else f'{gbp(r.var_lowest)} ({r.var_lowest_pct or 0}%)',
-                     '-' if r.var_average is None else f'{gbp(r.var_average)} ({r.var_average_pct or 0}%)',
+                     '-' if r.var_lowest is None else f'{gbp(r.var_lowest)} ({pct_or_dash(r.var_lowest_pct)})',
+                     '-' if r.var_average is None else f'{gbp(r.var_average)} ({pct_or_dash(r.var_average_pct)})',
                      str(c.missing), str(len(c.unpriced_exclusions))])
     if len(rows) == 1:
         rows.append([para('No quotes in yet.')] + [''] * 8)
@@ -153,6 +157,8 @@ def pdf_bytes(view):
                                           f'{gbp(carried.levelled)} levelled.', 'Heading4')]
         if sheet.carried_reason:
             story.append(para(f'Why: {sheet.carried_reason}'))
+        elif view.reason_needed:
+            story.append(para('No longer the lowest levelled price, and no reason recorded for carrying them.'))
     else:
         story += [Spacer(1, 2 * mm), para('Nobody carried in the tender yet.', 'Heading4')]
     adj = [['Subcontractor', 'Type', 'Amount', 'Reason']]

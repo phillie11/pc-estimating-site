@@ -12,8 +12,10 @@ Rules (plain words, for sign-off):
 - Levelled total = quoted total + every adjustment (adjustments can be negative).
 - Rank is by levelled total, lowest first. Equal totals share a rank and the next rank is skipped
   (1, 1, 3). A subcontractor with no quoted total isn't ranked.
+- A plug counts only while its line is missing: once the subcontractor prices the line, the plug
+  is removed (and never added on top of their price).
 - Variance from lowest = levelled total − the lowest levelled total, and as a percentage of the
-  lowest, to one decimal place (half up).
+  lowest, to one decimal place (half up). No percentage when the lowest is £0 or less.
 - Average = the mean of the ranked levelled totals, to the penny. Variance from average = levelled
   total − average, and as a percentage of the average, to one decimal place.
 """
@@ -37,7 +39,8 @@ def pennies(value):
 
 
 def percent(part, whole):
-    if whole is None or part is None or whole == 0:
+    """part as a % of whole, to 0.1 half up; None when the whole is 0 or less (no meaningful percentage)."""
+    if whole is None or part is None or whole <= 0:
         return None
     return (Decimal(part) / Decimal(whole) * 100).quantize(TENTH, rounding=ROUND_HALF_UP)
 
@@ -65,6 +68,11 @@ def plug_value(others, basis):
     if basis == AVERAGE:
         return pennies(sum(values) / len(values))
     raise ValueError(f'Unknown plug basis {basis!r}')
+
+
+def plug_counts(line_value_now):
+    """A plug counts only while its line is still missing. Once the line is priced, the plug is dropped."""
+    return line_value_now is None
 
 
 @dataclass

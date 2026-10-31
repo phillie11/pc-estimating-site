@@ -19,6 +19,7 @@
     <a href="{% url 'bid_gate' org.slug project.pk %}">{% if review.result %}Review or re-score{% else %}Score it now{% endif %} →</a>{% if gate_required and not review.result %} <span class="dim">(required for bids of this value)</span>{% endif %}
   </div></div>{% endif %}
 
+{% for s in levelling_reasons %}<div class="flash error">{{ s.carried.subcontractor }} is carried for {{ s.trade }} but is no longer the lowest levelled price. <a href="{% url 'levelling_sheet' org.slug project.pk s.trade_id %}#carry">Give a reason</a> before the bid is submitted.</div>{% endfor %}
 {% if rows %}<div class="card" id="coverage" style="margin-bottom:1.25rem">
   <div class="card-head"><h2>Trade coverage</h2><span class="small dim">{{ due_label }} · target {{ target }} quote{{ target|pluralize }} per trade</span></div>
   {% include "tenders/_coverage_rows.html" %}

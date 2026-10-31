@@ -8,6 +8,7 @@ place.
 """
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Max, Q
@@ -131,6 +132,13 @@ class SheetView:
     def missing_total(self):
         return sum(c.missing for c in self.columns)
 
+    @property
+    def reason_needed(self):
+        """The carried subcontractor is no longer lowest levelled and there's no reason on file."""
+        c = self.carried
+        return bool(c and c.result and c.result.rank and not c.result.is_lowest
+                    and not self.sheet.carried_reason.strip())
+
     def column(self, package_id):
         return next((c for c in self.columns if c.package.pk == package_id), None)
 
@@ -181,7 +189,10 @@ def build(sheet):
             col.quoted, col.quoted_from = maths.pennies(col.package.quote_value), 'quote'
         elif col.lines_total is not None:
             col.quoted, col.quoted_from = col.lines_total, 'lines'
-    summary = maths.level([(c.package.pk, c.quoted, [a.amount for a in c.adjustments]) for c in columns])
+    priced = {(r.line.pk, x.package.pk) for r in rows for x in r.cells if not maths.plug_counts(x.value)}
+    summary = maths.level([(c.package.pk, c.quoted, [a.amount for a in c.adjustments
+                                                     if not (a.kind == Adjustment.PLUG and (a.line_id, c.package.pk) in priced)])
+                           for c in columns])
     for col in columns:
         col.result = summary.get(col.package.pk)
     appointed = next((p for p in packages if p.status == Package.APPOINTED), None)
@@ -196,6 +207,15 @@ class Refused(ValueError):
     """A change the rules don't allow; the message is for the estimator."""
 
 
+MONEY_MAX = Decimal('1000000000000')   # DECIMAL(14, 2) holds less than 10^12
+
+
+def check_money(value, what='That amount'):
+    if value is not None and abs(value) >= MONEY_MAX:
+        raise Refused(f'{what} is too large to record.')
+    return value
+
+
 def next_position(sheet):
     return (sheet.lines.aggregate(m=Max('position'))['m'] or 0) + 1
 
@@ -205,13 +225,25 @@ def add_line(sheet, ref, description, qty, unit):
                                     qty=qty, unit=unit)
 
 
-def set_cell(line, package, rate=None, amount=None, included=False):
+def set_cell(line, package, rate=None, amount=None, included=False, dropped=None):
+    """
+    Save one subcontractor's price for a line (or clear it). A plug on that line for them is removed
+    once it is priced, so it is never counted on top of their price; each one removed is appended to
+    `dropped` (if given) for the caller to log.
+    """
     rate, amount = maths.pennies(rate), maths.pennies(amount)
+    for v in (rate, amount):
+        if v is not None and abs(v) >= MONEY_MAX:
+            raise Refused('That price is too large.')
     if rate is None and amount is None and not included:
         QuoteCell.objects.filter(line=line, package=package).delete()
         return None
     cell, _ = QuoteCell.objects.update_or_create(line=line, package=package,
                                                  defaults={'rate': rate, 'amount': amount, 'included': included})
+    for plug in Adjustment.objects.filter(sheet_id=line.sheet_id, package=package, kind=Adjustment.PLUG, line=line):
+        if dropped is not None:
+            dropped.append(plug)
+        plug.delete()
     return cell
 
 
@@ -275,6 +307,7 @@ def plug(sheet, line, package, basis, actor):
     if value is None:
         raise Refused('Nobody else has priced that line, so there is nothing to plug it from. '
                       'Add an adjustment with your own figure instead.')
+    check_money(value, 'That plug')
     label = dict(Adjustment.BASIS_CHOICES)[basis]
     return Adjustment.objects.create(
         sheet=sheet, package=package, kind=Adjustment.PLUG, line=line, basis=basis, amount=value,
@@ -336,6 +369,7 @@ def import_scope(sheet, rows):
 @dataclass
 class PricedImport:
     filled: int = 0
+    dropped: list = field(default_factory=list)     # plugs removed because the line is now priced
     unmatched: list = field(default_factory=list)   # their rows with no line of ours
     sums_differ: list = field(default_factory=list)  # qty x rate isn't their sum
 
@@ -359,7 +393,8 @@ def import_priced(sheet, package, rows):
         if total is not None and rate is not None and line.qty is not None \
                 and maths.line_value(line.qty, rate) != total:
             out.sums_differ.append((line, total, maths.line_value(line.qty, rate)))
-        set_cell(line, package, rate=rate, amount=total, included=r.included and rate is None and total is None)
+        set_cell(line, package, rate=rate, amount=total, included=r.included and rate is None and total is None,
+                 dropped=out.dropped)
         out.filled += 1
     return out
 
@@ -376,6 +411,16 @@ def carried_for(project):
         col = view.carried
         if col is not None:
             out[sheet.carried_id] = col.levelled
+    return out
+
+
+def reasons_needed(project):
+    """Sheets on this bid whose carried subcontractor is no longer lowest levelled and has no reason."""
+    out = []
+    for sheet in LevellingSheet.objects.filter(project=project, carried__isnull=False, carried_reason='') \
+            .select_related('project', 'trade', 'carried__subcontractor'):
+        if build(sheet).reason_needed:
+            out.append(sheet)
     return out
 
 
