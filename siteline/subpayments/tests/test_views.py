@@ -359,7 +359,7 @@ class AdviceAndCSVTests(SubPayTestBase):
 
     def test_cis_summary_csv_is_formula_safe_and_by_tax_month(self):
         with org_context(self.org_a):
-            SubcontractorTax.objects.filter(subcontractor=self.subco).update(utr='=HYPERLINK("x")')
+            SubcontractorTax.objects.filter(subcontractor=self.subco).update(utr='=1+1')  # fits the 13-character column (MySQL enforces it)
             Subcontractor.objects.filter(pk=self.subco.pk).update(company_name='@SUM(A1)')
         a = self.receive()
         self.pay(a, '19000')
@@ -369,7 +369,7 @@ class AdviceAndCSVTests(SubPayTestBase):
         body = r.content.decode()
         self.assertTrue(r['Content-Type'].startswith('text/csv'))
         self.assertIn("'@SUM(A1)", body)
-        self.assertIn("'=HYPERLINK", body)
+        self.assertIn("'=1+1", body)
         self.assertIn('not a submission', body)
         self.assertIn('19000.00', body)
         self.assertIn('3000.00', body)
