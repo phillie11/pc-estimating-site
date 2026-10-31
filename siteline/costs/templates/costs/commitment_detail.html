@@ -22,7 +22,7 @@
   </tbody></table></div>{% else %}<div class="empty left">No adjustments. The order stands at the value it was placed at.</div>{% endif %}</div>
   <div class="card"><div class="card-head"><h2>Costs against this order</h2></div>
   {% if actuals %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>
-  {% for a in actuals %}<tr><td class="small nowrap">{{ a.cost_date|date:"j M Y" }}</td><td>{{ a.get_kind_display }} {{ a.reference }}</td><td class="num">{{ a.amount|money_exact:currency }}</td></tr>{% endfor %}
+  {% for a in actuals %}<tr{% if a.pk in reversed_ids %} class="dim"{% endif %}><td class="small nowrap">{{ a.cost_date|date:"j M Y" }}</td><td>{{ a.get_kind_display }} {{ a.reference }}{% if a.pk in reversed_ids %} {% badge 'Reversed' 'muted' %}{% endif %}</td><td class="num">{% if a.pk in reversed_ids %}<s>{{ a.amount|money_exact:currency }}</s>{% else %}{{ a.amount|money_exact:currency }}{% endif %}</td></tr>{% endfor %}
   </tbody></table></div>{% else %}<div class="empty left">No invoices recorded against this order yet.</div>{% endif %}</div>
 </div>
 <div>

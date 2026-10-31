@@ -125,7 +125,7 @@ Checklist:
   ledger.reverse(entry, actor=user, reason='Posted to the wrong job')   # equal and opposite entry, once
   ledger.totals(project)   # {cost_code_id: {'BUDGET': Decimal, 'COMMITMENT': Decimal, 'ACTUAL': Decimal}}
   ```
-  Amounts are Decimal/int/str (floats raise), rounded half up to 1p. The source is any saved row (a generic link).
+  Amounts are Decimal/int/str (floats raise), rounded half up to 1p. The source is any saved row (a generic link). Only ACTUAL entries can be reversed: budgets are corrected by a transfer or revision and orders by an adjustment (`costs.services`), and `reverse()` refuses anything else. New orders and order adjustments carry a one-time form key, so a double submit records once.
 - **Budget** is set once from the tender (value less margin %, spread over codes; the lines must add up), then changes only by a transfer (between codes) or a revision (changes the total), each with a reason. **Orders** come from appointed packages (*Commit this order*) or are entered by hand, and change only through recorded adjustments, including *Add to order* for approved sub variations. **Actual costs** are invoices or timesheet totals with an optional attachment (validated and served by `projects/files.py`); a wrong one is reversed, never deleted.
 - **Report** (`costs/report.py`) reads only the ledger: forecast final cost per code is the latest manual forecast, else the larger of budget, committed and actual; margin is against `contracts.commercial.commercial_position`'s forecast final account. Below the company threshold it shows red and lists the job on its PM's and admins' *Needs me* (`costs/actions.py`). The money rules and their fixed test table are in `costs/money.py` and `costs/tests/test_money.py`.
 

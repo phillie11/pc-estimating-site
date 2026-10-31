@@ -1,3 +1,4 @@
+import secrets
 from decimal import Decimal
 
 from django import forms
@@ -49,6 +50,16 @@ class StyledForm(forms.Form):
         style_widgets(self)
 
 
+class OneTimeFormMixin(forms.Form):
+    """A fresh hidden key each time the form is shown, so sending the same page twice records it once."""
+    form_key = forms.CharField(widget=forms.HiddenInput, required=False, max_length=60)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.initial['form_key'] = secrets.token_urlsafe(24)
+
+
 # --- Settings ---------------------------------------------------------------------------
 
 class CostCodeForm(StyledModelForm):
@@ -56,6 +67,32 @@ class CostCodeForm(StyledModelForm):
         model = CostCode
         fields = ['code', 'name', 'group', 'is_active']
         labels = {'group': 'Group (optional)'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A code with money on a job keeps its number and group, so past reports still mean the same thing
+        self.locked = bool(self.instance.pk) and self.instance.has_money
+        if self.locked:
+            for name in ('code', 'group'):
+                self.fields[name].widget.attrs.update({'readonly': True, 'aria-readonly': 'true'})
+                self.fields[name].help_text = 'Fixed: this code has money on a job.'
+            if isinstance(self.fields['group'].widget, forms.Select):
+                self.fields['group'].widget.attrs['disabled'] = True
+                self.fields['group'].required = False
+            self.fields['name'].help_text = 'Correct a spelling or wording only: past jobs show the new name.'
+
+    def clean(self):
+        data = super().clean()
+        if self.locked:
+            for name in ('code', 'group'):
+                sent = (self.data.get(self.add_prefix(name)) or '').strip()
+                if name == 'group' and name not in self.data:
+                    continue  # a disabled select isn't posted
+                if sent != (getattr(self.instance, name) or ''):
+                    self.add_error(name, 'This code has money on a job, so its code and group can\'t change. '
+                                         'Retire it and add a new code instead.')
+            data['group'] = self.instance.group
+        return data
 
     def clean_code(self):
         code = self.cleaned_data['code'].strip()
@@ -169,7 +206,7 @@ class RevisionForm(StyledForm):
 
 # --- Commitments ------------------------------------------------------------------------
 
-class OrderForm(StyledForm):
+class OrderForm(OneTimeFormMixin, StyledForm):
     cost_code = CodeChoice(queryset=_codes(), label='Cost code')
     supplier = forms.CharField(max_length=200, label='Supplier')
     value = MoneyField(label='Order value (excluding VAT)')
@@ -189,7 +226,7 @@ class OrderForm(StyledForm):
         return v
 
 
-class AdjustmentForm(StyledForm):
+class AdjustmentForm(OneTimeFormMixin, StyledForm):
     amount = MoneyField(label='Change to the order', allow_negative=True, help_text='Negative to reduce it.')
     reason = forms.CharField(max_length=300, label='Reason',
                              widget=forms.TextInput(attrs={'placeholder': 'e.g. extra 20m of partition, instruction 14'}))

@@ -3,8 +3,11 @@ Cost control pages, under the job's Commercial tab (Costs), and the company's co
 under Settings. Every job view fetches the job through costs.access.costs_project().
 """
 import csv
+import hashlib
+from decimal import Decimal
 
 from django.contrib import messages
+from django.db import IntegrityError
 from django.db.models import Prefetch, ProtectedError, RestrictedError, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -42,6 +45,18 @@ def _safe(value):
     """A text CSV cell that a spreadsheet won't run as a formula."""
     s = str(value)
     return "'" + s if s[:1] in ('=', '+', '-', '@', '\t', '\r') else s
+
+
+def _form_key(request, scope):
+    """
+    The one-time key a form was sent with (OneTimeFormMixin). A post without one (a script, an old
+    page) is keyed on what it contains, so the identical post twice still records once.
+    """
+    key = (request.POST.get('form_key') or '').strip()[:60]
+    if not key:
+        payload = repr(sorted((k, request.POST.getlist(k)) for k in request.POST if k != 'csrfmiddlewaretoken'))
+        key = 'h:' + hashlib.sha256(f'{request.user.pk}|{payload}'.encode()).hexdigest()[:40]
+    return f'{scope}:{key}'[:80]
 
 
 # --- Cost report ------------------------------------------------------------------------
@@ -239,7 +254,13 @@ def order_create(request, org_slug, pk):
         try:
             c = services.place_order(project, request.user, d['cost_code'], d['supplier'], d['value'],
                                      reference=d['reference'], description=d['description'],
-                                     order_date=d['order_date'])
+                                     order_date=d['order_date'], form_key=_form_key(request, 'order'))
+        except services.AlreadyRecorded as e:
+            messages.info(request, f'{e.record.ref} was already recorded from this form, so it was not added again.')
+            return redirect(e.record.get_absolute_url())
+        except IntegrityError:  # the same form, sent twice at the same moment
+            messages.info(request, 'That order was already recorded, so it was not added again.')
+            return redirect('cost_commitments', org_slug=org_slug, pk=pk)
         except CostError as e:
             messages.error(request, str(e))
         else:
@@ -259,9 +280,15 @@ def commitment_detail(request, org_slug, pk, commitment_id):
         try:
             if action == 'adjust':
                 if form.is_valid():
-                    services.adjust_commitment(c, request.user, form.cleaned_data['amount'],
-                                               form.cleaned_data['reason'])
-                    messages.success(request, f'{c.ref} adjusted.')
+                    try:
+                        services.adjust_commitment(c, request.user, form.cleaned_data['amount'],
+                                                   form.cleaned_data['reason'], form_key=_form_key(request, 'adj'))
+                    except services.AlreadyRecorded:
+                        messages.info(request, 'That adjustment was already recorded, so it was not added again.')
+                    except IntegrityError:
+                        messages.info(request, 'That adjustment was already recorded, so it was not added again.')
+                    else:
+                        messages.success(request, f'{c.ref} adjusted.')
                     return redirect(c.get_absolute_url())
             elif action == 'add_sv':
                 sv = get_object_or_404(services.addable_sub_variations(c), pk=posted_id(request, 'sub_variation'))
@@ -271,11 +298,18 @@ def commitment_detail(request, org_slug, pk, commitment_id):
         except CostError as e:
             messages.error(request, str(e))
     adjustments = c.adjustments.select_related('created_by', 'sub_variation')
-    actuals = c.actuals.select_related('cost_code')
+    actuals = list(c.actuals.select_related('cost_code'))
+    # Invoiced to date comes from the ledger, so a reversed invoice nets off
+    from django.contrib.contenttypes.models import ContentType
+    entries = LedgerEntry.objects.filter(project=project, kind=ledger.ACTUAL,
+                                         source_type=ContentType.objects.get_for_model(ActualCost),
+                                         source_id__in=[a.pk for a in actuals])
+    invoiced = entries.aggregate(s=Sum('amount'))['s'] or Decimal('0')
+    reversed_ids = set(entries.filter(reverses__isnull=False).values_list('source_id', flat=True))
     return render(request, 'costs/commitment_detail.html', costs_context(
         request, project, 'commitments', c=c, form=form, adjustments=adjustments, actuals=actuals,
         addable=services.addable_sub_variations(c) if not project.is_archived else [],
-        invoiced=sum((a.amount for a in actuals), 0)))
+        invoiced=invoiced, reversed_ids=reversed_ids))
 
 
 # --- Actual costs -----------------------------------------------------------------------

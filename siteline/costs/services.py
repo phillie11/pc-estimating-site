@@ -26,6 +26,14 @@ class CostError(ValueError):
     """Something the user asked for that the cost rules don't allow; show it as a message."""
 
 
+class AlreadyRecorded(CostError):
+    """The same form was sent twice (a double click or a resubmit); .record is what the first one made."""
+
+    def __init__(self, record):
+        self.record = record
+        super().__init__('That was already recorded, so it was not added again.')
+
+
 def _lock(project):
     """Serialise numbering and the one-original-budget rule per job (a no-op on SQLite)."""
     from projects.models import Project
@@ -41,8 +49,18 @@ def has_budget(project):
 
 
 def _check_code(project, code):
+    if project.archived_at is not None:
+        raise CostError('This job is archived, so its costs are read only. Restore it to make changes.')
     if code.organization_id != project.organization_id:
         raise CostError('That cost code belongs to another company.')
+
+
+def _post(*args, **kwargs):
+    """ledger.post(), with its refusals turned into CostError so views show them as messages."""
+    try:
+        return ledger.post(*args, **kwargs)
+    except ledger.LedgerError as e:
+        raise CostError(str(e))
 
 
 # --- Budget -----------------------------------------------------------------------------
@@ -67,7 +85,7 @@ def _budget_line(change, code, desc, amount, actor, note):
     _check_code(change.project, code)
     line = BudgetLine.objects.create(change=change, project=change.project, cost_code=code,
                                      description=desc or code.name, amount=pennies(amount))
-    ledger.post(change.project, code, ledger.BUDGET, line.amount, source=line, actor=actor, note=note)
+    _post(change.project, code, ledger.BUDGET, line.amount, source=line, actor=actor, note=note)
     return line
 
 
@@ -131,14 +149,19 @@ def commit_package(package, cost_code, actor):
         package=package, subcontractor=package.subcontractor, supplier=package.subcontractor.company_name,
         description=f'{package.trade or "Package"} subcontract', original_value=pennies(package.quote_value),
         created_by=actor)
-    ledger.post(project, cost_code, ledger.COMMITMENT, c.original_value, source=c, actor=actor,
+    _post(project, cost_code, ledger.COMMITMENT, c.original_value, source=c, actor=actor,
                 note=f'{c.ref} {c.supplier}: {c.description}')
     return c
 
 
 @transaction.atomic
-def place_order(project, actor, cost_code, supplier, value, reference='', description='', order_date=None):
+def place_order(project, actor, cost_code, supplier, value, reference='', description='', order_date=None,
+                form_key=None):
     project = _lock(project)
+    if form_key:
+        first = Commitment.objects.filter(project=project, form_key=form_key).first()
+        if first is not None:
+            raise AlreadyRecorded(first)
     _check_code(project, cost_code)
     value = pennies(value)
     if value <= 0:
@@ -146,14 +169,22 @@ def place_order(project, actor, cost_code, supplier, value, reference='', descri
     kwargs = {'order_date': order_date} if order_date else {}
     c = Commitment.objects.create(project=project, number=_next(Commitment, project), kind=Commitment.ORDER,
                                   cost_code=cost_code, supplier=supplier, reference=reference,
-                                  description=description, original_value=value, created_by=actor, **kwargs)
-    ledger.post(project, cost_code, ledger.COMMITMENT, value, source=c, actor=actor, date=c.order_date,
+                                  description=description, original_value=value, created_by=actor,
+                                  form_key=form_key or None, **kwargs)
+    _post(project, cost_code, ledger.COMMITMENT, value, source=c, actor=actor, date=c.order_date,
                 note=f'{c.ref} {supplier}: {description}'.rstrip(': '))
     return c
 
 
 @transaction.atomic
-def adjust_commitment(commitment, actor, amount, reason, sub_variation=None):
+def adjust_commitment(commitment, actor, amount, reason, sub_variation=None, form_key=None):
+    # Lock the order so two adjustments at once can't both pass the not-below-zero check (or the same form twice)
+    commitment = Commitment.objects.select_for_update().select_related('project', 'cost_code').get(pk=commitment.pk)
+    if form_key:
+        first = CommitmentAdjustment.objects.filter(commitment=commitment, form_key=form_key).first()
+        if first is not None:
+            raise AlreadyRecorded(first)
+    _check_code(commitment.project, commitment.cost_code)
     amount = pennies(amount)
     if amount == 0:
         raise CostError('An adjustment needs an amount (negative to reduce the order).')
@@ -162,8 +193,9 @@ def adjust_commitment(commitment, actor, amount, reason, sub_variation=None):
     if commitment.value + amount < 0:
         raise CostError('That would take the order below zero.')
     adj = CommitmentAdjustment.objects.create(commitment=commitment, project=commitment.project, amount=amount,
-                                              reason=reason[:300], sub_variation=sub_variation, created_by=actor)
-    ledger.post(commitment.project, commitment.cost_code, ledger.COMMITMENT, amount, source=adj, actor=actor,
+                                              reason=reason[:300], sub_variation=sub_variation, created_by=actor,
+                                              form_key=form_key or None)
+    _post(commitment.project, commitment.cost_code, ledger.COMMITMENT, amount, source=adj, actor=actor,
                 note=f'{commitment.ref} adjusted: {reason}')
     return adj
 
@@ -210,7 +242,7 @@ def record_actual(project, actor, cost_code, kind, supplier, amount, reference='
         a.original_name = file.name[-200:]
     a.save()
     label = f'{a.get_kind_display()} {supplier}' + (f' {reference}' if reference else '')
-    ledger.post(project, cost_code, ledger.ACTUAL, amount, source=a, actor=actor, date=a.cost_date, note=label)
+    _post(project, cost_code, ledger.ACTUAL, amount, source=a, actor=actor, date=a.cost_date, note=label)
     return a
 
 

@@ -200,7 +200,7 @@ class BudgetChange(AppendOnlyModel):
 
 class BudgetLine(AppendOnlyModel):
     change = models.ForeignKey(BudgetChange, on_delete=models.RESTRICT, related_name='lines')
-    project = models.ForeignKey('projects.Project', on_delete=models.RESTRICT, related_name='+')
+    project = models.ForeignKey('projects.Project', on_delete=models.RESTRICT, related_name='budget_lines')
     cost_code = models.ForeignKey(CostCode, on_delete=models.RESTRICT, related_name='+')
     description = models.CharField(max_length=200, blank=True)
     amount = models.DecimalField(max_digits=14, decimal_places=2)
@@ -233,12 +233,15 @@ class Commitment(AppendOnlyModel):
     description = models.CharField(max_length=300, blank=True)
     order_date = models.DateField(default=timezone.localdate)
     original_value = models.DecimalField('Order value', max_digits=14, decimal_places=2)
+    # One-time key from the form that placed it, so a double submit can't place the order twice
+    form_key = models.CharField(max_length=80, null=True, blank=True, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta(AppendOnlyModel.Meta):
         ordering = ['number']
-        constraints = [models.UniqueConstraint(fields=['project', 'number'], name='costs_commitment_number')]
+        constraints = [models.UniqueConstraint(fields=['project', 'number'], name='costs_commitment_number'),
+                       models.UniqueConstraint(fields=['project', 'form_key'], name='costs_commitment_form_key')]
 
     def __str__(self):
         return f'{self.ref} {self.supplier}'
@@ -262,16 +265,18 @@ class Commitment(AppendOnlyModel):
 
 class CommitmentAdjustment(AppendOnlyModel):
     commitment = models.ForeignKey(Commitment, on_delete=models.RESTRICT, related_name='adjustments')
-    project = models.ForeignKey('projects.Project', on_delete=models.RESTRICT, related_name='+')
+    project = models.ForeignKey('projects.Project', on_delete=models.RESTRICT, related_name='commitment_adjustments')
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     reason = models.CharField(max_length=300)
     sub_variation = models.OneToOneField('delivery.SubVariation', null=True, blank=True, on_delete=models.RESTRICT,
                                          related_name='cost_adjustment')
+    form_key = models.CharField(max_length=80, null=True, blank=True, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta(AppendOnlyModel.Meta):
         ordering = ['created_at', 'pk']
+        constraints = [models.UniqueConstraint(fields=['commitment', 'form_key'], name='costs_adjustment_form_key')]
 
     def __str__(self):
         return f'{self.commitment_id} {self.amount}'
@@ -309,7 +314,7 @@ class ActualCost(AppendOnlyModel):
 
 class ForecastOverride(AppendOnlyModel):
     """A manual forecast final cost for one code. The latest row wins; amount None goes back to the default."""
-    project = models.ForeignKey('projects.Project', on_delete=models.RESTRICT, related_name='+')
+    project = models.ForeignKey('projects.Project', on_delete=models.RESTRICT, related_name='cost_forecasts')
     cost_code = models.ForeignKey(CostCode, on_delete=models.RESTRICT, related_name='+')
     amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     reason = models.CharField(max_length=300)

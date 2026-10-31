@@ -19,6 +19,9 @@ Rules
   * Entries are never edited or deleted (LedgerEntry is append-only). reverse() adds an equal and
     opposite entry linked to the original; an entry can be reversed once, and a reversal can't be
     reversed (post a fresh entry instead).
+  * Only ACTUAL entries can be reversed. Budget entries are corrected by a budget transfer or
+    revision, and commitment entries by an order adjustment (costs.services), so a budget line or
+    an order and the ledger always agree; reverse() refuses them with LedgerError.
   * Posting runs in the caller's transaction, so a failed request leaves no half-posted entries.
 """
 from decimal import Decimal
@@ -68,6 +71,12 @@ def post(project, cost_code, kind, amount, *, source=None, actor=None, note='', 
 def reverse(entry, actor, reason):
     """Cancel an entry with an equal and opposite one dated today. Returns the reversing entry."""
     reason = (reason or '').strip()
+    if entry.kind != ACTUAL:
+        raise LedgerError('Only actual costs are reversed. Correct a budget with a transfer or revision, '
+                          'and an order with an adjustment.')
+    current = get_current_org()
+    if current is not None and current.pk != entry.organization_id:
+        raise LedgerError('That entry belongs to a different company.')
     if not reason:
         raise LedgerError('Say why the entry is being reversed.')
     if entry.reverses_id is not None:
