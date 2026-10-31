@@ -747,7 +747,10 @@ def issue_list(request, org_slug, pk):
 def issue_create(request, org_slug, pk):
     project = get_project(request, pk)
     require_internal(request)
-    form = IssueForm(request.POST or None, request.FILES or None, project=project)
+    from viewer.pins import attach_pending, pending_pin, viewer_url
+    pending = pending_pin(request, project)  # opened from the drawing viewer to pin a new snag
+    form = IssueForm(request.POST or None, request.FILES or None, project=project,
+                     initial={'location': pending.location} if pending else None)
     if request.method == 'POST' and form.is_valid():
         i = form.save(commit=False)
         i.project, i.created_by = project, request.user
@@ -755,9 +758,14 @@ def issue_create(request, org_slug, pk):
         path = reverse('issue_detail', args=[org_slug, pk, i.pk])
         notify_assignee(request, i.assignee, f'{i.reference}: {i.title}', project, path)
         log_activity(request, 'raised', f'{i.reference} {i.title}', project=project, url=path)
+        if pending:
+            pin = attach_pending(request, project, pending, issue=i)
+            messages.success(request, f'{i.reference} raised and pinned to {pending.label}.')
+            return redirect(viewer_url(request, project, pending.doc, pending.rev, pin))
         messages.success(request, f'{i.reference} raised.')
         return redirect(path)
-    return render(request, 'projects/issue_form.html', project_context(request, project, 'issues', form=form))
+    return render(request, 'projects/issue_form.html', project_context(request, project, 'issues', form=form,
+                                                                       pending_pin=pending))
 
 
 def issue_detail(request, org_slug, pk, issue_id):

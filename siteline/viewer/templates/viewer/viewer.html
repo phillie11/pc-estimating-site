@@ -1,0 +1,71 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block title %}{{ doc.reference|default:doc.title }} rev {{ rev.revision }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'viewer/viewer.css' %}">{% endblock %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<p class="small"><a href="{% url 'document_detail' org.slug project.pk doc.pk %}">← {{ doc.reference|default:doc.title }}</a></p>
+{% include "documents/_rev_banner.html" %}
+{% if current and not rev.is_withdrawn and not rev.is_superseded %}<div class="flash warning" role="status"><strong>This is not the current revision.</strong> The current revision is {{ current.revision }}.</div>{% endif %}
+{% if current_viewable %}<p class="dv-current"><a class="btn" href="{% url 'drawing_viewer' org.slug project.pk doc.pk current_viewable.pk %}">Open the current revision ({{ current_viewable.revision }})</a></p>{% endif %}
+
+<div class="card dv{% if rev.is_withdrawn %} dv-withdrawn{% endif %}" id="dv">
+  <div class="dv-head">
+    <h2>{% if doc.reference %}<span class="mono">{{ doc.reference }}</span> · {% endif %}{{ doc.title }}</h2>
+    <dl class="dv-meta">
+      <div><dt>Revision</dt><dd class="mono">{{ rev.revision }}</dd></div>
+      <div><dt>Suitability</dt><dd class="mono">{{ rev.suitability|default:"—" }}</dd></div>
+      <div><dt>Status</dt><dd>{% badge rev.shown_status rev.shown_tone %}</dd></div>
+    </dl>
+  </div>
+  <div class="dv-toolbar" role="toolbar" aria-label="Drawing controls">
+    <span class="dv-group">
+      <button type="button" class="btn" data-act="prev" aria-label="Previous page" disabled>‹</button>
+      <span class="dv-label" aria-live="polite">Page <span data-page>1</span> of <span data-pages>{{ rev.page_count|default:"…" }}</span></span>
+      <button type="button" class="btn" data-act="next" aria-label="Next page" disabled>›</button>
+    </span>
+    <span class="dv-group">
+      <button type="button" class="btn" data-act="out" aria-label="Zoom out">−</button>
+      <span class="dv-label" data-zoom aria-live="polite">Fit</span>
+      <button type="button" class="btn" data-act="in" aria-label="Zoom in">+</button>
+      <button type="button" class="btn" data-act="fit">Fit width</button>
+    </span>
+    <span class="dv-group">
+      {% if can_pin %}<button type="button" class="btn" data-act="pin" aria-pressed="false">Add pin</button>{% endif %}
+      <a class="btn" href="{{ download_url }}">{% icon 'download' %} Download</a>
+    </span>
+  </div>
+  <div class="dv-port" data-port tabindex="0" aria-label="Drawing, page by page. Use + and − to zoom.">
+    <div class="dv-stage" data-stage><canvas data-canvas></canvas><div class="dv-pins" data-pins></div></div>
+    <div class="dv-status" data-status role="status">Loading the drawing…</div>
+  </div>
+  <p class="dv-hint small dim">{% if can_pin %}<span data-hint-place>Tap and hold a spot on the drawing (or choose <strong>Add pin</strong>, then tap) to pin a snag or RFI there. </span>{% elif rev.is_withdrawn %}Nothing can be pinned to a withdrawn revision. {% endif %}Pinch or use + and − to zoom; drag to move around.</p>
+</div>
+
+<div class="card dv-list">
+  <div class="card-head"><h3>Pins on this drawing</h3><span class="small dim">{{ pins|length }}</span></div>
+  {% if pins %}<ul class="list">{% for p in pins %}<li>
+    <span class="dv-dot tone-{{ p.tone }}" aria-hidden="true"></span>
+    <span class="grow"><a href="{{ p.url }}"><span class="ref">{{ p.ref }}</span> {{ p.title }}</a><span class="sub small dim">{{ p.kind_label }} · page {{ p.page }}{% if p.placed_on %} · {{ p.placed_on }}{% endif %}</span></span>
+    {% badge p.status p.tone %}
+    <button type="button" class="btn sm" data-show="{{ p.id }}">Show</button>
+    {% if p.can_remove and can_pin %}<button type="button" class="btn sm" data-remove="{{ p.id }}" data-url="{{ p.remove_url }}" aria-label="Remove the pin for {{ p.ref }}">Remove</button>{% endif %}
+  </li>{% endfor %}</ul>
+  {% else %}<div class="empty left">{% if internal %}No snags or RFIs are pinned to this drawing yet.{% else %}No pins you can see on this drawing. You see pins for snags assigned to you and RFIs shared with you.{% endif %}{% if can_pin %} Tap and hold a spot on the drawing to pin one.{% endif %}</div>{% endif %}
+</div>
+
+{% if can_pin %}<dialog class="dv-dialog" data-dialog aria-labelledby="dv-dialog-title">
+  <form method="dialog">
+    <h3 id="dv-dialog-title">Pin a snag or RFI here</h3>
+    <p class="small dim" data-where></p>
+    <div class="dv-new">{% if config.new_snag_url %}<a class="btn primary" data-new="{{ config.new_snag_url }}" href="{{ config.new_snag_url }}">New snag</a>{% endif %}<a class="btn{% if not config.new_snag_url %} primary{% endif %}" data-new="{{ config.new_rfi_url }}" href="{{ config.new_rfi_url }}">New RFI</a></div>
+    {% if config.choices %}<label class="dv-existing">Or pin one that's already raised
+      <select data-existing><option value="">Choose…</option>{% regroup config.choices by group as groups %}{% for g in groups %}<optgroup label="{{ g.grouper }}">{% for c in g.list %}<option value="{{ c.value }}">{{ c.label }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+    <p class="small dim">Already pinned on this drawing? It moves here.</p>{% endif %}
+    <p class="flash error" data-error hidden></p>
+    <div class="form-actions">{% if config.choices %}<button type="button" class="btn primary" data-act="link">Pin it here</button>{% endif %}<button class="btn ghost" value="cancel">Cancel</button></div>
+  </form>
+</dialog>{% endif %}
+<form hidden data-csrf>{% csrf_token %}</form>
+{{ config|json_script:"dv-config" }}
+</div>{% endblock %}
+{% block scripts %}<script type="module" src="{% static 'viewer/viewer.js' %}"></script>{% endblock %}

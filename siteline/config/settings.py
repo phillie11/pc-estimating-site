@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     'actions',
     'security',
     'costs',
+    'viewer',
 ]
 
 MIDDLEWARE = [

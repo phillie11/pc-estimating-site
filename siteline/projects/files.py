@@ -27,13 +27,15 @@ def validate_upload(f):
         raise ValidationError(f'Files must be under {settings.MAX_UPLOAD_MB} MB.')
 
 
-def serve(request, fieldfile, download_name=None, project=None, label=''):
+def serve(request, fieldfile, download_name=None, project=None, label='', through_app=False):
     """
     Send a file the caller has already checked the user may see, and log the download.
 
     On this server's disk the file is streamed back. In cloud storage the browser is
     redirected to a signed link that expires in a few minutes, so a forwarded link is
-    useless and big drawing packs don't pass through the app server.
+    useless and big drawing packs don't pass through the app server. through_app=True
+    streams it from cloud storage through this site instead (the drawing viewer fetches
+    the PDF from script, and the Content-Security-Policy only lets it connect to us).
     """
     if not fieldfile:
         raise Http404
@@ -44,7 +46,7 @@ def serve(request, fieldfile, download_name=None, project=None, label=''):
     if blocked is not None:
         return blocked
     _log_access(request, fieldfile, project, label or name)
-    if settings.STORAGE_BUCKET:
+    if settings.STORAGE_BUCKET and not through_app:
         url = fieldfile.storage.url(fieldfile.name, parameters={
             'ResponseContentType': ctype,
             'ResponseContentDisposition': content_disposition_header(not inline, name),
