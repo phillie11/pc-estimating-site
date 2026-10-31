@@ -161,6 +161,13 @@ def valuation(work_done, variations=ZERO, materials_on_site=ZERO, materials_off_
                      vat, due + vat, bool(reverse_charge), stage)
 
 
+def ex_vat(amount_inc_vat, rate=VAT_STANDARD_RATE, reverse_charge=False):
+    """The part of a VAT-inclusive amount (a payment received) that is not VAT, half up to 1p."""
+    if reverse_charge:
+        return money(amount_inc_vat)
+    return money(Decimal(amount_inc_vat) * 100 / (100 + Decimal(rate)))
+
+
 def lines_total(values):
     """Work done to date from lines by section: their sum, each rounded to 1p first."""
     return sum((money(v) for v in values), ZERO)
@@ -193,12 +200,14 @@ class Terms:
 def terms_for(contract):
     """
     The payment terms for a project's contract: its own figures, any left blank taken from its
-    form's standard terms; the Scheme when there is no contract or it is bespoke with nothing set.
+    form's standard terms; the Scheme when there is no contract. Only the Scheme preset itself
+    (Preset.is_scheme) brings the Scheme's "due on the claim date, if later" rule: a bespoke contract
+    that starts from the Scheme's periods does not.
     """
     if contract is None:
         p = presets.SCHEME
         return Terms(p.due_date_offset_days, p.payment_notice_days, p.final_date_offset_days, p.pay_less_notice_days,
-                     DEFAULT_REGION, scheme=True, label=p.label)
+                     DEFAULT_REGION, scheme=p.is_scheme, label=p.label)
     p = contract.preset
 
     def pick(name):
@@ -206,7 +215,7 @@ def terms_for(contract):
         return getattr(p, name) if value is None else value
     return Terms(pick('due_date_offset_days'), pick('payment_notice_days'), pick('final_date_offset_days'),
                  pick('pay_less_notice_days'), contract.bank_holiday_region or DEFAULT_REGION,
-                 scheme=p is presets.SCHEME, label=p.label)
+                 scheme=p.is_scheme, label=p.label)
 
 
 def payment_cycle(valuation_date, terms, claim_date=None):

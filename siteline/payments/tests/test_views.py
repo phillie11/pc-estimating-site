@@ -91,7 +91,8 @@ class RecordTests(PaymentsTestBase):
         with org_context(self.org_a):
             vo = Variation(project=self.pa, title='Extra', description='x', value=Decimal('2000'))
             vo.save(actor=self.pat)
-            Variation.objects.filter(pk=vo.pk).update(status='APPROVED', approved_value=Decimal('1800.00'))
+            Variation.objects.filter(pk=vo.pk).update(status='APPROVED', approved_value=Decimal('1800.00'),
+                                                      decided_at=timezone.now() - timedelta(days=50))
         first = self.make(valuation=timezone.localdate() - timedelta(days=40), submit=True)
         self.assertEqual(first.variations_value, Decimal('1800.00'))
         second = self.make(work='150000')
@@ -344,7 +345,7 @@ class PaymentReceivedTests(PaymentsTestBase):
             a = self.reload(a)
             self.assertEqual((a.status, a.outstanding, a.paid_in_full_on), ('PAID', ZERO, timezone.localdate()))
             self.assertEqual(Payment.objects.filter(application=a).count(), 2)
-            self.assertEqual(commercial_position(self.pa)['paid'], Decimal('114000.00'))
+            self.assertEqual(commercial_position(self.pa)['paid'], Decimal('95000.00'))   # ex VAT
 
     def test_overdue_after_the_final_date(self):
         a = self.make(submit=True)

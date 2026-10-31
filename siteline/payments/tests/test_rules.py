@@ -29,12 +29,15 @@ def with_region(terms, region):
 class CycleTableTests(SimpleTestCase):
     # (case, terms, region, valuation, claim made, due, payment notice by, pay less by, final date)
     TABLE = [
-        # JCT IC monthly cycle across Christmas. E&W 2026: 25 Dec (Fri) and 28 Dec (Boxing Day substitute) and
-        # 1 Jan 2027 are left out. Due Sat 26 Dec; payment notice Sat 2 Jan; final Mon 11 Jan; pay less Wed 6 Jan.
-        ('JCT IC Christmas E&W', JCT_IC, EW, '2026-12-18', None, '2026-12-26', '2027-01-02', '2027-01-06', '2027-01-11'),
-        # Scotland also leaves out Mon 4 Jan 2027 (2 January's substitute), so the final date is a day later.
-        ('JCT IC Christmas Scotland', JCT_IC, SC, '2026-12-18', None, '2026-12-26', '2027-01-02', '2027-01-07',
-         '2027-01-12'),
+        # JCT IC monthly cycle across Christmas. E&W 2026-27 leaves out Fri 25 Dec, Sat 26 Dec (Boxing Day is a
+        # bank holiday by statute even on a Saturday: 1971 Act Sch 1), Mon 28 Dec (substitute) and Fri 1 Jan.
+        # Due Sun 27 Dec; payment notice Sun 3 Jan; pay less Thu 7 Jan; final Tue 12 Jan.
+        ('JCT IC Christmas E&W', JCT_IC, EW, '2026-12-18', None, '2026-12-27', '2027-01-03', '2027-01-07', '2027-01-12'),
+        # Scotland counts Sat 26 Dec (Boxing Day there is by proclamation: only Mon 28 Dec) but leaves out Sat 2 Jan
+        # (statute) and Mon 4 Jan (its substitute). Due Sat 26 Dec; payment notice Sun 3 Jan; pay less Fri 8 Jan;
+        # final Wed 13 Jan.
+        ('JCT IC Christmas Scotland', JCT_IC, SC, '2026-12-18', None, '2026-12-26', '2027-01-03', '2027-01-08',
+         '2027-01-13'),
         # JCT IC across Good Friday 26 Mar 2027 and Easter Monday 29 Mar (E&W only). Due Tue 30 Mar.
         ('JCT IC Easter E&W', JCT_IC, EW, '2027-03-21', None, '2027-03-30', '2027-04-04', '2027-04-08', '2027-04-13'),
         # Scotland has Good Friday but not Easter Monday, so everything is a day earlier.
@@ -45,8 +48,8 @@ class CycleTableTests(SimpleTestCase):
         # NEC4 Option Y(UK)2: payment due 7 days after the assessment date; the Project Manager's certificate
         # (the payment notice) by then; final date 14 days after; pay less 7 days before the final date.
         ('NEC4 Y(UK)2 plain', NEC4_Y2, EW, '2026-10-25', None, '2026-11-01', '2026-11-01', '2026-11-08', '2026-11-15'),
-        ('NEC4 Y(UK)2 Christmas', NEC4_Y2, EW, '2026-12-18', None, '2026-12-26', '2026-12-26', '2027-01-04',
-         '2027-01-11'),
+        ('NEC4 Y(UK)2 Christmas', NEC4_Y2, EW, '2026-12-18', None, '2026-12-27', '2026-12-27', '2027-01-05',
+         '2027-01-12'),
         # The Scheme: due 7 days after the period, payment notice 5 after that, final date 17 after the due date,
         # pay less 7 before the final date.
         ('Scheme default', SCHEME, EW, '2026-01-31', None, '2026-02-07', '2026-02-12', '2026-02-17', '2026-02-24'),
@@ -95,7 +98,7 @@ class TermsTests(SimpleTestCase):
         # (form, due, payment notice, final, pay less, Scheme rules)
         for form, expected in [('JCT_IC', (7, 5, 14, 5, False)), ('JCT_MW', (0, 5, 14, 5, False)),
                                ('JCT_SBC', (7, 5, 14, 5, False)), ('NEC4_ECC', (7, 0, 14, 7, False)),
-                               ('BESPOKE', (7, 5, 17, 7, True))]:
+                               ('BESPOKE', (7, 5, 17, 7, False))]:  # Scheme periods, not the Scheme's claim rule
             with self.subTest(form):
                 t = rules.terms_for(self.contract(form=form))
                 self.assertEqual((t.due_date_offset_days, t.payment_notice_days, t.final_date_offset_days,
@@ -179,7 +182,7 @@ class ValuationTableTests(SimpleTestCase):
     # (work done, variations, on site, off site, retention %, stage, previous, reverse charge,
     #  gross, retention, net, due, VAT, total)
     TABLE = [
-        # Leeds AP-002: 418,750 + 5,900 + 18,500 = 443,150; 5% = 22,157.50; less AP-001's 190,380
+        # Worked example: 418,750 work + 5,900 variations + 18,500 on site = 443,150; 5% = 22,157.50; less 190,380 before
         ('418750', '5900', '18500', '0', '5', rules.STAGE_BEFORE_PC, '190380', False,
          '443150.00', '22157.50', '420992.50', '230612.50', '46122.50', '276735.00'),
         # The same under the domestic reverse charge: no VAT
@@ -217,6 +220,12 @@ class ValuationTableTests(SimpleTestCase):
     def test_floats_refused(self):
         with self.assertRaises(TypeError):
             rules.money(0.1)
+
+    def test_ex_vat(self):
+        # (received including VAT, reverse charge, of which not VAT)
+        for amount, rc, net in [('120.00', False, '100.00'), ('228456.00', False, '190380.00'),
+                                ('100.01', False, '83.34'), ('100.00', True, '100.00')]:
+            self.assertEqual(rules.ex_vat(Decimal(amount), reverse_charge=rc), Decimal(net))
 
     def test_reverse_charge_note_is_advisory(self):
         self.assertIn('reverse charge', rules.REVERSE_CHARGE_NOTE)

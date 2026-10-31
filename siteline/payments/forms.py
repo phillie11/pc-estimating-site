@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from core.forms import RecordFormMixin
 from projects.files import validate_upload
-from projects.forms import StyledModelForm
+from projects.forms import StyledModelForm, style_widgets
 
 from . import rules
 from .models import Application, ApplicationLine, Payment
@@ -120,6 +120,16 @@ class NoticeForm(forms.Form):
         return data
 
 
+class ReversalForm(forms.Form):
+    """Reverse a payment recorded by mistake (owners and admins). It stays on record, struck through."""
+    reason = forms.CharField(label='Why it is being reversed', max_length=250,
+                             help_text='For example: recorded against the wrong application, or the amount was wrong.')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        style_widgets(self)
+
+
 class PaymentForm(StyledModelForm):
     class Meta:
         model = Payment
@@ -132,6 +142,19 @@ class PaymentForm(StyledModelForm):
         self.fields['amount'].widget.attrs.setdefault('inputmode', 'decimal')
         self.fields['amount'].label = 'Amount received (including VAT)'
         self.initial.setdefault('received_on', timezone.localdate())
+
+    def clean_amount(self):
+        amount = self.cleaned_data['amount']
+        app = self.application
+        if app is not None:
+            app._paid_total = None
+            left = app.outstanding
+            if amount > left:
+                symbol = getattr(app.organization, 'currency_symbol', '£') or '£'
+                raise forms.ValidationError(
+                    f'That is more than the {symbol}{left:,} outstanding (the notified sum plus VAT, less what has '
+                    'been received). Overpayments are not supported: check the amount, or record only what is due.')
+        return amount
 
     def clean_received_on(self):
         day = self.cleaned_data['received_on']

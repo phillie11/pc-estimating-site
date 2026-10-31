@@ -8,7 +8,7 @@
   <div class="kpi"><div class="label">Awaiting client decision</div><div class="value">{{ position.pending|money:currency }}</div></div>
   <div class="kpi"><div class="label">Forecast final account</div><div class="value">{{ position.forecast|money:currency }}</div></div>
   {% if can_see_applications %}<a class="kpi" href="{% url 'application_list' org.slug project.pk %}"><div class="label">Certified to date (ex VAT)</div><div class="value">{{ position.certified|money:currency }}</div></a>
-  <a class="kpi" href="{% url 'application_list' org.slug project.pk %}?show=paid"><div class="label">Paid to date (inc VAT)</div><div class="value">{{ position.paid|money:currency }}</div></a>{% endif %}
+  <a class="kpi" href="{% url 'application_list' org.slug project.pk %}?show=paid"><div class="label">Paid to date (ex VAT)</div><div class="value">{{ position.paid|money:currency }}</div></a>{% endif %}
 </div>
 <p class="small dim"><a href="{% url 'change_register' org.slug project.pk %}">{{ changes.change_events }} live change event{{ changes.change_events|pluralize }}</a> (estimated revenue {{ changes.revenue|money:currency }}) and {{ changes.early_warnings }} open early warning{{ changes.early_warnings|pluralize }}. Not in the forecast until they become approved client {{ vocab.change_plural }}.</p>
 {% if contract %}

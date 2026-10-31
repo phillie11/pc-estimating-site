@@ -21,17 +21,16 @@ from core.exceptions import InvalidTransition, RecordConflict
 from core.workflow import apply_transition
 from projects.access import get_project
 from projects.files import serve
-from projects.models import ProjectMember
 from projects.views import project_context
 from tenancy import notify
 from tenancy.models import log_activity
 
 from . import rules
-from .access import is_client, manages_payments, visible_applications
-from .forms import ApplicationForm, LineFormSet, NoticeForm, PaymentForm
-from .models import Application
+from .access import is_client, manages_payments, payer_members, visible_applications
+from .forms import ApplicationForm, LineFormSet, NoticeForm, PaymentForm, ReversalForm
+from .models import Application, Payment
 from .pdf import application_pdf
-from .workflow import ON_BEHALF_NOTE, is_project_client, records_for_client
+from .workflow import ON_BEHALF_NOTE, records_for_client, reopen_after_reversal, settle_if_covered
 
 ZERO = Decimal('0.00')
 
@@ -59,7 +58,7 @@ def application_list(request, org_slug, pk):
     project = get_project(request, pk)
     apps = list(visible_applications(request, project).prefetch_related('payments').order_by('-valuation_date', '-number'))
     for a in apps:
-        a._paid_total = sum((p.amount for p in a.payments.all()), ZERO)
+        a._paid_total = sum((p.amount for p in a.payments.all() if not p.is_reversed), ZERO)
     shown = request.GET.get('show', '')
     filtered = {
         'open': [a for a in apps if a.status in Application.AWAITING_PAYMENT],
@@ -71,7 +70,9 @@ def application_list(request, org_slug, pk):
     totals = {
         'applied': sum((a.amount_due for a in counted), ZERO),
         'certified': sum((a.notified_sum for a in counted if a.is_certified), ZERO),
-        'paid': sum((a.paid_total for a in counted), ZERO),
+        'paid': sum((a.paid_ex_vat for a in counted), ZERO),
+        'paid_vat': sum((a.paid_vat for a in counted), ZERO),
+        'certified_vat': sum((a.notified_vat for a in counted if a.is_certified), ZERO),
         'outstanding': sum((a.outstanding for a in counted if a.status in Application.AWAITING_PAYMENT), ZERO),
         'overdue': sum((a.outstanding for a in counted if a.is_overdue), ZERO),
     }
@@ -171,8 +172,8 @@ def application_edit(request, org_slug, pk, app_id):
 
 
 def _clients(project):
-    return [m.user for m in ProjectMember.objects.filter(project=project, role=ProjectMember.ROLE_CLIENT)
-            .select_related('user')]
+    """Everyone on the payer's side: the clients and the consultant contract administrator, if any."""
+    return [m.user for m in payer_members(project)]
 
 
 def _team(project):
@@ -186,7 +187,7 @@ def application_detail(request, org_slug, pk, app_id):
     project = get_project(request, pk)
     app = get_object_or_404(visible_applications(request, project), pk=app_id)
     manages = manages_payments(request, project)
-    client = is_client(request) and is_project_client(app, request.user)
+    client = is_client(request, project)
     on_behalf = manages and records_for_client(app, request.user)
     if request.method == 'POST':
         action = request.POST.get('action', '')
@@ -212,7 +213,7 @@ def _detail_ctx(request, project, app, manages, client, on_behalf, **forms):
     draft_cycle = app.live_cycle(contract) if app.is_draft else None
     ctx = dict(
         app=app, contract=contract, words=words, today=today, clocks=app.clocks(today, words) if app.cycle else [],
-        draft_cycle=draft_cycle, lines=list(app.lines.all()), payments=list(app.payments.select_related('recorded_by')),
+        draft_cycle=draft_cycle, lines=list(app.lines.all()), payments=list(app.payments.select_related('recorded_by', 'reversed_by')),
         stage_label=dict(rules.STAGE_CHOICES).get(app.retention_stage, ''), client=client, on_behalf=on_behalf,
         can_notice=can_notice, can_pay_less=can_pay_less and not pay_less_late, pay_less_late=pay_less_late,
         pay_less_refusal=rules.pay_less_refusal(today, app.pay_less_by) if pay_less_late else '',
@@ -220,6 +221,10 @@ def _detail_ctx(request, project, app, manages, client, on_behalf, **forms):
                                                            initial={'amount': app.amount_due}),
         pay_less_form=forms.get('pay_less_form') or NoticeForm(application=app, kind='pay_less', on_behalf=not client,
                                                                initial={'amount': app.notified_sum}),
+        reversal_form=forms.get('reversal_form') or ReversalForm(),
+        can_reverse=manages and request.membership.is_admin and app.status in Application.COUNTED,
+        later_submitted=app.later_submitted if app.is_draft else None,
+        withdraw_refusal=app.withdraw_refusal if app.status == Application.STATUS_SUBMITTED else '',
         payment_form=forms.get('payment_form') or PaymentForm(application=app,
                                                               initial={'amount': app.outstanding or None}),
         can_record_payment=manages and app.status in Application.AWAITING_PAYMENT,
@@ -244,6 +249,27 @@ def _act(request, project, app, action, manages, client, on_behalf):
         messages.success(request, f'{app.reference} submitted. Payment notice due by {app.payment_notice_by:%a %d %b %Y}.'
                          + ('' if clients else ' No client is on this project yet, so nobody was told. Invite them '
                                                'from the Team tab, or send them the PDF.'))
+    elif action == 'reverse_payment':
+        if not (manages and request.membership.is_admin):
+            raise PermissionDenied
+        payment = get_object_or_404(Payment, application=app, pk=request.POST.get('payment', '0') or 0,
+                                    reversed_at__isnull=True)
+        form = ReversalForm(request.POST)
+        if not form.is_valid():
+            return render(request, 'payments/application_detail.html', _detail_ctx(
+                request, project, app, manages, client, on_behalf, reversal_form=form))
+        reason = form.cleaned_data['reason']
+        symbol = request.org.currency_symbol
+        note = f'{symbol}{payment.amount:,} received {payment.received_on:%d %b %Y} reversed: {reason}'[:500]
+        with transaction.atomic():
+            payment.reversed_at, payment.reversed_by, payment.reversal_reason = timezone.now(), request.user, reason
+            payment.save(update_fields=['reversed_at', 'reversed_by', 'reversal_reason'])
+            app._paid_total = None
+            if not reopen_after_reversal(app, request.user, note=note):
+                app.save(actor=request.user, audit_action='payment_reversed', audit_note=note)
+        log_activity(request, 'reversed a payment on', label, project=project, url=app.get_absolute_url(),
+                     internal_only=True)
+        messages.success(request, f'Payment reversed. {symbol}{app.outstanding:,} is now outstanding.')
     elif action == 'withdraw':
         if not manages:
             raise PermissionDenied
@@ -295,6 +321,7 @@ def _notice(request, project, app, kind, manages, client, on_behalf):
     what = 'payment notice' if kind == 'payment_notice' else 'pay less notice'
     if client:
         apply_transition(app, kind, request.user, note=d['basis'][:200], **params)
+        settle_if_covered(app, request.user)
         notify.alert(_team(project), f'{request.user.full_name} gave a {what} on {app.reference}: '
                      f'{request.org.currency_symbol}{app.notified_sum:,} considered due', app.get_absolute_url(),
                      project=project, actor=request.user, org=request.org)
@@ -304,6 +331,7 @@ def _notice(request, project, app, kind, manages, client, on_behalf):
     else:
         apply_transition(app, f'{kind}_on_behalf', request.user, note=f"{ON_BEHALF_NOTE}: {d['note']}"[:500],
                          evidence=d['evidence'], **params)
+        settle_if_covered(app, request.user)
         notify.alert(_clients(project), f'{request.user.full_name} recorded your {what} on {app.reference}',
                      app.get_absolute_url(), project=project, actor=request.user, org=request.org)
         log_activity(request, f"recorded the client's {what} on", f'{app.reference} {app.title}', project=project,

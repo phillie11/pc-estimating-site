@@ -33,6 +33,20 @@ def upload_payment_evidence(instance, filename):
     return f'org_{instance.organization_id}/payments/{uuid.uuid4().hex}/{name}'
 
 
+def approved_variations_to(project_id, valuation_date):
+    """
+    Approved client variations at their full approved value, counting only those approved on or
+    before the valuation date (decided_at; a variation with no decision date counts from when it was
+    last saved). A variation approved later goes in the next application.
+    """
+    from django.db.models import Q
+
+    from variations.models import Variation
+    qs = Variation.objects.filter(project_id=project_id, status=Variation.STATUS_APPROVED).filter(
+        Q(decided_at__date__lte=valuation_date) | Q(decided_at__isnull=True, updated_at__date__lte=valuation_date))
+    return qs.aggregate(s=Sum('approved_value'))['s'] or ZERO
+
+
 class Application(RecordBase):
     STATUS_DRAFT = 'DRAFT'
     STATUS_SUBMITTED = 'SUBMITTED'
@@ -167,7 +181,6 @@ class Application(RecordBase):
         Refresh the terms and figures from the contract, approved variations, any lines and the
         earlier applications. Only while it is a draft: submitting freezes them.
         """
-        from variations.models import Variation
         if contract is not None:
             self.retention_percent = contract.retention_percent or ZERO
             self.retention_released_at_pc_percent = contract.retention_released_at_pc_percent
@@ -181,9 +194,7 @@ class Application(RecordBase):
             values = list(self.lines.values_list('value', flat=True))
             if values:
                 self.work_done = rules.lines_total(values)
-        self.variations_value = Variation.objects.filter(project_id=self.project_id,
-                                                         status=Variation.STATUS_APPROVED) \
-            .aggregate(s=Sum('approved_value'))['s'] or ZERO
+        self.variations_value = approved_variations_to(self.project_id, self.valuation_date)
         previous = sum((a.notified_sum for a in self.previous_applications()), ZERO)
         v = rules.valuation(self.work_done, self.variations_value, self.materials_on_site, self.materials_off_site,
                             self.retention_percent, self.retention_released_at_pc_percent, self.retention_stage,
@@ -244,9 +255,45 @@ class Application(RecordBase):
     def paid_total(self):
         cached = getattr(self, '_paid_total', None)
         if cached is None:
-            cached = self.payments.aggregate(s=Sum('amount'))['s'] or ZERO
+            cached = self.payments.filter(reversed_at__isnull=True).aggregate(s=Sum('amount'))['s'] or ZERO
             self._paid_total = cached
         return cached
+
+    @property
+    def paid_ex_vat(self):
+        """What was received, less the VAT in it (payments are recorded as received, including VAT)."""
+        return rules.ex_vat(self.paid_total, self.vat_rate, self.reverse_charge)
+
+    @property
+    def paid_vat(self):
+        return rules.money(self.paid_total) - self.paid_ex_vat
+
+    @property
+    def later_submitted(self):
+        """A submitted application made up to a later date, which stops this one being submitted."""
+        return Application.objects.filter(project_id=self.project_id, status__in=self.SHARED_STATUSES,
+                                          valuation_date__gt=self.valuation_date).exclude(pk=self.pk) \
+            .order_by('valuation_date').first()
+
+    @property
+    def withdraw_refusal(self):
+        """Why it can no longer be withdrawn, or ''."""
+        if self.pk and self.payments.filter(reversed_at__isnull=True).exists():
+            return 'Money has been received against it, so it cannot be withdrawn.'
+        if self.submitted_at and rules.stands_as_notified(timezone.localdate(), self.payment_notice_by,
+                                                          self.payment_notice_on):
+            return ('No payment notice was given by its deadline, so it stands as the notified sum and cannot be '
+                    'withdrawn. ' + rules.ADVISORY)
+        return ''
+
+    @property
+    def awaiting_status(self):
+        """The status it goes back to if a payment is reversed after it was marked paid."""
+        if self.pay_less_on:
+            return self.STATUS_PAY_LESS
+        if self.payment_notice_on:
+            return self.STATUS_NOTIFIED
+        return self.STATUS_SUBMITTED
 
     @property
     def outstanding(self):
@@ -295,9 +342,21 @@ class Payment(TenantModel):
     reference = models.CharField('Payment reference', max_length=120, blank=True)
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     recorded_at = models.DateTimeField(auto_now_add=True)
+    # A payment recorded by mistake is reversed (owners and admins, with a reason), never deleted
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='+')
+    reversal_reason = models.CharField(max_length=300, blank=True)
 
     class Meta(TenantModel.Meta):
         ordering = ['received_on', 'pk']
+
+    @property
+    def is_reversed(self):
+        return self.reversed_at is not None
+
+    def delete(self, *args, **kwargs):
+        raise PermissionError('Payments are reversed, never deleted.')
 
     def __str__(self):
         return f'{self.amount} on {self.received_on}'

@@ -7,7 +7,7 @@ Contractor (owners, admins and the job's PM; the PM only when the job has one):
   - an application due to be submitted: a valuation date within the next 7 days, or passed,
     with nothing submitted for it (a draft is pointed to so it can be finished)
   - payment overdue: the final date for payment has passed with money outstanding
-Client (the project's client):
+Payer (the project's client, or the consultant named on the contract as administrator):
   - an application to respond to: give the payment notice, by its deadline
   - the pay less deadline approaching (while a pay less notice can still be given)
   - the notified sum to pay by the final date
@@ -25,7 +25,7 @@ from projects.access import is_internal, visible_projects
 from projects.models import Project, ProjectMember
 
 from . import rules
-from .access import is_project_pm
+from .access import is_payer, is_project_pm
 from .models import Application
 
 WARN_DAYS = 7
@@ -92,8 +92,11 @@ def _contractor(request):
 
 def _client(request):
     today = timezone.localdate()
-    projects = ProjectMember.objects.filter(user=request.user, role=ProjectMember.ROLE_CLIENT,
-                                            project__in=visible_projects(request).values('pk')).values('project_id')
+    mine = ProjectMember.objects.filter(user=request.user, role__in=(ProjectMember.ROLE_CLIENT,
+                                                                     ProjectMember.ROLE_CONSULTANT),
+                                        project__in=visible_projects(request).values('pk')).select_related('project')
+    # Clients, and a consultant only on a job whose contract names them as its administrator
+    projects = [m.project_id for m in mine if is_payer(request.user, m.project)]
     qs = Application.objects.filter(project_id__in=projects, status__in=Application.AWAITING_PAYMENT,
                                     visibility=Application.VIS_SHARED).select_related('project', 'project__organization')
     out = []

@@ -3,13 +3,15 @@
   <a class="btn" href="{% url 'application_pdf' org.slug project.pk app.pk %}" target="_blank" rel="noopener">{% icon 'download' %} PDF</a>
   {% if manages %}
     {% if app.status == 'DRAFT' %}<a class="btn" href="{% url 'application_edit' org.slug project.pk app.pk %}">Edit</a>
-    <form method="post" data-confirm="Submit {{ app.reference }} to the client? Its figures and dates are then fixed, the client is told and can see it in their portal, and the payment notice clock starts.">{% csrf_token %}<input type="hidden" name="action" value="submit"><button class="btn primary">Submit to client</button></form>{% endif %}
-    {% if app.status == 'DRAFT' or app.status == 'SUBMITTED' %}<form method="post" data-confirm="Withdraw {{ app.reference }}? It can't be submitted again{% if app.status == 'SUBMITTED' %}, and the client will be told{% endif %}.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn ghost">Withdraw</button></form>{% endif %}
+    {% if not later_submitted %}<form method="post" data-confirm="Submit {{ app.reference }} to the client? Its figures and dates are then fixed, the client is told and can see it in their portal, and the payment notice clock starts.">{% csrf_token %}<input type="hidden" name="action" value="submit"><button class="btn primary">Submit to client</button></form>{% endif %}{% endif %}
+    {% if app.status == 'DRAFT' or app.status == 'SUBMITTED' and not withdraw_refusal %}<form method="post" data-confirm="Withdraw {{ app.reference }}? It can't be submitted again{% if app.status == 'SUBMITTED' %}, and the client will be told{% endif %}.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn ghost">Withdraw</button></form>{% endif %}
   {% endif %}
 {% endblock %}
 {% block project_content %}
 {% include "commercial/_subnav.html" %}
 <p class="small"><a href="{% url 'application_list' org.slug project.pk %}">← Applications for payment</a></p>
+{% if manages and later_submitted %}<div class="banner" role="note"><strong>This draft can't be submitted.</strong> {{ later_submitted.reference }}, made up to {{ later_submitted.valuation_date|date:"j M Y" }}, has already been submitted, and its previous amounts don't include this one, so submitting this would claim the same money twice. Put this work in your next application instead, or <a href="{{ later_submitted.get_absolute_url }}">withdraw {{ later_submitted.reference }}</a> first if that is still allowed.</div>{% endif %}
+{% if manages and withdraw_refusal %}<p class="small dim">Withdraw isn't available: {{ withdraw_refusal }}</p>{% endif %}
 {% if app.is_overdue %}<div class="banner" role="alert"><strong class="overdue">Payment overdue.</strong> The final date for payment was {{ app.final_date|date:"D j M Y" }} and {{ app.outstanding|money_exact:currency }} is still outstanding. {% badge 'Advisory' 'warn' %} {{ advisory }}</div>{% endif %}
 {% if app.stands_as_notified and app.status == 'SUBMITTED' %}<div class="banner"><strong>No payment notice was given by {{ app.payment_notice_by|date:"D j M Y" }}</strong>, so this application stands as the notified sum: {{ app.notified_total|money_exact:currency }} is payable by the final date unless a pay less notice is given by {{ app.pay_less_by|date:"D j M Y" }} (Housing Grants, Construction and Regeneration Act 1996 s110B, default payment notice). {% badge 'Advisory' 'warn' %} {{ advisory }}</div>{% endif %}
 <div class="grid split">
@@ -63,9 +65,12 @@
     {% elif pay_less_late and not app.pay_less_on %}<div class="card"><div class="card-head"><h2>Pay less notice</h2>{% badge 'Deadline passed' 'muted' %}</div><div class="card-body small"><p>{{ pay_less_refusal }}</p></div></div>{% endif %}
 
     {% if manages and app.status != 'DRAFT' and app.status != 'WITHDRAWN' or client and payments %}<div class="card" id="payments"><div class="card-head"><h2>Payments received</h2></div><div class="card-body">
-      {% if payments %}<div class="table-wrap"><table class="t"><thead><tr><th>Received</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>
-        {% for p in payments %}<tr><td class="nowrap">{{ p.received_on|date:"j M Y" }}</td><td>{{ p.reference|default:"—" }}</td><td class="num">{{ p.amount|money_exact:currency }}</td></tr>{% endfor %}
-        <tr class="sum"><th colspan="2">Paid</th><th class="num">{{ app.paid_total|money_exact:currency }}</th></tr>
+      {% if payments %}<div class="table-wrap"><table class="t"><thead><tr><th>Received</th><th>Reference</th><th class="num">Amount (inc VAT)</th></tr></thead><tbody>
+        {% for p in payments %}<tr><td class="nowrap">{% if p.is_reversed %}<s>{{ p.received_on|date:"j M Y" }}</s>{% else %}{{ p.received_on|date:"j M Y" }}{% endif %}</td><td>{{ p.reference|default:"—" }}{% if p.is_reversed %}<span class="sub">{% badge 'Reversed' 'muted' %} {{ p.reversed_at|date:"j M Y" }}{% if p.reversed_by %} by {{ p.reversed_by }}{% endif %}: {{ p.reversal_reason }}</span>{% endif %}
+          {% if can_reverse and not p.is_reversed %}<details class="small" style="margin-top:6px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer">Reverse this payment</summary><form method="post" data-confirm="Reverse this payment? It stays on record, struck through, and no longer counts as received.">{% csrf_token %}<input type="hidden" name="action" value="reverse_payment"><input type="hidden" name="payment" value="{{ p.pk }}">{% with form=reversal_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Reverse payment</button></div></form></details>{% endif %}</td>
+          <td class="num">{% if p.is_reversed %}<s>{{ p.amount|money_exact:currency }}</s>{% else %}{{ p.amount|money_exact:currency }}{% endif %}</td></tr>{% endfor %}
+        <tr class="sum"><th colspan="2">Received</th><th class="num">{{ app.paid_total|money_exact:currency }}</th></tr>
+        <tr><td colspan="2">of which excluding VAT</td><td class="num">{{ app.paid_ex_vat|money_exact:currency }}</td></tr>
       </tbody></table></div>{% else %}<p class="small dim">Nothing received yet.</p>{% endif %}
       {% if can_record_payment %}<details{% if payment_form.is_bound %} open{% endif %} style="margin-top:12px"><summary class="btn" style="min-height:44px">{% icon 'plus' %} Record a payment</summary>
         <form method="post" style="margin-top:12px">{% csrf_token %}<input type="hidden" name="action" value="payment">{% with form=payment_form %}{% include "partials/form_fields.html" %}{% endwith %}<p class="small dim">Part payments are fine: record each one. It is marked paid once the notified sum including VAT is covered.</p><div class="form-actions"><button class="btn primary">Record payment</button></div></form></details>{% endif %}
@@ -77,7 +82,7 @@
       <dt>Notified sum</dt><dd class="mono"><strong>{{ app.notified_sum|money_exact:currency }}</strong> ex VAT</dd>
       <dt>{% if app.reverse_charge %}VAT{% else %}VAT at {{ app.vat_rate|floatformat:"-2" }}%{% endif %}</dt><dd class="mono">{% if app.reverse_charge %}Reverse charge{% else %}{{ app.notified_vat|money_exact:currency }}{% endif %}</dd>
       <dt>To pay</dt><dd class="mono"><strong>{{ app.notified_total|money_exact:currency }}</strong></dd>
-      <dt>Paid</dt><dd class="mono">{{ app.paid_total|money_exact:currency }}</dd>
+      <dt>Paid</dt><dd class="mono">{{ app.paid_total|money_exact:currency }} <span class="small dim">({{ app.paid_ex_vat|money_exact:currency }} ex VAT)</span></dd>
       <dt>Outstanding</dt><dd class="mono{% if app.is_overdue %} overdue{% endif %}">{{ app.outstanding|money_exact:currency }}{% if app.is_overdue %} overdue{% endif %}</dd>
       <dt>Based on</dt><dd class="small">{{ app.notified_basis|capfirst }}</dd>
     </dl></div></div>{% endif %}

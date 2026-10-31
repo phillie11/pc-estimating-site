@@ -62,12 +62,15 @@ class Preset:
     defects_period_months: int | None = None
     lads_period: str = 'WEEK'
     note: str = ''
+    # The Scheme itself (Part II para 4(b)): an interim payment falls due on the later of the period's due
+    # date and the day the claim is made. Only the real Scheme sets it; bespoke terms that borrow its periods don't.
+    is_scheme: bool = False
 
     def values(self):
         """The MainContract fields this preset fills."""
         d = asdict(self)
-        d.pop('label')
-        d.pop('note')
+        for name in ('label', 'note', 'is_scheme'):
+            d.pop(name)
         return d
 
 
@@ -82,7 +85,11 @@ _IC = {**_JCT, 'retention_percent': Decimal('5')}
 IC_NOTE = 'Retention: 5% (95% of value certified) unless the Contract Particulars say otherwise.'
 
 SCHEME = Preset('Scheme for Construction Contracts (fallback)', due_date_offset_days=7, final_date_offset_days=17,
-                pay_less_notice_days=7, note='Applies where the contract has no compliant payment terms.')
+                pay_less_notice_days=7, note='Applies where the contract has no compliant payment terms.',
+                is_scheme=True)
+# A bespoke contract starts from the Scheme's periods, but they are its own terms once set: no Scheme rules
+BESPOKE = Preset('Bespoke (starting from the Scheme periods)', due_date_offset_days=7, final_date_offset_days=17,
+                 pay_less_notice_days=7, note='Check the payment terms against the signed contract.')
 
 PRESETS = {
     'JCT_MW': Preset('JCT Minor Works', **_MW, note='Due dates monthly from the Date for Commencement.'),
@@ -96,12 +103,12 @@ PRESETS = {
                        pay_less_notice_days=7, payment_notice_days=0, lads_period='DAY',
                        note='Assessment dates at intervals of no more than five weeks. Retention only under '
                             'Option X16; the defects date is in Contract Data.'),
-    'BESPOKE': SCHEME,
+    'BESPOKE': BESPOKE,
 }
 
 
 def preset_for(form):
-    """The standard terms for a MainContract.form value; the Scheme for anything unknown or bespoke."""
+    """The standard terms for a MainContract.form value; the Scheme for anything unknown."""
     return PRESETS.get(form, SCHEME)
 
 
