@@ -345,6 +345,13 @@ class Command(BaseCommand):
             # Commercial: contracts (Leeds on JCT IC, Salford on NEC4 Option A), early warnings, change events
             from changes.demo import seed as seed_commercial
             seed_commercial(leeds=leeds, pm=pm, client=client)
+            # Cost control: budgets, orders and actuals on Leeds and Salford (costs/demo.py)
+            from costs.demo import seed as seed_costs
+            seed_costs(leeds=leeds, pm=pm, owner=owner, demo_pdf=demo_pdf)
+
+            # Site diary: the last 10 working days on Leeds, with placeholder photos (diary/demo.py)
+            from diary.demo import seed as seed_diary
+            seed_diary(leeds=leeds, pm=pm)
 
             # Procurement schedule and submittals on Leeds and Salford (procurement/demo.py)
             from procurement.demo import seed as seed_procurement

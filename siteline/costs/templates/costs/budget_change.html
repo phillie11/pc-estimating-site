@@ -1,0 +1,10 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+<nav class="filters" aria-label="Kind of change"><a class="chip {% if kind == 'transfer' %}on{% endif %}" href="?kind=transfer">Transfer between codes</a><a class="chip {% if kind == 'revision' %}on{% endif %}" href="?kind=revision">Revise the total</a></nav>
+<div class="card" style="max-width:820px"><div class="card-head"><h2>{% if kind == 'revision' %}Revise the budget{% else %}Transfer budget between codes{% endif %}</h2></div><div class="card-body">
+<p class="small dim">{% if kind == 'revision' %}Adds to or takes from one code's budget and changes the job's total budget, for example when a client variation is approved.{% else %}Moves budget from one code to another. The job's total budget stays the same.{% endif %} The change is recorded with your reason and can't be edited afterwards; put a mistake right with another change.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="kind" value="{{ kind }}">{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Record {% if kind == 'revision' %}revision{% else %}transfer{% endif %}</button><a class="btn ghost" href="{% url 'cost_budget' org.slug project.pk %}">Cancel</a></div></form>
+</div></div>
+{% endblock %}

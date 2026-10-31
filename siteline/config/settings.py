@@ -65,9 +65,11 @@ INSTALLED_APPS = [
     'delivery',
     'documents',
     'procurement',
+    'diary',
     'jobs',
     'actions',
     'security',
+    'costs',
 ]
 
 MIDDLEWARE = [

@@ -1,0 +1,24 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if not read_only %}<a class="btn primary" href="{% url 'cost_actual_create' org.slug project.pk %}">{% icon 'plus' %} Actual cost</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+<div class="filters" aria-label="Filter actual costs">
+  <a class="chip {% if not filtered %}on{% endif %}" href="?">All costs</a>
+  {% for c, label in kind_choices %}<a class="chip {% if kind == c %}on{% endif %}" href="?kind={{ c }}">{{ label }}s</a>{% endfor %}
+  {% if code %}<span class="small dim">Showing one cost code · <a href="?">clear</a></span>{% endif %}
+</div>
+<div class="card">{% if table %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Date</th><th>Supplier</th><th>Cost code</th><th>Type</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+{% for a, entry, reversed in table %}<tr{% if reversed %} class="dim"{% endif %}><td class="small nowrap">{{ a.cost_date|date:"j M Y" }}</td>
+  <td>{{ a.supplier }}<span class="sub">{{ a.reference }}{% if a.reference and a.description %} · {% endif %}{{ a.description }}{% if a.commitment %}{% if a.reference or a.description %} · {% endif %}{{ a.commitment.ref }}{% endif %}{% if a.file %} · <a href="{% url 'cost_actual_file' org.slug project.pk a.pk %}">{{ a.original_name|default:"attachment" }}</a>{% endif %}</span></td>
+  <td class="nowrap"><span class="mono">{{ a.cost_code.code }}</span> {{ a.cost_code.name }}</td>
+  <td>{% if reversed %}{% badge 'Reversed' 'muted' %}{% else %}{% badge a.get_kind_display 'good' %}{% endif %}</td>
+  <td class="num">{% if reversed %}<s>{{ a.amount|money_exact:currency }}</s>{% else %}{{ a.amount|money_exact:currency }}{% endif %}</td>
+  <td>{% if entry and not reversed and not read_only %}<details class="reverse"><summary class="btn sm ghost" style="min-height:44px">Reverse</summary>
+    <form method="post" action="{% url 'cost_ledger_reverse' org.slug project.pk entry.pk %}" class="reverse-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <label for="rev-{{ entry.pk }}" class="small">Why?</label><input type="text" id="rev-{{ entry.pk }}" name="reason" maxlength="200" required placeholder="e.g. wrong cost code">
+      <button class="btn sm" style="min-height:44px">Reverse this cost</button><span class="small dim">Adds an equal and opposite ledger entry. Nothing is deleted.</span></form></details>{% endif %}</td></tr>{% endfor %}
+</tbody><tfoot><tr><th colspan="4">Total{% if filtered %} (filtered){% endif %}, not counting reversed costs</th><th class="num">{{ total|money_exact:currency }}</th><th></th></tr></tfoot></table></div>
+{% elif filtered %}{% include "partials/empty_state.html" with title="No costs match" message="Nothing of this type or cost code has been recorded." cta_url="?" cta_label="Show all costs" cta_plain=1 %}
+{% elif read_only %}{% include "partials/empty_state.html" with title="No actual costs" message="None were recorded before the job was archived." %}
+{% else %}{% url 'cost_actual_create' org.slug project.pk as new_url %}{% include "partials/empty_state.html" with title="No actual costs yet" message="Record supplier invoices and timesheet totals as they come in, with the invoice attached if you have it." cta_url=new_url cta_label="Record a cost" %}{% endif %}</div>
+{% endblock %}

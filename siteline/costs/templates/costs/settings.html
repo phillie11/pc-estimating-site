@@ -1,0 +1,28 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Cost control settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / Cost control</div><h1>Cost codes and margin warning</h1><p class="dim" style="margin:4px 0 0">Every live job uses these codes for its budget, orders and costs.</p></div></div>
+<div class="grid split">
+<div style="min-width:0">
+<div class="filters" aria-label="Filter cost codes">
+  <a class="chip {% if not group and not status %}on{% endif %}" href="?">All codes</a>
+  {% for g, label in group_choices %}<a class="chip {% if group == g %}on{% endif %}" href="?group={{ g }}">{{ label }}</a>{% endfor %}
+  <a class="chip {% if status == 'retired' %}on{% endif %}" href="?status=retired">Retired</a>
+</div>
+<div class="card">{% if codes %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Code</th><th>Name</th><th>Group</th><th>Status</th></tr></thead><tbody>
+{% for c in codes %}<tr><td class="mono"><a class="rowlink" href="{% url 'cost_code_edit' org.slug c.pk %}">{{ c.code }}</a></td><td>{{ c.name }}</td><td class="small">{{ c.get_group_display|default:"—" }}</td><td>{% if c.is_active %}{% badge 'In use' 'good' %}{% else %}{% badge 'Retired' 'muted' %}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% elif group or status %}{% include "partials/empty_state.html" with title="No codes match" message="No cost code is in this group or state." cta_url="?" cta_label="Show all codes" cta_plain=1 %}
+{% else %}{% include "partials/empty_state.html" with title="No cost codes" message="Add your first cost code with the form on this page." %}{% endif %}</div>
+</div>
+<div>
+<div class="card"><div class="card-head"><h2>Margin warning</h2></div><div class="card-body">
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="threshold">{% include "partials/form_fields.html" with form=form %}<div class="form-actions"><button class="btn primary">Save</button></div></form>
+</div></div>
+<div class="card"><div class="card-head"><h2>Add a cost code</h2></div><div class="card-body">
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_code">{% include "partials/form_fields.html" with form=code_form %}<div class="form-actions"><button class="btn">Add code</button></div></form>
+  <p class="small dim">A code with money on any job can be renamed or retired, but not deleted.</p>
+</div></div>
+</div>
+</div>
+{% endblock %}

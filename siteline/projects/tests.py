@@ -810,8 +810,8 @@ class ArchivedReadOnlyTests(Base):
                       **{k: self.ids.get(k, 999) for k in converters if k != 'pk'}}
             yield p.name, reverse(p.name, kwargs=kwargs)
 
-    # Posts to every project URL in one go; with the procurement URLs that passes the 60-uploads-in-10-minutes
-    # rate limit, which is not what this test is about (security/tests/test_ratelimit.py covers it)
+    # The test client posts multipart forms, which the upload rate limit (60 per 10 minutes) counts;
+    # with more than 60 project URLs this test would get 429s instead of the 403s it checks for.
     @override_settings(RATELIMIT_ENABLED=False)
     def test_every_write_to_an_archived_project_is_refused(self):
         from django.core import mail

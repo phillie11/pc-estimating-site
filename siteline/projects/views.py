@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, ProtectedError, Q, RestrictedError, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -96,6 +96,10 @@ def project_context(request, project, tab, **extra):
     procurement_tab = tab_for(request, project)
     if procurement_tab:
         tabs.append(procurement_tab)
+    if internal:
+        from diary.access import can_use_diary  # site diary: the PM, the project team, owners and admins
+        if can_use_diary(request, project):
+            tabs.append(('diary', 'Diary', url('diary_register'), None))
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), issue_qs.count()),
         ('tasks', 'Tasks', url('task_list'), task_qs.count()),
@@ -328,7 +332,11 @@ def project_delete(request, org_slug, pk):
         messages.error(request, f'Type {project.reference} to confirm deletion.')
         return redirect('project_edit', org_slug=org_slug, pk=pk)
     name = project.name
-    project.delete()
+    try:
+        project.delete()
+    except (ProtectedError, RestrictedError):  # a record type not yet in RECORD_RELATIONS: archive instead
+        messages.error(request, f'{project.reference} has records on it, so it can only be archived.')
+        return redirect('project_edit', org_slug=org_slug, pk=pk)
     log_activity(request, 'deleted project', name)
     messages.success(request, f'{name} deleted.')
     return redirect('project_list', org_slug=org_slug)
