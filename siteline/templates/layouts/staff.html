@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% load ui %}
 {% block body_class %}staff{% endblock %}
 {% block body %}
-<div class="topbar"><button data-nav-toggle aria-label="Menu">{% icon 'menu' %}</button>
+<header class="topbar"><button data-nav-toggle aria-label="Menu">{% icon 'menu' %}</button>
   <span class="mark" style="width:26px;height:26px;border-radius:4px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:800">{{ org.name|first|upper }}</span>
   <strong>{{ org.name }}</strong>
   <a class="needs" href="{% url 'needs_me' org.slug %}" aria-label="Needs me: {{ needs_me_count }} waiting">{% icon 'inbox' %}{% if needs_me_count %}<span>{{ needs_me_count|badge_count }}</span>{% endif %}</a>
-  <a class="bell" href="{% url 'notifications' org.slug %}" aria-label="Notifications">{% icon 'bell' %}{% if unread_notifications %}<span>{{ unread_notifications }}</span>{% endif %}</a></div>
+  <a class="bell" href="{% url 'notifications' org.slug %}" aria-label="Notifications">{% icon 'bell' %}{% if unread_notifications %}<span>{{ unread_notifications }}</span>{% endif %}</a></header>
 <div class="shell">
   <aside class="side">
     <a class="brand" href="{% url 'dashboard' org.slug %}">
@@ -18,7 +18,7 @@
       <a role="tab" href="{% url 'delivery_home' org.slug %}" class="{% if section == 'delivery' %}on{% endif %}" aria-selected="{% if section == 'delivery' %}true{% else %}false{% endif %}">Projects</a>
     </div>{% endif %}
     {% with u=request.resolver_match.url_name %}
-    <nav class="nav">
+    <nav class="nav" aria-label="Main">
       {% if section == 'estimating' %}
       <a href="{% url 'estimating_home' org.slug %}" class="{% if u == 'estimating_home' %}on{% endif %}">{% icon 'home' %} Dashboard</a>
       {% else %}

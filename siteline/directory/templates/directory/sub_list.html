@@ -5,9 +5,9 @@
   <div class="row"><a class="btn ghost" href="{% url 'trades' org.slug %}">Trades</a><a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a class="btn primary" href="{% url 'sub_create' org.slug %}">{% icon 'plus' %} Add subcontractor</a></div></div>
 <form class="filters" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Company, contact, region" style="max-width:260px">
-  <select name="trade" data-autosubmit style="width:auto"><option value="">All trades</option>{% for t in trades %}<option value="{{ t.pk }}" {% if trade == t.pk|stringformat:'s' %}selected{% endif %}>{{ t.name }} ({{ t.n }})</option>{% endfor %}</select>
+  <select name="trade" data-autosubmit style="width:auto" aria-label="Trade"><option value="">All trades</option>{% for t in trades %}<option value="{{ t.pk }}" {% if trade == t.pk|stringformat:'s' %}selected{% endif %}>{{ t.name }} ({{ t.n }})</option>{% endfor %}</select>
   <select name="region" data-autosubmit style="width:auto" aria-label="Region"><option value="">All regions</option>{% for v, l in region_choices %}<option value="{{ v }}" {% if region == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
-  <select name="status" data-autosubmit style="width:auto"><option value="">Active (not struck off)</option>{% for v, l in status_choices %}<option value="{{ v }}" {% if status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <select name="status" data-autosubmit style="width:auto" aria-label="Status"><option value="">Active (not struck off)</option>{% for v, l in status_choices %}<option value="{{ v }}" {% if status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
   <label class="chip {% if insurance %}on{% endif %}" style="cursor:pointer"><input type="checkbox" name="insurance" value="1" {% if insurance %}checked{% endif %} data-autosubmit style="display:none">Insurance due ≤ 30 days</label>
 </form>
 <div class="card">{% if subs %}<div class="table-wrap"><table class="t"><thead><tr><th>Company</th><th>Trades</th><th>Contact</th><th>Status</th><th>Rating</th><th>Insurance</th></tr></thead><tbody>

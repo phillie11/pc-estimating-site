@@ -127,6 +127,22 @@
     update();
   });
 
+  // A table or chart wider than the screen scrolls sideways: let keyboard users reach and scroll it too
+  var scrollers = 0;
+  document.querySelectorAll('.table-wrap, .gantt-wrap').forEach(function (wrap) {
+    if (wrap.scrollWidth <= wrap.clientWidth || wrap.hasAttribute('tabindex')) return;
+    scrollers += 1;
+    // Named after the card's heading, or the heading just before the card (Needs me groups)
+    var card = wrap.closest('.card');
+    var heading = card && card.querySelector('h2, h3');
+    var before = card && card.previousElementSibling;
+    if (!heading && before && /^H[1-4]$/.test(before.tagName)) heading = before;
+    var name = heading ? heading.textContent.replace(/\s+/g, ' ').trim() : 'Table ' + scrollers;
+    wrap.setAttribute('tabindex', '0');
+    wrap.setAttribute('role', 'region');
+    wrap.setAttribute('aria-label', name + ': scroll sideways to see more');
+  });
+
   // Gantt: when the chart is wider than the screen, open it with today in view
   document.querySelectorAll('.gantt-wrap').forEach(function (wrap) {
     var today = wrap.querySelector('.g-lines .today');

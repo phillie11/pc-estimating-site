@@ -3,7 +3,7 @@ Every empty list says why it is empty and what to do next.
   {% include "partials/empty_state.html" with title="No RAMS yet" message="Subcontractors submit RAMS here once appointed." cta_url=url cta_label="Invite a subcontractor" %}
 `left` puts it in a card body rather than centring it; cta_* are optional.
 {% endcomment %}<div class="empty{% if left %} left{% endif %}">
-  {% if title %}<h3>{{ title }}</h3>{% endif %}
+  {% if title %}<h2>{{ title }}</h2>{% endif %}
   {% if message %}<p>{{ message }}</p>{% endif %}
   {% if cta_url %}<a class="btn{% if not cta_plain %} primary{% endif %}" href="{{ cta_url }}">{{ cta_label|default:"Get started" }}</a>{% endif %}
 </div>

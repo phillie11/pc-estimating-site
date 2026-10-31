@@ -5,16 +5,16 @@
   --card: #FFFFFF;
   --ink: #15191F;
   --ink-2: #3A414C;
-  --ink-3: #6B7280;
+  --ink-3: #5C6370;  /* 5.4:1 on paper, 5:1 on paper-2 and the tone backgrounds (WCAG AA) */
   --line: #DEDAD0;
   --line-2: #CBC6B8;
   --side: #15191F;
   --side-ink: #C9CDD3;
-  --side-dim: #7D848F;
+  --side-dim: #9AA1AB;  /* 5.8:1 on the sidebar's raised panels */
   --accent: #E8590C;
   --accent-ink: #FFFFFF;  /* white or #15191F, picked per company in base.html (ui.readable_ink) */
   --good: #1F7A4D;   --good-bg: #E3F1E8;
-  --warn: #9A6200;   --warn-bg: #FBEFD5;
+  --warn: #855400;   --warn-bg: #FBEFD5;  /* 5.6:1 */
   --bad: #B42318;    --bad-bg: #FBE4E1;
   --info: #1D5D9B;   --info-bg: #E2ECF6;
   --muted-bg: #ECE9E1;
@@ -154,7 +154,8 @@ table.t { width: 100%; border-collapse: collapse; }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
 .badge.bad { background: var(--bad-bg); color: var(--bad); }
 .badge.info { background: var(--info-bg); color: var(--info); }
-.badge.accent { background: color-mix(in srgb, var(--accent) 14%, white); color: color-mix(in srgb, var(--accent) 80%, black); }
+/* Half black keeps 4.5:1 on the tint for any brand colour, light yellows included */
+.badge.accent { background: color-mix(in srgb, var(--accent) 14%, white); color: color-mix(in srgb, var(--accent) 50%, black); }
 .tag { display: inline-block; padding: 1px 7px; border: 1px solid var(--line-2); border-radius: 4px; font-size: 12px; color: var(--ink-2); margin: 0 4px 4px 0; background: #fff; }
 .overdue { color: var(--bad); font-weight: 600; }
 
@@ -221,7 +222,8 @@ textarea { resize: vertical; }
 
 /* ---------- Empty ---------- */
 .empty { padding: 34px 20px; text-align: center; color: var(--ink-3); }
-.empty h3 { color: var(--ink); }
+.empty h3, .empty h2 { color: var(--ink); }
+.empty h2 { font-size: 1rem; }
 .empty.left { text-align: left; padding: 16px; }
 
 /* ---------- Pipeline board ---------- */
