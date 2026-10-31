@@ -6,6 +6,7 @@
   <a class="btn" href="{% url 'project_edit' org.slug project.pk %}">Edit</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% if is_internal and project.needs_handover %}<div class="banner">No project manager on this job yet. <a href="{% url 'project_handover' org.slug project.pk %}">Assign one</a></div>{% endif %}
+{% if not tender %}{% load diary %}{% diary_overview %}{% endif %}
 {% if tender %}<div class="kpis">
   <div class="kpi"><div class="label">Tender return</div><div class="value">{% if project.tender_due %}{{ project.tender_due|date:"j M" }}{% else %}—{% endif %}</div><div class="note">{% if project.tender_overdue %}<span class="bad">overdue</span>{% elif project.tender_due %}in {{ project.tender_due|timeuntil }}{% else %}not set{% endif %}</div></div>
   <div class="kpi"><div class="label">Sub quotes in</div><div class="value">{{ tender.quoted }} / {{ tender.invited }}</div><div class="note">across {{ tender.trades }} trade{{ tender.trades|pluralize }} · <a href="{% url 'package_list' org.slug project.pk %}">compare</a></div></div>
@@ -61,7 +62,7 @@
     </div></div>
   </div>
   <div class="stack">
-    {% if subcontracts %}<div class="card"><div class="card-head"><h2>{% if is_internal %}Subcontracts{% else %}Your subcontract{% endif %}</h2>{% if is_internal %}<a class="small" href="{% url 'package_list' org.slug project.pk %}">Procurement →</a>{% endif %}</div>
+    {% if subcontracts %}<div class="card"><div class="card-head"><h2>{% if is_internal %}Subcontracts{% else %}Your subcontract{% endif %}</h2>{% if is_internal %}<a class="small" href="{% url 'package_list' org.slug project.pk %}">Packages →</a>{% endif %}</div>
       <ul class="list">{% for s in subcontracts %}<li style="display:block">
         <div class="row between"><strong>{% if is_internal %}{{ s.package.subcontractor }}{% else %}{{ s.package.trade|default:"Package" }}{% endif %}</strong><span class="mono">{{ s.total|money:currency }}</span></div>
         <div class="small dim">{% if is_internal %}{{ s.package.trade|default:"Package" }} · {% endif %}order {{ s.order|money:currency }}{% if s.approved %} + {{ s.approved|money:currency }} variations{% endif %}{% if s.pending %} · {{ s.pending|money:currency }} awaiting decision{% endif %}</div>

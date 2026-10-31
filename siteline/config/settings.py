@@ -64,10 +64,13 @@ INSTALLED_APPS = [
     'tenders',
     'delivery',
     'documents',
+    'procurement',
+    'diary',
     'jobs',
     'actions',
     'payments',
     'security',
+    'costs',
 ]
 
 MIDDLEWARE = [

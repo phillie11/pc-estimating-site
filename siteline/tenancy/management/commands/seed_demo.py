@@ -11,6 +11,7 @@ Logins (password for all: DemoPass!2026):
     client@demo.test       External: client on the Leeds bar project
     sub@demo.test          External: joinery subcontractor (appointed on Leeds, pricing Kingsway)
     bids@demo.test         External: drylining subcontractor pricing Kingsway
+    designer@demo.test     External: interior designer (consultant) on Leeds, comments on submittals
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -347,6 +348,18 @@ class Command(BaseCommand):
             # Applications for payment: Leeds AP-001 paid, AP-002 certified, AP-003 draft; Salford AP-001 (payments/demo.py)
             from payments.demo import seed as seed_payments
             seed_payments(leeds=leeds, pm=pm, client=client)
+
+            # Cost control: budgets, orders and actuals on Leeds and Salford (costs/demo.py)
+            from costs.demo import seed as seed_costs
+            seed_costs(leeds=leeds, pm=pm, owner=owner, demo_pdf=demo_pdf)
+
+            # Site diary: the last 10 working days on Leeds, with placeholder photos (diary/demo.py)
+            from diary.demo import seed as seed_diary
+            seed_diary(leeds=leeds, pm=pm)
+
+            # Procurement schedule and submittals on Leeds and Salford (procurement/demo.py)
+            from procurement.demo import seed as seed_procurement
+            seed_procurement(leeds=leeds, pm=pm, sub_user=subu, make_user=user, demo_pdf=demo_pdf)
 
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')

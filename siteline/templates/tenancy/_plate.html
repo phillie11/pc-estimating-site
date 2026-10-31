@@ -1,6 +1,6 @@
 {% load ui %}<div class="card">
   <div class="card-head"><h2>Needs me</h2><a class="small" href="{% url 'needs_me' org.slug %}">{% if needs_me_count %}All {{ needs_me_count }} →{% else %}Open →{% endif %}</a></div>
-  {% if plate_items %}<ul class="list">
-    {% for i in plate_items %}<li><span class="ref">{{ i.ref|default:"TASK" }}</span><span class="grow"><a href="{{ i.url }}">{{ i.title }}</a> <span class="dim small">· {{ i.project.name }}{% if i.detail %} · {{ i.detail }}{% endif %}</span></span>{% if i.due %}<span class="small nowrap {% if i.is_overdue %}overdue{% else %}dim{% endif %}">{{ i.due|date:"j M" }}</span>{% endif %}{% status_badge i.status_label i.tone %}</li>{% endfor %}
+  {% if plate_items %}<ul class="list plate">
+    {% for i in plate_items %}<li><div class="plate-meta"><span class="ref">{{ i.ref|default:"TASK" }}</span>{% if i.due %}<span class="small nowrap {% if i.is_overdue %}overdue{% else %}dim{% endif %}">{% if i.is_overdue %}Was due{% else %}Due{% endif %} {{ i.due|date:"j M" }}</span>{% endif %}{% status_badge i.status_label i.tone %}</div><a class="plate-title" href="{{ i.url }}">{{ i.title }}</a><span class="plate-detail dim small"{% if i.detail %} title="{{ i.detail }}"{% endif %}>{{ i.project.name }}{% if i.detail %} · {{ i.detail }}{% endif %}</span></li>{% endfor %}
   </ul>{% else %}{% include "partials/empty_state.html" with message="Nothing is waiting on you. RFIs passed to you, RAMS and variations on jobs you run, snags to inspect and your tasks appear here." left=True %}{% endif %}
 </div>

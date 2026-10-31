@@ -44,7 +44,7 @@
     <form method="post" action="{% url 'contract_edit' org.slug project.pk %}" data-confirm="Reset the payment, retention and defects terms to the standard {{ contract.preset.label }} terms? Anything you changed from the standard will be overwritten.">{% csrf_token %}<input type="hidden" name="action" value="preset"><button class="btn sm ghost" style="min-height:44px">Reset to the standard terms</button></form>
   </div></div>
 </div>
-<div class="card"><div class="card-head"><h2>Words for this contract</h2></div><div class="card-body small">
+<div class="card" style="margin-top:1rem"><div class="card-head"><h2>Words for this contract</h2></div><div class="card-body small">
   <p>Siteline uses the {{ contract.get_form_display }} terms on this job: <strong>{{ vocab.change }}</strong> for a change, <strong>{{ vocab.instruction }}</strong>, <strong>{{ vocab.delay_event }}</strong> for a delay event, <strong>{{ vocab.time_extension }}</strong>, and the <strong>{{ vocab.administrator }}</strong>.</p>
   <p class="dim">{{ vocab.early_warning_note }}</p>
 </div></div>

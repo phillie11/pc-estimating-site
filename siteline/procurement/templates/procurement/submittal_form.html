@@ -1,0 +1,16 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "procurement/_subnav.html" %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>{% if s %}Edit {{ s.ref }}{% else %}Ask for a submittal{% endif %}</h2></div><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">{% if s %}Save{% else %}Add submittal{% endif %}</button><a class="btn" href="{% if s %}{{ s.get_absolute_url }}{% else %}{% url 'submittal_list' org.slug project.pk %}{% endif %}">Cancel</a></div>
+    </form>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>What happens next</h2></div><div class="card-body small">
+    <p>If it's on an appointed subcontractor's package, they're told and it shows under <em>Submittals to make</em> in their portal with the date it's due. With no package (a direct order), it waits on the reviewer to upload it.</p>
+    <p>When it arrives you have the job's review period to give it A (approved), B (approved with comments) or C (revise and resubmit). You can send it to the designer for comment first.</p>
+    <p style="margin:0">A C sends it back for revision 01, 02 and so on; every revision is kept. Once everything on a procurement line is A or B, the line moves to <em>Approved</em>.</p>
+  </div></div>
+</div>
+{% endblock %}

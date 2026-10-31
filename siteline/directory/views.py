@@ -207,6 +207,9 @@ def package_list(request, org_slug, pk):
                              else f'Reminder: your quote for {pkg.trade or "the package"} on {project.name} is awaited',
                              services.tender_url(project), project=project, actor=request.user, org=request.org)
                 messages.success(request, f'Reminder sent to {pkg.subcontractor}.')
+            elif action == 'remove' and Package.objects.filter(pk=pkg.pk, commitment__isnull=False).exists():
+                # Cost control (costs.Commitment) holds an order against it; the ledger can't lose its source
+                messages.error(request, 'This package has an order in Costs; adjust the order instead.')
             elif action == 'remove':
                 sub = pkg.subcontractor
                 pkg.delete()
@@ -217,7 +220,8 @@ def package_list(request, org_slug, pk):
                 pkg.save(update_fields=['notes'])
             return back
 
-    packages = Package.objects.filter(project=project).select_related('subcontractor', 'trade')
+    packages = Package.objects.filter(project=project).select_related('subcontractor', 'trade') \
+        .annotate(has_order=Count('commitment'))
     groups = {}
     for p in packages:
         groups.setdefault(p.trade_id, {'trade': p.trade, 'rows': []})['rows'].append(p)

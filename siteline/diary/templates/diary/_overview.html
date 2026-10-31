@@ -1,0 +1,9 @@
+{% load static %}{% if mode == 'staff' %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">
+<div class="touch"><a class="btn primary today-link" href="{% url 'diary_today' org.slug project.pk %}">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 21h18M5 21V10l7-6 7 6v11M9 21v-6h6v6"/></svg>
+  Today on site{% if entry %} · {{ entry.labour_total }} on site{% else %} · nothing logged yet{% endif %}</a></div>
+{% elif mode == 'client' %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">
+<div class="card" style="margin-bottom:1rem"><div class="card-head"><h2>Site photos</h2><span class="small dim">Shared with you by the site team</span></div><div class="card-body">
+  {% if photos %}<div class="photo-grid">{% for p in photos %}<a href="{{ p.display_url }}" target="_blank" rel="noopener"><img src="{{ p.thumb_url }}" alt="{{ p.caption|default:'Site photo' }}" loading="lazy"><span class="cap">{{ p.taken_on|date:"j M" }}{% if p.caption %} · {{ p.caption }}{% endif %}{% if p.area %} · {{ p.area }}{% endif %}</span></a>{% endfor %}</div>
+  {% else %}<div class="empty left">No photos have been shared with you yet. The site team shares progress photos here as the work goes on.</div>{% endif %}
+</div></div>{% endif %}

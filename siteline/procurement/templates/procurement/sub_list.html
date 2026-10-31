@@ -1,0 +1,26 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="card"><div class="card-head"><h2>Submittals to make</h2></div>
+{% if to_make %}<ul class="list">{% for s in to_make %}<li style="flex-wrap:wrap;align-items:center"><span class="grow" style="flex-basis:12rem"><a href="{{ s.get_absolute_url }}"><span class="ref">{{ s.ref }}</span> {{ s.title }}</a><br><span class="small dim">{{ s.get_kind_display }}{% if s.status == 'REJECTED' %} · revision {{ s.revision|add:1|stringformat:"02d" }} needed{% endif %}</span></span>
+  <span class="small nowrap {% if s.is_overdue %}overdue{% else %}dim{% endif %}">{% if s.due_date %}{% if s.is_overdue %}Was due{% else %}Due{% endif %} {{ s.due_date|date:"D j M" }}{% else %}No due date{% endif %}</span>
+  {% status_badge s %} <a class="btn primary sm" href="{{ s.get_absolute_url }}" style="min-height:44px">{% if s.status == 'REJECTED' %}Resubmit{% else %}Upload{% endif %}</a></li>{% endfor %}</ul>
+{% else %}<div class="empty left"><p>Nothing to send right now. When {{ org.name }} asks for shop drawings, samples or product data on your package, it appears here with the date it's due.</p></div>{% endif %}
+</div>
+
+{% if upcoming %}<div class="card"><div class="card-head"><h2>Coming up on your package</h2></div><div class="card-body">
+  <p class="small dim">These items are on {{ org.name }}'s procurement schedule for your package. Send drawings, samples or data by the date shown so there's time to approve them before ordering.</p>
+  {% for line in upcoming %}<details class="card" style="margin-top:10px"{% if line.form.errors %} open{% endif %}><summary class="card-head" style="cursor:pointer;min-height:44px"><span><strong>{{ line.title }}</strong><br><span class="small dim">Submittals due {{ line.submittals_due|date:"D j M Y"|default:"(date to be confirmed)" }}</span></span></summary>
+    <div class="card-body"><form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="start"><input type="hidden" name="line" value="{{ line.pk }}">
+      <div class="form-grid"><div class="field"><label for="kind-{{ line.pk }}">Type</label><select id="kind-{{ line.pk }}" name="kind">{% for code, label in kind_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div></div>
+      {% with form=line.form %}{% include "partials/form_fields.html" %}{% endwith %}
+      <div class="form-actions"><button class="btn primary">Send for review</button></div>
+      <p class="small dim">{{ org.name }} reviews it and gives it A (approved), B (approved with comments) or C (revise and resubmit). You'll be told the outcome.</p>
+    </form></div></details>{% endfor %}
+</div></div>{% endif %}
+
+<div class="card"><div class="card-head"><h2>In review and decided</h2></div>
+{% if rest %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Submittal</th><th>Status</th><th>With</th></tr></thead><tbody>
+{% for s in rest %}<tr><td class="ref nowrap">{{ s.ref }}<span class="sub">Rev {{ s.revision_label }}</span></td><td><a class="rowlink" href="{{ s.get_absolute_url }}">{{ s.title }}</a><span class="sub">{{ s.get_kind_display }}</span></td><td>{% status_badge s %}</td><td class="small">{% if s.is_open %}{{ org.name }}{% if s.due_date %}<span class="sub">Reply due {{ s.due_date|date:"j M" }}</span>{% endif %}{% else %}—{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<div class="empty left"><p>Nothing else yet. Submittals you send show here while they are reviewed, and stay here once approved.</p></div>{% endif %}</div>
+{% endblock %}

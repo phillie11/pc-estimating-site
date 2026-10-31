@@ -1,0 +1,10 @@
+{% extends "project_base.html" %}{% load static %}
+{% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
+{% block project_content %}
+<div class="site-mode touch">
+<div class="card"><div class="card-head"><h2>Weather, hours, safety and notes</h2><span class="small dim">{{ day|date:"D j M" }}</span></div><div class="card-body">
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'diary_day' org.slug project.pk day|date:'Y-m-d' %}">Cancel</a></div></form>
+</div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
+{% block project_actions %}<a class="btn primary" href="{% url 'diary_photo_upload' org.slug project.pk %}">{% icon 'plus' %} Add photos</a>{% endblock %}
+{% block project_content %}
+{% include "diary/_subnav.html" with sub='photos' %}
+<form method="get" class="filters touch">
+  <label class="small">Day <input type="date" name="date" value="{{ filters.date|date:'Y-m-d' }}"></label>
+  <label class="small">From <input type="date" name="from" value="{{ filters.from|date:'Y-m-d' }}"></label>
+  <label class="small">To <input type="date" name="to" value="{{ filters.to|date:'Y-m-d' }}"></label>
+  {% if areas %}<label class="small">Area <select name="area"><option value="">Anywhere</option>{% for a in areas %}<option{% if filters.area == a %} selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>{% endif %}
+  <label class="small check"><input type="checkbox" name="shared" value="1"{% if filters.shared %} checked{% endif %}> Shared with client</label>
+  <button class="btn sm">Filter</button>{% if filtered %}<a class="btn ghost sm" href="?">Clear</a>{% endif %}
+</form>
+<div class="card"><div class="card-body">
+{% if photos %}<div class="photo-grid">{% for p in photos %}{% include "diary/_thumb.html" with show_date=True %}{% endfor %}</div>
+  {% if page.has_other_pages %}<div class="row between small touch" style="margin-top:12px">{% if page.has_previous %}<a class="btn sm" href="{% qs page=page.previous_page_number %}">Newer</a>{% else %}<span></span>{% endif %}<span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn sm" href="{% qs page=page.next_page_number %}">Older</a>{% else %}<span></span>{% endif %}</div>{% endif %}
+{% elif filtered %}{% include "partials/empty_state.html" with title="No photos match" message="Nothing matches these filters." cta_url="?" cta_label="Clear filters" cta_plain=True left=True %}
+{% else %}{% url 'diary_photo_upload' org.slug project.pk as up %}{% include "partials/empty_state.html" with title="No site photos yet" message="Take progress and evidence photos on site from your phone. They stay internal unless you mark one to share with the client." cta_url=up cta_label="Take photos" left=True %}{% endif %}
+</div></div>
+<p class="small dim">Photos are internal. Only photos marked "share with client" are shown to the client, read only, on their project overview, without the camera's location data.</p>
+{% endblock %}

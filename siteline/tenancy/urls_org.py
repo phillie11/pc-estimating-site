@@ -3,10 +3,13 @@ from django.urls import include, path
 from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
+from costs import urls as costs_urls
 from delivery import views as delivery
+from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
 from payments import urls as payments_urls
+from procurement import urls as procurement_urls
 from projects import views as projects
 from rfis import views as rfis
 from tenders import views as tenders
@@ -107,5 +110,13 @@ urlpatterns = [
     *changes_urls.org_patterns,
     # Applications for payment (payments/urls.py): Commercial -> Applications for staff, Decisions for the client
     *payments_urls.project_patterns(P),
+    # Procurement tab: schedule and submittals (procurement/urls.py)
+    *procurement_urls.project_patterns(P),
+    # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)
+    *diary_urls.project_patterns(P),
+    *diary_urls.org_patterns,
+    # Commercial > Costs and Settings > Cost control (costs/urls.py)
+    *costs_urls.project_patterns(P),
+    *costs_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

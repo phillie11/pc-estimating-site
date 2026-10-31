@@ -1,0 +1,33 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if not read_only %}<a class="btn primary" href="{% url 'cost_order_create' org.slug project.pk %}">{% icon 'plus' %} Supplier order</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+{% if to_commit %}
+<div class="card"><div class="card-head"><h2>Appointed packages to commit</h2><span class="small dim">{{ to_commit|length }} waiting</span></div>
+<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Package</th><th class="num">Quoted</th><th>Cost code</th><th></th></tr></thead><tbody>
+{% for p, guess in to_commit %}<tr><td><strong>{{ p.subcontractor }}</strong><span class="sub">{{ p.trade|default:"Package" }}</span></td><td class="num">{{ p.quote_value|money_exact:currency }}</td>
+  <td colspan="2"><form method="post" action="{% url 'cost_commit_package' org.slug project.pk %}" class="row commit-form">{% csrf_token %}<input type="hidden" name="package" value="{{ p.pk }}">
+    <select name="cost_code" aria-label="Cost code for {{ p.subcontractor }}">{% for c in codes %}<option value="{{ c.pk }}"{% if c == guess %} selected{% endif %}>{{ c.code }} {{ c.name }}</option>{% endfor %}</select>
+    {% if p.quote_value %}<button class="btn primary sm" style="min-height:44px">Commit this order</button>{% else %}<span class="small dim">No quoted value yet</span>{% endif %}</form></td></tr>{% endfor %}
+</tbody></table></div>
+<div class="card-body small dim" style="padding-top:8px">Committing records the subcontract order at the quoted value against the cost code. After that the order changes only through recorded adjustments.</div></div>
+{% endif %}
+{% if sv_waiting %}
+<div class="card"><div class="card-head"><h2>Approved sub variations to add</h2></div>
+<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Sub variation</th><th>Order</th><th class="num">Approved</th><th></th></tr></thead><tbody>
+{% for sv in sv_waiting %}<tr><td><span class="mono">{{ sv.reference }}</span> {{ sv.title }}<span class="sub">{{ sv.subcontractor }}</span></td><td class="mono">{{ sv.package.commitment.ref }}</td><td class="num">{{ sv.approved_value|money_exact:currency }}</td>
+  <td><form method="post" action="{{ sv.package.commitment.get_absolute_url }}">{% csrf_token %}<input type="hidden" name="action" value="add_sv"><input type="hidden" name="sub_variation" value="{{ sv.pk }}"><button class="btn sm" style="min-height:44px">Add to order</button></form></td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endif %}
+<div class="filters" aria-label="Filter orders">
+  <a class="chip {% if not kind %}on{% endif %}" href="?">All orders</a>
+  {% for code, label in kind_choices %}<a class="chip {% if kind == code %}on{% endif %}" href="?kind={{ code }}">{{ label }}s</a>{% endfor %}
+</div>
+<div class="card">{% if rows %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Order</th><th>Supplier</th><th>Cost code</th><th>Type</th><th class="num">Placed at</th><th class="num">Current value</th></tr></thead><tbody>
+{% for o, value in rows %}<tr><td class="ref"><a class="rowlink" href="{{ o.get_absolute_url }}">{{ o.ref }}</a></td><td>{{ o.supplier }}<span class="sub">{{ o.description }}</span></td><td class="nowrap"><span class="mono">{{ o.cost_code.code }}</span> {{ o.cost_code.name }}</td>
+  <td>{% if o.kind == 'SUBCONTRACT' %}{% badge 'Subcontract' 'accent' %}{% else %}{% badge 'Supplier order' 'info' %}{% endif %}</td>
+  <td class="num">{{ o.original_value|money_exact:currency }}</td><td class="num"><strong>{{ value|money_exact:currency }}</strong>{% if value != o.original_value %}<span class="sub">adjusted</span>{% endif %}</td></tr>{% endfor %}
+</tbody><tfoot><tr><th colspan="5">Total committed{% if kind %} (filtered){% endif %}</th><th class="num">{{ total|money_exact:currency }}</th></tr></tfoot></table></div>
+{% elif kind %}{% include "partials/empty_state.html" with title="No orders of this type" message="Nothing matches this filter." cta_url="?" cta_label="Show all orders" cta_plain=1 %}
+{% else %}{% if read_only %}{% include "partials/empty_state.html" with title="No orders" message="Nothing was committed on this job before it was archived." %}{% else %}{% url 'cost_order_create' org.slug project.pk as new_url %}{% include "partials/empty_state.html" with title="No orders yet" message="Commit appointed packages above with one click, or record a supplier order for materials, plant or services." cta_url=new_url cta_label="Record a supplier order" %}{% endif %}{% endif %}</div>
+{% endblock %}

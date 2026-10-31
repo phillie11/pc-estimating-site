@@ -18,7 +18,7 @@
             {% if p.submitted_at %}<form method="post" class="inline" data-confirm="Appoint {{ p.subcontractor.company_name }}? Everyone else pricing {{ g.trade|default:'this package' }} will be told they were unsuccessful and lose access.">{% csrf_token %}<input type="hidden" name="action" value="appoint"><input type="hidden" name="package" value="{{ p.pk }}"><button class="btn sm primary">Appoint</button></form>{% endif %}
             {% if p.status == 'ENQUIRY' %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="remind"><input type="hidden" name="package" value="{{ p.pk }}"><button class="btn sm">Remind</button></form>{% endif %}
             <form method="post" class="inline" data-confirm="Tell {{ p.subcontractor.company_name }} they were unsuccessful? They lose access to the tender.">{% csrf_token %}<input type="hidden" name="action" value="unsuccessful"><input type="hidden" name="package" value="{{ p.pk }}"><button class="linkbtn" title="Unsuccessful">✕</button></form>
-          {% elif p.status != 'APPOINTED' %}<form method="post" class="inline" data-confirm="Remove this line?">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="package" value="{{ p.pk }}"><button class="linkbtn">Remove</button></form>{% endif %}
+          {% elif p.status != 'APPOINTED' and not p.has_order %}<form method="post" class="inline" data-confirm="Remove this line?">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="package" value="{{ p.pk }}"><button class="linkbtn">Remove</button></form>{% endif %}
         </td>
       </tr>{% endfor %}</tbody></table></div>
     </div>

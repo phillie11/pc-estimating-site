@@ -1,0 +1,3 @@
+{% include "commercial/_subnav.html" %}
+<nav class="filters costs-nav" aria-label="Cost control">{% for code, label, url in costs_nav %}<a class="chip {% if code == costs_sub %}on{% endif %}" href="{{ url }}"{% if code == costs_sub %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+{% if read_only %}<p class="small dim">This job is archived, so its costs are read only.</p>{% endif %}

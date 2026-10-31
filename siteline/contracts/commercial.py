@@ -31,6 +31,9 @@ def commercial_context(request, project, sub, **extra):
         ctx['can_see_applications'] = manages_payments(request, project)
         if ctx['can_see_applications']:  # owners, admins and the job's PM only (payments/access.py)
             ctx['commercial_nav'].append(('applications', 'Applications', reverse('application_list', args=[org, pk])))
+        from costs.access import can_view_costs  # Costs: the job's PM or QS, owners and admins only
+        if can_view_costs(request, project):
+            ctx['commercial_nav'].append(('costs', 'Costs', reverse('cost_report', args=[org, pk])))
         ctx['commercial_sub'] = sub
     return ctx
 

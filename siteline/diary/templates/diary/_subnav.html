@@ -1,0 +1,6 @@
+<nav class="subtabs touch" aria-label="Site diary">
+  <a class="chip{% if sub == 'today' %} on{% endif %}" href="{% url 'diary_today' org.slug project.pk %}"{% if sub == 'today' %} aria-current="page"{% endif %}>Today on site</a>
+  <a class="chip{% if sub == 'register' %} on{% endif %}" href="{% url 'diary_register' org.slug project.pk %}"{% if sub == 'register' %} aria-current="page"{% endif %}>Diary register</a>
+  <a class="chip{% if sub == 'photos' %} on{% endif %}" href="{% url 'diary_gallery' org.slug project.pk %}"{% if sub == 'photos' %} aria-current="page"{% endif %}>Photos</a>
+  <a class="chip{% if sub == 'delays' %} on{% endif %}" href="{% url 'diary_delays' org.slug project.pk %}"{% if sub == 'delays' %} aria-current="page"{% endif %}>Delays</a>
+</nav>
