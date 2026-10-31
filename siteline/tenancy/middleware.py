@@ -1,8 +1,9 @@
+from django.db import connection
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from .context import close_request_memo, open_request_memo, reset_current_org, set_current_org
+from .context import clear_memo_on_write, close_request_memo, open_request_memo, reset_current_org, set_current_org
 from .models import Membership
 
 # Views under an org that stay reachable when the subscription has lapsed,
@@ -30,7 +31,8 @@ class TenantMiddleware:
         request._org_token = None
         memo = open_request_memo()
         try:
-            return self.get_response(request)
+            with connection.execute_wrapper(clear_memo_on_write):
+                return self.get_response(request)
         finally:
             if request._org_token is not None:
                 reset_current_org(request._org_token)

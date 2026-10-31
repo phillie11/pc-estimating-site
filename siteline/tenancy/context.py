@@ -72,8 +72,12 @@ def unscoped():
 # Lookups many parts of one page repeat (which companies a subcontractor represents on each
 # project, the jobs a PM runs) are worked out once per request. TenantMiddleware opens the memo
 # for each request and closes it afterwards; outside a request (jobs, commands, tests calling a
-# function directly) nothing is remembered. Any save or delete of a TenantModel clears it
-# (tenancy.apps), so a request that changes something never reads a value from before the change.
+# function directly) nothing is remembered. Any write to the database during the request clears it
+# (clear_memo_on_write, wrapped round every query by TenantMiddleware), so a request that changes
+# something never reads a value from before the change. That covers queryset.update() and bulk writes
+# too, which model signals miss. Signals are deliberately not used: a pre/post_delete receiver on every
+# model switches off Django's fast delete, and on MySQL the slow path nulls a nullable CASCADE foreign
+# key before deleting the row, which breaks check constraints such as viewer_pin_one_record.
 
 _request_memo = contextvars.ContextVar('tenancy_request_memo', default=None)
 
@@ -102,3 +106,13 @@ def clear_request_memo(**kwargs):
     memo = _request_memo.get()
     if memo:
         memo.clear()
+
+
+_WRITES = ('INSERT', 'UPDATE', 'DELETE', 'REPLACE')
+
+
+def clear_memo_on_write(execute, sql, params, many, context):
+    """connection.execute_wrapper hook: forget the memo before any statement that writes."""
+    if _request_memo.get() and sql.lstrip()[:7].upper().startswith(_WRITES):
+        _request_memo.get().clear()
+    return execute(sql, params, many, context)

@@ -145,3 +145,39 @@ class RfiRegisterPagesTests(TestCase):
         second = c.get(url + '?mine=&page=2')
         self.assertEqual(len(second.context['rfis']), 5)
         self.assertContains(second, f'Question {REGISTER_PAGE + 4:03d}')
+
+
+class RequestMemoTests(TestCase):
+    """
+    The per-request memo (tenancy.context) is cleared by any database write, through a query wrapper.
+    It used to be cleared by save/delete signals connected to every model. A delete receiver switches
+    off Django's fast delete, and on MySQL the slow path sets a nullable CASCADE key to NULL before
+    deleting the row, so deleting a company with drawing pins broke viewer_pin_one_record.
+    """
+
+    def test_a_bulk_update_clears_the_memo(self):
+        from django.db import connection
+
+        from tenancy.context import (clear_memo_on_write, close_request_memo, open_request_memo,
+                                     request_memo)
+        owner = User.objects.create_user(email='m@r.test', password=PW, full_name='Memo')
+        token = open_request_memo()
+        try:
+            with connection.execute_wrapper(clear_memo_on_write):
+                calls = []
+                request_memo(('k',), lambda: calls.append(1))
+                request_memo(('k',), lambda: calls.append(1))
+                self.assertEqual(len(calls), 1)
+                User.objects.filter(pk=owner.pk).update(full_name='Memo 2')
+                request_memo(('k',), lambda: calls.append(1))
+                self.assertEqual(len(calls), 2)
+        finally:
+            close_request_memo(token)
+
+    def test_drawing_pins_can_still_be_fast_deleted(self):
+        from django.db.models.deletion import Collector
+
+        from viewer.models import DrawingPin
+        self.assertTrue(Collector(using='default').can_fast_delete(DrawingPin.objects.none()),
+                        'Something listens to deletes of every model again; on MySQL that breaks '
+                        'deleting a company with drawing pins (viewer_pin_one_record).')
