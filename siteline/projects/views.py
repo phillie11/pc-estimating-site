@@ -96,6 +96,10 @@ def project_context(request, project, tab, **extra):
         counts = site_counts(request, project)
         tabs += [('subvariations', 'Sub variations' if internal else 'Variations', url('subvariation_list'), counts['subvariations']),
                  ('rams', 'RAMS', url('rams_list'), counts['rams'])]
+    from subpayments.access import sub_tab  # an appointed sub's own applications and payment advices, under Decisions
+    subpay_tab = sub_tab(request, project)
+    if subpay_tab:
+        tabs.append(subpay_tab)
     from procurement.access import tab_for  # staff: Procurement; appointed subs and designers: Submittals
     procurement_tab = tab_for(request, project)
     if procurement_tab:

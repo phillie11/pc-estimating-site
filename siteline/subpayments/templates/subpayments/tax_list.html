@@ -1,0 +1,12 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Subcontractors' CIS and VAT{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / <a href="{% url 'subpay_settings' org.slug %}">Subcontract payments</a> / CIS and VAT</div><h1>Subcontractors' CIS and VAT</h1><p class="dim" style="margin:4px 0 0">{{ hmrc_check }} Anyone not yet verified is paid at 30%.</p></div>
+<div><a class="btn" style="min-height:44px" href="{% url 'subpay_cis' org.slug %}">CIS monthly summary</a></div></div>
+<nav class="filters" aria-label="CIS status"><a class="chip {% if not status %}on{% endif %}" href="?" style="min-height:44px;display:inline-flex;align-items:center">All</a>{% for code, label in choices %}<a class="chip {% if status == code %}on{% endif %}" href="?cis={{ code }}" style="min-height:44px;display:inline-flex;align-items:center">{{ label }}</a>{% endfor %}</nav>
+<div class="card">{% if rows %}<div class="table-wrap"><table class="t register"><thead><tr><th>Subcontractor</th><th>CIS status</th><th>Verification</th><th>VAT</th></tr></thead><tbody>
+{% for s, t in rows %}<tr><td><a class="rowlink" href="{% url 'subpay_tax' org.slug s.pk %}">{{ s.company_name }}</a></td><td>{% badge t.get_cis_status_display t.cis_tone %}</td><td class="small">{% if t.verification_number %}<span class="mono">{{ t.verification_number }}</span>{% if t.verified_on %} · {{ t.verified_on|date:"j M Y" }}{% endif %}{% else %}<span class="dim">Not verified</span>{% endif %}</td><td class="small">{% if t.reverse_charge %}Reverse charge{% else %}{{ t.vat_rate|floatformat:"-2" }}%{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% elif status %}{% include "partials/empty_state.html" with title="Nobody with this status" message="No subcontractor in the directory has this CIS status." cta_url="?" cta_label="Show all" cta_plain=1 %}
+{% else %}{% url 'sub_list' org.slug as subs_url %}{% include "partials/empty_state.html" with title="No subcontractors" message="Add subcontractors to the directory first." cta_url=subs_url cta_label="Go to the directory" %}{% endif %}</div>
+{% endblock %}

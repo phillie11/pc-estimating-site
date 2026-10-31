@@ -1,0 +1,61 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if not read_only %}
+  {% if staff %}<a class="btn" href="{% url 'subpay_terms' org.slug project.pk sc.pk %}">Edit terms</a>{% endif %}
+  <a class="btn primary" href="{% url 'subpay_apply' org.slug project.pk sc.package_id %}">{% icon 'plus' %} {% if staff %}Record application{% else %}Apply for payment{% endif %}</a>
+{% endif %}{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small"><a href="{% url 'subpay_list' org.slug project.pk %}">← {% if staff %}Sub payments{% else %}Your payments{% endif %}</a></p>
+<h2 style="margin:0 0 4px">{{ sc.subcontractor.company_name }}</h2>
+<p class="dim" style="margin:0 0 12px">{{ sc.package.trade|default:"Subcontract" }}{% if order %} · order {{ order.ref }} {{ order.value|money_exact:currency }} on {{ order.cost_code }}{% endif %}</p>
+{% if staff and not order %}<div class="banner bad-banner" role="note"><strong>No order in Costs yet.</strong> Payments post to the order's cost code, so commit this package's order under <a href="{% url 'cost_commitments' org.slug project.pk %}">Costs → Orders</a> before paying.</div>{% endif %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Sum due to date (ex VAT)</div><div class="value">{{ summary.certified|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Paid to date (gross)</div><div class="value">{{ summary.paid|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Retention held</div><div class="value">{{ retention_held|money:currency }}</div><div class="note">{{ stage_label }}</div></div>
+</div>
+<div class="grid split">
+<div class="stack">
+  <div class="card"><div class="card-head"><h2>Applications</h2></div>
+  {% if applications %}<div class="table-wrap"><table class="t register"><thead><tr><th>Ref</th><th>Valuation</th><th>Status</th><th class="num">Applied</th><th class="num">Sum due</th><th class="num">Still to pay</th></tr></thead><tbody>
+  {% for a in applications %}<tr><td class="ref"><a class="rowlink" href="{{ a.get_absolute_url }}">{{ a.reference }}</a></td><td>{{ a.valuation_date|date:"j M Y" }}{% if a.kind == 'RELEASE' %}<span class="sub">Retention release</span>{% endif %}</td>
+    <td>{% if a.is_overdue %}{% badge 'Payment overdue' 'bad' %}{% elif staff and a.stands_as_notified %}{% badge 'Stands as notified' 'bad' %}{% elif staff %}{% status_badge a %}{% else %}{% badge a.sub_status_label a.status_tone %}{% endif %}</td>
+    <td class="num">{{ a.amount_due|money_exact:currency }}</td><td class="num">{{ a.notified_sum|money_exact:currency }}</td><td class="num">{{ a.outstanding|money_exact:currency }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="card-body">{% include "partials/empty_state.html" with title="No applications yet" message="The subcontractor applies through their portal; staff can record one sent by email." left=1 %}</div>{% endif %}</div>
+
+  <div class="card"><div class="card-head"><h2>Retention ledger</h2></div><div class="card-body">
+    <dl class="dl"><dt>Held now</dt><dd class="mono">{{ retention_held|money_exact:currency }}</dd>
+      <dt>Released at practical completion</dt><dd class="mono">{{ released_pc|money_exact:currency }}</dd>
+      <dt>Released at the end of defects</dt><dd class="mono">{{ released_defects|money_exact:currency }}</dd></dl>
+    {% if retention_rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Application</th><th>Valuation</th><th class="num">Change</th><th class="num">Held after</th></tr></thead><tbody>
+      {% for r in retention_rows %}<tr><td class="ref">{{ r.ref }}</td><td>{{ r.valuation_date|date:"j M Y" }}{% if r.released_at == 'AFTER_PC' %}<span class="sub">Released at practical completion</span>{% elif r.released_at == 'AFTER_DEFECTS' %}<span class="sub">Released at the end of defects</span>{% endif %}</td><td class="num">{{ r.movement|money_exact:currency }}</td><td class="num">{{ r.held|money_exact:currency }}</td></tr>{% endfor %}
+    </tbody></table></div>{% endif %}
+    {% if staff and not read_only and retention_held %}<details style="margin-top:10px"><summary class="btn" style="min-height:44px">Release retention</summary>
+      <form method="post" action="{% url 'subpay_release' org.slug project.pk sc.pk %}" style="margin-top:10px" data-confirm="Raise a retention release application? It then goes through the same payment notice and payment as any other application.">{% csrf_token %}{% with form=release_form %}{% include "partials/form_fields.html" %}{% endwith %}<p class="small dim">Half at our practical completion, the rest at the end of the defects period, as the terms say. It is raised as an application at that date with the gross value unchanged.</p><div class="form-actions"><button class="btn primary">Raise release application</button></div></form></details>{% endif %}
+  </div></div>
+
+  {% if payments %}<div class="card"><div class="card-head"><h2>Payments</h2></div><div class="table-wrap"><table class="t"><thead><tr><th>Paid</th><th>Application</th><th class="num">Gross</th><th class="num">CIS</th><th class="num">Net paid</th><th></th></tr></thead><tbody>
+    {% for p in payments %}<tr{% if p.is_reversed %} class="dim"{% endif %}><td class="nowrap">{{ p.paid_on|date:"j M Y" }}</td><td class="ref">{{ p.application.reference }}{% if p.is_reversed %} {% badge 'Reversed' 'muted' %}{% endif %}</td><td class="num">{{ p.gross|money_exact:currency }}</td><td class="num">{{ p.cis_deduction|money_exact:currency }}</td><td class="num">{{ p.net|money_exact:currency }}</td><td><a href="{% url 'subpay_advice' org.slug project.pk p.pk %}" target="_blank" rel="noopener">Advice</a></td></tr>{% endfor %}
+  </tbody></table></div></div>{% endif %}
+</div>
+<div class="stack">
+  <div class="card"><div class="card-head"><h2>Payment terms</h2>{% badge 'Advisory' 'warn' %}</div><div class="card-body"><dl class="dl">
+    <dt>Cycle</dt><dd>{% if sc.cycle_kind == 'MONTHLY' %}Monthly, valuation on day {{ sc.valuation_day }}{% else %}{% for d in sc.listed_dates %}{{ d|date:"j M Y" }}{% if not forloop.last %}, {% endif %}{% empty %}No dates listed{% endfor %}{% endif %}</dd>
+    <dt>Due date</dt><dd>{{ sc.due_date_offset_days }} days after the valuation date</dd>
+    <dt>Our payment notice</dt><dd>{{ sc.payment_notice_days }} days after the due date</dd>
+    <dt>Final date for payment</dt><dd>{{ sc.final_date_offset_days }} days after the due date</dd>
+    <dt>Our pay less notice</dt><dd>{{ sc.pay_less_notice_days }} days before the final date</dd>
+    <dt>Retention</dt><dd>{{ sc.retention_percent|floatformat:"-2" }}%, {{ sc.retention_released_at_pc_percent|floatformat:"-2" }}% of it released at our practical completion{% if sc.pc_date %} ({{ sc.pc_date|date:"j M Y" }}){% endif %}, the rest after {% if sc.defects_months is not None %}{{ sc.defects_months }} months' defects{% else %}the defects period{% endif %}</dd>
+    <dt>Discount</dt><dd>{% if sc.discount_percent %}{{ sc.discount_percent|floatformat:"-2" }}%{% else %}None{% endif %}</dd>
+    <dt>Bank holidays</dt><dd>{{ sc.get_region_display }}</dd>
+    {% if staff %}<dt>CIS</dt><dd>{% badge tax.get_cis_status_display tax.cis_tone %}{% if tax.verification_number %} <span class="mono small">{{ tax.verification_number }}</span>{% endif %}</dd>
+    <dt>VAT</dt><dd>{% if tax.reverse_charge %}Domestic reverse charge{% else %}{{ tax.vat_rate|floatformat:"-2" }}%{% endif %}</dd>{% endif %}
+  </dl>
+  {% if next_cycle %}<p class="small">Next valuation <strong>{{ next_cycle.valuation_date|date:"D j M Y" }}</strong>: due {{ next_cycle.due_date|date:"j M" }}, our payment notice by {{ next_cycle.payment_notice_by|date:"j M" }}, pay less by {{ next_cycle.pay_less_by|date:"j M" }}, final date {{ next_cycle.final_date|date:"j M Y" }}.</p>{% endif %}
+  <p class="small dim">{{ advisory }} Days leave out Christmas Day, Good Friday and bank holidays, including a Boxing Day or New Year bank holiday that falls on a Saturday.</p>
+  {% if staff %}<p class="small dim">{{ hmrc_check }}{% if request.membership.is_admin %} <a href="{% url 'subpay_tax' org.slug sc.subcontractor.pk %}">CIS and VAT details</a>{% endif %}</p>{% endif %}
+  </div></div>
+</div>
+</div>
+{% endblock %}

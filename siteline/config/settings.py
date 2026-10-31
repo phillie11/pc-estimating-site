@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'payments',
     'security',
     'costs',
+    'subpayments',
 ]
 
 MIDDLEWARE = [

@@ -1,0 +1,10 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}CIS and VAT: {{ sub.company_name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'subpay_tax_list' org.slug %}">CIS and VAT</a> / {{ sub.company_name }}</div><h1>{{ sub.company_name }}: CIS and VAT</h1></div></div>
+<div class="card" style="max-width:820px"><div class="card-body">
+  <p class="small"><strong>{{ hmrc_check }}</strong> Verify them through HMRC Online Services or your payroll software, then record the result here. Payments already made keep the rate they were made at.</p>
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'subpay_tax_list' org.slug %}">Cancel</a></div></form>
+  {% if tax.pk and tax.updated_by %}<p class="small dim">Last changed {{ tax.updated_at|date:"j M Y" }} by {{ tax.updated_by }}.</p>{% endif %}
+</div></div>
+{% endblock %}

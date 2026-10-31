@@ -12,6 +12,7 @@ from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import views as projects
 from rfis import views as rfis
+from subpayments import urls as subpayments_urls
 from tenders import views as tenders
 from variations import views as variations
 
@@ -118,5 +119,8 @@ urlpatterns = [
     # Commercial > Costs and Settings > Cost control (costs/urls.py)
     *costs_urls.project_patterns(P),
     *costs_urls.org_patterns,
+    # Commercial > Sub payments, Decisions > Payments for subs, CIS and default terms (subpayments/urls.py)
+    *subpayments_urls.project_patterns(P),
+    *subpayments_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]
