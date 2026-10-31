@@ -229,6 +229,18 @@ def project_create(request, org_slug):
     return render(request, 'projects/project_form.html', {'form': form})
 
 
+def visible_members(request, project):
+    """
+    Who's who as this person may see it. Externals don't see subcontractors invited to price
+    (tendering subcontractors): the tender list is the contractor's business, and showing it would
+    tell the client, or another subcontractor, which companies are pricing the work.
+    """
+    members = project.members.all()
+    if not is_internal(request):
+        members = members.exclude(role=ProjectMember.ROLE_BIDDER)
+    return members
+
+
 def project_detail(request, org_slug, pk):
     project = get_project(request, pk, allow_bidder=True)
     if is_bidder(request):
@@ -287,7 +299,7 @@ def project_detail(request, org_slug, pk):
                      (m.can_estimate if c[0] in Project.ESTIMATING_STAGES else m.can_deliver)]
     return render(request, 'projects/project_detail.html', project_context(
         request, project, 'overview', stats=stats, commercial=commercial, activity=activity[:12],
-        members=project.members.select_related('user')[:12], stage_choices=stage_choices,
+        members=visible_members(request, project).select_related('user')[:12], stage_choices=stage_choices,
         subcontracts=subcontracts, latest_revisions=latest, tender=tender,
     ))
 
@@ -624,7 +636,7 @@ def activity_edit(request, org_slug, pk, activity_id):
 def project_team(request, org_slug, pk):
     project = get_project(request, pk)
     internal = is_internal(request)
-    members = project.members.select_related('user', 'subcontractor')
+    members = visible_members(request, project).select_related('user', 'subcontractor')
     invite_form = ProjectInviteForm(project=project)
     staff_form = AddStaffForm(project=project) if internal else None
     if request.method == 'POST':
