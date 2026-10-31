@@ -2,7 +2,8 @@ import csv
 from datetime import timedelta
 
 from django.contrib import messages
-from django.db.models import Count, Q
+from django.core.exceptions import PermissionDenied
+from django.db.models import Count, ProtectedError, Q, RestrictedError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -154,7 +155,16 @@ def trades(request, org_slug):
     form = TradeForm(request.POST or None)
     if request.method == 'POST':
         if request.POST.get('action') == 'delete':
-            Trade.objects.filter(pk=posted_id(request, 'trade')).delete()
+            if not request.membership.is_admin:
+                raise PermissionDenied
+            trade = get_object_or_404(Trade, pk=posted_id(request, 'trade'))
+            try:
+                trade.delete()
+            except (ProtectedError, RestrictedError):
+                # Quote levelling (levelling.LevellingSheet.trade) keeps it: losing the trade would lose the levelling
+                n = trade.levelling_sheets.values('project').distinct().count()
+                messages.error(request, f'{trade.name} has quote levelling on {n} bid{"s" if n != 1 else ""}, '
+                                        'so it can\'t be deleted.')
             return redirect('trades', org_slug=org_slug)
         if form.is_valid():
             name = form.cleaned_data['name'].strip()
@@ -162,12 +172,19 @@ def trades(request, org_slug):
                 Trade.objects.create(name=name)
             return redirect('trades', org_slug=org_slug)
     return render(request, 'directory/trades.html', {'trades': Trade.objects.annotate(n=Count('subcontractors')),
-                                                     'form': form})
+                                                     'form': form, 'can_delete': request.membership.is_admin})
 
 
 # ---------------------------------------------------------------------------
 # Packages on a project
 # ---------------------------------------------------------------------------
+
+def _levelled(pkg):
+    """Quote levelling holds rows for this package (levelling app), or carries it in the tender."""
+    from levelling.models import Adjustment, Exclusion, LevellingSheet, QuoteCell
+    return any(m.objects.filter(package=pkg).exists() for m in (QuoteCell, Exclusion, Adjustment)) \
+        or LevellingSheet.objects.filter(carried=pkg).exists()
+
 
 @internal_required
 def package_list(request, org_slug, pk):
@@ -210,6 +227,12 @@ def package_list(request, org_slug, pk):
             elif action == 'remove' and Package.objects.filter(pk=pkg.pk, commitment__isnull=False).exists():
                 # Cost control (costs.Commitment) holds an order against it; the ledger can't lose its source
                 messages.error(request, 'This package has an order in Costs; adjust the order instead.')
+            elif action == 'remove' and _levelled(pkg):
+                # Quote levelling (levelling app) holds its prices, exclusions or the carried decision
+                messages.error(request, f'{pkg.subcontractor}\'s quote is in the levelling for this trade, so it is '
+                                        'kept on file.')
+            elif action == 'remove' and pkg.submitted_at and project.stage not in project.PIPELINE_STAGES:
+                messages.error(request, 'A quote on a decided bid is kept on file.')
             elif action == 'remove':
                 sub = pkg.subcontractor
                 pkg.delete()
@@ -225,6 +248,15 @@ def package_list(request, org_slug, pk):
     groups = {}
     for p in packages:
         groups.setdefault(p.trade_id, {'trade': p.trade, 'rows': []})['rows'].append(p)
+    # Quote levelling (levelling app): who estimating carried in the tender, per trade, so the projects team
+    # appoints with it in view. The levelling itself opens for estimators only.
+    from levelling.models import LevellingSheet
+    from costs.access import COST_STAGES, runs_job
+    can_level = request.membership.can_estimate or (project.stage in COST_STAGES and runs_job(request.user, project))
+    carried = dict(LevellingSheet.objects.filter(project=project, carried__isnull=False)
+                   .values_list('trade_id', 'carried_id'))
+    for trade_id, g in groups.items():
+        g['carried_id'] = carried.get(trade_id)
     for g in groups.values():
         quoted = [p.quote_value for p in g['rows'] if p.quote_value and p.status != Package.DECLINED]
         g['lowest'] = min(quoted) if quoted else None
@@ -235,4 +267,4 @@ def package_list(request, org_slug, pk):
                 if g['lowest'] and p.quote_value and p.quote_value != g['lowest'] else None
     ordered = sorted(groups.values(), key=lambda g: g['trade'].name if g['trade'] else '')
     return render(request, 'directory/packages.html', project_context(
-        request, project, 'packages', groups=ordered, form=form, today=timezone.localdate()))
+        request, project, 'packages', groups=ordered, form=form, today=timezone.localdate(), can_level=can_level))

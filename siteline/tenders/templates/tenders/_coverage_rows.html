@@ -4,7 +4,7 @@
   <td class="num">{{ r.invited }}</td><td class="num">{{ r.viewed }}</td>
   <td class="num"><strong>{{ r.quoted }}</strong><span class="dim"> / {{ r.target }}</span></td>
   <td class="num">{{ r.declined }}</td><td class="num">{{ r.outstanding }}</td>
-  <td>{% badge r.status_label r.status_tone %}</td>
+  <td>{% badge r.status_label r.status_tone %}{% if r.not_levelled %} <a href="{{ r.levelling_url }}" title="Fewer than 2 quotes levelled line by line">{% badge 'Not levelled' 'warn' %}</a>{% elif r.levelling_url and r.levelled %} <a href="{{ r.levelling_url }}">{% badge 'Levelled' 'info' %}</a>{% endif %}</td>
   <td class="small nowrap">{% if r.days_to_due is not None and r.days_to_due <= 3 and r.thin %}<span class="overdue">{{ r.due_label }}</span>{% else %}{{ r.due_label }}{% endif %}</td>
 </tr>{% endfor %}
 </tbody></table></div>

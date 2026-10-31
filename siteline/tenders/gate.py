@@ -54,6 +54,9 @@ def intercept(project, old, new):
         return decline_url(project)
     if new == Project.STAGE_LOST and old != new:
         return lost_url(project)
+    if new == Project.STAGE_SUBMITTED and old != new and (url := levelling_reason_url(project)):
+        # Quote levelling: a carried subcontractor who is no longer lowest needs a reason first
+        return url
     review = review_for(project)
     if new in BIDDING and old in NOT_BIDDING:
         if review is None or not review.passed_gate or old != Project.STAGE_LEAD:
@@ -74,6 +77,15 @@ def intercept(project, old, new):
         review.decision = ''
         review.save(update_fields=['decision', 'updated_at'])
     return None
+
+
+def levelling_reason_url(project):
+    """The levelling sheet whose carried subcontractor needs a reason before submitting, or None."""
+    from levelling.services import reasons_needed
+    sheets = reasons_needed(project)
+    if not sheets:
+        return None
+    return reverse('levelling_sheet', args=[project.organization.slug, project.pk, sheets[0].trade_id]) + '?submit=1#carry'
 
 
 def gate_value(project, review=None):

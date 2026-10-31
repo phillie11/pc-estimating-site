@@ -492,10 +492,18 @@ def project_handover(request, org_slug, pk):
             return redirect(p)
         return redirect('bid_list', org_slug=org_slug)
     from directory.models import Package
-    quotes = Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES + (Package.APPOINTED,)) \
-        .select_related('subcontractor', 'trade')
+    quotes = list(Package.objects.filter(project=project, status__in=Package.OPEN_STATUSES + (Package.APPOINTED,))
+                  .select_related('subcontractor', 'trade'))
+    from levelling.services import carried_for
+    carried = carried_for(project)  # quote levelling: {package id: levelled total} carried in the tender
+    for q in quotes:
+        q.carried, q.levelled = q.pk in carried, carried.get(q.pk)
+    from costs.access import COST_STAGES, runs_job
+    from levelling.models import LevellingSheet
+    has_levelling = LevellingSheet.objects.filter(project=project).exists() and (
+        request.membership.can_estimate or (project.stage in COST_STAGES and runs_job(request.user, project)))
     return render(request, 'projects/handover.html', {'project': project, 'form': form, 'winning': winning,
-                                                      'quotes': quotes, 'section': use_section(request, 'estimating' if winning else 'delivery')})
+                                                      'quotes': quotes, 'has_levelling': has_levelling, 'section': use_section(request, 'estimating' if winning else 'delivery')})
 
 
 @estimating_required

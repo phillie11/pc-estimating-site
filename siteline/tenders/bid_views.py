@@ -94,6 +94,10 @@ def bid_gate(request, org_slug, pk):
             if review.score is not None:
                 log_activity(request, 'scored bid/no-bid', f'{project.name}: {review.score} ({review.get_result_display()})',
                              project=project, url=project.get_absolute_url())
+            if moving and to == Project.STAGE_SUBMITTED and (url := gate.levelling_reason_url(project)):
+                messages.error(request, 'Bid/no-bid saved, but not submitted: a subcontractor carried in the '
+                                        'tender is no longer the lowest levelled price. Give a reason first.')
+                return redirect(url)
             if moving:
                 gate.apply_stage(request, project, to)
                 verdict = f'Scored {review.score}: {review.get_result_display()}. ' if review.score is not None else ''
@@ -202,6 +206,8 @@ def coverage_board(request, org_slug):
         projects = projects.filter(owner_id=int(lead))
     show = 'thin' if request.GET.get('show') == 'thin' else 'all'
     tenders = coverage.open_tenders(projects, today=timezone.localdate())
+    from levelling.coverage import annotate
+    annotate(tenders)  # "Not levelled" on trades with fewer than 2 quotes levelled
     if show == 'thin':
         tenders = [(p, [r for r in rows if r.thin]) for p, rows in tenders if p.thin_rows]
     return render(request, 'tenders/coverage.html', {
