@@ -1,0 +1,17 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+<p class="small dim">Every budget, order and cost movement on this job, newest first. Entries are never edited or deleted; a mistake is put right with a reversing entry.</p>
+<div class="filters" aria-label="Filter ledger">
+  <a class="chip {% if not filtered %}on{% endif %}" href="?">Everything</a>
+  {% for k, label in kind_choices %}<a class="chip {% if kind == k %}on{% endif %}" href="?kind={{ k }}{% if code %}&code={{ code }}{% endif %}">{{ label }}</a>{% endfor %}
+  {% if codes %}<form method="get" class="row"><label for="ledger-code" class="small">Cost code</label>{% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}<select name="code" id="ledger-code"><option value="">All codes</option>{% for c in codes %}<option value="{{ c.pk }}"{% if code == c.pk|stringformat:"d" %} selected{% endif %}>{{ c.code }} {{ c.name }}</option>{% endfor %}</select><button class="btn sm" style="min-height:44px">Show</button></form>{% endif %}
+</div>
+<div class="card">{% if entries %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Date</th><th>Kind</th><th>Cost code</th><th>Note</th><th class="num">Amount</th></tr></thead><tbody>
+{% for e in entries %}<tr><td class="small nowrap">{{ e.date|date:"j M Y" }}</td><td>{% badge e.get_kind_display e.tone %}{% if e.reverses_id %} {% badge 'Reversal' 'muted' %}{% elif e.pk in reversed_ids %} {% badge 'Reversed' 'muted' %}{% endif %}</td>
+  <td class="nowrap"><span class="mono">{{ e.cost_code.code }}</span> {{ e.cost_code.name }}</td><td>{{ e.note }}<span class="sub">{{ e.actor_name|default:"System" }} · #{{ e.pk }}{% if e.reverses_id %} cancels #{{ e.reverses_id }}{% endif %}</span></td>
+  <td class="num{% if e.amount < 0 %} overdue{% endif %}">{{ e.amount|money_exact:currency }}</td></tr>{% endfor %}
+</tbody>{% if filtered %}<tfoot><tr><th colspan="4">Net of what's shown</th><th class="num">{{ net|money_exact:currency }}</th></tr></tfoot>{% endif %}</table></div>
+{% elif filtered %}{% include "partials/empty_state.html" with title="No entries match" message="Nothing of this kind or cost code is on the ledger." cta_url="?" cta_label="Show everything" cta_plain=1 %}
+{% else %}{% url 'cost_report' org.slug project.pk as report_url %}{% include "partials/empty_state.html" with title="The ledger is empty" message="Entries appear here when the budget is set, orders are committed and costs are recorded." cta_url=report_url cta_label="Go to the cost report" cta_plain=1 %}{% endif %}</div>
+{% endblock %}

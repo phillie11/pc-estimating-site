@@ -1,0 +1,41 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if not read_only %}<a class="btn" href="{% url 'cost_actual_create' org.slug project.pk %}?order={{ c.pk }}">{% icon 'plus' %} Invoice against this order</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+<p class="small"><a href="{% url 'cost_commitments' org.slug project.pk %}">All orders</a></p>
+<div class="grid split">
+<div style="min-width:0">
+  <div class="card"><div class="card-head"><h2>{{ c.ref }} · {{ c.supplier }}</h2>{% if c.kind == 'SUBCONTRACT' %}{% badge 'Subcontract' 'accent' %}{% else %}{% badge 'Supplier order' 'info' %}{% endif %}</div><div class="card-body"><dl class="dl">
+    <dt>Cost code</dt><dd><span class="mono">{{ c.cost_code.code }}</span> {{ c.cost_code.name }}</dd>
+    {% if c.package %}<dt>Package</dt><dd>{{ c.package.trade|default:"Package" }} (appointed)</dd>{% endif %}
+    {% if c.description %}<dt>What for</dt><dd>{{ c.description }}</dd>{% endif %}
+    {% if c.reference %}<dt>Reference</dt><dd>{{ c.reference }}</dd>{% endif %}
+    <dt>Ordered</dt><dd>{{ c.order_date|date:"j M Y" }}{% if c.created_by %} by {{ c.created_by.full_name }}{% endif %}</dd>
+    <dt>Placed at</dt><dd class="mono">{{ c.original_value|money_exact:currency }}</dd>
+    <dt>Adjustments</dt><dd class="mono">{{ c.adjusted_total|money_exact:currency }}</dd>
+    <dt>Current value</dt><dd class="mono"><strong>{{ c.value|money_exact:currency }}</strong></dd>
+    <dt>Invoiced to date</dt><dd class="mono">{{ invoiced|money_exact:currency }}</dd>
+  </dl></div></div>
+  <div class="card"><div class="card-head"><h2>Adjustments</h2></div>
+  {% if adjustments %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Date</th><th>Reason</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for a in adjustments %}<tr><td class="small nowrap">{{ a.created_at|date:"j M Y" }}</td><td>{{ a.reason }}<span class="sub">{% if a.sub_variation %}Approved sub variation · {% endif %}{{ a.created_by.full_name|default:"" }}</span></td><td class="num{% if a.amount < 0 %} overdue{% endif %}">{{ a.amount|money_exact:currency }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty left">No adjustments. The order stands at the value it was placed at.</div>{% endif %}</div>
+  <div class="card"><div class="card-head"><h2>Costs against this order</h2></div>
+  {% if actuals %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for a in actuals %}<tr><td class="small nowrap">{{ a.cost_date|date:"j M Y" }}</td><td>{{ a.get_kind_display }} {{ a.reference }}</td><td class="num">{{ a.amount|money_exact:currency }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty left">No invoices recorded against this order yet.</div>{% endif %}</div>
+</div>
+<div>
+  {% if addable %}<div class="card"><div class="card-head"><h2>Approved sub variations</h2></div><div class="card-body">
+    {% for sv in addable %}<form method="post" class="row" style="justify-content:space-between;margin-bottom:8px">{% csrf_token %}<input type="hidden" name="action" value="add_sv"><input type="hidden" name="sub_variation" value="{{ sv.pk }}">
+      <span><span class="mono">{{ sv.reference }}</span> {{ sv.title }}<br><span class="small dim">{{ sv.approved_value|money_exact:currency }} approved</span></span><button class="btn sm primary" style="min-height:44px">Add to order</button></form>{% endfor %}
+    <p class="small dim">Adds the approved value to this order as a recorded adjustment.</p>
+  </div></div>{% endif %}
+  {% if not read_only %}<div class="card"><div class="card-head"><h2>Adjust the order</h2></div><div class="card-body">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="adjust">{% include "partials/form_fields.html" %}
+    <div class="form-actions"><button class="btn">Record adjustment</button></div></form>
+    <p class="small dim">Adjustments are kept with their reason and can't be edited. To put one right, record another.</p>
+  </div></div>{% endif %}
+</div>
+</div>
+{% endblock %}

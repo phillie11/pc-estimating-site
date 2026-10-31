@@ -1,0 +1,9 @@
+{% extends "project_base.html" %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+<div class="card" style="max-width:820px"><div class="card-head"><h2>Record a supplier order</h2></div><div class="card-body">
+<p class="small dim">For materials, plant or services ordered direct. Subcontract orders come from appointed packages on the Orders page. Once saved, the order changes only through recorded adjustments.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save order</button><a class="btn ghost" href="{% url 'cost_commitments' org.slug project.pk %}">Cancel</a></div></form>
+</div></div>
+{% endblock %}
