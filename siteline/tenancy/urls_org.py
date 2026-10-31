@@ -3,6 +3,7 @@ from django.urls import include, path
 from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
+from costs import urls as costs_urls
 from delivery import views as delivery
 from diary import urls as diary_urls
 from directory import views as directory
@@ -108,5 +109,8 @@ urlpatterns = [
     # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)
     *diary_urls.project_patterns(P),
     *diary_urls.org_patterns,
+    # Commercial > Costs and Settings > Cost control (costs/urls.py)
+    *costs_urls.project_patterns(P),
+    *costs_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

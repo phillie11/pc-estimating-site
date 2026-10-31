@@ -3,7 +3,7 @@
 {% block project_content %}<div class="docs">
 {% include "documents/_nav.html" %}
 {% if is_internal and to_check %}<div class="flash warning">{{ to_check }} document number{{ to_check|pluralize }} {{ to_check|pluralize:"doesn't,don't" }} follow the project's naming. <a href="?naming=check">Show {{ to_check|pluralize:"it,them" }}</a> to correct or accept.</div>{% endif %}
-<div class="grid split">
+<div class="grid split form-below">
   <div>
     <form class="filterbar" method="get" aria-label="Filter the register">
       <input type="search" name="q" value="{{ f.q }}" placeholder="Search number, title or file" aria-label="Search">
@@ -18,7 +18,7 @@
     <div class="card">{% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Number</th><th>Title</th><th>Rev</th><th>Suit.</th><th>Status</th><th>Date</th>{% if is_internal %}<th>Shared</th>{% endif %}<th></th></tr></thead><tbody>
       {% for d, cur in rows %}<tr>
         <td class="ref nowrap">{{ d.reference|default:"—" }}{% if is_internal and d.naming == 'UNPARSED' %}<span class="sub">{% badge 'Check number' 'warn' %}</span>{% endif %}</td>
-        <td><a class="rowlink" href="{% url 'document_detail' org.slug project.pk d.pk %}">{{ d.title }}</a><span class="sub">{{ d.get_category_display }}{% if d.discipline %} · {{ d.discipline }}{% endif %}{% if d.folder %} · {{ d.folder }}{% endif %}</span></td>
+        <td class="doc-title"><a class="rowlink" href="{% url 'document_detail' org.slug project.pk d.pk %}">{{ d.title }}</a><span class="sub">{{ d.get_category_display }}{% if d.discipline %} · {{ d.discipline }}{% endif %}{% if d.folder %} · {{ d.folder }}{% endif %}</span></td>
         <td class="mono">{{ cur.revision|default:"—" }}</td>
         <td class="mono">{{ cur.suitability|default:"—" }}</td>
         <td>{% if cur %}{% badge cur.shown_status cur.shown_tone %}{% endif %}</td>

@@ -1,0 +1,21 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+<div class="card" style="max-width:900px"><div class="card-head"><h2>Set the budget from the tender</h2></div><div class="card-body">
+<p class="small dim">Take the tender or contract value, less the margin the tender allowed, and spread it over the cost codes. The lines must add up to the budget. Once saved, the budget changes only by a transfer or revision with a reason, so this original stays on record.</p>
+<form method="post">{% csrf_token %}
+{% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+<div class="form-grid">{% include "partials/field.html" with field=form.basis_value %}{% include "partials/field.html" with field=form.margin_pct %}{% include "partials/field.html" with field=form.reason full=1 %}</div>
+<h3 style="margin-top:18px">Budget lines</h3>
+<p class="small dim">Fill in the codes this job uses and leave the rest blank. The description is optional.</p>
+<div class="budget-lines">
+{% for code, amount, desc in form.rows %}<div class="budget-line{% if amount.errors %} has-error{% endif %}">
+  <label for="{{ amount.id_for_label }}"><span class="mono">{{ code.code }}</span> {{ code.name }}<span class="small dim"> {{ code.get_group_display }}</span></label>
+  <div class="budget-inputs">{{ amount }}<input type="text" name="{{ desc.html_name }}" id="{{ desc.id_for_label }}" value="{{ desc.value|default_if_none:'' }}" maxlength="200" placeholder="Description (optional)" aria-label="Description for {{ code.code }}"></div>
+  {% for e in amount.errors %}<div class="err">{{ e }}</div>{% endfor %}
+</div>{% empty %}{% url 'cost_settings' org.slug as settings_url %}{% include "partials/empty_state.html" with title="No cost codes in use" message="Your company has no active cost codes. An owner or admin can add them in Settings." cta_url=settings_url cta_label="Cost codes" %}{% endfor %}
+</div>
+<div class="form-actions"><button class="btn primary">Save the budget</button><a class="btn ghost" href="{% url 'cost_report' org.slug project.pk %}">Cancel</a></div>
+</form>
+</div></div>
+{% endblock %}

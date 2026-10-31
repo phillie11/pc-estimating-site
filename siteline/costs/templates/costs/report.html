@@ -1,0 +1,48 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if data.has_costs %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endif %}{% if not read_only %}{% if has_budget %}<a class="btn" href="{% url 'cost_actual_create' org.slug project.pk %}">{% icon 'plus' %} Actual cost</a>{% else %}<a class="btn primary" href="{% url 'cost_budget_setup' org.slug project.pk %}">{% icon 'plus' %} Set the budget</a>{% endif %}{% endif %}{% endblock %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Forecast final account</div><div class="value">{{ data.final_account|money:currency }}</div><div class="note">Contract sum plus approved {{ vocab.change_plural }}</div></div>
+  <div class="kpi"><div class="label">Forecast final cost</div><div class="value">{{ data.final_cost|money:currency }}</div><div class="note">{{ data.total.actual|money:currency }} spent to date</div></div>
+  <div class="kpi{% if data.below %} margin-low{% endif %}"><div class="label">Forecast margin</div><div class="value{% if data.below %} bad{% endif %}">{{ data.margin|money:currency }}</div>
+    <div class="note">{% if data.margin_pct is not None %}<span class="{% if data.below %}overdue{% endif %}">{{ data.margin_pct }}%</span>{% else %}No contract sum yet{% endif %} · warning below {{ data.threshold|floatformat:"-2" }}%</div></div>
+</div>
+{% if data.below %}<div class="banner bad-banner" role="status">{% badge 'Below margin' 'bad' %} {% if data.margin_pct is not None %}The forecast margin is {{ data.margin_pct }}%, under the company's {{ data.threshold|floatformat:"-2" }}% warning level.{% else %}There is no contract sum, so the margin can't be worked out. <a href="{% url 'contract_edit' org.slug project.pk %}">Set up the contract</a>.{% endif %} The project manager and admins have this on their Needs me list until it recovers.</div>{% endif %}
+
+{% if data.has_costs %}
+<div class="filters" aria-label="Filter cost codes">
+  <a class="chip {% if not filtered %}on{% endif %}" href="?">All codes</a>
+  <a class="chip {% if show == 'over' %}on{% endif %}" href="?show=over">Overspent{% if overspent %} ({{ overspent }}){% endif %}</a>
+  {% for g, label in group_choices %}<a class="chip {% if group == g %}on{% endif %}" href="?group={{ g }}">{{ label }}</a>{% endfor %}
+</div>
+<div class="card">{% if rows %}<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Cost code</th><th class="num">Budget</th><th class="num">Committed</th><th class="num">Actual to date</th><th class="num">Forecast final</th><th class="num">Variance</th><th>Status</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><span class="mono">{{ r.code.code }}</span> {{ r.code.name }}<span class="sub">{{ r.code.get_group_display|default:"No group" }}</span></td>
+  <td class="num">{{ r.budget|money:currency }}</td>
+  <td class="num"><a href="{% url 'cost_commitments' org.slug project.pk %}">{{ r.committed|money:currency }}</a></td>
+  <td class="num"><a href="{% url 'cost_actuals' org.slug project.pk %}?code={{ r.code.pk }}">{{ r.actual|money:currency }}</a></td>
+  <td class="num">{{ r.forecast|money:currency }}{% if r.override %}<span class="sub">set by hand</span>{% endif %}</td>
+  <td class="num{% if r.overspent %} overdue{% endif %}">{{ r.variance|money:currency }}</td>
+  <td>{% if r.overspent %}{% badge 'Overspent' 'bad' %}{% elif r.committed > r.budget %}{% badge 'Over-committed' 'warn' %}{% elif r.budget and r.committed < r.budget %}{% badge 'To buy' 'info' %}{% else %}{% badge 'On budget' 'good' %}{% endif %}</td></tr>{% endfor %}
+</tbody>{% if not filtered %}<tfoot><tr><th>Total</th><th class="num">{{ data.total.budget|money:currency }}</th><th class="num">{{ data.total.committed|money:currency }}</th><th class="num">{{ data.total.actual|money:currency }}</th><th class="num">{{ data.total.forecast|money:currency }}</th><th class="num{% if data.total.overspent %} overdue{% endif %}">{{ data.total.variance|money:currency }}</th><th></th></tr></tfoot>{% endif %}</table></div>
+{% else %}{% include "partials/empty_state.html" with title="No cost codes match" message="Nothing is overspent or in this group right now." cta_url="?" cta_label="Show all codes" cta_plain=1 %}{% endif %}</div>
+<p class="small dim">Forecast final cost is the larger of budget, committed and actual to date, unless set by hand below. Variance is budget less forecast: a negative figure is a forecast overspend. Every figure comes from the <a href="{% url 'cost_ledger' org.slug project.pk %}">cost ledger</a>.</p>
+
+<div class="card" id="forecasts"><div class="card-head"><h2>Forecast by hand</h2></div><div class="card-body">
+  {% if not read_only %}<form method="post" action="{% url 'cost_forecast' org.slug project.pk %}" class="form-grid">{% csrf_token %}
+    <div class="field"><label for="fc-code">Cost code</label><select name="cost_code" id="fc-code" required>{% for r in data.rows %}<option value="{{ r.code.pk }}">{{ r.code.code }} {{ r.code.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="fc-amount">Forecast final cost</label><input type="text" name="amount" id="fc-amount" inputmode="decimal" class="mono" autocomplete="off"><div class="help">Leave blank to go back to the standard forecast.</div></div>
+    <div class="field full"><label for="fc-reason">Reason <span class="dim">*</span></label><input type="text" name="reason" id="fc-reason" maxlength="300" required placeholder="e.g. final account agreed with the subcontractor"></div>
+    <div class="form-actions full"><button class="btn primary">Record forecast</button></div>
+  </form>{% endif %}
+  <h3 style="margin-top:14px">Forecast history</h3>
+  {% for r in forecast_history %}<p class="small" style="margin:10px 0 4px"><strong><span class="mono">{{ r.code.code }}</span> {{ r.code.name }}</strong></p><ul class="small">
+    {% for ov in r.history %}<li>{{ ov.created_at|date:"j M Y" }}: {% if ov.amount is not None %}{{ ov.amount|money_exact:currency }}{% else %}back to the standard forecast{% endif %}, by {{ ov.created_by.full_name|default:"someone" }}. {{ ov.reason }}</li>{% endfor %}</ul>
+  {% empty %}<p class="small dim">No forecasts set by hand yet. Every code uses the standard forecast.</p>{% endfor %}
+  <p class="small dim">Every forecast is kept; the latest one for a code is the one in use.</p>
+</div></div>
+{% else %}
+<div class="card">{% if read_only %}{% include "partials/empty_state.html" with title="No costs recorded" message="This job was archived before any budget or cost was entered." %}
+{% else %}{% url 'cost_budget_setup' org.slug project.pk as setup_url %}{% include "partials/empty_state.html" with title="No budget yet" message="Start from the tender: the contract value less your margin, spread over cost codes. Then commit the appointed packages and record costs as they come in." cta_url=setup_url cta_label="Set the budget" %}{% endif %}</div>
+{% endif %}
+{% endblock %}
