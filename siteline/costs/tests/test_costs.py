@@ -473,7 +473,7 @@ class ViewFlowTests(CostTestBase):
         pdf = SimpleUploadedFile('inv.pdf', b'%PDF-1.4 demo', content_type='application/pdf')
         r = self.client.post(self.curl('cost_actual_create'), {
             'kind': 'INVOICE', 'cost_code': self.codes['400'].pk, 'supplier': 'Travis Perkins',
-            'reference': 'TP-1', 'cost_date': '2026-10-20', 'amount': '4380.125', 'file': pdf})
+            'reference': 'TP-1', 'cost_date': '2026-10-20', 'amount': '4380.125', 'file': pdf, 'form_key': 'k1'})
         self.assertRedirects(r, self.curl('cost_actuals'))
         with self.a():
             a = ActualCost.objects.get()
@@ -482,7 +482,7 @@ class ViewFlowTests(CostTestBase):
         bad = SimpleUploadedFile('evil.exe', b'MZ', content_type='application/octet-stream')
         r = self.client.post(self.curl('cost_actual_create'), {
             'kind': 'INVOICE', 'cost_code': self.codes['400'].pk, 'supplier': 'X', 'cost_date': '2026-10-20',
-            'amount': '1', 'file': bad})
+            'amount': '1', 'file': bad, 'form_key': 'k2'})
         self.assertContains(r, '.exe files are not allowed')
         # Budget entries can't be reversed from the page; actual costs can
         r = self.client.post(self.curl('cost_ledger_reverse', entry.pk), {'reason': ''})

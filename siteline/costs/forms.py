@@ -240,7 +240,7 @@ class AdjustmentForm(OneTimeFormMixin, StyledForm):
 
 # --- Actuals and forecasts --------------------------------------------------------------
 
-class ActualForm(StyledForm):
+class ActualForm(OneTimeFormMixin, StyledForm):
     kind = forms.ChoiceField(choices=ActualCost.KIND_CHOICES, label='Type')
     cost_code = CodeChoice(queryset=_codes(), label='Cost code')
     supplier = forms.CharField(max_length=200, label='Supplier, or who worked')

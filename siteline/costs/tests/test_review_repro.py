@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from costs import actions as cost_actions
 from costs import ledger, services
-from costs.models import Commitment, CommitmentAdjustment, CostCode, ForecastOverride, LedgerEntry
+from costs.models import ActualCost, Commitment, CommitmentAdjustment, CostCode, ForecastOverride, LedgerEntry
 from costs.report import cost_report
 from directory.models import Package
 from projects.models import Project
@@ -107,31 +107,79 @@ class ReviewRepro(CostTestBase):
         with self.a():
             self.assertEqual(CostCode.objects.get(pk=spare.pk).code, '266')
 
+    def key(self, url):
+        """The one-time key a freshly shown form carries."""
+        return self.client.get(url).context['form']['form_key'].value()
+
     def test_6_double_submit_records_once(self):
         self.login(self.pm)
         url = self.curl('cost_order_create')
         data = {'cost_code': self.codes['500'].pk, 'supplier': 'Speedy', 'value': '500', 'order_date': '2026-10-01'}
-        self.client.post(url, data)
-        self.client.post(url, data)
+        key = self.key(url)
+        self.client.post(url, {**data, 'form_key': key})
+        self.client.post(url, {**data, 'form_key': key})
         with self.a():
             self.assertEqual(LedgerEntry.objects.filter(project=self.pa, kind='COMMITMENT').count(), 1)
-        # The same page twice (same one-time key) records once; a fresh page is a new order
-        page = self.client.get(url)
-        key = page.context['form']['form_key'].value()
-        self.client.post(url, {**data, 'supplier': 'Hire Co', 'form_key': key})
-        self.client.post(url, {**data, 'supplier': 'Hire Co', 'form_key': key})
-        key2 = self.client.get(url).context['form']['form_key'].value()
-        self.assertNotEqual(key, key2)
-        self.client.post(url, {**data, 'supplier': 'Hire Co', 'form_key': key2})
-        with self.a():
-            self.assertEqual(Commitment.objects.filter(supplier='Hire Co').count(), 2)
-            order = Commitment.objects.first()
-        adj = {'action': 'adjust', 'amount': '-50', 'reason': 'Shorter hire', 'form_key': 'abc'}
-        self.client.post(order.get_absolute_url(), adj)
-        self.client.post(order.get_absolute_url(), adj)
+            order = Commitment.objects.get()
+        adj_url = order.get_absolute_url()
+        adj = {'action': 'adjust', 'amount': '-50', 'reason': 'Shorter hire', 'form_key': self.key(adj_url)}
+        self.client.post(adj_url, adj)
+        self.client.post(adj_url, adj)
+        act_url = self.curl('cost_actual_create')
+        act = {'kind': 'INVOICE', 'cost_code': self.codes['500'].pk, 'supplier': 'Speedy', 'cost_date': '2026-10-20',
+               'amount': '120', 'form_key': self.key(act_url)}
+        self.client.post(act_url, act)
+        self.client.post(act_url, act)
         with self.a():
             self.assertEqual(CommitmentAdjustment.objects.filter(commitment=order).count(), 1)
             self.assertEqual(order.value, D('450.00'))
+            self.assertEqual(ActualCost.objects.count(), 1)
+
+    def test_6_different_keys_with_identical_content_both_record(self):
+        self.login(self.pm)
+        url = self.curl('cost_order_create')
+        data = {'cost_code': self.codes['500'].pk, 'supplier': 'Speedy', 'value': '500', 'order_date': '2026-10-01'}
+        k1, k2 = self.key(url), self.key(url)
+        self.assertNotEqual(k1, k2)
+        self.client.post(url, {**data, 'form_key': k1})
+        self.client.post(url, {**data, 'form_key': k2})
+        with self.a():
+            self.assertEqual(Commitment.objects.count(), 2)
+            order = Commitment.objects.first()
+        adj = {'action': 'adjust', 'amount': '500', 'reason': 'Extra week'}
+        self.client.post(order.get_absolute_url(), {**adj, 'form_key': 'first'})
+        self.client.post(order.get_absolute_url(), {**adj, 'form_key': 'second'})
+        act_url = self.curl('cost_actual_create')
+        act = {'kind': 'INVOICE', 'cost_code': self.codes['500'].pk, 'supplier': 'Speedy', 'cost_date': '2026-10-20',
+               'amount': '120'}
+        self.client.post(act_url, {**act, 'form_key': 'one'})
+        self.client.post(act_url, {**act, 'form_key': 'two'})
+        with self.a():
+            self.assertEqual(CommitmentAdjustment.objects.filter(commitment=order).count(), 2)
+            self.assertEqual(order.value, D('1500.00'))
+            self.assertEqual(ActualCost.objects.count(), 2)
+            # Service callers pass no key and get no deduplication
+            services.record_actual(self.pa, self.pm, self.codes['500'], 'INVOICE', 'Speedy', D('120'))
+            services.record_actual(self.pa, self.pm, self.codes['500'], 'INVOICE', 'Speedy', D('120'))
+            self.assertEqual(ActualCost.objects.count(), 4)
+
+    def test_6_a_post_without_a_key_is_refused(self):
+        self.login(self.pm)
+        with self.a():
+            order = services.place_order(self.pa, self.pm, self.codes['500'], 'Speedy', D('100'))
+        for url, data in [
+            (self.curl('cost_order_create'), {'cost_code': self.codes['500'].pk, 'supplier': 'S', 'value': '5'}),
+            (order.get_absolute_url(), {'action': 'adjust', 'amount': '5', 'reason': 'x'}),
+            (self.curl('cost_actual_create'), {'kind': 'INVOICE', 'cost_code': self.codes['500'].pk, 'supplier': 'S',
+                                               'cost_date': '2026-10-20', 'amount': '5'}),
+        ]:
+            r = self.client.post(url, data)
+            self.assertEqual(r.status_code, 400, url)
+            self.assertContains(r, 'Please reload the page and try again', status_code=400)
+        with self.a():
+            self.assertEqual(Commitment.objects.count(), 1)
+            self.assertFalse(CommitmentAdjustment.objects.exists())
+            self.assertFalse(ActualCost.objects.exists())
 
     def test_7_archived_jobs_refuse_forecasts_with_a_message(self):
         self.budget()

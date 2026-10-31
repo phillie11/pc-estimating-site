@@ -226,7 +226,12 @@ def add_sub_variation(commitment, sub_variation, actor):
 
 @transaction.atomic
 def record_actual(project, actor, cost_code, kind, supplier, amount, reference='', cost_date=None, description='',
-                  commitment=None, file=None):
+                  commitment=None, file=None, form_key=None):
+    project = _lock(project)
+    if form_key:
+        first = ActualCost.objects.filter(project=project, form_key=form_key).first()
+        if first is not None:
+            raise AlreadyRecorded(first)
     _check_code(project, cost_code)
     amount = pennies(amount)
     if amount == 0:
@@ -234,7 +239,8 @@ def record_actual(project, actor, cost_code, kind, supplier, amount, reference='
     if commitment is not None and commitment.project_id != project.pk:
         raise CostError('That order is on a different job.')
     a = ActualCost(project=project, cost_code=cost_code, kind=kind, supplier=supplier, amount=amount,
-                   reference=reference, description=description, commitment=commitment, created_by=actor)
+                   reference=reference, description=description, commitment=commitment, created_by=actor,
+                   form_key=form_key or None)
     if cost_date:
         a.cost_date = cost_date
     if file:

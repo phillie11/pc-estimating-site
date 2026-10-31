@@ -302,11 +302,13 @@ class ActualCost(AppendOnlyModel):
                                    related_name='actuals', verbose_name='Against order')
     file = models.FileField('Invoice or timesheet', upload_to=upload_cost, blank=True)
     original_name = models.CharField(max_length=200, blank=True)
+    form_key = models.CharField(max_length=80, null=True, blank=True, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta(AppendOnlyModel.Meta):
         ordering = ['-cost_date', '-pk']
+        constraints = [models.UniqueConstraint(fields=['project', 'form_key'], name='costs_actual_form_key')]
 
     def __str__(self):
         return f'{self.supplier} {self.reference} {self.amount}'

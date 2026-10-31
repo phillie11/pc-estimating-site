@@ -3,13 +3,12 @@ Cost control pages, under the job's Commercial tab (Costs), and the company's co
 under Settings. Every job view fetches the job through costs.access.costs_project().
 """
 import csv
-import hashlib
 from decimal import Decimal
 
 from django.contrib import messages
 from django.db import IntegrityError
 from django.db.models import Prefetch, ProtectedError, RestrictedError, Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -49,14 +48,15 @@ def _safe(value):
 
 def _form_key(request, scope):
     """
-    The one-time key a form was sent with (OneTimeFormMixin). A post without one (a script, an old
-    page) is keyed on what it contains, so the identical post twice still records once.
+    The one-time key the form was sent with (OneTimeFormMixin), or None when there isn't one. Every
+    page this app renders carries a key, so a post without one is refused (_no_key) rather than guessed.
     """
     key = (request.POST.get('form_key') or '').strip()[:60]
-    if not key:
-        payload = repr(sorted((k, request.POST.getlist(k)) for k in request.POST if k != 'csrfmiddlewaretoken'))
-        key = 'h:' + hashlib.sha256(f'{request.user.pk}|{payload}'.encode()).hexdigest()[:40]
-    return f'{scope}:{key}'[:80]
+    return f'{scope}:{key}' if key else None
+
+
+def _no_key():
+    return HttpResponseBadRequest('Please reload the page and try again.')
 
 
 # --- Cost report ------------------------------------------------------------------------
@@ -249,6 +249,8 @@ def order_create(request, org_slug, pk):
     project = costs_project(request, pk)
     settings_for(request.org)
     form = OrderForm(request.POST or None, initial={'order_date': timezone.localdate()})
+    if request.method == 'POST' and _form_key(request, 'order') is None:
+        return _no_key()
     if request.method == 'POST' and form.is_valid():
         d = form.cleaned_data
         try:
@@ -279,6 +281,8 @@ def commitment_detail(request, org_slug, pk, commitment_id):
         action = request.POST.get('action')
         try:
             if action == 'adjust':
+                if _form_key(request, 'adj') is None:
+                    return _no_key()
                 if form.is_valid():
                     try:
                         services.adjust_commitment(c, request.user, form.cleaned_data['amount'],
@@ -350,12 +354,21 @@ def actual_create(request, org_slug, pk):
         if c:
             initial.update(commitment=c, cost_code=c.cost_code, supplier=c.supplier)
     form = ActualForm(request.POST or None, request.FILES or None, project=project, initial=initial)
+    if request.method == 'POST' and _form_key(request, 'actual') is None:
+        return _no_key()
     if request.method == 'POST' and form.is_valid():
         d = form.cleaned_data
         try:
             services.record_actual(project, request.user, d['cost_code'], d['kind'], d['supplier'], d['amount'],
                                    reference=d['reference'], cost_date=d['cost_date'], description=d['description'],
-                                   commitment=d['commitment'], file=d.get('file'))
+                                   commitment=d['commitment'], file=d.get('file'),
+                                   form_key=_form_key(request, 'actual'))
+        except services.AlreadyRecorded:
+            messages.info(request, 'That cost was already recorded from this form, so it was not added again.')
+            return redirect('cost_actuals', org_slug=org_slug, pk=pk)
+        except IntegrityError:  # the same form, sent twice at the same moment
+            messages.info(request, 'That cost was already recorded, so it was not added again.')
+            return redirect('cost_actuals', org_slug=org_slug, pk=pk)
         except CostError as e:
             messages.error(request, str(e))
         else:
