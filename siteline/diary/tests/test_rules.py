@@ -13,25 +13,67 @@ D = date
 
 
 class LockWindowTable(SimpleTestCase):
-    # (entry date, written on, today, unlocked until, locked?, why)
+    """An entry can be changed on its own day and the next working day; then it locks."""
+    # (entry date, written on, today, unlocked until, Saturday counts?, locked?, why)
     TABLE = [
-        (D(2026, 10, 28), D(2026, 10, 28), D(2026, 10, 28), None, False, 'on its own day'),
-        (D(2026, 10, 28), D(2026, 10, 28), D(2026, 10, 29), None, False, 'the day after'),
-        (D(2026, 10, 28), D(2026, 10, 28), D(2026, 10, 30), None, True, 'two days later: locked'),
-        (D(2026, 10, 30), D(2026, 10, 30), D(2026, 11, 2), None, True, 'Friday entry on Monday: locked (calendar days)'),
-        (D(2026, 10, 26), D(2026, 10, 30), D(2026, 10, 30), None, False, 'written late: open on the day it was written'),
-        (D(2026, 10, 26), D(2026, 10, 30), D(2026, 10, 31), None, True, 'written late: locked the day after writing'),
-        (D(2026, 10, 20), D(2026, 10, 20), D(2026, 10, 30), D(2026, 10, 31), False, 'unlocked until tomorrow'),
-        (D(2026, 10, 20), D(2026, 10, 20), D(2026, 11, 1), D(2026, 10, 31), True, 'unlock has run out'),
+        (D(2026, 10, 28), D(2026, 10, 28), D(2026, 10, 28), None, False, False, 'Wednesday entry on Wednesday: open'),
+        (D(2026, 10, 28), D(2026, 10, 28), D(2026, 10, 29), None, False, False, 'Wednesday entry on Thursday: open'),
+        (D(2026, 10, 28), D(2026, 10, 28), D(2026, 10, 30), None, False, True, 'Wednesday entry on Friday: locked'),
+        (D(2026, 10, 30), D(2026, 10, 30), D(2026, 10, 31), None, False, False, 'Friday entry on Saturday: open'),
+        (D(2026, 10, 30), D(2026, 10, 30), D(2026, 11, 2), None, False, False, 'Friday entry on Monday: open'),
+        (D(2026, 10, 30), D(2026, 10, 30), D(2026, 11, 3), None, False, True, 'Friday entry on Tuesday: locked'),
+        (D(2026, 10, 30), D(2026, 10, 30), D(2026, 10, 31), None, True, False,
+         'Saturday counts: Friday entry on Saturday: open'),
+        (D(2026, 10, 30), D(2026, 10, 30), D(2026, 11, 1), None, True, True,
+         'Saturday counts: Friday entry on Sunday: locked'),
+        (D(2026, 5, 22), D(2026, 5, 22), D(2026, 5, 26), None, False, False,
+         'Friday before a bank holiday Monday, on Tuesday: open'),
+        (D(2026, 5, 22), D(2026, 5, 22), D(2026, 5, 27), None, False, True,
+         'Friday before a bank holiday Monday, on Wednesday: locked'),
+        (D(2026, 10, 26), D(2026, 10, 27), D(2026, 10, 28), None, False, True,
+         'Monday entry written Tuesday (in time), on Wednesday: locked'),
+        (D(2026, 10, 26), D(2026, 10, 30), D(2026, 10, 30), None, False, False,
+         'Monday entry written late on Friday: open on Friday'),
+        (D(2026, 10, 26), D(2026, 10, 30), D(2026, 11, 2), None, False, False,
+         'Monday entry written late on Friday: open on Monday'),
+        (D(2026, 10, 26), D(2026, 10, 30), D(2026, 11, 3), None, False, True,
+         'Monday entry written late on Friday: locked on Tuesday'),
+        (D(2026, 10, 20), D(2026, 10, 20), D(2026, 11, 2), D(2026, 11, 2), False, False,
+         'unlocked on Friday: open to the end of Monday'),
+        (D(2026, 10, 20), D(2026, 10, 20), D(2026, 11, 3), D(2026, 11, 2), False, True,
+         'unlocked on Friday: locked again on Tuesday'),
     ]
 
     def test_table(self):
-        for entry, written, today, unlocked, locked, why in self.TABLE:
+        for entry, written, today, unlocked, saturday, locked, why in self.TABLE:
             with self.subTest(why):
-                self.assertEqual(rules.is_locked(entry, written, today, unlocked), locked)
+                self.assertEqual(rules.is_locked(entry, written, today, unlocked, saturday), locked)
 
-    def test_unlock_lasts_to_end_of_next_day(self):
-        self.assertEqual(rules.unlock_until(D(2026, 10, 30)), D(2026, 10, 31))
+    # (unlocked on, Saturday counts?, open until the end of, why)
+    UNLOCK = [
+        (D(2026, 10, 28), False, D(2026, 10, 29), 'Wednesday: to the end of Thursday'),
+        (D(2026, 10, 30), False, D(2026, 11, 2), 'Friday: to the end of Monday'),
+        (D(2026, 10, 30), True, D(2026, 10, 31), 'Friday, Saturday counts: to the end of Saturday'),
+        (D(2026, 5, 22), False, D(2026, 5, 26), 'Friday before a bank holiday Monday: to the end of Tuesday'),
+    ]
+
+    def test_unlock_lasts_to_the_end_of_the_next_working_day(self):
+        for day, saturday, until, why in self.UNLOCK:
+            with self.subTest(why):
+                self.assertEqual(rules.unlock_until(day, saturday), until)
+
+    # (entry date, written on, written late?, why)
+    LATE = [
+        (D(2026, 10, 26), D(2026, 10, 27), False, 'Monday entry written Tuesday'),
+        (D(2026, 10, 26), D(2026, 10, 28), True, 'Monday entry written Wednesday'),
+        (D(2026, 10, 30), D(2026, 11, 2), False, 'Friday entry written Monday'),
+        (D(2026, 10, 30), D(2026, 11, 3), True, 'Friday entry written Tuesday'),
+    ]
+
+    def test_written_late(self):
+        for entry, written, late, why in self.LATE:
+            with self.subTest(why):
+                self.assertEqual(rules.is_written_late(entry, written), late)
 
 
 class WorkingDayTable(SimpleTestCase):

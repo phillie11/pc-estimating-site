@@ -2,7 +2,7 @@
 Site diary: one entry per job per day, what was on site that day, and site photos.
 
   DiaryEntry (DY-001)  core.models.RecordBase, always internal. One per project per date.
-                       Locked after its day and the day after (diary/rules.py); the project
+                       Locked after its day and the next working day (diary/rules.py); the project
                        manager or an admin unlocks it, with a reason, through the `unlock`
                        transition. Every change, including adding or removing a line below,
                        goes through entry.save(actor=...) so it is in the audit trail.
@@ -96,30 +96,42 @@ class DiaryEntry(RecordBase):
     def written_on(self):
         return timezone.localdate(self.created_at) if self.created_at else timezone.localdate()
 
+    @property
+    def calendar(self):
+        """(Saturday counts?, bank holiday region) for this job; set by the caller for a page of entries."""
+        if getattr(self, '_calendar', None) is None:
+            self._calendar = calendar_for(self.project)
+        return self._calendar
+
     def active_unlock(self):
         return self.unlocked_until if self.status == self.STATUS_UNLOCKED else None
 
     def is_locked(self, today=None):
-        return rules.is_locked(self.entry_date, self.written_on, today or timezone.localdate(), self.active_unlock())
+        return rules.is_locked(self.entry_date, self.written_on, today or timezone.localdate(), self.active_unlock(),
+                               *self.calendar)
 
     @property
     def locked(self):
         return self.is_locked()
 
     @property
+    def normal_edit_until(self):
+        return rules.edit_until(self.entry_date, self.written_on, *self.calendar)
+
+    @property
     def editable_until(self):
-        return max(rules.edit_until(self.entry_date, self.written_on), self.active_unlock() or self.entry_date)
+        return max(self.normal_edit_until, self.active_unlock() or self.entry_date)
 
     @property
     def written_late(self):
-        return self.written_on > self.entry_date + rules.ONE_DAY
+        return rules.is_written_late(self.entry_date, self.written_on, *self.calendar)
 
     @property
     def lock_label(self):
         today = timezone.localdate()
         if self.is_locked(today):
             return 'Locked', 'muted'
-        if self.active_unlock() and today > rules.edit_until(self.entry_date, self.written_on):
+        if self.active_unlock() and today > self.normal_edit_until:
             return 'Unlocked', 'warn'
         return 'Open', 'good'
 
@@ -139,6 +151,13 @@ class DiaryEntry(RecordBase):
     @property
     def hours_lost(self):
         return sum((d.hours_lost for d in self.delays.all()), start=Decimal('0'))
+
+
+def calendar_for(project):
+    """(Saturday counts?, bank holiday region) for a job: the company's diary setting and the contract's region."""
+    from contracts.models import MainContract
+    region = MainContract.objects.filter(project=project).values_list('bank_holiday_region', flat=True).first()
+    return DiarySettings.for_org(project.organization).saturday_counts, region or None
 
 
 class LineBase(TenantModel):

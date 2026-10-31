@@ -2,11 +2,12 @@
 The site diary's date rules, as pure functions with fixed test tables (diary/tests/test_rules.py).
 
 Edit window
-    Staff can change an entry on its own day and the calendar day after. An entry written late
-    (for a day already past) can also be changed on the day it was written, so a missing day can
-    be caught up, and the register shows it was written late. After that it is locked; the
-    project manager or an admin can unlock it for correction, with a reason, until the end of
-    the next day.
+    Staff can change an entry on its own day and the next working day: Friday's entry stays open
+    to the end of Monday (Tuesday after a bank holiday Monday). An entry written late (after that
+    window had closed, to catch up a missing day) gets the same window from the day it was
+    written: that day and the next working day. The register shows it was written late. After
+    that it is locked; the project manager or an admin can unlock it for correction, with a
+    reason, until the end of the next working day after the unlock.
 
 Working days and the missing-diary rule ("Needs me")
     A working day is Monday to Friday, plus Saturday where the company says Saturday counts,
@@ -21,23 +22,7 @@ from holidays.calendar import DEFAULT_REGION, is_excluded
 
 DUE_HOUR = 10          # entries are due by 10:00 on the next working day
 LOOKBACK_DAYS = 5      # how many past working days "Needs me" checks
-UNLOCK_DAYS = 1        # an unlock lasts to the end of the next day
 ONE_DAY = datetime.timedelta(days=1)
-
-
-def edit_until(entry_date, written_on):
-    """The last day an entry can be changed without an unlock."""
-    return max(entry_date + ONE_DAY, written_on or entry_date)
-
-
-def is_locked(entry_date, written_on, today, unlocked_until=None):
-    if unlocked_until is not None and today <= unlocked_until:
-        return False
-    return today > edit_until(entry_date, written_on)
-
-
-def unlock_until(today):
-    return today + datetime.timedelta(days=UNLOCK_DAYS)
 
 
 def is_working_day(day, saturday_counts=False, region=DEFAULT_REGION):
@@ -73,3 +58,26 @@ def expected_days(now, saturday_counts=False, region=DEFAULT_REGION, start=None,
             out.append(day)
         day -= ONE_DAY
     return out
+
+
+def is_written_late(entry_date, written_on, saturday_counts=False, region=DEFAULT_REGION):
+    """Written after the entry's own window (its day and the next working day) had closed."""
+    return written_on is not None and written_on > next_working_day(entry_date, saturday_counts, region)
+
+
+def edit_until(entry_date, written_on, saturday_counts=False, region=DEFAULT_REGION):
+    """The last day an entry can be changed without an unlock: the next working day after its date,
+    or after the day it was written if it was written late."""
+    start = written_on if is_written_late(entry_date, written_on, saturday_counts, region) else entry_date
+    return next_working_day(start, saturday_counts, region)
+
+
+def is_locked(entry_date, written_on, today, unlocked_until=None, saturday_counts=False, region=DEFAULT_REGION):
+    if unlocked_until is not None and today <= unlocked_until:
+        return False
+    return today > edit_until(entry_date, written_on, saturday_counts, region)
+
+
+def unlock_until(today, saturday_counts=False, region=DEFAULT_REGION):
+    """An unlock lasts to the end of the next working day."""
+    return next_working_day(today, saturday_counts, region)

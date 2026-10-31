@@ -127,11 +127,13 @@ def diary_register(request, org_slug, pk):
         entries = entries.filter(hs_incident=True)
     lock = request.GET.get('lock', '')
     rows = list(entries)
+    saturday, region = _settings(request, project)
+    for e in rows:
+        e._calendar = (saturday, region)  # one lookup for the page rather than one per entry
     if lock in ('open', 'locked'):
         rows = [e for e in rows if e.locked == (lock == 'locked')]
     page = Paginator(rows, 50).get_page(request.GET.get('page'))
     entry_totals(page.object_list)
-    saturday, region = _settings(request, project)
     missing = missing_days(project, timezone.localtime().replace(tzinfo=None), saturday, region) \
         if project.stage == project.STAGE_LIVE and project.start_date else []
     authors = {e.created_by for e in DiaryEntry.objects.filter(project=project).select_related('created_by')

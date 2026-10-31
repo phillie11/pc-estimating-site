@@ -33,5 +33,5 @@
 {% elif filtered %}{% include "partials/empty_state.html" with title="No diary entries match" message="Nothing matches these filters. Clear them to see every day." cta_url="?" cta_label="Clear filters" cta_plain=True %}
 {% else %}{% url 'diary_today' org.slug project.pk as today_url %}{% include "partials/empty_state.html" with title="No diary entries yet" message="The site diary is written on site, one entry a day: who was on site, deliveries, visitors, delays and photos. Start today's from your phone." cta_url=today_url cta_label="Start today's diary" %}{% endif %}
 </div>
-<p class="small dim">Entries can be changed on the day and the day after; then they lock. The project manager or an admin can unlock one for correction, with a reason. Every change is kept in the entry's history.{% if is_admin %} <a href="{% url 'diary_settings' org.slug %}">Diary settings</a> (whether Saturday is a working day).{% endif %}</p>
+<p class="small dim">Entries can be changed on the day and the next working day; then they lock. The project manager or an admin can unlock one for correction, with a reason. Every change is kept in the entry's history.{% if is_admin %} <a href="{% url 'diary_settings' org.slug %}">Diary settings</a> (whether Saturday is a working day).{% endif %}</p>
 {% endblock %}

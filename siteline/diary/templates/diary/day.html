@@ -13,10 +13,10 @@
   {% else %}Nothing logged for this day yet. Tap a button to start the diary entry.{% endif %}</p>
 
   {% if entry and locked %}<div class="card lock-box" style="margin-bottom:1rem"><div class="card-body">
-    <strong>This day is locked.</strong> Diary entries can be changed on the day and the day after, so they stand up as a record later.
+    <strong>This day is locked.</strong> Diary entries can be changed on the day and the next working day, so they stand up as a record later.
     {% if can_unlock %}<form method="post" action="{% url 'diary_lock' org.slug project.pk day|date:'Y-m-d' %}" style="margin-top:10px">{% csrf_token %}<input type="hidden" name="action" value="unlock">
       {% include "partials/field.html" with field=unlock_form.reason full=True %}
-      <div class="form-actions"><button class="btn">Unlock for correction</button><span class="small dim">It stays open until the end of tomorrow, then locks again. Your reason goes in the audit trail.</span></div></form>
+      <div class="form-actions"><button class="btn">Unlock for correction</button><span class="small dim">It stays open until the end of the next working day, then locks again. Your reason goes in the audit trail.</span></div></form>
     {% else %}<p class="small dim" style="margin:6px 0 0">If something needs correcting, ask the project manager to unlock it.</p>{% endif %}
   </div></div>{% elif entry and entry.active_unlock %}<div class="card lock-box" style="margin-bottom:1rem"><div class="card-body">
     <strong>Unlocked for correction</strong> until the end of {{ entry.unlocked_until|date:"D j M" }}: <span class="wrap-any">{{ entry.unlock_reason }}</span>

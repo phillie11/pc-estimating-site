@@ -5,7 +5,7 @@ Diary entry status changes, registered in DiaryConfig.ready().
   UNLOCKED --relock (anyone who can edit the diary)-----------> RECORDED
 
 Locking itself isn't a status: an entry locks by date (diary/rules.py). `unlock` opens a locked
-entry until the end of the next day and writes the reason into the audit trail.
+entry until the end of the next working day and writes the reason into the audit trail.
 """
 from django.utils import timezone
 
@@ -26,7 +26,7 @@ def may_relock(entry, user):
 
 
 def _unlocked(entry, user, reason=''):
-    entry.unlocked_until = rules.unlock_until(timezone.localdate())
+    entry.unlocked_until = rules.unlock_until(timezone.localdate(), *entry.calendar)
     entry.unlock_reason = reason
 
 
