@@ -8,6 +8,7 @@ from delivery import views as delivery
 from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
+from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import views as projects
 from rfis import views as rfis
@@ -107,6 +108,8 @@ urlpatterns = [
     # Commercial tab: contract set-up, change register, early warnings, change events (changes/urls.py)
     *changes_urls.project_patterns(P),
     *changes_urls.org_patterns,
+    # Applications for payment (payments/urls.py): Commercial -> Applications for staff, Decisions for the client
+    *payments_urls.project_patterns(P),
     # Procurement tab: schedule and submittals (procurement/urls.py)
     *procurement_urls.project_patterns(P),
     # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)
