@@ -8,6 +8,7 @@ from delivery import views as delivery
 from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
+from levelling import urls as levelling_urls
 from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import views as projects
@@ -15,6 +16,7 @@ from rfis import views as rfis
 from subpayments import urls as subpayments_urls
 from tenders import views as tenders
 from variations import views as variations
+from viewer import urls as viewer_urls
 
 from . import views
 
@@ -73,6 +75,8 @@ urlpatterns = [
 
     # Documents tab (documents/urls.py), listed flat so every project URL is a named pattern here
     *[path(P + 'documents/' + str(u.pattern), u.callback, name=u.name) for u in documents_urls.urlpatterns],
+    # Drawing viewer and snag/RFI pins on drawings (viewer/urls.py)
+    *viewer_urls.project_patterns(P),
 
     path(P + 'rfis/', rfis.rfi_list, name='rfi_list'),
     path(P + 'rfis/new/', rfis.rfi_create, name='rfi_create'),
@@ -122,5 +126,7 @@ urlpatterns = [
     # Commercial > Sub payments, Decisions > Payments for subs, CIS and default terms (subpayments/urls.py)
     *subpayments_urls.project_patterns(P),
     *subpayments_urls.org_patterns,
+    # Sub quotes > Level quotes on a bid (levelling/urls.py)
+    *levelling_urls.project_patterns(P),
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

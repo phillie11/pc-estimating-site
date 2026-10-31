@@ -1,0 +1,24 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block title %}Levelling · {{ project.name }}{% endblock %}
+{% block project_content %}<div class="lv-page">
+<div class="lv-head">
+  <div class="crumbs small"><a href="{% url 'package_list' org.slug project.pk %}">Sub quotes</a> / Levelling</div>
+  <h2 style="margin:2px 0 4px">Quote levelling</h2>
+  <p class="small dim" style="margin:0">Compare each trade's quotes like for like, then choose who to carry in the tender. Internal only.</p>
+</div>
+<div class="kpis">
+  <div class="kpi"><div class="label">Trades out to tender</div><div class="value">{{ rows|length }}</div><div class="note">With subcontractors invited</div></div>
+  <div class="kpi"><div class="label">Carried</div><div class="value">{{ carried_count }}</div><div class="note">Trades with a subcontractor chosen</div></div>
+  <div class="kpi"><div class="label">Carried subcontract total</div><div class="value">{{ carried_total|money }}</div><div class="note">Levelled totals of those carried</div></div>
+</div>
+<div class="card">{% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th>Status</th><th class="num">Quotes levelled</th><th class="num">Lowest levelled</th><th>Checks</th></tr></thead><tbody>
+{% for r in rows %}<tr>
+  <td><a class="rowlink" href="{{ r.url }}"><strong>{{ r.trade }}</strong></a><span class="sub">{{ r.view.columns|length }} quote{{ r.view.columns|length|pluralize }} in{% if r.view.others %}, {{ r.view.others|length }} still to quote{% endif %}</span></td>
+  <td>{% badge r.label r.tone %}{% if r.view.carried and r.view.carried.levelled is not None %}<span class="sub">{{ r.view.carried.levelled|money_exact }} levelled</span>{% endif %}</td>
+  <td class="num">{{ r.view.levelled_count }}</td>
+  <td class="num nowrap">{% if r.lowest %}{{ r.lowest.levelled|money_exact }}<span class="sub">{{ r.lowest.package.subcontractor }}</span>{% else %}—{% endif %}</td>
+  <td class="small">{% if r.view.missing_total %}{% badge r.view.missing_total|stringformat:"s"|add:" missing" 'bad' %} {% endif %}{% if r.view.unpriced_total %}{% badge r.view.unpriced_total|stringformat:"s"|add:" exclusions unpriced" 'bad' %}{% endif %}{% if not r.view.missing_total and not r.view.unpriced_total %}<span class="dim">—</span>{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+{% else %}{% url 'package_list' org.slug project.pk as pk_url %}{% include "partials/empty_state.html" with title="Nothing to level yet" message="Levelling starts once subcontractors are invited to price a trade. Invite them from Sub quotes; each trade gets a levelling sheet here." cta_url=pk_url cta_label="Invite subcontractors" %}{% endif %}</div>
+</div>{% endblock %}

@@ -1,0 +1,1 @@
+{% if pending_pin %}<div class="flash info" role="status">This will be pinned to drawing <strong>{{ pending_pin.label }}</strong>, page {{ pending_pin.page }}. <a href="{% url 'drawing_viewer' org.slug project.pk pending_pin.doc.pk pending_pin.rev.pk %}">Back to the drawing</a></div>{% endif %}

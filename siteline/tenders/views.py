@@ -227,6 +227,12 @@ def _internal(request, project):
         d.opened_by = sorted(opened.get(cur.file.name, set())) if cur else []
     settings = TenderSettings.for_org(request.org)
     rows = coverage.trade_rows(project, target=settings.min_quotes, packages=packages)
+    levelling_reasons = []
+    if request.membership.can_estimate:
+        from levelling.coverage import annotate
+        from levelling.services import reasons_needed
+        annotate([(project, rows)])  # "Not levelled" on trades with fewer than 2 quotes levelled
+        levelling_reasons = reasons_needed(project)  # carried subs no longer lowest, with no reason
     for r in rows:
         r.suggestions = coverage.suggest(project, r.trade) if r.thin else []
     today = timezone.localdate()
@@ -242,7 +248,7 @@ def _internal(request, project):
         last_chased=max((p.chased_at for p in packages if p.chased_at), default=None),
         due_label=coverage.due_label((due - today).days if due else None),
         site_regions=region_labels(guess_regions(project.site_address)), review=review,
-        gate_required=gate.gate_required(project, review, settings)))
+        gate_required=gate.gate_required(project, review, settings), levelling_reasons=levelling_reasons))
 
 
 def _invite_suggested(request, project, url):

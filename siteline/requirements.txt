@@ -11,6 +11,10 @@ Pillow==13.0.0
 segno==1.6.6
 # PDF drawing register and transmittal issue sheets (ReportLab, BSD)
 reportlab==5.0.1
+# Quote levelling: reading scope workbooks (.xlsx), read-only and data-only (MIT)
+openpyxl==3.1.5
+# openpyxl parses workbook XML with defusedxml when it is installed: no entities, no external DTDs (PSF)
+defusedxml==0.7.1
 # MySQL on PythonAnywhere (left out of the Docker image)
 mysqlclient==2.2.6
 # AWS (ECS Fargate + RDS PostgreSQL): web server and PostgreSQL driver (DB_ENGINE=postgres)

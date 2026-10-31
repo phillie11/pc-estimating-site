@@ -335,6 +335,9 @@ class Command(BaseCommand):
             # Drawing register: ISO-numbered drawings, superseded revisions and transmittals (documents app)
             from documents.demo import seed as seed_documents
             seed_documents(leeds, pm, client, subu, s_join, demo_pdf)
+            # Drawing viewer: three snag pins and an RFI pin on the ground floor GA (viewer/demo.py)
+            from viewer.demo import seed as seed_pins
+            seed_pins(leeds, pm, subu, r1)
 
             for verb, target, actor, internal in [('raised', f'{r1.reference} Bar back panelling', subu, False),
                                                   ('responded to', r3.reference, client, False),
@@ -429,5 +432,7 @@ class Command(BaseCommand):
 
             from tenders.demo import seed as seed_bid_discipline
             seed_bid_discipline(owner, est)  # bid/no-bid scores, loss reviews, coverage (tenders/demo.py)
+            from levelling.demo import seed as seed_levelling
+            seed_levelling(est)  # Kingsway joinery levelled across three quotes (levelling/demo.py)
 
         self.stdout.write(self.style.SUCCESS(f'Demo workspace ready at /{SLUG}/  (password {PASSWORD})'))
