@@ -27,5 +27,5 @@
 </tbody></table></div>
 {% elif filtered %}{% include "partials/empty_state.html" with title="Nothing matches these filters" message="Clear the filters to see the whole schedule." cta_url="?" cta_label="Clear filters" cta_plain=True %}
 {% else %}{% url 'procurement_line_create' org.slug project.pk as add_url %}{% include "partials/empty_state.html" with title="No procurement schedule yet" message="Add a line for each trade package or long-lead item. Give it the date it's needed on site, its lead time and the approval period, and Siteline works out when it must be ordered and when submittals are due." cta_url=add_url cta_label="Add the first line" %}{% endif %}</div>
-<p class="small dim">{% badge 'Advisory' 'warn' %} Order by = required on site − lead time − approval period. Submittals due = order by − approval period. Weeks are working weeks (7 calendar days); a date that falls on a weekend or bank holiday moves back to the working day before. Check against your subcontract orders and programme.</p>
+<p class="small dim">{% badge 'Advisory' 'warn' %} Order by = required on site − lead time. Submittals due = order by − approval period. Weeks are working weeks (7 calendar days); a date that falls on a weekend or bank holiday moves back to the working day before. Check against your subcontract orders and programme.</p>
 {% endblock %}

@@ -9,7 +9,7 @@ Working weeks
     the UK, from holidays.calendar), it moves back to the working day before. Moving back,
     never forward, means rounding can only make a date earlier, never late.
 
-    order_by        = required on site - lead time (weeks) - approval period (weeks)
+    order_by        = required on site - lead time (weeks)
     submittals_due  = order_by - approval period (weeks)
 
     A missing required-on-site date gives no dates. A missing lead time or approval period
@@ -60,10 +60,11 @@ def weeks_before(day, weeks, region=DEFAULT_REGION):
 
 
 def order_by(required_on_site, lead_time_weeks, approval_weeks, region=DEFAULT_REGION):
-    """The last date to place the order so it arrives when needed."""
+    """The last date to place the order so it arrives when needed. The approval period doesn't move it
+    (it comes before the order: see submittals_due); it is taken so both functions share a signature."""
     if required_on_site is None:
         return None
-    return weeks_before(required_on_site, (lead_time_weeks or 0) + (approval_weeks or 0), region)
+    return weeks_before(required_on_site, lead_time_weeks or 0, region)
 
 
 def submittals_due(required_on_site, lead_time_weeks, approval_weeks, region=DEFAULT_REGION):

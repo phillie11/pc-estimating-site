@@ -19,8 +19,10 @@ D = date
 
 # (why, required on site, lead weeks, approval weeks, region, order by, submittals due)
 ORDER_BY_TABLE = [
-    ('Plain case: Mon minus 8 weeks is a Mon',
-     D(2026, 6, 15), 6, 2, EW, D(2026, 4, 20), D(2026, 4, 2)),
+    ('Order by lands on the Early May bank holiday (Mon 4 May): back to Fri 1 May; submittals 2 weeks before',
+     D(2026, 6, 15), 6, 2, EW, D(2026, 5, 1), D(2026, 4, 17)),
+    ('Plain case: Mon minus 6 weeks is a Mon; approval only moves submittals due',
+     D(2026, 6, 1), 6, 2, EW, D(2026, 4, 20), D(2026, 4, 2)),
     # submittals due: 20 Apr - 2 weeks = Easter Monday 6 Apr -> Sun -> Sat -> Good Friday -> Thu 2 Apr
     ('Required on a Saturday: lands on a Saturday, moves back to Friday',
      D(2026, 6, 13), 4, 0, EW, D(2026, 5, 15), D(2026, 5, 15)),
@@ -40,8 +42,10 @@ ORDER_BY_TABLE = [
      D(2027, 1, 11), 2, 0, EW, D(2026, 12, 24), D(2026, 12, 24)),
     ('A year of lead time',
      D(2027, 3, 1), 52, 0, EW, D(2026, 3, 2), D(2026, 3, 2)),
-    ('Approval counts twice: once into order by, once more into submittals due',
-     D(2026, 9, 14), 4, 3, EW, D(2026, 7, 27), D(2026, 7, 6)),
+    ('Approval comes before the order: it moves submittals due, not order by',
+     D(2026, 9, 14), 4, 3, EW, D(2026, 8, 17), D(2026, 7, 27)),
+    ('No lead time, approval only: order by is the required date',
+     D(2026, 4, 20), 0, 2, EW, D(2026, 4, 20), D(2026, 4, 2)),
 ]
 
 # (why, start, working days, region, answer)
@@ -83,7 +87,8 @@ class OrderByTests(SimpleTestCase):
                 continue
             with self.subTest(why):
                 self.assertTrue(dates.is_working_day(ob, region))
-                self.assertLessEqual(ob, ros - timedelta(weeks=(lead or 0) + (approval or 0)))
+                self.assertLessEqual(ob, ros - timedelta(weeks=lead or 0))
+                self.assertLessEqual(due, ob - timedelta(weeks=approval or 0))
                 self.assertLessEqual(due, ob)
 
 

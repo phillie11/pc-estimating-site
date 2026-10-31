@@ -28,7 +28,7 @@ from .models import ScheduleLine, Submittal, SubmittalFile, SubmittalRevision
 def _line(project, title, order_in_days, lead, approval, user, **kw):
     """A line whose order-by date lands about `order_in_days` from today (moved back to a working day)."""
     today = timezone.localdate()
-    ros = today + timedelta(days=order_in_days + (lead + approval) * 7)
+    ros = today + timedelta(days=order_in_days + lead * 7)
     line = ScheduleLine(project=project, title=title, required_on_site=ros, lead_time_weeks=lead,
                         approval_weeks=approval, created_by=user, **kw)
     line.save()

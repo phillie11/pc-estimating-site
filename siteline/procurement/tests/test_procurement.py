@@ -36,7 +36,7 @@ def tearDownModule():
 class ScheduleLineTests(ProcurementTestBase):
     def test_dates_are_worked_out_on_save(self):
         line = self.line(required_on_site=date(2026, 6, 15), lead_time_weeks=6, approval_weeks=2)
-        self.assertEqual((line.order_by, line.submittals_due), (date(2026, 4, 20), date(2026, 4, 2)))
+        self.assertEqual((line.order_by, line.submittals_due), (date(2026, 5, 1), date(2026, 4, 17)))
         line.required_on_site = None
         line.save()
         self.assertEqual((line.order_by, line.submittals_due), (None, None))
@@ -72,7 +72,7 @@ class ScheduleLineTests(ProcurementTestBase):
         self.assertEqual(r.status_code, 302)
         with org_context(self.org_a):
             line = ScheduleLine.objects.get(title='Kitchen extract')
-        self.assertEqual(line.order_by, date(2026, 4, 20))
+        self.assertEqual(line.order_by, date(2026, 5, 1))
         self.client.post(self.url('procurement_line', self.pa.pk, line.pk), {'action': 'ordered'})
         self.assertEqual(self.fresh(line).status, ScheduleLine.ORDERED)
         self.client.post(self.url('procurement_line', self.pa.pk, line.pk), {'action': 'delete'})

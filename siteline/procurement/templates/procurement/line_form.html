@@ -24,7 +24,7 @@
     </div>
     {% if not submittals %}<form method="post" data-confirm="Remove this line from the schedule? This can't be undone.">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn sm">Remove from schedule</button></form>{% endif %}
     {% else %}<div class="card"><div class="card-head"><h2>How the dates work</h2></div><div class="card-body small">
-      <p>Order by = required on site − lead time − approval period.</p>
+      <p>Order by = required on site − lead time.</p>
       <p>Submittals due = order by − approval period.</p>
       <p style="margin:0">Weeks are working weeks. A date on a weekend or bank holiday moves back to the working day before. The project manager is reminded in Needs me a week before the order-by date. {% badge 'Advisory' 'warn' %}</p>
     </div></div>{% endif %}
