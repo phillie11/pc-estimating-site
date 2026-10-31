@@ -114,6 +114,21 @@ Checklist:
 6. **Adopting an existing register** takes three migrations, as `rfis 0003`–`0005`: (a) rename fields to the base names and add the new columns, (b) a reversible `RunPython` that fills `ref`/`visibility` and creates the `NumberSequence`, `RecordIndex` and back-filled `created` `AuditEntry` rows from the historical models, (c) drop the old columns. Keep data changes and `ALTER TABLE`s in separate migrations (PostgreSQL). A new register only needs its `CreateModel`.
 7. **Tests.** Copy `core/tests/base.py` for set-up and add your type's versions of: numbering per project (`test_records.NumberingTests`), index kept in step on create/update/transition/soft delete (`IndexTests`), audit diffs (`AuditTests`), each transition's permissions and source statuses through the views (`test_workflow`), another company can't see it and no organisation fails closed (`test_tenancy`), and, when adopting an existing register, the forward and backward data migration on seeded data (`test_rfi_migration`).
 
+## Cost control and the cost ledger
+
+*Commercial → Costs* on a won or live job (`costs/`): cost report, budget, orders, actual costs and the ledger. Only the job's project manager (its manager, or a PM or QS on its team), owners and admins see it (`costs/access.py`); externals never do, and archived jobs are read only. Owners and admins keep the company's cost code library (seeded with UK fit-out defaults on first use) and the margin warning (default 10%) under *Settings → Cost control*.
+
+- **Ledger.** Every budget, commitment and actual movement is a `costs.LedgerEntry`. It is append-only: `save()` of an existing row, `delete()` and queryset `update()`/`delete()`/`bulk_update()` raise `PermissionError`. Other apps post through `costs.ledger`:
+  ```python
+  from costs import ledger
+  entry = ledger.post(project, cost_code, ledger.ACTUAL, Decimal('1250.00'), source=payment, actor=user, note='Valuation 3')
+  ledger.reverse(entry, actor=user, reason='Posted to the wrong job')   # equal and opposite entry, once
+  ledger.totals(project)   # {cost_code_id: {'BUDGET': Decimal, 'COMMITMENT': Decimal, 'ACTUAL': Decimal}}
+  ```
+  Amounts are Decimal/int/str (floats raise), rounded half up to 1p. The source is any saved row (a generic link). Only ACTUAL entries can be reversed: budgets are corrected by a transfer or revision and orders by an adjustment (`costs.services`), and `reverse()` refuses anything else. New orders, order adjustments and actual costs carry a one-time form key, so a double submit records once; a post to those pages without a key gets a 400 ("Please reload the page and try again"). Service callers pass `form_key=None` and get no deduplication.
+- **Budget** is set once from the tender (value less margin %, spread over codes; the lines must add up), then changes only by a transfer (between codes) or a revision (changes the total), each with a reason. **Orders** come from appointed packages (*Commit this order*) or are entered by hand, and change only through recorded adjustments, including *Add to order* for approved sub variations. **Actual costs** are invoices or timesheet totals with an optional attachment (validated and served by `projects/files.py`); a wrong one is reversed, never deleted.
+- **Report** (`costs/report.py`) reads only the ledger: forecast final cost per code is the latest manual forecast, else the larger of budget, committed and actual; margin is against `contracts.commercial.commercial_position`'s forecast final account. Below the company threshold it shows red and lists the job on its PM's and admins' *Needs me* (`costs/actions.py`). The money rules and their fixed test table are in `costs/money.py` and `costs/tests/test_money.py`.
+
 ## Needs me, dashboards and the portal
 
 Anything waiting on a person is listed through one registry, `actions` ("Needs me"). Don't add a dashboard card of your own for it: register a provider.
@@ -406,6 +421,7 @@ rfis/         RFI register (the first record type on core)
 variations/   variations & client approval (on core.RecordBase)
 contracts/    main contract set-up per project, standard terms (presets.py), contract vocabulary, the Commercial tab
 changes/      early warnings, change events, change registers, advisory contract clocks (clocks.py), Needs-me items (actions.py)
+costs/        cost codes, budgets, commitments, actual costs, the append-only cost ledger (ledger.py), cost report
 holidays/     UK bank holidays by region (bundled gov.uk-format table, `manage.py update_bank_holidays`), Construction Act day counting
 directory/    subcontractors, trades, trade packages and quote comparison
 tenders/      portal tenders: invitations, addenda, tender queries, appointment rules

@@ -27,6 +27,9 @@ def commercial_context(request, project, sub, **extra):
             ('changes', 'Change register', reverse('change_register', args=[org, pk])),
             ('variations', f"Client {words['change_plural']}", reverse('variation_list', args=[org, pk])),
         ]
+        from costs.access import can_view_costs  # Costs: the job's PM or QS, owners and admins only
+        if can_view_costs(request, project):
+            ctx['commercial_nav'].append(('costs', 'Costs', reverse('cost_report', args=[org, pk])))
         ctx['commercial_sub'] = sub
     return ctx
 

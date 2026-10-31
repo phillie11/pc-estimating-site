@@ -1,0 +1,26 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if not read_only %}{% if original %}<a class="btn" href="{% url 'cost_budget_change' org.slug project.pk %}?kind=transfer">Transfer budget</a><a class="btn" href="{% url 'cost_budget_change' org.slug project.pk %}?kind=revision">Revise budget</a>{% else %}<a class="btn primary" href="{% url 'cost_budget_setup' org.slug project.pk %}">{% icon 'plus' %} Set the budget</a>{% endif %}{% endif %}{% endblock %}
+{% block project_content %}
+{% include "costs/_nav.html" %}
+{% if original %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Original budget</div><div class="value">{{ original.total|money:currency }}</div><div class="note">{{ original.basis_value|money:currency }} less {{ original.margin_pct|floatformat:"-2" }}% margin</div></div>
+  <div class="kpi"><div class="label">Current budget</div><div class="value">{{ current_total|money:currency }}</div><div class="note">After every transfer and revision</div></div>
+</div>
+<div class="filters" aria-label="Filter budget changes">
+  <a class="chip {% if not kind %}on{% endif %}" href="?">Everything</a>
+  {% for code, label in kind_choices %}<a class="chip {% if kind == code %}on{% endif %}" href="?kind={{ code }}">{{ label }}s</a>{% endfor %}
+</div>
+{% for ch in changes %}
+<div class="card"><div class="card-head"><h2>{{ ch.reference }} · {{ ch.get_kind_display }}</h2><span class="small dim">{{ ch.created_at|date:"j M Y" }}{% if ch.created_by %}, {{ ch.created_by.full_name }}{% endif %}</span></div>
+  {% if ch.reason %}<div class="card-body small" style="padding-bottom:0"><strong>Reason:</strong> {{ ch.reason }}</div>{% endif %}
+  <div class="table-wrap"><table class="t cost-table"><thead><tr><th>Cost code</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for l in ch.lines.all %}<tr><td class="nowrap"><span class="mono">{{ l.cost_code.code }}</span> {{ l.cost_code.name }}</td><td>{{ l.description }}</td><td class="num{% if l.amount < 0 %} overdue{% endif %}">{{ l.amount|money_exact:currency }}</td></tr>{% endfor %}
+  </tbody></table></div></div>
+{% empty %}<div class="card">{% include "partials/empty_state.html" with title="No budget changes of this kind" message="Nothing to show with this filter." cta_url="?" cta_label="Show everything" cta_plain=1 %}</div>
+{% endfor %}
+<p class="small dim">A budget is never edited once it's set: transfers move money between codes, revisions change the total, and each keeps its reason.</p>
+{% else %}
+<div class="card">{% if read_only %}{% include "partials/empty_state.html" with title="No budget" message="This job was archived before a budget was set." %}{% else %}{% url 'cost_budget_setup' org.slug project.pk as setup_url %}{% include "partials/empty_state.html" with title="No budget yet" message="Set it from the tender: the contract value less your margin, spread over the cost codes you fill in." cta_url=setup_url cta_label="Set the budget" %}{% endif %}</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Cost code {{ code.code }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / <a href="{% url 'cost_settings' org.slug %}">Cost control</a></div><h1>Cost code {{ code.code }}</h1></div></div>
+<div class="card" style="max-width:720px"><div class="card-body">
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+  <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'cost_settings' org.slug %}">Cancel</a></div></form>
+  {% if code.has_money %}<p class="small dim">This code has money on at least one job, so it can't be deleted. Untick "In use" to stop it being offered for new costs; past jobs keep it.</p>
+  {% else %}<form method="post" data-confirm="Delete cost code {{ code.code }}? It isn't used on any job.">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn ghost danger" style="min-height:44px">Delete this code</button></form>{% endif %}
+</div></div>
+{% endblock %}

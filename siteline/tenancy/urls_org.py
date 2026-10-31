@@ -3,6 +3,7 @@ from django.urls import include, path
 from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
+from costs import urls as costs_urls
 from delivery import views as delivery
 from directory import views as directory
 from documents import urls as documents_urls
@@ -104,5 +105,8 @@ urlpatterns = [
     # Commercial tab: contract set-up, change register, early warnings, change events (changes/urls.py)
     *changes_urls.project_patterns(P),
     *changes_urls.org_patterns,
+    # Commercial > Costs and Settings > Cost control (costs/urls.py)
+    *costs_urls.project_patterns(P),
+    *costs_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

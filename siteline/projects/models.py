@@ -144,7 +144,10 @@ class Project(TenantModel):
 
     # Related records that mean a project must be archived, not deleted
     RECORD_RELATIONS = ('rfis', 'variations', 'rams', 'sub_variations', 'packages', 'documents', 'file_access',
-                        'tasks', 'issues', 'activities', 'addenda', 'tender_queries', 'record_index')
+                        'tasks', 'issues', 'activities', 'addenda', 'tender_queries', 'record_index',
+                        # Cost control (costs/): the append-only ledger and the records behind it
+                        'cost_ledger', 'budget_changes', 'budget_lines', 'commitments', 'commitment_adjustments',
+                        'actual_costs', 'cost_forecasts')
 
     class Meta:
         ordering = ['-updated_at']
