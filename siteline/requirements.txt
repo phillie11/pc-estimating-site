@@ -4,7 +4,7 @@ whitenoise==6.12.0
 python-dotenv==1.2.4
 # Cloud file storage (AWS S3 London, DigitalOcean Spaces or Cloudflare R2), switched on by STORAGE_BUCKET
 django-storages==1.14.6
-boto3==1.35.36
+boto3==1.43.120
 django-axes==7.1.0
 Pillow==13.0.0
 # Two-factor set-up QR codes, drawn on the server (pure Python, no dependencies)
