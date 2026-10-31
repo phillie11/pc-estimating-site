@@ -52,9 +52,18 @@ class SubPayTestBase(CommercialTestBase):
             self.sc = subcontract_for(self.pkg, self.pat)
             self.other_sc = subcontract_for(self.other_pkg, self.pat)
 
-    def receive(self, gross='20000', materials='4000', valuation=None, sc=None, actor=None, received=None):
+    def allow(self, sc, day):
+        """Put a valuation date on the subcontract's listed dates (tests use dates relative to today)."""
         with org_context(self.org_a):
-            valuation = valuation or timezone.localdate() - timedelta(days=2)
+            sc.refresh_from_db()
+            sc.cycle_kind = rules.CYCLE_DATES
+            sc.valuation_dates = sorted({*sc.valuation_dates, day.isoformat()})
+            sc.save()
+
+    def receive(self, gross='20000', materials='4000', valuation=None, sc=None, actor=None, received=None):
+        valuation = valuation or timezone.localdate() - timedelta(days=2)
+        self.allow(sc or self.sc, valuation)
+        with org_context(self.org_a):
             return services.receive_application(sc or self.sc, actor or self.sid, valuation, D(gross), D(materials),
                                                 by_sub=True, received_on=received)
 
@@ -134,10 +143,14 @@ class ApplyTests(SubPayTestBase):
     def test_sub_applies_through_the_portal(self):
         self.login(self.sid)
         valuation = timezone.localdate() - timedelta(days=1)
-        r = self.client.post(self.url('subpay_apply', self.pa.pk, self.pkg.pk),
-                             {'valuation_date': valuation.isoformat(), 'gross_to_date': '20,000.00',
-                              'materials': '4000', 'notes': 'First fix complete'})
+        self.allow(self.sc, valuation)
+        data = {'valuation_date': valuation.isoformat(), 'gross_to_date': '20,000.00', 'materials': '4000',
+                'notes': 'First fix complete', 'form_key': 'once'}
+        r = self.client.post(self.url('subpay_apply', self.pa.pk, self.pkg.pk), data)
         self.assertEqual(r.status_code, 302)
+        self.client.post(self.url('subpay_apply', self.pa.pk, self.pkg.pk), data)  # sent twice: one application
+        data.pop('form_key')
+        self.assertEqual(self.client.post(self.url('subpay_apply', self.pa.pk, self.pkg.pk), data).status_code, 400)
         with org_context(self.org_a):
             a = SubApplication.objects.get()
             self.assertEqual((a.ref, a.status, a.applied_by_sub, a.ball_in_court_user), ('SA-001', 'RECEIVED', True,
@@ -288,8 +301,7 @@ class PaymentTests(SubPayTestBase):
             self.assertEqual(SubApplication.objects.get(pk=a.pk).status, SubApplication.PAID)
 
     def test_payment_needs_an_order(self):
-        with org_context(self.org_a):
-            a = services.receive_application(self.other_sc, self.otto, timezone.localdate(), D('1000'))
+        a = self.receive('1000', '0', valuation=timezone.localdate(), sc=self.other_sc, actor=self.otto)
         self.pay(a, '950')
         with org_context(self.org_a):
             self.assertFalse(SubPayment.objects.exists())
@@ -432,3 +444,149 @@ class NeedsMeAndTenancyTests(SubPayTestBase):
         with org_context(self.org_b):
             self.assertFalse(SubApplication.objects.exists())
             self.assertFalse(SubcontractorTax.objects.exists())
+
+
+class ReviewFixTests(SubPayTestBase):
+    def apply(self, user, day, gross='20000', **extra):
+        self.login(user)
+        return self.client.post(self.url('subpay_apply', self.pa.pk, self.pkg.pk),
+                                {'valuation_date': day.isoformat(), 'gross_to_date': gross, 'form_key': str(day),
+                                 **extra})
+
+    def test_valuation_date_must_be_this_cycle_or_the_one_before(self):
+        today = timezone.localdate()
+        with org_context(self.org_a):
+            self.sc.refresh_from_db()
+            allowed = self.sc.allowed_dates(today)
+        self.assertEqual(len(allowed), 2)
+        self.assertEqual(self.apply(self.sid, allowed[0] - timedelta(days=31)).status_code, 200)  # two cycles back
+        self.assertEqual(self.apply(self.sid, today + timedelta(days=1)).status_code, 200)        # the future
+        self.assertEqual(self.apply(self.sid, allowed[0]).status_code, 302)                       # one cycle back
+        with org_context(self.org_a):
+            a = SubApplication.objects.get()
+        # Received today, so our deadlines run from today, not from the old valuation date
+        self.assertGreaterEqual(a.payment_notice_by, today)
+        self.assertFalse(a.stands_as_notified)
+
+    def test_gross_above_three_times_the_order_needs_a_staff_reason(self):
+        day = timezone.localdate() - timedelta(days=1)
+        self.allow(self.sc, day)
+        self.assertEqual(self.apply(self.sid, day, gross='150000.01').status_code, 200)
+        self.assertEqual(self.apply(self.pat, day, gross='150000.01').status_code, 200)
+        r = self.apply(self.pat, day, gross='150000.01', received_on=day.isoformat(),
+                       override_reason='Order to be increased: client instruction CI-12')
+        self.assertEqual(r.status_code, 302)
+        with org_context(self.org_a):
+            self.assertEqual(SubApplication.objects.get().gross_to_date, D('150000.01'))
+
+    def test_payment_notice_lowering_the_sum_caps_materials(self):
+        a = self.receive('20000', '15000')
+        self.login(self.pat)
+        self.client.post(self.detail(a), {'action': 'payment_notice', 'amount': '10000', 'basis': 'Valued lower'})
+        self.assertEqual(self.reload(a).materials, D('10000.00'))
+
+    def test_part_payments_vat_adds_up(self):
+        with org_context(self.org_a):
+            SubcontractorTax.objects.filter(subcontractor=self.subco).update(vat_rate=D('17.5'))
+        a = self.receive('20000', '0')  # 19,000 due
+        for i, part in enumerate(('0.03', '0.03', '18999.94')):
+            self.pay(a, part, key=f'p{i}')
+        with org_context(self.org_a):
+            vats = [p.vat for p in SubPayment.objects.order_by('pk')]
+        self.assertEqual(sum(vats), rules.vat_on(D('19000'), D('17.5')))
+
+    def test_payment_date_rules_and_earlier_tax_month_warning(self):
+        a = self.receive(received=timezone.localdate() - timedelta(days=1),
+                         valuation=timezone.localdate() - timedelta(days=2))
+        self.login(self.pat)
+        r = self.client.post(self.detail(a), {'action': 'payment', 'gross': '100', 'form_key': 'e',
+                                              'paid_on': (timezone.localdate() - timedelta(days=3)).isoformat()})
+        self.assertEqual(r.status_code, 200)  # before it was received
+        with org_context(self.org_a):
+            self.assertFalse(SubPayment.objects.exists())
+        self.assertTrue(services.earlier_tax_month(timezone.localdate() - timedelta(days=40)))
+        self.assertFalse(services.earlier_tax_month(timezone.localdate()))
+
+    def test_reversal_in_a_later_tax_month_is_an_adjustment(self):
+        from ..views import cis_summary
+        a = self.receive()
+        self.pay(a, '19000')
+        with org_context(self.org_a):
+            p = SubPayment.objects.get()
+            earlier = timezone.localdate() - timedelta(days=45)
+            SubPayment.objects.filter(pk=p.pk).update(paid_on=earlier)
+            services.reverse_payment(p, self.adam, 'Paid to the wrong sub')
+            then, _ = cis_summary(rules.tax_month(earlier))
+            now, totals = cis_summary(rules.tax_month(timezone.localdate()))
+        self.assertEqual([(r['gross'], r['cis'], r['adjustment']) for r in then],
+                         [(D('19000.00'), D('3000.00'), False)])
+        self.assertEqual([(r['gross'], r['cis'], r['adjustment']) for r in now],
+                         [(D('-19000.00'), D('-3000.00'), True)])
+        self.login(self.alice)
+        csv_text = self.client.get(self.url('subpay_cis') + '?export=csv').content.decode()
+        self.assertIn('earlier return may need amending', csv_text)
+
+    def test_order_invoiced_to_date_includes_sub_payments_and_form_hides_the_order(self):
+        a = self.receive()
+        self.pay(a, '19000')
+        self.login(self.pat)
+        r = self.client.get(self.url('cost_commitment_detail', self.pa.pk, self.order.pk))
+        self.assertEqual(r.context['invoiced'], D('19000.00'))
+        r = self.client.get(self.url('cost_actual_create', self.pa.pk))
+        self.assertNotIn(self.order, list(r.context['form'].fields['commitment'].queryset))
+
+    def test_hand_entered_actual_blocks_sub_payment(self):
+        from costs.models import ActualCost
+        with org_context(self.org_a):
+            ActualCost.objects.create(project=self.pa, cost_code=self.code, supplier='Sid', amount=D('100'),
+                                      commitment=self.order)
+            from costs import ledger as cl
+            act = ActualCost.objects.get()
+            cl.post(self.pa, self.code, cl.ACTUAL, D('100'), source=act)
+        a = self.receive()
+        self.pay(a, '1000')
+        with org_context(self.org_a):
+            self.assertFalse(SubPayment.objects.exists())
+
+    def test_verification_number_on_the_advice(self):
+        from .. import pdf as subpay_pdf
+        a = self.receive()
+        self.pay(a, '1000')
+        with org_context(self.org_a):
+            p = SubPayment.objects.get()
+        seen = []
+        real = subpay_pdf._p
+
+        def spy(text, style):
+            seen.append(str(text))
+            return real(text, style)
+        from unittest import mock as m
+        for show in (True, False):
+            seen.clear()
+            with org_context(self.org_a), m.patch.object(subpay_pdf, '_p', side_effect=spy):
+                subpay_pdf.advice_pdf(SubPayment.objects.get(pk=p.pk), show_verification=show)
+            self.assertEqual(any('V1234567890' in t for t in seen), show)
+        url = self.url('subpay_advice', self.pa.pk, p.pk)
+        for user in (self.sid, self.adam, self.pat):
+            self.login(user)
+            self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_no_writes_on_get_and_utr(self):
+        from ..models import Subcontract, SubPaymentSettings
+        with org_context(self.org_a):
+            Subcontract.objects.filter(pk=self.other_sc.pk).delete()
+            SubPaymentSettings.objects.all().delete()
+        self.login(self.otto)
+        self.assertEqual(self.client.get(self.url('subpay_apply', self.pa.pk, self.other_pkg.pk)).status_code, 200)
+        self.login(self.alice)
+        self.client.get(self.url('subpay_settings'))
+        self.client.get(self.url('subpay_open', self.pa.pk, self.other_pkg.pk))
+        with org_context(self.org_a):
+            self.assertFalse(Subcontract.objects.filter(package=self.other_pkg).exists())
+            self.assertFalse(SubPaymentSettings.objects.exists())
+        r = self.client.post(self.url('subpay_tax', self.other.pk), {'cis_status': rules.CIS_UNVERIFIED,
+                                                                     'vat_rate': '20', 'utr': '12345'})
+        self.assertEqual(r.status_code, 200)
+        r = self.client.post(self.url('subpay_tax', self.other.pk), {'cis_status': rules.CIS_UNVERIFIED,
+                                                                     'vat_rate': '20', 'utr': '12345 67890'})
+        self.assertEqual(r.status_code, 302)

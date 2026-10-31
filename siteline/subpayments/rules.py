@@ -71,9 +71,19 @@ def cis_rate(status):
     return CIS_RATES.get(status, CIS_RATES[CIS_UNVERIFIED])
 
 
+# How a CIS deduction is rounded to the penny. Down, as briefed; being confirmed with the product
+# owner's accountant. Change this one line (e.g. to ROUND_HALF_UP) if the answer differs.
+CIS_ROUNDING = ROUND_DOWN
+
+
 def penny_down(value):
-    """Round down (towards zero) to the penny, as HMRC rounds a CIS deduction."""
+    """Round down (towards zero) to the penny: part payments' materials share."""
     return Decimal(value).quantize(PENNY, rounding=ROUND_DOWN)
+
+
+def cis_round(value):
+    """Round a CIS deduction to the penny with CIS_ROUNDING."""
+    return Decimal(value).quantize(PENNY, rounding=CIS_ROUNDING)
 
 
 @dataclass(frozen=True)
@@ -97,18 +107,21 @@ def cis_deduction(gross_ex_vat, materials, rate):
     """
     gross, materials = money(gross_ex_vat), money(materials)
     labour = max(gross - min(materials, gross), ZERO)
-    return penny_down(labour * Decimal(rate) / 100)
+    return cis_round(labour * Decimal(rate) / 100)
 
 
 def advice(gross_ex_vat, materials=ZERO, cis_status=CIS_UNVERIFIED, vat_rate=VAT_STANDARD_RATE,
-           reverse_charge=False):
-    """Gross due, materials, labour, CIS deduction, VAT and net payable for one payment."""
+           reverse_charge=False, vat=None):
+    """
+    Gross due, materials, labour, CIS deduction, VAT and net payable for one payment. `vat` is
+    given for a part payment (part_vat), so the parts' VAT adds up to the VAT on the whole.
+    """
     gross = money(gross_ex_vat)
     mats = min(money(materials), gross) if gross > 0 else ZERO
     labour = gross - mats
     rate = cis_rate(cis_status)
     cis = cis_deduction(gross, mats, rate)
-    vat = vat_on(gross, vat_rate, reverse_charge)
+    vat = vat_on(gross, vat_rate, reverse_charge) if vat is None or reverse_charge else money(vat)
     return Advice(gross, mats, labour, rate, cis, Decimal(vat_rate), vat, bool(reverse_charge), gross + vat - cis)
 
 
@@ -152,9 +165,61 @@ CYCLE_CHOICES = [(CYCLE_MONTHLY, 'Monthly, on a day of the month'), (CYCLE_DATES
 
 
 def sub_terms(due_offset, payment_notice_days, final_offset, pay_less_days, region):
-    """The subcontract's payment terms in the shape payments.rules.payment_cycle takes."""
-    return Terms(due_offset, payment_notice_days, final_offset, pay_less_days, region, scheme=False,
+    """
+    The subcontract's payment terms in the shape payments.rules.payment_cycle takes. The claim-date
+    rule is on: an application received after the cycle's due date falls due on the day it is
+    received, so a backdated application can't arrive already past our notice deadlines.
+    """
+    return Terms(due_offset, payment_notice_days, final_offset, pay_less_days, region, scheme=True,
                  label='Subcontract')
+
+
+def sub_cycle(valuation_date, terms, received_on=None):
+    """The cycle for an application: from the valuation date, or the day it was received if that is after the due date."""
+    return payment_cycle(valuation_date, terms, claim_date=received_on)
+
+
+def allowed_valuation_dates(kind, today, valuation_day=None, listed=()):
+    """
+    The valuation dates an application may be made up to today: the latest cycle date on or
+    before today and the one before it (never more than one cycle back, never in the future).
+    """
+    if kind == CYCLE_DATES:
+        past = sorted(d for d in set(listed) if d <= today)
+        return past[-2:]
+    latest, _ = valuation_dates(kind, today, valuation_day)
+    if latest is None:
+        return []
+    prev = latest.replace(day=1) - timedelta(days=1)
+    return [presets.valuation_date_in(prev.year, prev.month, valuation_day), latest]
+
+
+def gross_cap(order_value):
+    """The most a sub can apply for (gross to date) without a staff reason: three times the order value."""
+    return money(Decimal(order_value) * 3)
+
+
+def materials_share(materials_left, gross, outstanding):
+    """
+    The materials in a part payment, pro rata: materials left x gross / still to pay, rounded down
+    to the penny; the payment that clears the balance takes whatever is left.
+    """
+    materials_left, gross, outstanding = money(materials_left), money(gross), money(outstanding)
+    if materials_left <= 0 or gross <= 0:
+        return ZERO
+    if outstanding <= 0 or gross >= outstanding:
+        return min(materials_left, gross)
+    return min(penny_down(materials_left * gross / outstanding), gross)
+
+
+def part_vat(paid_before, vat_before, gross, rate=VAT_STANDARD_RATE, reverse_charge=False):
+    """
+    VAT on a part payment: the VAT on everything paid once this part is in, less the VAT already
+    charged on the earlier parts. So the parts always add up to the VAT on the total.
+    """
+    if reverse_charge:
+        return ZERO
+    return vat_on(money(paid_before) + money(gross), rate) - money(vat_before)
 
 
 def valuation_dates(kind, today, valuation_day=None, listed=()):

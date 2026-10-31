@@ -49,7 +49,7 @@
     <dt>Retention</dt><dd>{{ sc.retention_percent|floatformat:"-2" }}%, {{ sc.retention_released_at_pc_percent|floatformat:"-2" }}% of it released at our practical completion{% if sc.pc_date %} ({{ sc.pc_date|date:"j M Y" }}){% endif %}, the rest after {% if sc.defects_months is not None %}{{ sc.defects_months }} months' defects{% else %}the defects period{% endif %}</dd>
     <dt>Discount</dt><dd>{% if sc.discount_percent %}{{ sc.discount_percent|floatformat:"-2" }}%{% else %}None{% endif %}</dd>
     <dt>Bank holidays</dt><dd>{{ sc.get_region_display }}</dd>
-    {% if staff %}<dt>CIS</dt><dd>{% badge tax.get_cis_status_display tax.cis_tone %}{% if tax.verification_number %} <span class="mono small">{{ tax.verification_number }}</span>{% endif %}</dd>
+    {% if staff %}<dt>CIS</dt><dd>{% badge tax.get_cis_status_display tax.cis_tone %}{% if tax.verification_number and request.membership.is_admin %} <span class="mono small">{{ tax.verification_number }}</span>{% endif %}</dd>
     <dt>VAT</dt><dd>{% if tax.reverse_charge %}Domestic reverse charge{% else %}{{ tax.vat_rate|floatformat:"-2" }}%{% endif %}</dd>{% endif %}
   </dl>
   {% if next_cycle %}<p class="small">Next valuation <strong>{{ next_cycle.valuation_date|date:"D j M Y" }}</strong>: due {{ next_cycle.due_date|date:"j M" }}, our payment notice by {{ next_cycle.payment_notice_by|date:"j M" }}, pay less by {{ next_cycle.pay_less_by|date:"j M" }}, final date {{ next_cycle.final_date|date:"j M Y" }}.</p>{% endif %}

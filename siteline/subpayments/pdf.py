@@ -16,7 +16,8 @@ from payments.pdf import _date, _grid, _money, _p, _styles, letterhead
 from . import rules
 
 
-def advice_pdf(payment):
+def advice_pdf(payment, show_verification=True):
+    """show_verification: the sub's own copy and owners/admins see the HMRC number; the job's PM/QS don't."""
     app = payment.application
     sc = app.subcontract
     sub = sc.package.subcontractor
@@ -68,7 +69,7 @@ def advice_pdf(payment):
               Spacer(1, 3 * mm)]
     status = dict(rules.CIS_CHOICES).get(payment.cis_status, payment.cis_status)
     story.append(_p(f'CIS status: {status}' + (f', verification number {payment.verification_number}'
-                                                if payment.verification_number else '')
+                                                if payment.verification_number and show_verification else '')
                     + '. The CIS deduction is paid to HMRC on your behalf and counts towards your tax. Materials '
                       'are as you stated them in your application, unless we told you otherwise.', s['Small']))
     if payment.reverse_charge:

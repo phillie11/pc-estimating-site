@@ -255,7 +255,11 @@ class ActualForm(OneTimeFormMixin, StyledForm):
     def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['cost_code'].queryset = _codes()
-        self.fields['commitment'].queryset = Commitment.objects.filter(project=project).order_by('number')
+        orders = Commitment.objects.filter(project=project).order_by('number')
+        from django.apps import apps
+        if apps.is_installed('subpayments'):  # subcontracts paid through Sub payments take no hand-entered costs
+            orders = orders.exclude(package__subcontract__isnull=False)
+        self.fields['commitment'].queryset = orders
         self.fields['commitment'].label_from_instance = lambda c: f'{c.ref} {c.supplier}'
         self.fields['file'].widget.attrs['accept'] = '.pdf,image/*,.xlsx,.xls,.csv,.doc,.docx'
 

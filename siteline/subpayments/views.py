@@ -27,7 +27,7 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required
 
 from . import rules, services
-from .access import STAFF, SUB, applications_for, packages_for, require, require_staff
+from .access import STAFF, SUB, applications_for, packages_for, require, require_staff, role
 from .forms import (
     ApplicationForm,
     MaterialsForm,
@@ -121,8 +121,11 @@ def subpay_open(request, org_slug, pk, package_id):
     project = get_project(request, pk)
     require_staff(request, project)
     pkg = get_object_or_404(Package, project=project, pk=package_id, status=Package.APPOINTED)
-    if project.is_archived and not Subcontract.objects.filter(package=pkg).exists():
-        raise Http404
+    existing = Subcontract.objects.filter(package=pkg).first()
+    if existing:
+        return redirect(existing)
+    if request.method != 'POST':  # setting up writes, so only from the "Set up terms" button
+        return redirect('subpay_list', org_slug=org_slug, pk=pk)
     return redirect(subcontract_for(pkg, request.user))
 
 
@@ -195,7 +198,10 @@ def subpay_apply(request, org_slug, pk, package_id):
     pkg = get_object_or_404(packages_for(request, project), pk=package_id)
     sc = Subcontract.objects.filter(package=pkg).first()
     if sc is None and not project.is_archived:
-        sc = subcontract_for(pkg, request.user)  # terms from the company defaults, the first time
+        # Terms from the company defaults: saved only when the application is sent (no writes on GET)
+        sc = subcontract_for(pkg, request.user, create=request.method == 'POST')
+    if request.method == 'POST' and _form_key(request) is None:
+        return HttpResponseBadRequest('Please reload the page and try again.')
     initial = {}
     raw = request.GET.get('valuation_date', '')
     try:
@@ -204,7 +210,7 @@ def subpay_apply(request, org_slug, pk, package_id):
         pass
     if not initial.get('valuation_date') and sc is not None:
         initial['valuation_date'] = sc.around(timezone.localdate())[0]
-    if sc is not None:
+    if sc is not None and sc.pk:
         last = sc.applications.filter(status__in=SubApplication.COUNTED).order_by('-valuation_date').first()
         if last:
             initial['gross_to_date'] = last.gross_to_date
@@ -214,7 +220,15 @@ def subpay_apply(request, org_slug, pk, package_id):
         try:
             app = services.receive_application(sc, request.user, d['valuation_date'], d['gross_to_date'],
                                                d.get('materials') or ZERO, d.get('notes', ''), by_sub=who == SUB,
-                                               received_on=d.get('received_on'))
+                                               received_on=d.get('received_on'),
+                                               override_reason=d.get('override_reason', '') if who == STAFF else '',
+                                               form_key=_form_key(request))
+        except services.AlreadyRecorded as e:
+            messages.info(request, f'{e.record.reference} was already sent from this form, so it was not added again.')
+            return redirect(e.record)
+        except IntegrityError:  # the same form twice at the same moment
+            messages.info(request, 'That application was already sent from this form.')
+            return redirect('subpay_list', org_slug=org_slug, pk=pk)
         except services.SubPayError as e:
             form.add_error(None, str(e))
         else:
@@ -232,7 +246,7 @@ def subpay_apply(request, org_slug, pk, package_id):
             return redirect(app)
     shown = form.cleaned_data.get('valuation_date') if form.is_bound and hasattr(form, 'cleaned_data') else None
     shown = shown or initial.get('valuation_date')
-    cycle = sc.cycle(shown) if sc is not None and shown else None
+    cycle = sc.cycle(shown, timezone.localdate()) if sc is not None and shown else None
     return render(request, 'subpayments/apply.html', _ctx(request, project, who, form=form, package=pkg, sc=sc,
                                                           cycle=cycle))
 
@@ -276,7 +290,8 @@ def _detail(request, project, app, who, **forms):
                                                                initial={'amount': app.notified_sum}),
         payment_form=forms.get('payment_form') or PaymentForm(application=app,
                                                               initial={'gross': app.outstanding or None}),
-        materials_form=forms.get('materials_form') or MaterialsForm(initial={'amount': app.materials}),
+        materials_form=forms.get('materials_form') or MaterialsForm(application=app,
+                                                                    initial={'amount': app.materials}),
         reversal_form=forms.get('reversal_form') or ReversalForm(),
         can_pay=staff and app.status in SubApplication.AWAITING and app.outstanding > 0,
         can_materials=staff and app.status in SubApplication.AWAITING,
@@ -318,7 +333,7 @@ def _act(request, project, app, who, action):
             ' It was given after the deadline, so the application still stands as the notified sum: give a pay less '
             'notice in time if you mean to pay less.' if late else ''))
     elif action == 'materials':
-        form = MaterialsForm(request.POST)
+        form = MaterialsForm(request.POST, application=app)
         if not form.is_valid():
             return render(request, 'subpayments/application.html', _detail(request, project, app, who,
                                                                           materials_form=form))
@@ -339,6 +354,10 @@ def _act(request, project, app, who, action):
         except (services.AlreadyRecorded, IntegrityError):
             messages.info(request, 'That payment was already recorded from this form, so it was not added again.')
             return None
+        if services.earlier_tax_month(p.paid_on):
+            messages.warning(request, f'This payment is dated {p.paid_on:%d %b %Y}, in {p.tax_month.label.split(":")[0]}, '
+                                      'an earlier tax month than this one. If that CIS return has been filed it may '
+                                      'need amending.')
         notify.alert(sub_users, f'Payment advice for {app.reference}: {sym}{p.net:,} paid to you',
                      app.get_absolute_url(), project=project, actor=request.user, org=request.org)
         log_activity(request, 'paid a subcontractor on', label, project=project, url=app.get_absolute_url(),
@@ -368,7 +387,9 @@ def subpay_advice(request, org_slug, pk, payment_id):
     require(request, project)
     payment = get_object_or_404(SubPayment.objects.select_related('application'), pk=payment_id,
                                 application__in=applications_for(request, project))
-    resp = HttpResponse(advice_pdf(payment), content_type='application/pdf')
+    # The HMRC verification number: the sub's own copy and owners/admins, not the job's PM or QS
+    show_number = role(request, project) == SUB or request.membership.is_admin
+    resp = HttpResponse(advice_pdf(payment, show_verification=show_number), content_type='application/pdf')
     resp['Content-Disposition'] = f'inline; filename="{project.reference}-{payment.application.reference}-advice.pdf"'
     resp['Cache-Control'] = 'private, no-store'
     resp['X-Content-Type-Options'] = 'nosniff'
@@ -379,7 +400,7 @@ def subpay_advice(request, org_slug, pk, payment_id):
 
 @admin_required
 def subpay_settings(request, org_slug):
-    obj = settings_for(request.org)
+    obj = settings_for(request.org, create=request.method == 'POST')
     form = SettingsForm(request.POST or None, instance=obj)
     if request.method == 'POST' and form.is_valid():
         form.save()
@@ -416,23 +437,42 @@ def subpay_tax(request, org_slug, sub_id):
                                                          'hmrc_check': rules.HMRC_CHECK})
 
 
+def _row(rows, key, sub, number, adjustment=False):
+    return rows.setdefault(key, {'sub': sub, 'tax': tax_for(sub), 'number': number, 'gross': ZERO, 'materials': ZERO,
+                                 'cis': ZERO, 'vat': ZERO, 'net': ZERO, 'count': 0, 'statuses': set(),
+                                 'adjustment': adjustment, 'months': set()})
+
+
+def _add(r, p, sign):
+    for field, attr in (('gross', 'gross'), ('materials', 'materials'), ('cis', 'cis_deduction'), ('vat', 'vat'),
+                        ('net', 'net')):
+        r[field] += sign * getattr(p, attr)
+    r['count'] += 1
+    r['statuses'].add(p.cis_status)
+
+
 def cis_summary(month):
-    """Per subcontractor, for one tax month: payments made (not reversed), materials, CIS deducted, VAT, net."""
+    """
+    One tax month, per subcontractor and the verification number frozen on the payment: payments
+    made in the month (as recorded), less any reversed in the same month. A payment reversed in a
+    LATER tax month stays in its own month (that return may already be filed) and shows as an
+    adjustment line in the month it was reversed, with a note that the earlier return may need amending.
+    """
     rows = {}
-    qs = SubPayment.objects.filter(paid_on__gte=month.start, paid_on__lte=month.end, reversed_at__isnull=True) \
-        .select_related('application__subcontract__package__subcontractor').order_by('paid_on', 'pk')
-    for p in qs:
+    base = SubPayment.objects.select_related('application__subcontract__package__subcontractor')
+    for p in base.filter(paid_on__gte=month.start, paid_on__lte=month.end).order_by('paid_on', 'pk'):
+        if p.is_reversed and rules.tax_month(timezone.localdate(p.reversed_at)).start == month.start:
+            continue  # reversed within the same month: nothing to return
         sub = p.application.subcontract.package.subcontractor
-        r = rows.setdefault(sub.pk, {'sub': sub, 'tax': tax_for(sub), 'gross': ZERO, 'materials': ZERO,
-                                     'cis': ZERO, 'vat': ZERO, 'net': ZERO, 'count': 0, 'statuses': set()})
-        r['gross'] += p.gross
-        r['materials'] += p.materials
-        r['cis'] += p.cis_deduction
-        r['vat'] += p.vat
-        r['net'] += p.net
-        r['count'] += 1
-        r['statuses'].add(p.cis_status)
-    out = sorted(rows.values(), key=lambda r: r['sub'].company_name.lower())
+        _add(_row(rows, (sub.pk, p.verification_number, False), sub, p.verification_number), p, 1)
+    for p in base.filter(reversed_at__isnull=False).order_by('paid_on', 'pk'):
+        if rules.tax_month(timezone.localdate(p.reversed_at)).start != month.start or p.paid_on >= month.start:
+            continue
+        sub = p.application.subcontract.package.subcontractor
+        r = _row(rows, (sub.pk, p.verification_number, True), sub, p.verification_number, adjustment=True)
+        _add(r, p, -1)
+        r['months'].add(rules.tax_month(p.paid_on).label.split(':')[0])
+    out = sorted(rows.values(), key=lambda r: (r['sub'].company_name.lower(), r['number'], r['adjustment']))
     totals = {k: sum((r[k] for r in out), ZERO) for k in ('gross', 'materials', 'cis', 'vat', 'net')}
     return out, totals
 
@@ -447,13 +487,15 @@ def subpay_cis(request, org_slug):
         resp['Content-Disposition'] = f'attachment; filename="cis-{month.key}-not-a-submission.csv"'
         w = csv.writer(resp)
         w.writerow([_safe(f'CIS figures, {month.label}. {rules.NOT_A_RETURN}')])
-        w.writerow(['Subcontractor', 'UTR', 'Verification number', 'CIS status', 'Total paid (excluding VAT)',
-                    'Cost of materials', 'CIS deducted', 'Payments'])
+        w.writerow(['Subcontractor', 'UTR', 'Verification number (when paid)', 'CIS status (when paid)',
+                    'Total paid (excluding VAT)', 'Cost of materials', 'CIS deducted', 'Payments', 'Note'])
         for r in rows:
             statuses = ', '.join(sorted(rules.CIS_SHORT.get(s, s) for s in r['statuses']))
-            w.writerow([_safe(r['sub'].company_name), _safe(r['tax'].utr), _safe(r['tax'].verification_number),
-                        statuses, r['gross'], r['materials'], r['cis'], r['count']])
-        w.writerow(['Total', '', '', '', totals['gross'], totals['materials'], totals['cis'], ''])
+            note = (f'Adjustment: payment from {", ".join(sorted(r["months"]))} reversed this month. The earlier '
+                    'return may need amending.') if r['adjustment'] else ''
+            w.writerow([_safe(r['sub'].company_name), _safe(r['tax'].utr), _safe(r['number']), statuses,
+                        r['gross'], r['materials'], r['cis'], r['count'], note])
+        w.writerow(['Total', '', '', '', totals['gross'], totals['materials'], totals['cis'], '', ''])
         return resp
     prev = rules.tax_month(month.start - timedelta(days=1))
     nxt = rules.tax_month(month.end + timedelta(days=1))

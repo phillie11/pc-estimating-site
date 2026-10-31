@@ -225,3 +225,67 @@ class TaxMonthTests(SimpleTestCase):
         m = rules.tax_month_from_key('2026-10')
         self.assertEqual((m.start, m.end, m.return_due), (date(2026, 10, 6), date(2026, 11, 5), date(2026, 11, 19)))
         self.assertIsNone(rules.tax_month_from_key('nonsense'))
+
+
+# Part payments (review fix 4). (materials left, this payment, still to pay, materials in this payment)
+MATERIALS_SHARE_TABLE = [
+    ('4000.00', '4000.00', '19000.00', '842.10'),     # 4000 x 4000 / 19000 = 842.105..., rounded down
+    ('3157.90', '15000.00', '15000.00', '3157.90'),   # the payment that clears the balance takes the rest
+    ('4000.00', '9500.00', '19000.00', '2000.00'),    # half the balance, half the materials
+    ('0.00', '5000.00', '19000.00', '0.00'),
+]
+
+# VAT on parts adds up to the VAT on the whole. 19,000 at 17.5% = 3,325.00 in three parts.
+# (paid before, VAT before, this part, VAT on this part)
+PART_VAT_TABLE = [
+    ('0.00', '0.00', '0.03', '0.01'),           # 0.00525 rounds up to 0.01
+    ('0.03', '0.01', '0.03', '0.00'),           # VAT on 0.06 is 0.01, already charged
+    ('0.06', '0.01', '18999.94', '3324.99'),    # the last part: 3,325.00 in all
+]
+
+# Backdated applications (review fix 1): terms 7/5/21/5, England and Wales.
+# (valuation date, received on, due date, our notice by, pay less by, final date)
+CLAIM_DATE_TABLE = [
+    (date(2026, 10, 25), date(2026, 10, 26), date(2026, 11, 1), date(2026, 11, 6), date(2026, 11, 17),
+     date(2026, 11, 22)),   # received before the due date: the cycle as normal
+    (date(2026, 9, 25), date(2026, 10, 30), date(2026, 10, 30), date(2026, 11, 4), date(2026, 11, 15),
+     date(2026, 11, 20)),   # received after the due date: falls due the day received
+]
+
+# Allowed valuation dates on 31 Oct 2026 (this cycle or the one before; never the future)
+ALLOWED_DATES_TABLE = [
+    (rules.CYCLE_MONTHLY, 25, (), [date(2026, 9, 25), date(2026, 10, 25)]),
+    (rules.CYCLE_MONTHLY, 31, (), [date(2026, 9, 30), date(2026, 10, 31)]),
+    (rules.CYCLE_DATES, None, (date(2026, 8, 1), date(2026, 9, 1), date(2026, 10, 1), date(2026, 11, 1)),
+     [date(2026, 9, 1), date(2026, 10, 1)]),
+]
+
+
+class ReviewRuleTests(SimpleTestCase):
+    def test_materials_share(self):
+        for left, gross, outstanding, share in MATERIALS_SHARE_TABLE:
+            with self.subTest(gross=gross):
+                self.assertEqual(rules.materials_share(D(left), D(gross), D(outstanding)), D(share))
+
+    def test_part_vat(self):
+        for before, vat_before, gross, vat in PART_VAT_TABLE:
+            with self.subTest(gross=gross):
+                self.assertEqual(rules.part_vat(D(before), D(vat_before), D(gross), D('17.5')), D(vat))
+        self.assertEqual(rules.part_vat(D('0'), D('0'), D('100'), D('20'), True), D('0.00'))
+
+    def test_claim_date(self):
+        for valuation, received, due, notice, pay_less, final in CLAIM_DATE_TABLE:
+            with self.subTest(valuation=valuation):
+                c = rules.sub_cycle(valuation, rules.sub_terms(*TERMS, EW), received)
+                self.assertEqual((c.due_date, c.payment_notice_by, c.pay_less_by, c.final_date),
+                                 (due, notice, pay_less, final))
+
+    def test_allowed_dates(self):
+        for kind, day, listed, allowed in ALLOWED_DATES_TABLE:
+            with self.subTest(kind=kind, day=day):
+                self.assertEqual(rules.allowed_valuation_dates(kind, date(2026, 10, 31), day, listed), allowed)
+
+    def test_gross_cap_and_rounding_constant(self):
+        from decimal import ROUND_DOWN
+        self.assertEqual(rules.gross_cap(D('50000')), D('150000.00'))
+        self.assertEqual(rules.CIS_ROUNDING, ROUND_DOWN)

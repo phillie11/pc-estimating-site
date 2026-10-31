@@ -109,7 +109,8 @@ def seed(*, leeds, pm, owner):
     elec = Package.objects.get(project=salford, subcontractor=bright, status=Package.APPOINTED)
     sc_e = subcontract_for(elec, pm)
     v = today - timedelta(days=20)
-    sc_e.valuation_day = min(v.day, 28)
+    sc_e.cycle_kind = rules.CYCLE_DATES  # valuation dates listed in the subcontract
+    sc_e.valuation_dates = [(v - timedelta(days=28)).isoformat(), v.isoformat(), (v + timedelta(days=28)).isoformat()]
     sc_e.save()
     services.receive_application(sc_e, owner, v, Decimal('38250'), Decimal('12600'), received_on=v,
                                  notes='Containment and first fix to level 3. Sent by email.')

@@ -53,6 +53,7 @@ def _payment_notice(app, user, amount=None, basis='', given_on=None):
     app.payment_notice_basis = basis
     app.payment_notice_on = given_on or timezone.localdate()
     app.payment_notice_given_by = user
+    app.cap_materials()  # a lower sum due can't carry more materials than it
     app.due_date = app.pay_less_by if app.pay_less_by and timezone.localdate() <= app.pay_less_by else app.final_date
 
 
@@ -65,6 +66,7 @@ def _pay_less(app, user, amount=None, basis='', given_on=None):
     app.pay_less_basis = basis
     app.pay_less_on = given_on
     app.pay_less_given_by = user
+    app.cap_materials()
     app.due_date = app.final_date
 
 

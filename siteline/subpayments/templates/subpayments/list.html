@@ -14,7 +14,7 @@
     <td class="num">{% if r.summary %}{{ r.summary.certified|money_exact:currency }}{% else %}—{% endif %}</td>
     <td class="num">{% if r.summary %}{{ r.summary.paid|money_exact:currency }}{% else %}—{% endif %}</td>
     <td class="num">{% if r.summary %}{{ r.summary.retention|money_exact:currency }}{% else %}—{% endif %}</td>
-    <td class="nowrap">{% if staff %}<a class="btn sm" style="min-height:44px" href="{% if r.sc %}{{ r.sc.get_absolute_url }}{% else %}{% url 'subpay_open' org.slug project.pk r.package.pk %}{% endif %}">Open</a>{% endif %}
+    <td class="nowrap">{% if staff %}{% if r.sc %}<a class="btn sm" style="min-height:44px" href="{{ r.sc.get_absolute_url }}">Open</a>{% elif not read_only %}<form method="post" action="{% url 'subpay_open' org.slug project.pk r.package.pk %}" class="inline">{% csrf_token %}<button class="btn sm" style="min-height:44px">Set up terms</button></form>{% endif %}{% endif %}
       {% if not read_only %}<a class="btn sm{% if not staff %} primary{% endif %}" style="min-height:44px" href="{% url 'subpay_apply' org.slug project.pk r.package.pk %}">{% if staff %}Record application{% else %}Apply for payment{% endif %}</a>{% endif %}</td>
   </tr>{% endfor %}</tbody></table></div>
 {% elif staff %}<div class="card-body">{% url 'package_list' org.slug project.pk as pkg_url %}{% include "partials/empty_state.html" with title="No appointed subcontractors" message="Sub payments start once a package is appointed. Appoint one from the Packages tab, then commit its order under Costs." cta_url=pkg_url cta_label="Go to packages" cta_plain=1 left=1 %}</div>

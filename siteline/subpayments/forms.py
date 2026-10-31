@@ -84,13 +84,17 @@ class TaxForm(StyledModelForm):
 
     def clean(self):
         data = super().clean()
+        utr = ''.join((data.get('utr') or '').split())
+        if utr and not (utr.isdigit() and len(utr) == 10):
+            self.add_error('utr', 'A UTR is 10 digits, e.g. 1234567890.')
+        data['utr'] = utr
         if data.get('cis_status') in (rules.CIS_GROSS, rules.CIS_REGISTERED) and not data.get('verification_number'):
             self.add_error('verification_number', 'Give the verification number HMRC gave you when you verified them. '
                                                   + rules.HMRC_CHECK)
         return data
 
 
-class ApplicationForm(StyledForm):
+class ApplicationForm(OneTimeFormMixin, StyledForm):
     """The sub's application (through the portal), or staff recording one the sub sent by email."""
     valuation_date = forms.DateField(widget=DATE)
     gross_to_date = MoneyField(label='Gross value of work to date (excluding VAT)',
@@ -100,12 +104,21 @@ class ApplicationForm(StyledForm):
                                      'deducted from materials.')
     notes = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows': 3}))
     received_on = forms.DateField(label='Date the application was received', required=False, widget=DATE)
+    override_reason = forms.CharField(
+        label='Reason, if the gross is over three times the order value', required=False, max_length=250,
+        help_text='Only needed when the gross value to date is more than three times the order. It goes in the record.')
 
     def __init__(self, *args, staff=False, subcontract=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.subcontract = subcontract
+        self.subcontract, self.staff = subcontract, staff
+        if subcontract is not None:
+            allowed = subcontract.allowed_dates(timezone.localdate())
+            if allowed:
+                self.fields['valuation_date'].help_text = 'The subcontract\'s valuation date: ' + ' or '.join(
+                    f'{d.day} {d:%b %Y}' for d in reversed(allowed)) + '.'
         if not staff:
             del self.fields['received_on']
+            del self.fields['override_reason']
         else:
             self.fields['materials'].label = 'Cost of materials stated by the subcontractor'
             self.fields['materials'].help_text = 'As stated on their application. CIS is not deducted from it.'
@@ -113,9 +126,10 @@ class ApplicationForm(StyledForm):
 
     def clean_valuation_date(self):
         from .services import clash
+        from .services import date_refusal
         d = self.cleaned_data['valuation_date']
         if self.subcontract is not None:
-            problem = clash(self.subcontract, d)
+            problem = date_refusal(self.subcontract, d) or clash(self.subcontract, d)
             if problem:
                 raise forms.ValidationError(problem)
         return d
@@ -125,6 +139,18 @@ class ApplicationForm(StyledForm):
         if d > timezone.localdate():
             raise forms.ValidationError('This date is in the future.')
         return d
+
+    def clean(self):
+        from .services import cap_refusal
+        data = super().clean()
+        gross = data.get('gross_to_date')
+        if self.subcontract is not None and gross is not None:
+            over = cap_refusal(self.subcontract, gross)
+            if over and not (self.staff and (data.get('override_reason') or '').strip()):
+                self.add_error('gross_to_date', over if self.staff else over.replace(
+                    'If it is right, staff can record it with a reason.',
+                    'If it is right, ask the contractor to record it for you.'))
+        return data
 
 
 class NoticeForm(StyledForm):
@@ -152,12 +178,25 @@ class MaterialsForm(StyledForm):
     amount = MoneyField(label='Materials for CIS (excluding VAT)')
     reason = forms.CharField(label='Why', max_length=300, help_text='For example: invoices show £3,200 of materials.')
 
+    def __init__(self, *args, application=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.application = application
+
+    def clean_amount(self):
+        amount = self.cleaned_data['amount']
+        app = self.application
+        if app is not None and amount > max(app.payable, Decimal('0')):
+            raise forms.ValidationError(f'Materials can be no more than the sum we pay ({app.payable:,}).')
+        return amount
+
 
 class PaymentForm(OneTimeFormMixin, StyledForm):
     gross = MoneyField(label='Gross paid (excluding VAT, before CIS)')
     materials = MoneyField(label='Of which materials', required=False,
                            help_text='Leave blank to use what is left of the materials on the application.')
-    paid_on = forms.DateField(label='Date paid', widget=DATE)
+    paid_on = forms.DateField(label='Date paid', widget=DATE,
+                              help_text='Not before the application was received. A date in an earlier tax month '
+                                        'goes on that month\'s CIS figures, whose return may already be filed.')
     reference = forms.CharField(label='Payment reference', required=False, max_length=120)
 
     def __init__(self, *args, application=None, **kwargs):
@@ -169,6 +208,9 @@ class PaymentForm(OneTimeFormMixin, StyledForm):
         d = self.cleaned_data['paid_on']
         if d > timezone.localdate():
             raise forms.ValidationError('This date is in the future.')
+        if self.application is not None and d < self.application.received_on:
+            raise forms.ValidationError(f'This is before the application was received '
+                                        f'({self.application.received_on:%d %b %Y}).')
         return d
 
     def clean_gross(self):

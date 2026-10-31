@@ -72,9 +72,12 @@ class SubPaymentSettings(TermsFields, TenantModel):
         return 'Subcontract payment defaults'
 
 
-def settings_for(org):
+def settings_for(org, create=True):
+    """The company's defaults; with create=False an unsaved row with the defaults (for GET pages: no writes)."""
     from django.db import IntegrityError, transaction
     obj = SubPaymentSettings.objects.filter(organization=org).first()
+    if obj is None and not create:
+        return SubPaymentSettings(organization=org)
     if obj is None:
         try:
             with transaction.atomic():
@@ -193,8 +196,19 @@ class Subcontract(TermsFields, TenantModel):
         return rules.sub_terms(self.due_date_offset_days, self.payment_notice_days, self.final_date_offset_days,
                                self.pay_less_notice_days, self.region)
 
-    def cycle(self, valuation_date):
-        return rules.payment_cycle(valuation_date, self.terms())
+    def cycle(self, valuation_date, received_on=None):
+        """The cycle from the valuation date, moved to the day received if that is after the due date."""
+        return rules.sub_cycle(valuation_date, self.terms(), received_on)
+
+    def allowed_dates(self, today):
+        """Valuation dates an application can be made up to today: this cycle's or the one before."""
+        return rules.allowed_valuation_dates(self.cycle_kind, today, self.valuation_day, self.listed_dates)
+
+    @property
+    def gross_cap(self):
+        """Three times the order's current value, or None with no order."""
+        c = self.commitment
+        return rules.gross_cap(c.value) if c is not None else None
 
     def around(self, today):
         """(latest valuation date on or before today, next one)."""
@@ -204,16 +218,22 @@ class Subcontract(TermsFields, TenantModel):
         return rules.retention_stage(valuation_date, self.pc_date, self.defects_months)
 
 
-def subcontract_for(package, actor=None):
-    """The package's subcontract, made from the company defaults (and the main contract's region) the first time."""
+def subcontract_for(package, actor=None, create=True):
+    """
+    The package's subcontract, made from the company defaults (and the main contract's region) the
+    first time. With create=False (GET pages) an unsaved one, so viewing never writes.
+    """
     from django.db import IntegrityError, transaction
     existing = Subcontract.objects.filter(package=package).first()
     if existing:
         return existing
     from contracts.models import MainContract
-    defaults = settings_for(package.organization)
+    defaults = settings_for(package.organization, create=create)
     contract = MainContract.objects.filter(project_id=package.project_id).first()
     fields = {f.name: getattr(defaults, f.name) for f in TermsFields._meta.get_fields()}
+    if not create:
+        return Subcontract(organization_id=package.organization_id, project_id=package.project_id, package=package,
+                           region=(contract.bank_holiday_region if contract else DEFAULT_REGION), **fields)
     try:
         with transaction.atomic():
             return Subcontract.objects.create(project_id=package.project_id, package=package, updated_by=actor,
@@ -265,6 +285,8 @@ class SubApplication(RecordBase):
                                                      'for this time. CIS is not deducted from it.')
     materials = models.DecimalField('Materials for CIS', **MONEY, default=ZERO, editable=False)
     notes = models.TextField('Notes', blank=True)
+    # One-time key from the apply form, so sending it twice makes one application
+    form_key = models.CharField(max_length=80, null=True, blank=True, editable=False)
 
     # Frozen on receipt
     variations_value = models.DecimalField(**MONEY, default=ZERO, editable=False)
@@ -302,6 +324,7 @@ class SubApplication(RecordBase):
     class Meta(RecordBase.Meta):
         ordering = ['-number']
         verbose_name = 'subcontractor application'
+        constraints = [models.UniqueConstraint(fields=['subcontract', 'form_key'], name='subpay_application_form_key')]
 
     def __str__(self):
         return f'{self.reference} {self.title}'
@@ -340,7 +363,7 @@ class SubApplication(RecordBase):
         self.previous_certified, self.amount_due = v.previous, v.amount_due
         if not self.materials:
             self.materials = self.materials_stated
-        cycle = sc.cycle(self.valuation_date)
+        cycle = sc.cycle(self.valuation_date, self.received_on)
         self.due_on, self.payment_notice_by = cycle.due_date, cycle.payment_notice_by
         self.pay_less_by, self.final_date = cycle.pay_less_by, cycle.final_date
         return v
@@ -407,6 +430,10 @@ class SubApplication(RecordBase):
     def materials_paid(self):
         return self.live_payments().aggregate(s=Sum('materials'))['s'] or ZERO
 
+    def cap_materials(self):
+        """Materials can't be more than the sum we pay (nor less than what payments already took)."""
+        self.materials = max(min(self.materials, max(self.payable, ZERO)), self.materials_paid if self.pk else ZERO)
+
     @property
     def materials_left(self):
         return max(self.materials - self.materials_paid, ZERO)
@@ -435,7 +462,18 @@ class SubApplication(RecordBase):
         """The advice for paying everything outstanding now (for the screen before a payment is recorded)."""
         tax = tax_for(self.subcontract.subcontractor)
         out = max(self.outstanding, ZERO)
-        return rules.advice(out, min(self.materials_left, out), tax.cis_status, self.vat_rate, self.reverse_charge)
+        return self.part_advice(out, tax)
+
+    def part_advice(self, gross, tax=None, materials=None):
+        """The advice for paying `gross` now: materials pro rata (or as given), VAT so the parts add up."""
+        tax = tax or tax_for(self.subcontract.subcontractor)
+        self._paid_gross = None
+        outstanding = self.outstanding
+        mats = rules.materials_share(self.materials_left, gross, outstanding) if materials is None \
+            else min(rules.money(materials), self.materials_left, rules.money(gross))
+        vat_before = self.live_payments().aggregate(s=Sum('vat'))['s'] or ZERO
+        vat = rules.part_vat(self.paid_gross, vat_before, gross, self.vat_rate, self.reverse_charge)
+        return rules.advice(gross, mats, tax.cis_status, self.vat_rate, self.reverse_charge, vat=vat)
 
 
 class SubPayment(TenantModel):

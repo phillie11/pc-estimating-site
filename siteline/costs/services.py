@@ -238,6 +238,9 @@ def record_actual(project, actor, cost_code, kind, supplier, amount, reference='
         raise CostError('Enter the amount (negative for a credit note).')
     if commitment is not None and commitment.project_id != project.pk:
         raise CostError('That order is on a different job.')
+    if commitment is not None and paid_through_subpayments(commitment):
+        raise CostError(f'Pay subcontractors through Sub payments: {commitment.ref} is a subcontract paid there, so a '
+                        'cost entered here would count it twice.')
     a = ActualCost(project=project, cost_code=cost_code, kind=kind, supplier=supplier, amount=amount,
                    reference=reference, description=description, commitment=commitment, created_by=actor,
                    form_key=form_key or None)
@@ -260,6 +263,15 @@ def set_forecast(project, actor, cost_code, amount, reason):
     return ForecastOverride.objects.create(project=project, cost_code=cost_code,
                                            amount=None if amount in (None, '') else pennies(amount),
                                            reason=reason[:300], created_by=actor)
+
+
+def paid_through_subpayments(commitment):
+    """True when the subpayments app pays this order (it then owns the order's actual costs)."""
+    from django.apps import apps
+    if not apps.is_installed('subpayments'):
+        return False
+    from subpayments.summary import paid_through_subpayments as paid_there
+    return paid_there(commitment)
 
 
 def committed_value(commitment):
