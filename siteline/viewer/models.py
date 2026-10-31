@@ -21,6 +21,11 @@ class InvalidPin(ValueError):
     """A pin position that isn't on the page: shown to the person as it stands."""
 
 
+class PinLocked(PermissionError):
+    """The record is already pinned on this drawing by someone this person can't overrule."""
+    message = 'This is already pinned by the site team; ask them to move it.'
+
+
 def parse_coord(value):
     """
     A position across or down the page, from 0 to 1, as a Decimal to 6 places. Refuses anything
@@ -75,6 +80,9 @@ class DrawingPin(TenantModel):
                                    | Q(issue__isnull=True, rfi__isnull=False), name='viewer_pin_one_record'),
             models.CheckConstraint(condition=Q(x__gte=0, x__lte=1, y__gte=0, y__lte=1), name='viewer_pin_on_page'),
             models.CheckConstraint(condition=Q(page__gte=1), name='viewer_pin_page_from_1'),
+            # One pin per record per drawing (NULLs don't clash, so this works on MySQL too)
+            models.UniqueConstraint(fields=['document', 'issue'], name='viewer_pin_one_per_issue'),
+            models.UniqueConstraint(fields=['document', 'rfi'], name='viewer_pin_one_per_rfi'),
         ]
 
     def __str__(self):

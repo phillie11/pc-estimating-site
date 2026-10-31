@@ -5,13 +5,14 @@ forms (which the viewer opens with ?pin_doc=&pin_rev=&pin_page=&pin_x=&pin_y= in
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
+from django.db import IntegrityError, transaction
 from django.http import Http404
 from django.urls import reverse
 
 from projects.models import Document, DocumentRevision
 
 from .access import can_remove, can_view, get_doc_and_revision
-from .models import DrawingPin, InvalidPin, parse_coord, parse_page
+from .models import DrawingPin, InvalidPin, PinLocked, parse_coord, parse_page
 
 PIN_PARAMS = ('pin_doc', 'pin_rev', 'pin_page', 'pin_x', 'pin_y')
 
@@ -23,13 +24,15 @@ def viewer_url(request, project, doc, rev, pin=None):
 
 def placement(request, project, doc_id, rev_id, page, x, y):
     """
-    Check a position someone wants to pin at: a revision they may view, a page in it and a point on
-    the page. Returns (doc, rev, page, x, y); raises Http404 for a revision they can't see and
+    Check a position someone wants to pin at: a revision they may view (not withdrawn), a page in it
+    and a point on the page. The viewer's own pin endpoint and the create forms both come here. Returns (doc, rev, page, x, y); raises Http404 for a revision they can't see and
     InvalidPin for a bad position.
     """
     doc, rev = get_doc_and_revision(request, project, doc_id, rev_id)
     if not can_view(request, rev):
         raise Http404
+    if rev.is_withdrawn:
+        raise InvalidPin('This revision has been withdrawn, so nothing can be pinned to it.')
     return doc, rev, parse_page(page, rev.page_count), parse_coord(x), parse_coord(y)
 
 
@@ -71,10 +74,27 @@ def pending_pin(request, project):
 
 
 def create_pin(request, project, doc, rev, page, x, y, issue=None, rfi=None):
-    """Pin a record. A record already pinned on this drawing is moved to the new place rather than pinned twice."""
+    """
+    Pin a record. One already pinned on this drawing is moved to the new place rather than pinned
+    twice, but only by someone who could remove that pin (staff, or whoever placed it): otherwise
+    PinLocked. Two people pinning the same record at once: the unique constraint stops the second
+    insert, which then becomes a move under the same rule.
+    """
     record = {'issue': issue} if issue is not None else {'rfi': rfi}
-    pin = DrawingPin.objects.filter(document=doc, **record).first() or DrawingPin(project=project, document=doc,
-                                                                                    created_by=request.user, **record)
+    pin = DrawingPin.objects.filter(document=doc, **record).first()
+    if pin is None:
+        pin = DrawingPin(project=project, document=doc, created_by=request.user, revision=rev,
+                         revision_code=rev.revision, page=page, x=x, y=y, **record)
+        try:
+            with transaction.atomic():
+                pin.save()
+            return pin
+        except IntegrityError:
+            pin = DrawingPin.objects.filter(document=doc, **record).first()
+            if pin is None:
+                raise
+    if not can_remove(request, pin):
+        raise PinLocked(PinLocked.message)
     pin.revision, pin.revision_code, pin.page, pin.x, pin.y = rev, rev.revision, page, x, y
     pin.save()
     return pin

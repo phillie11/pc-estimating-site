@@ -236,7 +236,9 @@ class PinVisibilityTests(ViewerBase):
         self.assertNotIn('rfi_shared', self.seen(self.staff))
 
     def test_pin_from_another_revision_is_marked(self):
-        old = self.pin(rev=self.p01, issue=self.snag1, x='0.1', y='0.1')
+        with org_context(self.org_a):
+            other = Issue.objects.create(project=self.pa, title='Pinned on P01', created_by=self.staff)
+        old = self.pin(rev=self.p01, issue=other, x='0.1', y='0.1')
         self.login(self.staff)
         pins = {p['id']: p for p in self.config(self.client.get(self.viewer()))['pins']}
         self.assertEqual(pins[old.pk]['placed_on'], 'placed on rev P01')
@@ -249,7 +251,10 @@ class PinVisibilityTests(ViewerBase):
         with org_context(self.org_a):
             wip = self.ga.add_revision(DocumentRevision(revision='P03', suitability='S0', file=upload('P03.pdf'),
                                                         original_name='P03.pdf', size=10, uploaded_by=self.alice))
-        hidden = self.pin(rev=wip, rfi=self.rfi_shared)
+        with org_context(self.org_a):
+            rfi = RFI(project=self.pa, title='Another shared RFI', question='?')
+            rfi.save(actor=self.staff)
+        hidden = self.pin(rev=wip, rfi=rfi)
         self.login(self.cli)
         pins = {p['id']: p for p in self.config(self.client.get(self.viewer()))['pins']}
         self.assertEqual(pins[hidden.pk]['placed_on'], 'placed on another revision')
@@ -277,7 +282,9 @@ class PinVisibilityTests(ViewerBase):
         self.assertEqual(self.client.get(self.purl('pin_open', internal_pin.pk)).status_code, 404)
 
     def test_pin_open_goes_to_the_current_revision(self):
-        old = self.pin(rev=self.p01, issue=self.snag_staff)
+        with org_context(self.org_a):
+            other = Issue.objects.create(project=self.pa, title='Pinned on P01', created_by=self.staff)
+        old = self.pin(rev=self.p01, issue=other)
         self.login(self.staff)
         self.assertRedirects(self.client.get(self.purl('pin_open', old.pk)), self.viewer() + f'?pin={old.pk}')
 
@@ -301,6 +308,49 @@ class PinCreateTests(ViewerBase):
         with org_context(self.org_a):
             self.assertEqual(DrawingPin.objects.filter(issue=self.snag1).count(), 1)
             self.assertEqual(DrawingPin.objects.get(issue=self.snag1).x, Decimal('0.9'))
+
+    def test_who_may_move_an_existing_pin(self):
+        staff_pin = self.pin(issue=self.snag1, x='0.2', y='0.2', by=self.staff)
+        self.login(self.sub1)  # the snag's assignee, but the site team placed the pin
+        r = self.post_pin(f'issue:{self.snag1.pk}', x='0.8', y='0.8')
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('already pinned by the site team', r.json()['error'])
+        sub_pin = self.pin(rfi=self.rfi_shared, x='0.2', y='0.2', by=self.sub1)
+        self.assertEqual(self.post_pin(f'rfi:{self.rfi_shared.pk}', x='0.7', y='0.7').status_code, 201)  # their own
+        self.login(self.staff)
+        self.assertEqual(self.post_pin(f'issue:{self.snag1.pk}', x='0.9', y='0.9').status_code, 201)
+        with org_context(self.org_a):
+            self.assertEqual(DrawingPin.objects.get(pk=staff_pin.pk).x, Decimal('0.9'))
+            self.assertEqual(DrawingPin.objects.get(pk=sub_pin.pk).x, Decimal('0.7'))
+
+    def test_a_race_to_pin_the_same_record_becomes_a_move_or_a_refusal(self):
+        from viewer import pins as pinlib
+        real_filter = DrawingPin.objects.filter
+
+        def first_lookup_misses(**kw):
+            # The first "is it already pinned?" lookup runs before the other person's insert lands
+            first_lookup_misses.calls += 1
+            return DrawingPin.objects.none() if first_lookup_misses.calls == 1 else real_filter(**kw)
+        theirs = self.pin(issue=self.snag1, x='0.2', y='0.2', by=self.staff)
+        self.login(self.staff)
+        first_lookup_misses.calls = 0
+        with mock.patch.object(pinlib.DrawingPin.objects, 'filter', side_effect=first_lookup_misses):
+            self.assertEqual(self.post_pin(f'issue:{self.snag1.pk}', x='0.6', y='0.6').status_code, 201)
+        with org_context(self.org_a):
+            self.assertEqual(DrawingPin.objects.filter(issue=self.snag1).count(), 1)
+            self.assertEqual(DrawingPin.objects.get(pk=theirs.pk).x, Decimal('0.6'))
+        self.login(self.sub1)
+        first_lookup_misses.calls = 0
+        with mock.patch.object(pinlib.DrawingPin.objects, 'filter', side_effect=first_lookup_misses):
+            self.assertEqual(self.post_pin(f'issue:{self.snag1.pk}', x='0.1', y='0.1').status_code, 403)
+
+    def test_database_allows_one_pin_per_record_per_drawing(self):
+        from django.db import IntegrityError, transaction
+        self.pin(issue=self.snag1)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            self.pin(issue=self.snag1, x='0.1')
+        d, revs = self.doc(number='SLN-ABC-ZZ-02-DR-A-1006', visibility=Document.VIS_SHARED)
+        self.pin(issue=self.snag1, doc=d, rev=revs['P01'])  # another drawing is fine
 
     def test_coordinates_are_checked(self):
         self.login(self.staff)

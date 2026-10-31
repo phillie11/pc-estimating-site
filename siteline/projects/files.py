@@ -4,7 +4,7 @@ import os
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.http import FileResponse, Http404, HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpResponseRedirect, StreamingHttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
@@ -15,6 +15,8 @@ BLOCKED_EXTENSIONS = {
     '.sh', '.php', '.py', '.html', '.htm', '.svg', '.xhtml', '.hta',
 }
 INLINE_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'}
+FILE_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+STREAM_CHUNK = 64 * 1024
 
 
 def validate_upload(f):
@@ -34,8 +36,9 @@ def serve(request, fieldfile, download_name=None, project=None, label='', throug
     On this server's disk the file is streamed back. In cloud storage the browser is
     redirected to a signed link that expires in a few minutes, so a forwarded link is
     useless and big drawing packs don't pass through the app server. through_app=True
-    streams it from cloud storage through this site instead (the drawing viewer fetches
-    the PDF from script, and the Content-Security-Policy only lets it connect to us).
+    streams it from cloud storage through this site instead, a chunk at a time (the
+    drawing viewer fetches the PDF from script, and the Content-Security-Policy only lets
+    it connect to us).
     """
     if not fieldfile:
         raise Http404
@@ -46,6 +49,8 @@ def serve(request, fieldfile, download_name=None, project=None, label='', throug
     if blocked is not None:
         return blocked
     _log_access(request, fieldfile, project, label or name)
+    if settings.STORAGE_BUCKET and through_app and hasattr(fieldfile.storage, 'bucket'):
+        return _stream_from_bucket(fieldfile, name, ctype, inline)
     if settings.STORAGE_BUCKET and not through_app:
         url = fieldfile.storage.url(fieldfile.name, parameters={
             'ResponseContentType': ctype,
@@ -61,10 +66,38 @@ def serve(request, fieldfile, download_name=None, project=None, label='', throug
     except FileNotFoundError:
         raise Http404
     resp = FileResponse(fh, as_attachment=not inline, filename=name, content_type=ctype)
+    return _file_headers(resp)
+
+
+def _file_headers(resp):
     resp['X-Content-Type-Options'] = 'nosniff'
-    resp['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+    resp['Content-Security-Policy'] = FILE_CSP
     resp['Cache-Control'] = 'private, no-store'
     return resp
+
+
+def _stream_from_bucket(fieldfile, name, ctype, inline):
+    """
+    Pass a cloud-stored file through in 64 KB chunks. fieldfile.open() would download the whole
+    object into the worker (django-storages' S3File) before the first byte went out; this holds
+    one chunk at a time, and S3 sends nothing until the first chunk is read.
+    """
+    from storages.utils import clean_name
+    storage = fieldfile.storage
+    try:
+        got = storage.bucket.Object(storage._normalize_name(clean_name(fieldfile.name))).get()
+    except Exception as err:  # botocore ClientError: a missing object is a 404, anything else goes up
+        code = getattr(err, 'response', {}).get('Error', {}).get('Code')
+        if code in ('NoSuchKey', '404'):
+            raise Http404
+        raise
+    body = got['Body']
+    resp = StreamingHttpResponse(body.iter_chunks(STREAM_CHUNK), content_type=ctype)
+    if got.get('ContentLength') is not None:
+        resp['Content-Length'] = str(got['ContentLength'])
+    resp['Content-Disposition'] = content_disposition_header(not inline, name)
+    resp._resource_closers.append(body.close)  # closed with the response, read to the end or not
+    return _file_headers(resp)
 
 
 def _log_access(request, fieldfile, project, label):

@@ -8,6 +8,7 @@ log as the download button.
 """
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.db import IntegrityError
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
@@ -23,7 +24,7 @@ from tenancy.models import log_activity
 from . import pins as pinlib
 from .access import (best_revision, can_raise_snag, can_remove, can_view, get_doc_and_revision, is_pdf,
                      visible_issues, visible_pins, visible_revision_ids, visible_rfis)
-from .models import InvalidPin
+from .models import InvalidPin, PinLocked
 
 
 def _withdrawn_for_external(request, project, doc, rev):
@@ -113,19 +114,23 @@ def pin_create(request, org_slug, pk, doc_id):
                                                 request.POST.get('x'), request.POST.get('y'))
     except InvalidPin as e:
         return _error(str(e))
-    if rev.is_withdrawn:
-        return _error('This revision has been withdrawn, so nothing can be pinned to it.')
     kind, _, record_id = request.POST.get('record', '').partition(':')
     if not record_id.isdigit() or not record_id.isascii():
         return _error('Choose a snag or RFI to pin.')
     if kind == 'issue':
         record = get_object_or_404(visible_issues(request, project), pk=int(record_id))
-        pin = pinlib.create_pin(request, project, doc, rev, page, x, y, issue=record)
+        target = {'issue': record}
     elif kind == 'rfi':
         record = get_object_or_404(visible_rfis(request, project), pk=int(record_id))
-        pin = pinlib.create_pin(request, project, doc, rev, page, x, y, rfi=record)
+        target = {'rfi': record}
     else:
         return _error('Choose a snag or RFI to pin.')
+    try:
+        pin = pinlib.create_pin(request, project, doc, rev, page, x, y, **target)
+    except PinLocked as e:
+        return _error(str(e), status=403)
+    except IntegrityError:
+        return _error('Someone else pinned this at the same moment. Reload the page and try again.', status=409)
     log_activity(request, 'pinned', f'{record.reference} to {doc.label}', project=project,
                  url=pinlib.viewer_url(request, project, doc, rev, pin), internal_only=True)
     return JsonResponse(pinlib.describe(request, project, pin, rev=rev, seen=visible_revision_ids(request, project)),
