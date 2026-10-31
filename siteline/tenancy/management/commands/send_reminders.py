@@ -6,10 +6,10 @@ What is waiting on each person comes from the "Needs me" registry (actions), the
 as their Needs me page. Staff also get tender returns in the next three days, subcontractor
 insurance expiring and the trial reminder.
 
-It is sent only when something is urgent: an item overdue or due within 3 days, a tender
-return within 3 days, insurance lapsing within 3 days, or the trial ending within 3 days.
-Undated items and things further off are listed when it goes, never a reason to send it
-(actions/digest.py). Each person chooses daily (default), weekly on Mondays, or off, on
+The daily one is sent only when something is urgent: an item overdue or due within 3 days, a
+tender return within 3 days, insurance lapsing within 3 days, or the trial ending within 3 days.
+Undated items and things further off are listed when it goes, never a reason to send it.
+The weekly one is a full summary, sent whenever anything is waiting (actions/digest.py). Each person chooses daily (default), weekly on Mondays, or off, on
 their profile or from the signed unsubscribe link in every email.
 """
 from datetime import timedelta
@@ -29,12 +29,12 @@ from tenancy.context import org_context
 from tenancy.models import Membership, Organization
 
 
-def waiting_for(user, membership, today=None):
+def waiting_for(user, membership, today=None, everything=False):
     """(urgent, sections, more) for this person, each item with an absolute link."""
     items = actions.for_user(actions.request_for(user, membership))
     for item in items:
         item.link = notify.absolute(item.url)
-    return digest.sections_for(items, today)
+    return digest.sections_for(items, today, cap=None if everything else digest.EXTRA_CAP)
 
 
 class Command(BaseCommand):
@@ -70,11 +70,14 @@ class Command(BaseCommand):
                         prefs[user.pk] = DigestPreference.frequency_for(user)
                     if not digest.is_due_day(prefs[user.pk], today):
                         continue
-                    urgent, waiting, more = waiting_for(user, m, today)
+                    weekly = prefs[user.pk] == DigestPreference.WEEKLY
+                    urgent, waiting, more = waiting_for(user, m, today, everything=weekly)
+                    # The weekly summary goes whenever anything at all is waiting
+                    urgent = urgent or (weekly and bool(waiting))
                     ctx = {'waiting': waiting, 'more': more,
                            'needs_me_link': notify.absolute(reverse('needs_me', args=[org.slug])),
                            'unsubscribe_link': notify.absolute(digest.unsubscribe_path(user)),
-                           'weekly': prefs[user.pk] == DigestPreference.WEEKLY}
+                           'weekly': weekly}
                     if m.is_internal:
                         mine_insurance = insurance if m.is_admin or m.role == Membership.ROLE_MEMBER else []
                         ctx.update({
