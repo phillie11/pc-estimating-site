@@ -240,6 +240,14 @@ class Commitment(AppendOnlyModel):
     description = models.CharField(max_length=300, blank=True)
     order_date = models.DateField(default=timezone.localdate)
     original_value = models.DecimalField('Order value', max_digits=14, decimal_places=2)
+    # A subcontract committed from a package: where its value came from, and the sub's own quote for reference.
+    # Blank on supplier orders and on orders committed before this was recorded.
+    BASIS_LEVELLED, BASIS_QUOTE = 'LEVELLED', 'QUOTE'
+    BASIS_CHOICES = [(BASIS_LEVELLED, 'Levelled total from quote levelling'),
+                     (BASIS_QUOTE, 'Quoted value (no levelled total)')]
+    value_basis = models.CharField(max_length=8, choices=BASIS_CHOICES, blank=True, editable=False)
+    quoted_value = models.DecimalField('Quoted', max_digits=14, decimal_places=2, null=True, blank=True,
+                                       editable=False)
     # One-time key from the form that placed it, so a double submit can't place the order twice
     form_key = models.CharField(max_length=80, null=True, blank=True, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')

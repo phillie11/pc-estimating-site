@@ -414,6 +414,20 @@ def carried_for(project):
     return out
 
 
+def levelled_totals(project):
+    """
+    {package id: levelled total} for every subcontractor with a levelled total on this project's
+    sheets (quoted total plus the estimator's adjustments). A package with no sheet for its trade,
+    or no column on it, is left out: the caller falls back to the quoted value.
+    """
+    out = {}
+    for sheet in LevellingSheet.objects.filter(project=project).select_related('project', 'trade'):
+        for col in build(sheet).columns:
+            if col.levelled is not None:
+                out[col.package.pk] = col.levelled
+    return out
+
+
 def reasons_needed(project):
     """Sheets on this bid whose carried subcontractor is no longer lowest levelled and has no reason."""
     out = []

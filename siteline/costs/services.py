@@ -131,9 +131,38 @@ def revise_budget(project, actor, cost_code, amount, reason, description=''):
 
 # --- Commitments ------------------------------------------------------------------------
 
+def levelled_totals(project):
+    """{package id: levelled total} from quote levelling on this job ({} when levelling isn't installed)."""
+    from django.apps import apps
+    if not apps.is_installed('levelling'):
+        return {}
+    from levelling.services import levelled_totals as from_levelling
+    return from_levelling(project)
+
+
+def order_value_for(package, levelled=None):
+    """
+    (value, basis) a package would be committed at: its levelled total if it has one, else its
+    quoted value; (None, '') with neither. `levelled` is levelled_totals(project), when the
+    caller already has it.
+    """
+    if levelled is None:
+        levelled = levelled_totals(package.project)
+    total = levelled.get(package.pk)
+    if total is not None:
+        return pennies(total), Commitment.BASIS_LEVELLED
+    if package.quote_value:
+        return pennies(package.quote_value), Commitment.BASIS_QUOTE
+    return None, ''
+
+
 @transaction.atomic
 def commit_package(package, cost_code, actor):
-    """'Commit this order': an appointed package becomes a subcontract order at its quoted value."""
+    """
+    'Commit this order': an appointed package becomes a subcontract order at the levelled total
+    the estimator carried in quote levelling (the quote plus what was added for gaps in it), or
+    at the quoted value when the package has no levelled total. The quote is kept for reference.
+    """
     from directory.models import Package
     project = _lock(package.project)
     package = Package.objects.select_related('subcontractor', 'trade').get(pk=package.pk)
@@ -141,13 +170,17 @@ def commit_package(package, cost_code, actor):
         raise CostError('Only an appointed package can be committed.')
     if Commitment.objects.filter(package=package).exists():
         raise CostError('This package is already committed.')
-    if not package.quote_value:
+    value, basis = order_value_for(package)
+    if value is None:
         raise CostError('This package has no quoted value to commit.')
+    if value <= 0:
+        raise CostError('The levelled total for this package is zero or less. Check the quote levelling.')
     _check_code(project, cost_code)
     c = Commitment.objects.create(
         project=project, number=_next(Commitment, project), kind=Commitment.SUBCONTRACT, cost_code=cost_code,
         package=package, subcontractor=package.subcontractor, supplier=package.subcontractor.company_name,
-        description=f'{package.trade or "Package"} subcontract', original_value=pennies(package.quote_value),
+        description=f'{package.trade or "Package"} subcontract', original_value=value, value_basis=basis,
+        quoted_value=pennies(package.quote_value) if package.quote_value is not None else None,
         created_by=actor)
     _post(project, cost_code, ledger.COMMITMENT, c.original_value, source=c, actor=actor,
                 note=f'{c.ref} {c.supplier}: {c.description}')

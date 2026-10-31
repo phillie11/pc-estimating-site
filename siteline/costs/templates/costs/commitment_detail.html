@@ -11,7 +11,8 @@
     {% if c.description %}<dt>What for</dt><dd>{{ c.description }}</dd>{% endif %}
     {% if c.reference %}<dt>Reference</dt><dd>{{ c.reference }}</dd>{% endif %}
     <dt>Ordered</dt><dd>{{ c.order_date|date:"j M Y" }}{% if c.created_by %} by {{ c.created_by.full_name }}{% endif %}</dd>
-    <dt>Placed at</dt><dd class="mono">{{ c.original_value|money_exact:currency }}</dd>
+    <dt>Placed at</dt><dd><span class="mono">{{ c.original_value|money_exact:currency }}</span>{% if c.value_basis %}<br><span class="small dim">{% if c.value_basis == 'LEVELLED' %}Levelled total from quote levelling{% else %}Quoted value: there was no levelled total{% endif %}</span>{% endif %}</dd>
+    {% if c.value_basis %}<dt>Original quote</dt><dd><span class="mono">{% if c.quoted_value is not None %}{{ c.quoted_value|money_exact:currency }}{% else %}—{% endif %}</span> <span class="small dim">(for reference)</span></dd>{% endif %}
     <dt>Adjustments</dt><dd class="mono">{{ c.adjusted_total|money_exact:currency }}</dd>
     <dt>Current value</dt><dd class="mono"><strong>{{ c.value|money_exact:currency }}</strong></dd>
     <dt>Invoiced to date</dt><dd class="mono">{{ invoiced|money_exact:currency }}</dd>

@@ -5,6 +5,17 @@ from projects.forms import StyledModelForm
 from projects.models import ProjectMember
 
 from .models import MainContract
+from .presets import uses_valuation_dates
+
+VALUATION_DAY_HELP = (
+    'Day of each month for interim valuations: the Interim Valuation Dates in the JCT Contract Particulars, '
+    'or the assessment day in the NEC Contract Data. Needed for JCT Intermediate, Standard and Design and '
+    'Build, and NEC4, so Siteline can remind you when each application for payment is due. Above 28 means '
+    'the last day in shorter months.')
+VALUATION_DAY_REQUIRED = (
+    'Enter the valuation day. This form of contract pays from a monthly valuation date, and without it '
+    'there are no reminders to submit applications for payment. It is in the Contract Particulars '
+    '(JCT: Interim Valuation Dates) or the Contract Data (NEC: assessment day).')
 
 
 class ContractForm(StyledModelForm):
@@ -37,6 +48,8 @@ class ContractForm(StyledModelForm):
         self.initial.setdefault('completion_date', project.completion_date)
         for name in ('contract_sum', 'lads_rate', 'retention_percent', 'retention_released_at_pc_percent'):
             self.fields[name].widget.attrs.setdefault('inputmode', 'decimal')
+        self.fields['valuation_day'].help_text = VALUATION_DAY_HELP
+        self.fields['valuation_day'].widget.attrs.setdefault('inputmode', 'numeric')
 
     def clean(self):
         data = super().clean()
@@ -46,6 +59,9 @@ class ContractForm(StyledModelForm):
             self.add_error('nec_main_option', 'Pick the main option from the Contract Data.')
         if not (data.get('form') or '').startswith('JCT_'):
             data['edition'] = ''
+        if uses_valuation_dates(data.get('form')) and not data.get('valuation_day') \
+                and 'valuation_day' not in self.errors:
+            self.add_error('valuation_day', VALUATION_DAY_REQUIRED)
         start, finish = data.get('start_date'), data.get('completion_date')
         if start and finish and finish < start:
             self.add_error('completion_date', 'Completion is before the start date.')

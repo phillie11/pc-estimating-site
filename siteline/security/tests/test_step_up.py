@@ -64,7 +64,8 @@ class StepUpTests(SecurityTestBase):
             self.assertTrue(r.url.startswith(reverse('step_up')), u)
         for u in (self.url('billing_portal'), self.url('project_list') + '?export=csv',
                   self.url('rfi_register') + '?export=csv', self.url('sub_list') + '?export=csv',
-                  self.url('variation_list', self.project.pk) + '?export=csv'):
+                  self.url('variation_list', self.project.pk) + '?export=csv',
+                  self.url('rfi_list', self.project.pk) + '?export=csv'):
             r = self.client.get(u)
             self.assertRedirects(r, self.step_up_url(u), fetch_redirect_response=False, msg_prefix=u)
 

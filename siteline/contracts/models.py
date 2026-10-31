@@ -171,6 +171,11 @@ class MainContract(TenantModel):
     def preset(self):
         return presets.preset_for(self.form)
 
+    @property
+    def needs_valuation_day(self):
+        """A valuation-date payment cycle with no day set: no application reminders until it is."""
+        return presets.uses_valuation_dates(self.form) and not self.valuation_day
+
     def apply_preset(self, only_blank=True, creating=False):
         """
         Fill payment, retention and defects terms from the form's standard ones. Returns the fields

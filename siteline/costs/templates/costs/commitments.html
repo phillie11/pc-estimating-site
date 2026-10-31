@@ -4,13 +4,14 @@
 {% include "costs/_nav.html" %}
 {% if to_commit %}
 <div class="card"><div class="card-head"><h2>Appointed packages to commit</h2><span class="small dim">{{ to_commit|length }} waiting</span></div>
-<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Package</th><th class="num">Quoted</th><th>Cost code</th><th></th></tr></thead><tbody>
-{% for p, guess in to_commit %}<tr><td><strong>{{ p.subcontractor }}</strong><span class="sub">{{ p.trade|default:"Package" }}</span></td><td class="num">{{ p.quote_value|money_exact:currency }}</td>
+<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Package</th><th class="num">Order value</th><th>Cost code</th><th></th></tr></thead><tbody>
+{% for p, guess, value, basis in to_commit %}<tr><td><strong>{{ p.subcontractor }}</strong><span class="sub">{{ p.trade|default:"Package" }}</span></td>
+  <td class="num">{% if value %}<strong>{{ value|money_exact:currency }}</strong>{% if basis == basis_levelled %}<span class="sub">Levelled total{% if p.quote_value is not None %} · quoted {{ p.quote_value|money_exact:currency }}{% endif %}</span>{% else %}<span class="sub">Quoted value: no levelled total</span>{% endif %}{% else %}—{% endif %}</td>
   <td colspan="2"><form method="post" action="{% url 'cost_commit_package' org.slug project.pk %}" class="row commit-form">{% csrf_token %}<input type="hidden" name="package" value="{{ p.pk }}">
     <select name="cost_code" aria-label="Cost code for {{ p.subcontractor }}">{% for c in codes %}<option value="{{ c.pk }}"{% if c == guess %} selected{% endif %}>{{ c.code }} {{ c.name }}</option>{% endfor %}</select>
-    {% if p.quote_value %}<button class="btn primary sm" style="min-height:44px">Commit this order</button>{% else %}<span class="small dim">No quoted value yet</span>{% endif %}</form></td></tr>{% endfor %}
+    {% if value %}<button class="btn primary sm" style="min-height:44px">Commit this order</button>{% else %}<span class="small dim">No quoted value yet</span>{% endif %}</form></td></tr>{% endfor %}
 </tbody></table></div>
-<div class="card-body small dim" style="padding-top:8px">Committing records the subcontract order at the quoted value against the cost code. After that the order changes only through recorded adjustments.</div></div>
+<div class="card-body small dim" style="padding-top:8px">Committing records the subcontract order against the cost code at the levelled total from quote levelling: the quote plus what the estimator added for gaps in it. Where a package has no levelled total, the quoted value is used instead. After that the order changes only through recorded adjustments.</div></div>
 {% endif %}
 {% if sv_waiting %}
 <div class="card"><div class="card-head"><h2>Approved sub variations to add</h2></div>
