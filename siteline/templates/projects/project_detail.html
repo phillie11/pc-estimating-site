@@ -62,7 +62,7 @@
     </div></div>
   </div>
   <div class="stack">
-    {% if subcontracts %}<div class="card"><div class="card-head"><h2>{% if is_internal %}Subcontracts{% else %}Your subcontract{% endif %}</h2>{% if is_internal %}<a class="small" href="{% url 'package_list' org.slug project.pk %}">Procurement →</a>{% endif %}</div>
+    {% if subcontracts %}<div class="card"><div class="card-head"><h2>{% if is_internal %}Subcontracts{% else %}Your subcontract{% endif %}</h2>{% if is_internal %}<a class="small" href="{% url 'package_list' org.slug project.pk %}">Packages →</a>{% endif %}</div>
       <ul class="list">{% for s in subcontracts %}<li style="display:block">
         <div class="row between"><strong>{% if is_internal %}{{ s.package.subcontractor }}{% else %}{{ s.package.trade|default:"Package" }}{% endif %}</strong><span class="mono">{{ s.total|money:currency }}</span></div>
         <div class="small dim">{% if is_internal %}{{ s.package.trade|default:"Package" }} · {% endif %}order {{ s.order|money:currency }}{% if s.approved %} + {{ s.approved|money:currency }} variations{% endif %}{% if s.pending %} · {{ s.pending|money:currency }} awaiting decision{% endif %}</div>

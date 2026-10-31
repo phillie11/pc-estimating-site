@@ -1,0 +1,31 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a class="btn primary" href="{% url 'procurement_line_create' org.slug project.pk %}">{% icon 'plus' %} Add line</a>{% endblock %}
+{% block project_content %}
+{% include "procurement/_subnav.html" %}
+<div class="kpis">
+  <a class="kpi" href="{% qs rag='red' %}"><div class="label">Red</div><div class="value{% if counts.red %} bad{% endif %}">{{ counts.red }}</div><div class="note">Order-by date passed, not ordered</div></a>
+  <a class="kpi" href="{% qs rag='amber' %}"><div class="label">Amber</div><div class="value">{{ counts.amber }}</div><div class="note">Order within {{ amber_days }} days</div></a>
+  <a class="kpi" href="{% qs rag='green' %}"><div class="label">Green</div><div class="value">{{ counts.green }}</div><div class="note">On track</div></a>
+  <a class="kpi" href="{% qs rag='done' %}"><div class="label">Ordered</div><div class="value">{{ counts.done }}</div><div class="note">Ordered or delivered</div></a>
+</div>
+<form method="get" class="filters" aria-label="Filter the schedule">
+  <label class="small">Status <select name="status"><option value="">Any</option><option value="open"{% if filters.status == 'open' %} selected{% endif %}>Not yet ordered</option>{% for code, label in status_choices %}<option value="{{ code }}"{% if filters.status == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label class="small">RAG <select name="rag"><option value="">Any</option>{% for code, label in rag_choices %}<option value="{{ code }}"{% if filters.rag == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label class="small"><input type="checkbox" name="long_lead" value="1"{% if filters.long_lead %} checked{% endif %}> Long-lead only</label>
+  <label class="small">Search <input type="search" name="q" value="{{ filters.q }}" placeholder="Item or subcontractor"></label>
+  <button class="btn sm" style="min-height:44px">Filter</button>{% if filtered %} <a class="small" href="?">Clear</a>{% endif %}
+</form>
+<div class="card">{% if lines %}<div class="table-wrap"><table class="t"><thead><tr><th>Package or item</th><th>Order by</th><th>RAG</th><th>Status</th><th>Required on site</th><th class="num" title="Lead time + approval period">Lead + approval</th><th>Submittals due</th><th>Design info by</th></tr></thead><tbody>
+{% for line in lines %}<tr><td><a class="rowlink" href="{{ line.get_absolute_url }}">{{ line.title }}</a><span class="sub">{% if line.long_lead %}Long lead · {% endif %}{{ line.who|default:"No package or supplier yet" }}</span></td>
+  <td class="small nowrap"><strong>{{ line.order_by|date:"D j M Y"|default:"—" }}</strong></td>
+  <td>{% badge line.rag_label line.rag_tone %}</td>
+  <td>{% status_badge line %}</td>
+  <td class="small nowrap">{{ line.required_on_site|date:"j M Y"|default:"—" }}</td>
+  <td class="num small nowrap">{{ line.lead_time_weeks }} + {{ line.approval_weeks }} wks</td>
+  <td class="small nowrap">{{ line.submittals_due|date:"j M Y"|default:"—" }}</td>
+  <td class="small nowrap{% if line.design_info_late %} overdue{% endif %}">{{ line.design_info_by|date:"j M Y"|default:"—" }}{% if line.design_info_late %}<span class="sub">After submittals are due</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% elif filtered %}{% include "partials/empty_state.html" with title="Nothing matches these filters" message="Clear the filters to see the whole schedule." cta_url="?" cta_label="Clear filters" cta_plain=True %}
+{% else %}{% url 'procurement_line_create' org.slug project.pk as add_url %}{% include "partials/empty_state.html" with title="No procurement schedule yet" message="Add a line for each trade package or long-lead item. Give it the date it's needed on site, its lead time and the approval period, and Siteline works out when it must be ordered and when submittals are due." cta_url=add_url cta_label="Add the first line" %}{% endif %}</div>
+<p class="small dim">{% badge 'Advisory' 'warn' %} Order by = required on site − lead time. Submittals due = order by − approval period. Weeks are working weeks (7 calendar days); a date that falls on a weekend or bank holiday moves back to the working day before. Check against your subcontract orders and programme.</p>
+{% endblock %}
