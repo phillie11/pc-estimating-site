@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'tenders',
     'delivery',
     'documents',
+    'diary',
     'jobs',
     'actions',
     'security',

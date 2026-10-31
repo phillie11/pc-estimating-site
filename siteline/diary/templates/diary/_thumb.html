@@ -1,0 +1,1 @@
+<a href="{% url 'diary_photo' org.slug project.pk p.pk %}"><img src="{{ p.thumb_url }}" alt="{{ p.caption|default:'Site photo' }}" loading="lazy">{% if p.shared_with_client %}<span class="badge info shared">Client</span>{% endif %}<span class="cap">{% if show_date %}{{ p.taken_on|date:"j M" }} · {% endif %}{{ p.caption|default:p.area|default:"No caption" }}</span></a>

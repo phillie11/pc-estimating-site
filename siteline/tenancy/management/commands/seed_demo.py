@@ -348,6 +348,10 @@ class Command(BaseCommand):
             from costs.demo import seed as seed_costs
             seed_costs(leeds=leeds, pm=pm, owner=owner, demo_pdf=demo_pdf)
 
+            # Site diary: the last 10 working days on Leeds, with placeholder photos (diary/demo.py)
+            from diary.demo import seed as seed_diary
+            seed_diary(leeds=leeds, pm=pm)
+
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')
             due = kings.quotes_due

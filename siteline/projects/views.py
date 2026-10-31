@@ -92,6 +92,10 @@ def project_context(request, project, tab, **extra):
         counts = site_counts(request, project)
         tabs += [('subvariations', 'Sub variations' if internal else 'Variations', url('subvariation_list'), counts['subvariations']),
                  ('rams', 'RAMS', url('rams_list'), counts['rams'])]
+    if internal:
+        from diary.access import can_use_diary  # site diary: the PM, the project team, owners and admins
+        if can_use_diary(request, project):
+            tabs.append(('diary', 'Diary', url('diary_register'), None))
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), issue_qs.count()),
         ('tasks', 'Tasks', url('task_list'), task_qs.count()),
