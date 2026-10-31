@@ -1,3 +1,5 @@
+import datetime
+
 from django import forms
 from django.utils import timezone
 
@@ -11,6 +13,7 @@ from .models import (DelayLine, DeliveryLine, DiaryEntry, DiarySettings, Instruc
                      SitePhoto, VisitorLine)
 from .photos import MAX_FILES, validate_photo
 
+EARLIEST = datetime.date(2000, 1, 1)
 TIME = forms.TimeInput(attrs={'type': 'time'}, format='%H:%M')
 
 
@@ -161,6 +164,8 @@ class PhotoUploadForm(forms.Form):
         d = self.cleaned_data['taken_on']
         if d > timezone.localdate():
             raise forms.ValidationError('That date is in the future.')
+        if d < EARLIEST:
+            raise forms.ValidationError('Check the date.')
         return d
 
     def clean(self):
@@ -189,6 +194,29 @@ class PhotoForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['area'].widget.attrs['list'] = 'diary-areas'
+        if self.instance.entry_id:
+            # A photo in the diary keeps the diary's date
+            self.fields['taken_on'].disabled = True
+            self.fields['taken_on'].help_text = 'Photos in the site diary keep the diary day\'s date.'
+
+    def clean_taken_on(self):
+        d = self.cleaned_data['taken_on']
+        if self.instance.entry_id and d != self.instance.entry.entry_date:
+            raise forms.ValidationError('Photos in the site diary keep the diary day\'s date.')
+        if d > timezone.localdate():
+            raise forms.ValidationError('That date is in the future.')
+        if d < EARLIEST:
+            raise forms.ValidationError('Check the date.')
+        return d
+
+
+class ShareForm(StyledModelForm):
+    """All that can change on a photo from a locked diary day: whether the client sees it."""
+
+    class Meta:
+        model = SitePhoto
+        fields = ['shared_with_client']
+        help_texts = PhotoForm.Meta.help_texts
 
 
 class UnlockForm(forms.Form):

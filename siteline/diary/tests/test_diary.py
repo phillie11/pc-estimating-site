@@ -18,7 +18,7 @@ import actions
 from changes.tests.base import CommercialTestBase, make_user
 from core.models import AuditEntry, RecordIndex
 from directory.models import Package
-from projects.models import ProjectMember
+from projects.models import Project, ProjectMember
 from tenancy.context import TenantContextMissing, org_context
 from tenancy.models import Membership
 
@@ -48,6 +48,11 @@ class DiaryTestBase(CommercialTestBase):
                                   area=Membership.AREA_DELIVERY)
         with org_context(self.org_a):
             ProjectMember.objects.create(project=self.pa, user=self.sam, role=ProjectMember.ROLE_SITE)
+            # On site for the last couple of months, so past days have diary pages
+            self.pa.start_date = self.today - timedelta(days=60)
+            self.pa.save()
+            Project.objects.filter(pk=self.pa.pk).update(created_at=timezone.now() - timedelta(days=90))
+            self.pa.refresh_from_db()
 
     def entry(self, day=None, project=None, org=None, actor=None, written=None):
         day = day or self.today
@@ -55,8 +60,10 @@ class DiaryTestBase(CommercialTestBase):
             e = DiaryEntry(project=project or self.pa, entry_date=day)
             e.save(actor=actor or self.pat)
             if written:  # backdate when it was written (set-up only)
+                e.start_lock_window(written_on=written)
                 DiaryEntry.objects.filter(pk=e.pk).update(created_at=timezone.make_aware(
-                    datetime.combine(written, datetime.min.time().replace(hour=17))))
+                    datetime.combine(written, datetime.min.time().replace(hour=17))), locks_at=e.locks_at,
+                    written_late=e.written_late)
                 e = DiaryEntry.objects.get(pk=e.pk)
             return e
 

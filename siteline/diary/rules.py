@@ -81,3 +81,14 @@ def is_locked(entry_date, written_on, today, unlocked_until=None, saturday_count
 def unlock_until(today, saturday_counts=False, region=DEFAULT_REGION):
     """An unlock lasts to the end of the next working day."""
     return next_working_day(today, saturday_counts, region)
+
+
+def locks_at(entry_date, written_on, saturday_counts=False, region=DEFAULT_REGION):
+    """When a new entry locks: the start of the day after edit_until (naive local time)."""
+    return datetime.datetime.combine(edit_until(entry_date, written_on, saturday_counts, region) + ONE_DAY,
+                                     datetime.time.min)
+
+
+def unlock_locks_at(today, saturday_counts=False, region=DEFAULT_REGION):
+    """When an entry unlocked today locks again: the start of the day after the next working day."""
+    return datetime.datetime.combine(unlock_until(today, saturday_counts, region) + ONE_DAY, datetime.time.min)

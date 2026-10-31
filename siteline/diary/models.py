@@ -66,6 +66,10 @@ class DiaryEntry(RecordBase):
                                 help_text='Toolbox talks, inspections, permits. If there was an incident, what happened.')
     notes = models.TextField('General notes', blank=True)
 
+    locks_at = models.DateTimeField(null=True, blank=True, editable=False,
+                                    help_text='When it locks: set when it is created and when it is unlocked.')
+    written_late = models.BooleanField(default=False, editable=False,
+                                       help_text='Written after its own day and the next working day.')
     unlocked_until = models.DateField(null=True, blank=True, editable=False)
     unlock_reason = models.TextField(blank=True, editable=False)
 
@@ -82,56 +86,63 @@ class DiaryEntry(RecordBase):
     def title_for(day):
         return f'Site diary {day:%a} {day.day} {day:%b %Y}'
 
-    def save(self, *args, **kwargs):
-        self.visibility = VIS_INTERNAL  # never shared: only photos marked for the client go outside
-        if not self.title and self.entry_date:
-            self.title = self.title_for(self.entry_date)
-        return super().save(*args, **kwargs)
-
     def get_absolute_url(self):
         return reverse('diary_day', args=[self.organization.slug, self.project_id, self.entry_date.isoformat()])
 
     # --- locking ---------------------------------------------------------------------
+    # The lock time is worked out once and stored (locks_at): when the entry is first saved, and again
+    # when it is unlocked. Changing the Saturday setting or the contract's region later never reopens
+    # or closes an entry that already exists.
     @property
     def written_on(self):
         return timezone.localdate(self.created_at) if self.created_at else timezone.localdate()
 
     @property
     def calendar(self):
-        """(Saturday counts?, bank holiday region) for this job; set by the caller for a page of entries."""
+        """(Saturday counts?, bank holiday region) for this job, as they are now."""
         if getattr(self, '_calendar', None) is None:
             self._calendar = calendar_for(self.project)
         return self._calendar
 
+    def start_lock_window(self, written_on=None):
+        """Set written_late and locks_at from the rules (diary/rules.py), for a new entry."""
+        written_on = written_on or timezone.localdate()
+        saturday, region = self.calendar
+        self.written_late = rules.is_written_late(self.entry_date, written_on, saturday, region)
+        self.locks_at = _aware(rules.locks_at(self.entry_date, written_on, saturday, region))
+
+    def save(self, *args, **kwargs):
+        self.visibility = VIS_INTERNAL  # never shared: only photos marked for the client go outside
+        if not self.title and self.entry_date:
+            self.title = self.title_for(self.entry_date)
+        if self._state.adding and self.locks_at is None and self.entry_date:
+            self.start_lock_window()
+        return super().save(*args, **kwargs)
+
     def active_unlock(self):
         return self.unlocked_until if self.status == self.STATUS_UNLOCKED else None
 
-    def is_locked(self, today=None):
-        return rules.is_locked(self.entry_date, self.written_on, today or timezone.localdate(), self.active_unlock(),
-                               *self.calendar)
+    def is_locked(self, now=None):
+        if self.locks_at is None:  # not saved yet
+            return False
+        return (now or timezone.now()) >= self.locks_at
 
     @property
     def locked(self):
         return self.is_locked()
 
     @property
-    def normal_edit_until(self):
-        return rules.edit_until(self.entry_date, self.written_on, *self.calendar)
-
-    @property
     def editable_until(self):
-        return max(self.normal_edit_until, self.active_unlock() or self.entry_date)
-
-    @property
-    def written_late(self):
-        return rules.is_written_late(self.entry_date, self.written_on, *self.calendar)
+        """The last day it can be changed (the day before locks_at, local time)."""
+        if self.locks_at is None:
+            return None
+        return timezone.localdate(self.locks_at) - rules.ONE_DAY
 
     @property
     def lock_label(self):
-        today = timezone.localdate()
-        if self.is_locked(today):
+        if self.is_locked():
             return 'Locked', 'muted'
-        if self.active_unlock() and today > self.normal_edit_until:
+        if self.status == self.STATUS_UNLOCKED:
             return 'Unlocked', 'warn'
         return 'Open', 'good'
 
@@ -151,6 +162,10 @@ class DiaryEntry(RecordBase):
     @property
     def hours_lost(self):
         return sum((d.hours_lost for d in self.delays.all()), start=Decimal('0'))
+
+
+def _aware(naive):
+    return timezone.make_aware(naive) if timezone.is_naive(naive) else naive
 
 
 def calendar_for(project):
@@ -287,6 +302,11 @@ class SitePhoto(TenantModel):
 
     def __str__(self):
         return self.caption or self.original_name or f'Photo {self.pk}'
+
+    def save(self, *args, **kwargs):
+        if self.entry_id:
+            self.taken_on = self.entry.entry_date  # a photo in the diary always carries the diary day's date
+        super().save(*args, **kwargs)
 
     def file_url(self, size='thumb'):
         return reverse('diary_photo_file', args=[self.organization.slug, self.project_id, self.pk, size])

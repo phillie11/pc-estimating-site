@@ -23,7 +23,7 @@ def _p(text, style):
 
 def _table(rows, widths, s):
     rows = [[_p(c, s['Small']) for c in row] for row in rows]
-    t = Table(rows, colWidths=widths, repeatRows=1)
+    t = Table(rows, colWidths=widths, repeatRows=1, splitInRow=1)  # a long cell runs onto the next page
     t.setStyle(TableStyle([
         ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 8),
         ('BACKGROUND', (0, 0), (-1, 0), HEAD),
@@ -74,7 +74,8 @@ def day_sheet(entry, org_name):
               if entry.site_start or entry.site_finish else '-'],
              ['Our people on site', f'{entry.own_staff_count}' + (f': {entry.own_staff}' if entry.own_staff else '')],
              ['Health and safety', ('INCIDENT REPORTED. ' if entry.hs_incident else 'No incident. ') + entry.hs_notes]]
-    t = Table([[_p(a, s['Small']), _p(b, s['Normal'])] for a, b in facts], colWidths=[38 * mm, W - 38 * mm])
+    t = Table([[_p(a, s['Small']), _p(b, s['Normal'])] for a, b in facts], colWidths=[38 * mm, W - 38 * mm],
+              splitInRow=1)
     t.setStyle(TableStyle([('GRID', (0, 0), (-1, -1), 0.4, GRID), ('BACKGROUND', (0, 0), (0, -1), HEAD),
                            ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
     story.append(t)

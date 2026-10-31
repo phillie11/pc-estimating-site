@@ -1,0 +1,11 @@
+{% extends "project_base.html" %}{% load static %}
+{% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
+{% block project_content %}
+<div class="site-mode touch">
+<div class="card lock-box"><div class="card-body">
+  <h2>That can't be added to {{ day|date:"l j F" }}</h2>
+  <p>{{ message }}</p>
+  <div class="form-actions"><a class="btn primary" href="{% url 'diary_today' org.slug project.pk %}">Today on site</a><a class="btn" href="{% url 'diary_register' org.slug project.pk %}">Diary register</a></div>
+</div></div>
+</div>
+{% endblock %}

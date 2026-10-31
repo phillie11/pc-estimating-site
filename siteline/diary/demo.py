@@ -86,7 +86,9 @@ def _entry(project, day, pm, n, **kw):
 
 def _backdate(entry, day):
     """Written that evening, so the lock window runs from the day itself (seed data only; skips the audit)."""
-    DiaryEntry.objects.filter(pk=entry.pk).update(created_at=_at(day, 17, 30))
+    entry.start_lock_window(written_on=day)
+    DiaryEntry.objects.filter(pk=entry.pk).update(created_at=_at(day, 17, 30), locks_at=entry.locks_at,
+                                                  written_late=entry.written_late)
     for model in (LabourLine, PlantLine, DeliveryLine, VisitorLine, InstructionLine, DelayLine):
         model.objects.filter(entry=entry).update(created_at=_at(day, 16))
 

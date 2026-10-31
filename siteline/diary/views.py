@@ -33,7 +33,7 @@ from . import rules
 from .access import can_see_shared_photos, can_use_diary, diary_project, is_pm_or_admin
 from .actions import missing_days
 from .forms import (DelayForm, DeliveryForm, EntryForm, InstructionForm, LabourForm, PhotoForm, PhotoUploadForm,
-                    PlantForm, SettingsForm, UnlockForm, VisitorForm)
+                    PlantForm, SettingsForm, ShareForm, UnlockForm, VisitorForm)
 from .models import DelayLine, DiaryEntry, DiarySettings, SitePhoto, entry_totals
 
 # kind in the URL -> (form, related name on the entry, button label, what the audit trail calls it)
@@ -55,13 +55,34 @@ def _ctx(request, project, **extra):
     return project_context(request, project, 'diary', **extra)
 
 
-def _day(value):
+EARLIEST = datetime.date(2000, 1, 1)
+
+
+class EntryRefused(PermissionDenied):
+    """A day's entry can't be written: locked (403), before the job started, or deleted (409)."""
+    def __init__(self, message, status=403):
+        super().__init__(message)
+        self.status = status
+
+
+def _created_on(project):
+    return timezone.localdate(project.created_at) if project.created_at else timezone.localdate()
+
+
+def first_diary_day(project):
+    """The earliest day an entry can be written for: the start on site, or the day the job was set up."""
+    return project.start_date or _created_on(project)
+
+
+def _day(value, project):
+    """The day in the URL; a 404 for anything that isn't a date the job could have a diary page for."""
     try:
         day = datetime.date.fromisoformat(value)
     except ValueError:
         raise Http404
-    if day > timezone.localdate():
-        raise Http404('Diary entries are for today or earlier.')
+    earliest = max(EARLIEST, min(first_diary_day(project), _created_on(project)))
+    if day > timezone.localdate() or day < earliest:
+        raise Http404('No diary page for that date.')
     return day
 
 
@@ -81,7 +102,14 @@ def _touch(entry, actor, action, note=''):
 
 
 def _entry_for_write(request, project, day):
-    """The day's entry, created if it doesn't exist yet. PermissionDenied if it is locked."""
+    """The day's entry, created if it doesn't exist yet. EntryRefused if it is locked, deleted or out of range."""
+    if day > timezone.localdate() or day < first_diary_day(project):
+        raise EntryRefused(f'The diary can only be written for days from the start on site '
+                           f'({first_diary_day(project):%a} {first_diary_day(project).day} '
+                           f'{first_diary_day(project):%b %Y}) to today.', status=409)
+    if DiaryEntry.with_deleted.filter(project=project, entry_date=day, deleted_at__isnull=False).exists():
+        raise EntryRefused(f'The diary entry for {day:%a} {day.day} {day:%b} was deleted. An admin can restore it; '
+                           'until then nothing can be added to that day.', status=409)
     entry = DiaryEntry.objects.filter(project=project, entry_date=day).first()
     if entry is None:
         try:
@@ -89,14 +117,18 @@ def _entry_for_write(request, project, day):
                 entry = DiaryEntry(project=project, entry_date=day)
                 entry.save(actor=request.user)
         except IntegrityError:  # someone else started the same day a moment ago
-            entry = DiaryEntry.objects.get(project=project, entry_date=day)
+            entry = DiaryEntry.with_deleted.filter(project=project, entry_date=day, deleted_at__isnull=True).first()
+            if entry is None:
+                raise EntryRefused('Someone else changed this day at the same moment. Try again.', status=409)
     if entry.locked:
-        raise PermissionDenied(f'The diary for {day:%a} {day.day} {day:%b} is locked. Ask the project manager to '
-                               'unlock it if something needs correcting.')
+        raise EntryRefused(f'The diary for {day:%a} {day.day} {day:%b} is locked. Ask the project manager to '
+                           'unlock it if something needs correcting.')
     return entry
 
 
 def _locked_refusal(request, project, day, err):
+    if getattr(err, 'status', None) == 409:
+        return render(request, 'diary/refused.html', _ctx(request, project, day=day, message=str(err)), status=409)
     messages.error(request, str(err))
     return redirect('diary_day', org_slug=request.org.slug, pk=project.pk, day=day.isoformat())
 
@@ -156,11 +188,11 @@ def diary_today(request, org_slug, pk):
 
 def diary_day(request, org_slug, pk, day):
     project = diary_project(request, pk)
-    day = _day(day)
+    day = _day(day, project)
     entry = DiaryEntry.objects.filter(project=project, entry_date=day).first()
     today = timezone.localdate()
     if entry is not None:
-        locked = entry.is_locked(today)
+        locked = entry.locked
         lines = {kind: list(getattr(entry, rel).select_related(*(('created_by', 'rfi', 'change_event')
                                                                   if kind == 'instructions' else ('created_by',))))
                  for kind, (_, rel, _, _) in LINE_KINDS.items()}
@@ -187,10 +219,12 @@ def diary_day(request, org_slug, pk, day):
 
 def diary_edit(request, org_slug, pk, day):
     project = diary_project(request, pk)
-    day = _day(day)
+    day = _day(day, project)
     entry = DiaryEntry.objects.filter(project=project, entry_date=day).first()
     if entry is not None and entry.locked:
         return _locked_refusal(request, project, day, 'This day is locked. Ask the project manager to unlock it.')
+    if entry is None and day < first_diary_day(project):
+        return _locked_refusal(request, project, day, EntryRefused('That day is before the start on site.', 409))
     form = EntryForm(request.POST or None, instance=entry or DiaryEntry(project=project, entry_date=day))
     if request.method == 'POST' and form.is_valid():
         try:
@@ -211,7 +245,7 @@ def diary_edit(request, org_slug, pk, day):
 
 def line_add(request, org_slug, pk, day, kind):
     project = diary_project(request, pk)
-    day = _day(day)
+    day = _day(day, project)
     if kind not in LINE_KINDS:
         raise Http404
     form_class, rel, label, noun = LINE_KINDS[kind]
@@ -240,7 +274,7 @@ def line_add(request, org_slug, pk, day, kind):
 @require_POST
 def line_remove(request, org_slug, pk, day, kind, line_id):
     project = diary_project(request, pk)
-    day = _day(day)
+    day = _day(day, project)
     if kind not in LINE_KINDS:
         raise Http404
     _, rel, _, noun = LINE_KINDS[kind]
@@ -260,7 +294,7 @@ def line_remove(request, org_slug, pk, day, kind, line_id):
 def diary_lock(request, org_slug, pk, day):
     """Unlock a locked day for correction (project manager or admin, with a reason), or lock it again."""
     project = diary_project(request, pk)
-    day = _day(day)
+    day = _day(day, project)
     entry = get_object_or_404(DiaryEntry, project=project, entry_date=day)
     action = request.POST.get('action')
     try:
@@ -287,7 +321,7 @@ def diary_lock(request, org_slug, pk, day):
 
 def diary_pdf(request, org_slug, pk, day):
     project = diary_project(request, pk)
-    day = _day(day)
+    day = _day(day, project)
     entry = get_object_or_404(DiaryEntry, project=project, entry_date=day)
     from .pdf import day_sheet
     data = day_sheet(entry, request.org.name)
@@ -317,10 +351,10 @@ def delays(request, org_slug, pk):
         w.writerow(['Date', 'Diary ref', 'Cause', 'Hours lost', 'What happened', 'Trades affected', 'Logged by',
                     'Logged at'])
         for d in rows:
-            w.writerow([d.entry.entry_date.isoformat(), d.entry.ref, d.get_cause_display(), d.hours_lost,
-                        _csv_safe(d.description), _csv_safe(d.trades_affected),
-                        d.created_by.full_name if d.created_by else '', timezone.localtime(d.created_at)
-                        .strftime('%Y-%m-%d %H:%M')])
+            w.writerow([_csv_safe(v) for v in (
+                d.entry.entry_date.isoformat(), d.entry.ref, d.get_cause_display(), d.hours_lost, d.description,
+                d.trades_affected, d.created_by.full_name if d.created_by else '',
+                timezone.localtime(d.created_at).strftime('%Y-%m-%d %H:%M'))])
         return resp
     by_cause = rows.values('cause').annotate(h=Sum('hours_lost')).order_by('-h')
     labels = dict(DelayLine.CAUSE_CHOICES)
@@ -331,10 +365,17 @@ def delays(request, org_slug, pk):
         filtered=any([start, end, cause])))
 
 
-def _csv_safe(text):
-    """Stop a spreadsheet treating typed text as a formula."""
-    text = str(text or '')
-    return "'" + text if text[:1] in ('=', '+', '-', '@', '\t', '\r') else text
+FORMULA_STARTS = ('=', '+', '-', '@', '\t', '\r', '\n')
+
+
+def _csv_safe(value):
+    """Stop a spreadsheet treating text as a formula, even after leading spaces. Numbers and dates pass as they are."""
+    if isinstance(value, (int, Decimal)):
+        return value
+    text = str(value or '')
+    if text[:1] in FORMULA_STARTS or text.lstrip()[:1] in FORMULA_STARTS:
+        return "'" + text
+    return text
 
 
 # --- photos --------------------------------------------------------------------------
@@ -375,22 +416,30 @@ def photo_upload(request, org_slug, pk):
     if request.method == 'POST' and form.is_valid():
         data = form.cleaned_data
         day = data['taken_on']
+        saved = []
         try:
             with transaction.atomic():
                 entry = _entry_for_write(request, project, day) if data['attach'] else None
-                saved = []
                 for f in data['files']:
                     photo = SitePhoto(project=project, entry=entry, caption=data['caption'], area=data['area'],
                                       taken_on=day, uploaded_by=request.user)
+                    saved.append(photo)
                     photo_files.attach(photo, f)
                     photo.save()
-                    saved.append(photo)
                 if entry is not None:
                     _touch(entry, request.user, 'photos added',
                            f'{len(saved)} photo{"s" if len(saved) != 1 else ""}'
                            f'{": " + data["caption"] if data["caption"] else ""}')
         except PermissionDenied as e:
             form.add_error(None, f'{e} You can still add the photos to the job without the diary: untick the box.')
+        except photo_files.DECODE_ERRORS:
+            for photo in saved:  # the rows rolled back; remove the files already written for them
+                photo_files.delete_files(photo)
+            form.add_error(None, 'One of the photos could not be read. Nothing was uploaded; try again.')
+        except BaseException:
+            for photo in saved:
+                photo_files.delete_files(photo)
+            raise
         else:
             log_activity(request, f'added {len(saved)} site photo{"s" if len(saved) != 1 else ""}',
                          data['caption'] or data['area'] or f'{day:%a} {day.day} {day:%b}', project=project,
@@ -409,7 +458,8 @@ def photo_edit(request, org_slug, pk, photo_id):
     photo = get_object_or_404(SitePhoto.objects.select_related('entry', 'uploaded_by', 'shared_by'), project=project,
                               pk=photo_id)
     entry_locked = photo.entry is not None and photo.entry.locked
-    form = PhotoForm(request.POST or None, instance=photo)
+    # On a locked day the photo is evidence: only sharing with the client can change (it alters nothing)
+    form = (ShareForm if entry_locked else PhotoForm)(request.POST or None, instance=photo)
     if request.method == 'POST' and request.POST.get('action') == 'delete':
         if entry_locked:
             messages.error(request, 'This photo is part of a locked diary day, so it stays. Ask the project manager '
@@ -420,12 +470,10 @@ def photo_edit(request, org_slug, pk, photo_id):
         with transaction.atomic():
             entry = photo.entry
             label = str(photo)
-            for f in (photo.image, photo.display, photo.thumbnail):
-                if f:
-                    f.delete(save=False)
             photo.delete()
             if entry is not None:
                 _touch(entry, request.user, 'photo removed', label)
+        photo_files.delete_files(photo)
         messages.success(request, 'Photo deleted.')
         return redirect('diary_gallery', org_slug=org_slug, pk=pk)
     if request.method == 'POST' and form.is_valid():
@@ -455,7 +503,11 @@ def photo_file(request, org_slug, pk, photo_id, size):
             raise PermissionDenied
     elif not (can_see_shared_photos(request) and photo.shared_with_client and size != 'original'):
         raise Http404
-    field = {'thumb': photo.thumbnail, 'display': photo.display, 'original': photo.image}[size] or photo.image
+    field = {'thumb': photo.thumbnail, 'display': photo.display, 'original': photo.image}[size]
+    if not field:
+        if not is_internal(request):
+            raise Http404  # a client only ever gets a resized copy, never the original
+        field = photo.image
     return serve(request, field, project=project, label=f'Site photo {photo.pk} ({size})')
 
 

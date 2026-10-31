@@ -7,6 +7,8 @@
     <p class="small dim">{{ photo.taken_on|date:"l j F Y" }}{% if photo.entry %} · <a href="{{ photo.entry.get_absolute_url }}">{{ photo.entry.reference }} site diary</a>{% else %} · on the job, not in the diary{% endif %} · added by {{ photo.uploaded_by.full_name|default:"someone" }} {{ photo.uploaded_at|date:"j M H:i" }} · <a href="{% url 'diary_photo_file' org.slug project.pk photo.pk 'original' %}">Original file</a></p></div>
   <div class="card"><div class="card-head"><h2>Photo details</h2>{% if photo.shared_with_client %}{% badge 'Shared with client' 'info' %}{% else %}{% badge 'Internal' 'muted' %}{% endif %}</div><div class="card-body">
     {% if photo.shared_with_client and photo.shared_by %}<p class="small dim">Shared by {{ photo.shared_by.full_name }} on {{ photo.shared_at|date:"j M Y" }}. The client sees a resized copy with no location data.</p>{% endif %}
+    {% if entry_locked %}<dl class="dl" style="margin-bottom:12px"><dt>Caption</dt><dd class="wrap-any">{{ photo.caption|default:"—" }}</dd><dt>Area</dt><dd class="wrap-any">{{ photo.area|default:"—" }}</dd><dt>Date</dt><dd>{{ photo.taken_on|date:"j M Y" }}</dd></dl>
+    <p class="small dim">This photo is part of a locked diary day, so its details can't change. You can still share it with the client or stop sharing it.</p>{% endif %}
     <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
       <datalist id="diary-areas">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist>
       <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'diary_gallery' org.slug project.pk %}">Back to photos</a></div></form>

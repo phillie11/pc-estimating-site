@@ -26,12 +26,15 @@ def may_relock(entry, user):
 
 
 def _unlocked(entry, user, reason=''):
-    entry.unlocked_until = rules.unlock_until(timezone.localdate(), *entry.calendar)
+    today = timezone.localdate()
+    entry.unlocked_until = rules.unlock_until(today, *entry.calendar)
+    entry.locks_at = timezone.make_aware(rules.unlock_locks_at(today, *entry.calendar))
     entry.unlock_reason = reason
 
 
 def _relocked(entry, user, **params):
     entry.unlocked_until = None
+    entry.locks_at = timezone.now()  # locked again straight away
 
 
 TRANSITIONS = [
@@ -42,4 +45,5 @@ TRANSITIONS = [
 ]
 
 AUDIT_FIELDS = ('entry_date', 'weather_am', 'weather_pm', 'weather_note', 'site_start', 'site_finish',
-                'own_staff_count', 'own_staff', 'hs_incident', 'hs_notes', 'notes', 'unlocked_until', 'unlock_reason')
+                'own_staff_count', 'own_staff', 'hs_incident', 'hs_notes', 'notes', 'locks_at', 'unlocked_until',
+                'unlock_reason')
