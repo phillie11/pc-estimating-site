@@ -207,6 +207,8 @@ bandit -r . -ll --exclude ./.venv
 
 ## Deploy on PythonAnywhere
 
+**Start with [docs/pythonanywhere.md](docs/pythonanywhere.md).** It sets up a staging site with demo data, moves prod from MySQL to PostgreSQL and adds the background worker. The steps below are the original first install on MySQL; steps 6, 7 and 9 (domain, Stripe, file storage) still apply as written.
+
 You need a **paid plan** (Hacker or above) for a custom domain and unrestricted SMTP. MySQL is included.
 
 ### 1. Code and virtualenv
@@ -376,7 +378,7 @@ Then reload on the Web tab.
 
 ## Deploy on AWS (London)
 
-The move from PythonAnywhere to AWS (ECS Fargate, RDS PostgreSQL, SES) is scripted in `infra/`. Follow `infra/README.md`; the data move is in `infra/scripts/migrate-data.md`.
+Not needed yet: see the last section of [docs/pythonanywhere.md](docs/pythonanywhere.md) for when it is. The move from PythonAnywhere to AWS (ECS Fargate, RDS PostgreSQL, SES) is scripted in `infra/`. Follow `infra/README.md`; the data move is in `infra/scripts/migrate-data.md`.
 
 ## Running the platform
 
