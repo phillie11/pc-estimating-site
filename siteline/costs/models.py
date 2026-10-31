@@ -126,8 +126,13 @@ class LedgerEntry(AppendOnlyModel):
     source_type = models.ForeignKey(ContentType, null=True, blank=True, on_delete=models.RESTRICT, related_name='+')
     source_id = models.PositiveBigIntegerField(null=True, blank=True)
     source = GenericForeignKey('source_type', 'source_id')
-    reverses = models.OneToOneField('self', null=True, blank=True, on_delete=models.RESTRICT,
-                                    related_name='reversed_by', help_text='The entry this one cancels.')
+    # No database constraint and DO_NOTHING: a self-reference here made Django's delete collector see a
+    # cycle and give up ordering, so deleting a company removed the organisation row before its records,
+    # which MySQL (constraints checked per statement) refuses. Entries are never deleted on their own,
+    # and the unique index still allows one reversal per entry.
+    reverses = models.OneToOneField('self', null=True, blank=True, on_delete=models.DO_NOTHING,
+                                    db_constraint=False, related_name='reversed_by',
+                                    help_text='The entry this one cancels.')
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                               related_name='+')
     actor_name = models.CharField(max_length=150, blank=True)
