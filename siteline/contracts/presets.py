@@ -13,6 +13,10 @@ the UK are left out; holidays/calendar.py):
     + due_date_offset_days   -> due date
     + final_date_offset_days -> final date for payment (counted from the due date)
     - pay_less_notice_days   -> last day for a pay less notice (counted back from the final date)
+  and, counted from the due date,
+    + payment_notice_days    -> last day for the payer's payment notice (HGCRA s110A: not later than
+                                5 days after the due date; the Interim Certificate under JCT, the
+                                Project Manager's certificate under NEC4)
 
 Where the terms come from (as published; amendments are common):
   JCT MW/MWD 2016 and 2024: monthly due dates; final date 14 days after the due date; pay less
@@ -27,6 +31,9 @@ Where the terms come from (as published; amendments are common):
   NEC4 ECC with Option Y(UK)2: payment due 7 days after the assessment date; final date 14 days
     after it becomes due; pay less notice 7 days before the final date. Retention only under
     Option X16 and defects dates are in Contract Data, so neither is pre-filled.
+  Payment notice: JCT (every form) and the Scheme, no later than 5 days after the due date (JCT
+    MW 4.7, IC 4.9.2, SBC/DB 4.10; Scheme Part II para 9). NEC4: the Project Manager certifies within
+    one week of the assessment date (clause 51.1), which under Y(UK)2 is the due date, so 0 days.
   Scheme for Construction Contracts (the fallback where a contract has no compliant payment
     terms): an interim payment is due 7 days after the end of the relevant period, or when the
     claim is made if that is later (Part II para 4; the 30 days in para 5 is for the final
@@ -49,17 +56,21 @@ class Preset:
     due_date_offset_days: int
     final_date_offset_days: int
     pay_less_notice_days: int
+    payment_notice_days: int = 5
     retention_percent: Decimal | None = None
     retention_released_at_pc_percent: Decimal = Decimal('50')
     defects_period_months: int | None = None
     lads_period: str = 'WEEK'
     note: str = ''
+    # The Scheme itself (Part II para 4(b)): an interim payment falls due on the later of the period's due
+    # date and the day the claim is made. Only the real Scheme sets it; bespoke terms that borrow its periods don't.
+    is_scheme: bool = False
 
     def values(self):
         """The MainContract fields this preset fills."""
         d = asdict(self)
-        d.pop('label')
-        d.pop('note')
+        for name in ('label', 'note', 'is_scheme'):
+            d.pop(name)
         return d
 
 
@@ -74,7 +85,11 @@ _IC = {**_JCT, 'retention_percent': Decimal('5')}
 IC_NOTE = 'Retention: 5% (95% of value certified) unless the Contract Particulars say otherwise.'
 
 SCHEME = Preset('Scheme for Construction Contracts (fallback)', due_date_offset_days=7, final_date_offset_days=17,
-                pay_less_notice_days=7, note='Applies where the contract has no compliant payment terms.')
+                pay_less_notice_days=7, note='Applies where the contract has no compliant payment terms.',
+                is_scheme=True)
+# A bespoke contract starts from the Scheme's periods, but they are its own terms once set: no Scheme rules
+BESPOKE = Preset('Bespoke (starting from the Scheme periods)', due_date_offset_days=7, final_date_offset_days=17,
+                 pay_less_notice_days=7, note='Check the payment terms against the signed contract.')
 
 PRESETS = {
     'JCT_MW': Preset('JCT Minor Works', **_MW, note='Due dates monthly from the Date for Commencement.'),
@@ -85,15 +100,15 @@ PRESETS = {
     'JCT_SBC': Preset('JCT Standard Building Contract', **_JCT),
     'JCT_DB': Preset('JCT Design and Build', **_JCT),
     'NEC4_ECC': Preset('NEC4 ECC with Option Y(UK)2', due_date_offset_days=7, final_date_offset_days=14,
-                       pay_less_notice_days=7, lads_period='DAY',
+                       pay_less_notice_days=7, payment_notice_days=0, lads_period='DAY',
                        note='Assessment dates at intervals of no more than five weeks. Retention only under '
                             'Option X16; the defects date is in Contract Data.'),
-    'BESPOKE': SCHEME,
+    'BESPOKE': BESPOKE,
 }
 
 
 def preset_for(form):
-    """The standard terms for a MainContract.form value; the Scheme for anything unknown or bespoke."""
+    """The standard terms for a MainContract.form value; the Scheme for anything unknown."""
     return PRESETS.get(form, SCHEME)
 
 

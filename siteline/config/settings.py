@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'diary',
     'jobs',
     'actions',
+    'payments',
     'security',
     'costs',
     'viewer',

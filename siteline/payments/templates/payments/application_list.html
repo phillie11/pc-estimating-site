@@ -1,0 +1,31 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if manages %}<a class="btn primary" href="{% url 'application_create' org.slug project.pk %}">{% icon 'plus' %} New application</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<div class="kpis">
+  {% if manages %}<div class="kpi"><div class="label">Contract sum</div><div class="value">{{ position.contract|money:currency }}</div></div>{% endif %}
+  <div class="kpi"><div class="label">Certified to date (ex VAT)</div><div class="value">{{ totals.certified|money:currency }}</div><div class="note">VAT {{ totals.certified_vat|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Paid to date (ex VAT)</div><div class="value">{{ totals.paid|money:currency }}</div><div class="note">VAT {{ totals.paid_vat|money:currency }}</div></div>
+  <a class="kpi" href="?show=open"><div class="label">Outstanding (inc VAT)</div><div class="value">{{ totals.outstanding|money:currency }}</div></a>
+  <a class="kpi" href="?show=overdue"><div class="label">Overdue</div><div class="value">{% if totals.overdue %}<span class="bad">{{ totals.overdue|money:currency }}</span>{% else %}{{ totals.overdue|money:currency }}{% endif %}</div></a>
+</div>
+{% if manages and next_cycle %}<p class="small dim">Next {{ vocab.valuation_date }}: <strong>{{ next_cycle.valuation_date|date:"D j M Y" }}</strong>, due {{ next_cycle.due_date|date:"j M" }}, payment notice by {{ next_cycle.payment_notice_by|date:"j M" }}, pay less notice by {{ next_cycle.pay_less_by|date:"j M" }}, final date {{ next_cycle.final_date|date:"j M Y" }}. {{ advisory }}</p>
+{% elif manages and not contract %}<p class="small dim">No contract set up, so the dates follow the Scheme for Construction Contracts. <a href="{% url 'contract_edit' org.slug project.pk %}">Set up the contract</a> to use its own terms. {{ advisory }}</p>{% endif %}
+<nav class="filters" aria-label="Show">{% for code, label in filters %}<a class="chip {% if shown == code %}on{% endif %}" href="{% if code %}?show={{ code }}{% else %}?{% endif %}" style="min-height:44px;display:inline-flex;align-items:center">{{ label }}</a>{% endfor %}</nav>
+<div class="card">{% if applications %}<div class="table-wrap"><table class="t register">
+  <thead><tr><th>Ref</th><th>Application</th><th>Status</th><th>Dates</th><th class="num">Applied (ex VAT)</th><th class="num">Certified (ex VAT)</th><th class="num">Paid (ex VAT)</th><th class="num">Outstanding (inc VAT)</th></tr></thead>
+  <tbody>{% for a in applications %}<tr>
+    <td class="ref">{{ a.reference }}</td>
+    <td><a class="rowlink" href="{{ a.get_absolute_url }}">{{ a.title }}</a>{% if a.stands_as_notified %}<span class="sub overdue">No payment notice: stands as notified (advisory)</span>{% endif %}</td>
+    <td>{% if a.is_overdue %}{% badge 'Payment overdue' 'bad' %}{% else %}{% status_badge a %}{% endif %}</td>
+    <td class="small nowrap">{% if a.final_date %}<span class="dim">Payment notice</span> {{ a.payment_notice_by|date:"j M" }}<br><span class="dim">Pay less</span> {{ a.pay_less_by|date:"j M" }}<br><span class="dim">Final date</span> <span class="{% if a.is_overdue %}overdue{% endif %}">{{ a.final_date|date:"j M Y" }}</span>{% else %}<span class="dim">Set on submission</span>{% endif %}</td>
+    <td class="num">{{ a.amount_due|money_exact:currency }}</td>
+    <td class="num">{% if a.is_certified %}{{ a.notified_sum|money_exact:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td class="num">{% if a.paid_total %}{{ a.paid_ex_vat|money_exact:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td class="num{% if a.is_overdue %} overdue{% endif %}">{% if a.status == 'SUBMITTED' or a.status == 'NOTIFIED' or a.status == 'PAY_LESS' %}{{ a.outstanding|money_exact:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  <p class="small dim" style="padding:0 16px 12px">Applied, certified and paid exclude VAT; outstanding is what is still to be paid, including VAT (nil VAT where the domestic reverse charge applies). Dates are counted as the Construction Act counts them. {{ advisory }}</p>
+{% elif shown and all_count %}{% include "partials/empty_state.html" with title="Nothing to show with this filter" message="No application matches it right now." cta_url="?" cta_label="Show all applications" cta_plain=True %}
+{% elif manages %}{% include "partials/empty_state.html" with title="No applications for payment yet" message="Make up an application for each valuation date: work done to date, approved variations and materials. Siteline takes off retention and what was certified before, works out the Construction Act dates and gives you a PDF on your letterhead to send." cta_url=create_url cta_label="Make up the first application" %}
+{% else %}{% include "partials/empty_state.html" with title="No applications for payment yet" message="When the contractor submits an application for payment it appears here and you are emailed. You then give your payment notice, and a pay less notice if you need one, from the application." %}{% endif %}</div>
+{% endblock %}

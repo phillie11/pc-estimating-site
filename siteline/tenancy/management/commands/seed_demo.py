@@ -348,6 +348,10 @@ class Command(BaseCommand):
             # Commercial: contracts (Leeds on JCT IC, Salford on NEC4 Option A), early warnings, change events
             from changes.demo import seed as seed_commercial
             seed_commercial(leeds=leeds, pm=pm, client=client)
+            # Applications for payment: Leeds AP-001 paid, AP-002 certified, AP-003 draft; Salford AP-001 (payments/demo.py)
+            from payments.demo import seed as seed_payments
+            seed_payments(leeds=leeds, pm=pm, client=client)
+
             # Cost control: budgets, orders and actuals on Leeds and Salford (costs/demo.py)
             from costs.demo import seed as seed_costs
             seed_costs(leeds=leeds, pm=pm, owner=owner, demo_pdf=demo_pdf)

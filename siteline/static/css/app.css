@@ -508,6 +508,11 @@ a.kpi:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ui-section > h2 { border-bottom: 1px solid var(--line-2); padding-bottom: 6px; }
 pre.code { background: #FCFBF8; border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; }
 @media (max-width: 860px) { .btn { min-height: 44px; } .chip { min-height: 36px; display: inline-flex; align-items: center; } }
+/* Applications for payment (payments/) */
+.t.figures th { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); background: #F7F5F0; white-space: normal; }
+.t.figures .num { text-align: right; white-space: nowrap; }
+.line-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; align-items: end; margin-bottom: 8px; }
+@media (max-width: 700px) { .line-row { grid-template-columns: 1fr; padding-bottom: 8px; border-bottom: 1px solid var(--line); } }
 
 /* Cost control (costs/) */
 .costs-nav { margin-top: -.25rem; }
