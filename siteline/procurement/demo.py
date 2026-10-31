@@ -22,7 +22,7 @@ from directory.models import Package
 from projects.models import Project, ProjectMember
 from tenancy.models import Membership
 
-from .models import ScheduleLine, Submittal, SubmittalFile, SubmittalRevision
+from .models import ScheduleLine, Submittal, SubmittalFile, SubmittalForward, SubmittalRevision
 
 
 def _line(project, title, order_in_days, lead, approval, user, **kw):
@@ -127,9 +127,9 @@ def seed(*, leeds, pm, sub_user, make_user, demo_pdf):
     s5.save(actor=pm)
     rev = _revision(s5, 0, pm, 5, 'Samples on site in the office; photos attached.', demo_pdf, 'pendant-photos.pdf')
     apply_transition(s5, 'submit', pm)
-    rev.forwarded_to, rev.forwarded_by, rev.forwarded_at = designer, pm, timezone.now() - timedelta(days=4)
-    rev.forward_note = 'Please confirm the finish matches your scheme before we give it a status.'
-    rev.save()
+    SubmittalForward.objects.create(revision=rev, consultant=designer, forwarded_by=pm,
+                                    forwarded_at=timezone.now() - timedelta(days=4),
+                                    note='Please confirm the finish matches your scheme before we give it a status.')
     apply_transition(s5, 'forward', pm, consultant=designer)
     lighting.advance_to(S.IN_REVIEW)
 

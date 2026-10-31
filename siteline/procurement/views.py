@@ -7,7 +7,7 @@ import csv
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -22,7 +22,7 @@ from projects.views import project_context
 from tenancy.models import log_activity
 
 from . import access, dates, services
-from .forms import (DesignerReplyForm, ForwardForm, ReviewForm, ScheduleLineForm, SettingsForm, SubmitForm,
+from .forms import (DesignerReplyForm, blocking_submittals, ForwardForm, ReviewForm, ScheduleLineForm, SettingsForm, SubmitForm,
                     SubmittalForm)
 from .models import ProcurementSettings, ScheduleLine, Submittal, SubmittalFile
 from .workflow import reviewer_for
@@ -147,6 +147,11 @@ def line_detail(request, org_slug, pk, line_id):
             messages.success(request, f'{title} removed from the schedule.')
             return redirect('procurement_schedule', org_slug, pk)
         if action == 'ordered':
+            waiting = list(blocking_submittals(line).values_list('ref', flat=True))
+            if waiting:
+                messages.error(request, ', '.join(waiting) + (' needs' if len(waiting) == 1 else ' need')
+                               + ' an A or B before this can be ordered. Get them approved or withdraw them first.')
+                return redirect(line)
             line.advance_to(ScheduleLine.ORDERED)
             messages.success(request, f'{line.title} marked as ordered.')
             return redirect('procurement_schedule', org_slug, pk)
@@ -171,7 +176,7 @@ def procurement_settings(request, org_slug, pk):
         messages.success(request, 'Submittal periods saved. They apply from the next submission or decision.')
         return redirect('submittal_list', org_slug, pk)
     return render(request, 'procurement/settings.html', _context(
-        request, project, 'submittals', form=form, default_reviewer=project.manager or project.owner))
+        request, project, 'submittals', form=form, default_reviewer=reviewer_for(project)))
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +222,8 @@ def submittal_list(request, org_slug, pk):
         return render(request, 'procurement/consultant_list.html', _context(
             request, project, 'submittals',
             waiting=[s for s in qs if s.status == Submittal.WITH_CONSULTANT and s.ball_in_court_user_id == request.user.pk],
-            done=[s for s in qs if not (s.status == Submittal.WITH_CONSULTANT and s.ball_in_court_user_id == request.user.pk)]))
+            done=[(s, access.consultant_state(s, request.user)) for s in qs
+                  if not (s.status == Submittal.WITH_CONSULTANT and s.ball_in_court_user_id == request.user.pk)]))
     shown, filters = _filter_submittals(request, qs)
     if request.GET.get('export') == 'csv':
         return _csv(f'{project.reference}-submittals.csv',
@@ -373,12 +379,18 @@ def submittal_detail(request, org_slug, pk, sub_id):
         except InvalidTransition as e:
             messages.error(request, str(e))
             return redirect(s)
-        except RecordConflict:
+        except (RecordConflict, IntegrityError):
             messages.error(request, 'Someone else changed this since you opened it. Check it and try again.')
             return redirect(s)
     revisions = list(access.revisions_for(request, s))
     for rev in revisions:
         rev.visible_files = [f for f in rev.files.all() if access.file_visible(request, f)]
+        rev.visible_forwards = access.forwards_for(request, rev)
+        rev.sender = _sender_label(rev.submitted_by, s, staff)
+    consultant_state = None
+    if who == access.CONSULTANT:
+        # Only what was forwarded to them: their own revisions' labels and a neutral status, nothing later
+        consultant_state = access.consultant_state(s, request.user)
     return render(request, 'procurement/submittal_detail.html', _context(
         request, project, 'submittals', s=s, revisions=revisions, who=who, staff=staff,
         submit_form=submit_form, review_form=review_form, forward_form=forward_form, reply_form=reply_form,
@@ -386,7 +398,25 @@ def submittal_detail(request, org_slug, pk, sub_id):
         can_forward=staff and s.status == Submittal.SUBMITTED and forward_form.fields['consultant'].queryset.exists(),
         can_reply=is_designer_now or (staff and s.status == Submittal.WITH_CONSULTANT),
         ball=s.ball_label(external=not staff), settings_row=ProcurementSettings.for_project(project),
+        consultant_state=consultant_state,
+        consultant_labels=', '.join(r.label for r in sorted(revisions, key=lambda r: r.number)),
         today=timezone.localdate()))
+
+
+def _sender_label(user, submittal, staff):
+    """Who sent a revision: their name for staff; for externals their company, never a member of staff's name."""
+    if user is None:
+        return ''
+    if staff:
+        return user.full_name or user.email
+    from core.access import is_staff
+    if is_staff(user, submittal.organization_id):
+        return submittal.organization.name
+    from projects.models import ProjectMember
+    pm = ProjectMember.objects.filter(project_id=submittal.project_id, user=user).select_related('subcontractor').first()
+    if pm is not None and pm.subcontractor_id:
+        return str(pm.subcontractor)
+    return (pm.company_name if pm else '') or str(submittal.subcontractor or submittal.organization.name)
 
 
 def submittal_file(request, org_slug, pk, sub_id, file_id):

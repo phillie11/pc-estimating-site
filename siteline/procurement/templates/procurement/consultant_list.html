@@ -6,5 +6,5 @@
   <a class="btn primary sm" href="{{ s.get_absolute_url }}" style="min-height:44px">Comment</a></li>{% endfor %}</ul>
 {% else %}<div class="empty left"><p>Nothing waiting for your comment. {{ org.name }} sends submittals here when they want the design team's view before giving a status.</p></div>{% endif %}
 </div>
-{% if done %}<div class="card"><div class="card-head"><h2>Already with {{ org.name }}</h2></div><ul class="list">{% for s in done %}<li><span class="grow"><a href="{{ s.get_absolute_url }}"><span class="ref">{{ s.ref }}</span> {{ s.title }}</a></span>{% status_badge s %}</li>{% endfor %}</ul></div>{% endif %}
+{% if done %}<div class="card"><div class="card-head"><h2>Already with {{ org.name }}</h2></div><ul class="list">{% for s, state in done %}<li><span class="grow"><a href="{{ s.get_absolute_url }}"><span class="ref">{{ s.ref }}</span> {{ s.title }}</a></span>{% badge state 'muted' %}</li>{% endfor %}</ul></div>{% endif %}
 {% endblock %}

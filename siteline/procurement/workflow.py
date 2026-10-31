@@ -32,10 +32,25 @@ from .models import ProcurementSettings, Submittal, region_for
 S = Submittal
 
 
+def _active_staff(user, project):
+    from tenancy.models import Membership
+    return user is not None and user.is_active and Membership.objects.filter(
+        organization_id=project.organization_id, user=user, is_active=True,
+        role__in=Membership.INTERNAL_ROLES).exists()
+
+
 def reviewer_for(project):
-    """Who reviews submittals on this job: the chosen reviewer, else the project manager, else the bid lead."""
-    chosen = ProcurementSettings.for_project(project).reviewer
-    return chosen or project.manager or project.owner
+    """
+    Who reviews submittals on this job: the chosen reviewer, else the project manager, else the
+    company's first owner or admin. Never the bid lead. None only if the company has nobody active.
+    """
+    from tenancy.models import Membership
+    for user in (ProcurementSettings.for_project(project).reviewer, project.manager):
+        if _active_staff(user, project):
+            return user
+    admin = Membership.objects.filter(organization_id=project.organization_id, role__in=Membership.ADMIN_ROLES,
+                                      is_active=True, user__is_active=True).select_related('user').order_by('pk').first()
+    return admin.user if admin else None
 
 
 def _working_days_from_today(project, days):
@@ -70,10 +85,10 @@ def _to_designer(record, user, consultant=None, **params):
     record.ball_in_court_company = None
 
 
-def _back_to_reviewer(record, user, **params):
-    latest = record.latest
-    record.ball_in_court_user = (latest.forwarded_by if latest and latest.forwarded_by_id else None) \
-        or reviewer_for(record.project)
+def _back_to_reviewer(record, user, forward=None, **params):
+    """Back to whoever forwarded it, else the job's reviewer."""
+    sender = forward.forwarded_by if forward is not None and forward.forwarded_by_id else None
+    record.ball_in_court_user = sender if _active_staff(sender, record.project) else reviewer_for(record.project)
 
 
 def _closed(record, user, **params):

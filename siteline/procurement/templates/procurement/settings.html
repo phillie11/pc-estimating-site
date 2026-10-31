@@ -8,7 +8,7 @@
     </form>
   </div></div>
   <div class="card"><div class="card-head"><h2>What these do</h2></div><div class="card-body small">
-    <p>When a subcontractor sends a submittal, it goes to the reviewer{% if default_reviewer %} ({{ default_reviewer.full_name }} unless you pick someone else){% endif %} with a due date this many working days later.</p>
+    <p>When a subcontractor sends a submittal, it goes to the reviewer you pick here; left blank, the project manager, then the company's first owner or admin{% if default_reviewer %} (now {{ default_reviewer.full_name }}){% endif %} with a due date this many working days later.</p>
     <p>After a C (revise and resubmit), the subcontractor has the resubmission period to send the next revision.</p>
     <p style="margin:0">Working days leave out weekends, Christmas Day, Good Friday and bank holidays. Changes apply from the next submission or decision, not to dates already set. {% badge 'Advisory' 'warn' %} Check your subcontract for the agreed periods.</p>
   </div></div>

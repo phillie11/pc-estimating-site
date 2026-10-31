@@ -19,3 +19,10 @@ class ProcurementConfig(AppConfig):
                              draft_statuses=(Submittal.REQUIRED,), audit_fields=AUDIT_FIELDS, external_roles=())
         actions.register(SubmittalProvider())
         actions.register(OrderByProvider())
+
+        from django.db.models.signals import post_save
+
+        from contracts.models import MainContract
+
+        from .models import recalculate_for_contract
+        post_save.connect(recalculate_for_contract, sender=MainContract, dispatch_uid='procurement_contract_region')

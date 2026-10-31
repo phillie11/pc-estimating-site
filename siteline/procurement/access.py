@@ -48,7 +48,7 @@ def submittal_q(who, user, sub_id=None):
     if who == SUB:
         return Q(package__subcontractor_id=sub_id, package__status=Package.APPOINTED)
     if who == CONSULTANT:
-        return Q(revisions__forwarded_to=user)
+        return Q(revisions__forwards__consultant=user)
     return Q(pk__in=[])
 
 
@@ -67,22 +67,58 @@ def submittals_for(request, project):
 
 def revisions_for(request, submittal):
     """Revisions of a submittal this person may see: all of them, or (consultant) those forwarded to them."""
-    qs = submittal.revisions.all().prefetch_related('files').select_related(
-        'submitted_by', 'reviewed_by', 'forwarded_to', 'forwarded_by')
+    qs = submittal.revisions.all().prefetch_related('files', 'forwards__consultant', 'forwards__forwarded_by') \
+        .select_related('submitted_by', 'reviewed_by')
     if role(request) == CONSULTANT:
-        qs = qs.filter(forwarded_to=request.user)
+        qs = qs.filter(forwards__consultant=request.user).distinct()
     return qs
+
+
+def forwards_for(request, revision):
+    """Forwards of a revision this person may see: staff all, a consultant their own, a subcontractor none."""
+    who = role(request)
+    rows = list(revision.forwards.all())
+    if who == STAFF:
+        return rows
+    if who == CONSULTANT:
+        return [f for f in rows if f.consultant_id == request.user.pk]
+    return []
+
+
+def consultant_state(submittal, user):
+    """A consultant's neutral view of a submittal: never its status, ball or due date beyond their own forward."""
+    from .models import Submittal, SubmittalForward
+    mine = SubmittalForward.objects.filter(revision__submittal=submittal, consultant=user)
+    if submittal.status == Submittal.WITH_CONSULTANT and mine.filter(replied_at__isnull=True,
+                                                                      revision__number=submittal.revision).exists():
+        return 'With you'
+    if mine.filter(replied_at__isnull=False).exists():
+        return 'Comments sent'
+    return 'No longer needed'
+
+
+def open_forward(submittal, user):
+    """The forward of the latest revision still waiting on this consultant, if any."""
+    from .models import SubmittalForward
+    return SubmittalForward.objects.filter(revision__submittal=submittal, revision__number=submittal.revision,
+                                           consultant=user, replied_at__isnull=True).order_by('-pk').first()
 
 
 def file_visible(request, f):
     """A file on a revision the person can already see: designers' mark-ups stay off the subcontractor's view."""
     from .models import SubmittalFile
     who = role(request)
+    if who == STAFF:
+        return True
     if who == SUB:
         return f.role != SubmittalFile.CONSULTANT
     if who == CONSULTANT:
-        return f.role != SubmittalFile.MARKUP
-    return who == STAFF
+        if f.role == SubmittalFile.MARKUP:
+            return False
+        if f.role == SubmittalFile.CONSULTANT:  # only mark-ups on their own forwards
+            return f.forward_id is not None and f.forward.consultant_id == request.user.pk
+        return True
+    return False
 
 
 def can_submit(request, submittal):

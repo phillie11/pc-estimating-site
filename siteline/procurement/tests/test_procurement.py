@@ -22,7 +22,7 @@ from tenancy.models import Membership
 
 from .. import dates
 from ..actions import OrderByProvider, SubmittalProvider
-from ..models import ProcurementSettings, ScheduleLine, Submittal, SubmittalFile, SubmittalRevision
+from ..models import ProcurementSettings, ScheduleLine, Submittal, SubmittalFile, SubmittalForward, SubmittalRevision
 from .base import ProcurementTestBase, pdf
 
 MEDIA = tempfile.mkdtemp()
@@ -345,9 +345,7 @@ class NeedsMeTests(ProcurementTestBase):
         self.assertEqual(self.kinds_for(self.pat, 'submittal'), [('submittal', 'SUB-001', s.due_date)])
         self.assertEqual(self.kinds_for(self.sid, 'submittal'), [])
         with org_context(self.org_a):
-            rev = s.latest
-            rev.forwarded_to = self.connie
-            rev.save()
+            SubmittalForward.objects.create(revision=s.latest, consultant=self.connie, forwarded_by=self.pat)
             apply_transition(s, 'forward', self.pat, consultant=self.connie)
         self.assertEqual(len(self.kinds_for(self.connie, 'submittal')), 1)
         self.assertEqual(self.kinds_for(self.pat, 'submittal'), [])

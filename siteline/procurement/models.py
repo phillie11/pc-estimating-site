@@ -72,6 +72,20 @@ def region_for(project):
     return region or DEFAULT_REGION
 
 
+def recalculate_for_contract(sender, instance, **kwargs):
+    """
+    post_save on contracts.MainContract: a change of bank holiday region moves working-day dates,
+    so re-work that job's schedule lines. Writes only the lines whose dates change, with update()
+    (no save() signal loop). Pinned to the contract's organisation and project, so all_objects is safe.
+    """
+    lines = ScheduleLine.all_objects.filter(organization_id=instance.organization_id, project_id=instance.project_id)
+    for line in lines:
+        before = (line.order_by, line.submittals_due)
+        line.recalculate(region=instance.bank_holiday_region)
+        if (line.order_by, line.submittals_due) != before:
+            ScheduleLine.all_objects.filter(pk=line.pk).update(order_by=line.order_by, submittals_due=line.submittals_due)
+
+
 class ScheduleLine(TenantModel):
     NOT_STARTED, TENDER, APPOINTED, IN_REVIEW = 'NOT_STARTED', 'TENDER', 'APPOINTED', 'IN_REVIEW'
     APPROVED, ORDERED, DELIVERED = 'APPROVED', 'ORDERED', 'DELIVERED'
@@ -269,15 +283,6 @@ class SubmittalRevision(TenantModel):
                                     related_name='+')
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
-    forwarded_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-                                     related_name='+')
-    forwarded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-                                     related_name='+')
-    forwarded_at = models.DateTimeField(null=True, blank=True)
-    forward_note = models.TextField(blank=True)
-    consultant_comments = models.TextField(blank=True)
-    consultant_replied_at = models.DateTimeField(null=True, blank=True)
-
     class Meta(TenantModel.Meta):
         ordering = ['-number']
         unique_together = [('submittal', 'number')]
@@ -304,9 +309,36 @@ class SubmittalRevision(TenantModel):
     def markup_files(self):
         return self.files_of(SubmittalFile.MARKUP)
 
+
+
+class SubmittalForward(TenantModel):
+    """
+    One revision sent to one designer or consultant for comment. Each time is its own row, so
+    asking a second consultant (or the same one again) never shows or overwrites earlier comments.
+    A consultant sees only revisions and files on their own forwards (procurement.access).
+    """
+    revision = models.ForeignKey(SubmittalRevision, on_delete=models.CASCADE, related_name='forwards')
+    consultant = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    forwarded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name='+')
+    forwarded_at = models.DateTimeField(default=timezone.now)
+    note = models.TextField(blank=True)
+    comments = models.TextField(blank=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ['forwarded_at', 'pk']
+
+    def __str__(self):
+        return f'{self.revision} to {self.consultant}'
+
     @property
-    def consultant_files(self):
-        return self.files_of(SubmittalFile.CONSULTANT)
+    def is_open(self):
+        return self.replied_at is None
+
+    @property
+    def files(self):
+        return [f for f in self.revision.files.all() if f.forward_id == self.pk]
 
 
 class SubmittalFile(TenantModel):
@@ -315,6 +347,9 @@ class SubmittalFile(TenantModel):
 
     revision = models.ForeignKey(SubmittalRevision, on_delete=models.CASCADE, related_name='files')
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=SUBMISSION)
+    # The designer's mark-ups belong to the forward they answer, so only that consultant (and staff) see them
+    forward = models.ForeignKey('SubmittalForward', null=True, blank=True, on_delete=models.CASCADE,
+                                related_name='file_rows')
     file = models.FileField(upload_to=upload_submittal)
     original_name = models.CharField(max_length=200, blank=True)
     size = models.PositiveBigIntegerField(default=0)

@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 
 from core.forms import RecordFormMixin
@@ -47,9 +48,23 @@ class StyledForm(forms.Form):
         style_widgets(self)
 
 
-def project_packages(project):
-    return Package.objects.filter(project=project).exclude(status__in=Package.CLOSED_STATUSES) \
+def project_packages(project, keep=None):
+    """Packages still in play on the job (invited, quoted, appointed), plus `keep` (the one already chosen)."""
+    return Package.objects.filter(Q(project=project) & (~Q(status__in=Package.CLOSED_STATUSES) | Q(pk=keep))) \
         .select_related('subcontractor', 'trade')
+
+
+def appointed_packages(project, keep=None):
+    """Submittals come from appointed subcontractors only; `keep` holds on to the one already chosen."""
+    return Package.objects.filter(Q(project=project) & (Q(status=Package.APPOINTED) | Q(pk=keep))) \
+        .select_related('subcontractor', 'trade')
+
+
+def blocking_submittals(line):
+    """Submittals on the line that are still live and not A or B: the line can't be ordered yet."""
+    if line is None or not line.pk:
+        return Submittal.objects.none()
+    return line.submittals.exclude(status__in=Submittal.ACCEPTED + (Submittal.WITHDRAWN,))
 
 
 def package_label(p):
@@ -65,11 +80,23 @@ class ScheduleLineForm(StyledModelForm):
 
     def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['package'].queryset = project_packages(project)
+        self.fields['package'].queryset = project_packages(project, keep=self.instance.package_id)
         self.fields['package'].label_from_instance = package_label
         self.fields['title'].widget.attrs['placeholder'] = 'e.g. Bar joinery, kitchen extract, feature lighting'
         for name in ('lead_time_weeks', 'approval_weeks'):
             self.fields[name].widget.attrs.update({'min': 0, 'inputmode': 'numeric'})
+        if self.instance.pk:
+            # A line only moves forward: offer its current status and the later ones
+            rank = ScheduleLine.RANK[self.instance.status]
+            self.fields['status'].choices = [(c, label) for c, label in ScheduleLine.STATUS_CHOICES
+                                             if ScheduleLine.RANK[c] >= rank]
+
+    def clean_status(self):
+        status = self.cleaned_data['status']
+        if status in ScheduleLine.DONE_STATUSES and blocking_submittals(self.instance).exists():
+            raise ValidationError('Submittals on this line are still waiting for an A or B. Get them approved '
+                                  '(or withdraw them) before marking it ordered.')
+        return status
 
 
 class SubmittalForm(RecordFormMixin, StyledModelForm):
@@ -84,9 +111,9 @@ class SubmittalForm(RecordFormMixin, StyledModelForm):
         super().__init__(*args, **kwargs)
         self.fields['title'].widget.attrs['placeholder'] = 'e.g. Bar back shop drawings'
         self.fields['line'].queryset = ScheduleLine.objects.filter(project=project)
-        self.fields['package'].queryset = project_packages(project)
+        self.fields['package'].queryset = appointed_packages(project, keep=self.instance.package_id)
         self.fields['package'].label_from_instance = package_label
-        self.fields['package'].help_text = ("Its subcontractor uploads it through the portal once appointed. "
+        self.fields['package'].help_text = ("Appointed packages only: the subcontractor uploads it in their portal. "
                                             "Leave blank to use the procurement line's package.")
 
     def clean(self):
@@ -95,6 +122,9 @@ class SubmittalForm(RecordFormMixin, StyledModelForm):
         if line is None and package is None:
             raise ValidationError('Link it to a procurement line or a trade package.')
         if package is None and line is not None and line.package_id:
+            if line.package.status != Package.APPOINTED and line.package_id != self.instance.package_id:
+                raise ValidationError(f'{line.package.subcontractor} isn\'t appointed on this line\'s package yet. '
+                                      'Appoint them first, or ask for it under a different package.')
             data['package'] = line.package
             self.instance.package = line.package
         if data.get('due_date') is None and line is not None:

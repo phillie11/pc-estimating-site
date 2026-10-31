@@ -38,7 +38,8 @@ ACTIONS = {
 def _item(s, external):
     return Item(kind='submittal', title=s.title, url=s.get_absolute_url(), ref=s.ref, project=s.project, due=s.due_date,
                 priority=PRIORITY_HIGH if s.status == Submittal.REJECTED else PRIORITY_NORMAL,
-                action=ACTIONS.get(s.status, ''), status_label=s.get_status_display(), tone=s.status_tone,
+                action=ACTIONS.get(s.status, ''), tone=s.status_tone,
+                status_label='With you' if external and s.status == Submittal.WITH_CONSULTANT else s.get_status_display(),
                 detail='' if external else str(s.subcontractor or ''), key=f'sub:{s.pk}')
 
 
@@ -63,14 +64,19 @@ class SubmittalProvider:
                        package__subcontractor_id=sub_id, package__status=Package.APPOINTED)
             elif role == ProjectMember.ROLE_CONSULTANT:
                 q |= Q(project_id=project_id, status=Submittal.WITH_CONSULTANT, ball_in_court_user=request.user,
-                       revisions__forwarded_to=request.user)
+                       revisions__forwards__consultant=request.user, revisions__forwards__replied_at__isnull=True)
         return [_item(s, True) for s in base.filter(q).distinct()]
 
 
 def managed_jobs(request):
-    """Live jobs this member of staff manages: project manager, or the bid lead where there is none."""
-    return visible_projects(request).filter(stage__in=Project.DELIVERY_STAGES).filter(
-        Q(manager=request.user) | Q(manager__isnull=True, owner=request.user))
+    """
+    Live jobs whose orders wait on this member of staff: the project manager, or, where a job has
+    none, the company's owners and admins (the same fallback as the submittal reviewer, never the bid lead).
+    """
+    mine = Q(manager=request.user)
+    if request.membership is not None and request.membership.is_admin:
+        mine |= Q(manager__isnull=True)
+    return visible_projects(request).filter(stage__in=Project.DELIVERY_STAGES).filter(mine)
 
 
 class OrderByProvider:
