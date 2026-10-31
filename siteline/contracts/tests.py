@@ -65,8 +65,10 @@ class PaymentTimetableTests(SimpleTestCase):
     # (valuation, region, due, final, pay less by)
     TABLE = [
         ('2026-11-28', 'england-and-wales', '2026-12-05', '2026-12-19', '2026-12-14'),   # nothing to skip
-        ('2026-12-21', 'england-and-wales', '2026-12-30', '2027-01-14', '2027-01-09'),   # skips 25, 28 Dec, 1 Jan
-        ('2026-12-21', 'scotland', '2026-12-30', '2027-01-15', '2027-01-10'),            # and 4 Jan (2 Jan's substitute)
+        # skips 25, Saturday 26 (a bank holiday by statute, 1971 Act Sch 1), 28 Dec and 1 Jan
+        ('2026-12-21', 'england-and-wales', '2026-12-31', '2027-01-15', '2027-01-10'),
+        # Scotland counts 26 Dec but skips Saturday 2 Jan (statute) and Monday 4 Jan (its substitute)
+        ('2026-12-21', 'scotland', '2026-12-30', '2027-01-16', '2027-01-11'),
         ('2026-03-28', 'england-and-wales', '2026-04-05', '2026-04-20', '2026-04-15'),   # Good Friday, Easter Monday
         ('2026-03-28', 'scotland', '2026-04-05', '2026-04-19', '2026-04-14'),            # no Easter Monday
         ('2026-07-04', 'northern-ireland', '2026-07-11', '2026-07-26', '2026-07-21'),    # the Boyne (13 Jul)
@@ -88,7 +90,7 @@ class PaymentTimetableTests(SimpleTestCase):
     def test_contract_uses_its_region(self):
         c = MainContract(form='JCT_IC', valuation_day=21, bank_holiday_region='scotland')
         c.apply_preset()
-        self.assertEqual(c.next_payment_timetable(D('2026-12-01')).final_date, D('2027-01-15'))
+        self.assertEqual(c.next_payment_timetable(D('2026-12-01')).final_date, D('2027-01-16'))
 
     def test_missing_terms_give_none(self):
         self.assertIsNone(presets.payment_timetable(None, 7, 14, 5))

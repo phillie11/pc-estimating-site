@@ -12,7 +12,10 @@ special bank holiday announced later needs that refresh.
 Housing Grants, Construction and Regeneration Act 1996 s116, which also governs the Scheme
 for Construction Contracts: a period of days "after or from" a date begins the day after it,
 and Christmas Day, Good Friday and bank holidays (in the part of the UK whose law governs
-the contract) are left out of the count. Weekends are counted. The JCT forms count periods of
+the contract) are left out of the count. Weekends are counted, except a Saturday that is itself a
+bank holiday under Schedule 1 of the Banking and Financial Dealings Act 1971 (26 December in
+England and Wales and Northern Ireland, 1 and 2 January in Scotland, 17 March in Northern
+Ireland; see STATUTORY_UNLESS_SUNDAY). The JCT forms count periods of
 days the same way (their "Reckoning periods of days" clause excludes Public Holidays).
 
 NEC4 clocks are counted in calendar weeks and don't use this (changes/clocks.py).
@@ -85,9 +88,33 @@ def covered_years(region=DEFAULT_REGION):
     return range(min(days).year, max(days).year + 1)
 
 
+SUNDAY = 6
+
+# Days that are bank holidays by statute even when they fall on a Saturday: Banking and Financial
+# Dealings Act 1971, Schedule 1 (para 1 England and Wales, para 2 Scotland, para 3 Northern Ireland).
+# gov.uk's table lists only the weekday substitutes (made by proclamation), so a Saturday 26 December
+# (England and Wales) or 2 January (Scotland) is missing from it, though s116 leaves it out of the
+# count. (month, day): the day is a bank holiday "if it be not a Sunday". Scottish Boxing Day is by
+# proclamation only, so there only gov.uk's substitute counts.
+STATUTORY_UNLESS_SUNDAY = {
+    ENGLAND_AND_WALES: ((12, 26),),
+    SCOTLAND: ((1, 1), (1, 2)),
+    NORTHERN_IRELAND: ((3, 17), (12, 26)),
+}
+
+
+def is_schedule_1_day(day, region=DEFAULT_REGION):
+    """A bank holiday under Sch 1 of the 1971 Act on its own date (any day but Sunday)."""
+    return day.weekday() != SUNDAY and (day.month, day.day) in STATUTORY_UNLESS_SUNDAY.get(region or DEFAULT_REGION, ())
+
+
 def is_excluded(day, region=DEFAULT_REGION):
-    """Left out of a Construction Act day count: Christmas Day, Good Friday or a bank holiday in the region."""
-    return (day.month == 12 and day.day == 25) or day == good_friday(day.year) or day in bank_holidays(region)
+    """
+    Left out of a Construction Act day count: Christmas Day, Good Friday, a bank holiday in the
+    region (gov.uk's table, with its substitutes), or a Schedule 1 bank holiday that fell on a Saturday.
+    """
+    return ((day.month == 12 and day.day == 25) or day == good_friday(day.year) or day in bank_holidays(region)
+            or is_schedule_1_day(day, region))
 
 
 def add_days(start, days, region=DEFAULT_REGION):

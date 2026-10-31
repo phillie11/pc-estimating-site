@@ -33,7 +33,19 @@ class TableTests(SimpleTestCase):
         ('2026-08-31', True, False, True),    # English summer bank holiday (last Monday)
         ('2026-11-30', False, True, False),   # St Andrew's Day
         ('2026-12-25', True, True, True),
-        ('2026-12-26', False, False, False),  # Boxing Day is a Saturday: the bank holiday is Monday 28th
+        # Boxing Day on a Saturday: still a bank holiday by statute in E&W and NI (1971 Act Sch 1), not in
+        # Scotland (by proclamation there, so only the Monday 28th substitute)
+        ('2026-12-26', True, False, True),
+        ('2027-01-02', False, True, False),   # 2 January on a Saturday: Scotland by statute (and Mon 4th)
+        ('2027-01-04', False, True, False),
+        ('2021-12-26', False, False, False),  # Boxing Day on a Sunday: only the substitute (28th) counts
+        ('2021-12-28', True, True, True),
+        ('2029-03-17', False, False, True),   # St Patrick's Day on a Saturday: NI by statute
+        ('2024-03-17', False, False, False),  # on a Sunday: only the Monday substitute (18th)
+        ('2024-03-18', False, False, True),
+        # New Year's Day on a Saturday: statutory in Scotland only; E&W and NI have only the Monday 3rd substitute
+        ('2028-01-01', False, True, False),
+        ('2028-01-03', True, True, True),
         ('2026-12-28', True, True, True),
         ('2022-12-25', True, True, True),     # Christmas Day on a Sunday: excluded by s116 itself
         ('2022-12-27', True, True, True),     # its substitute bank holiday
@@ -71,9 +83,9 @@ class CountingTests(SimpleTestCase):
     # (start, days, region, expected): s116 starts the day after and skips excluded days; weekends count
     ADD = [
         ('2026-10-30', 7, EW, '2026-11-06'),   # nothing excluded
-        ('2026-12-22', 7, EW, '2026-12-31'),   # skips Christmas Day and Monday 28th; Saturday 26th counts
+        ('2026-12-22', 7, EW, '2027-01-02'),   # skips 25, Saturday 26 (statutory), Monday 28 Dec and 1 Jan
         ('2026-12-29', 5, EW, '2027-01-04'),   # skips 1 January
-        ('2026-12-29', 5, SC, '2027-01-05'),   # Scotland: 2 Jan 2027 is a Saturday, so its holiday is Monday 4th
+        ('2026-12-29', 5, SC, '2027-01-06'),   # Scotland: skips 1 Jan, Saturday 2 Jan (statutory) and Monday 4th
         ('2026-04-01', 5, EW, '2026-04-08'),   # Good Friday and Easter Monday
         ('2026-04-01', 5, SC, '2026-04-07'),   # Scotland: Good Friday only
         ('2026-07-10', 5, NI, '2026-07-16'),   # NI skips the Boyne substitute (13 July)
@@ -85,7 +97,7 @@ class CountingTests(SimpleTestCase):
     SUBTRACT = [
         ('2026-04-08', 5, EW, '2026-04-01'),
         ('2026-04-08', 5, SC, '2026-04-02'),
-        ('2027-01-05', 7, SC, '2026-12-26'),   # skips 4 Jan, 1 Jan and 28 Dec; Saturday 2 Jan and 26 Dec count
+        ('2027-01-05', 7, SC, '2026-12-24'),   # skips 4, 2 and 1 Jan, 28 and 25 Dec; Saturday 26 Dec counts (Scotland)
     ]
 
     def test_add(self):
