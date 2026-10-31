@@ -54,7 +54,10 @@ def rfi_list(request, org_slug, pk):
 def rfi_create(request, org_slug, pk):
     project = get_project(request, pk)
     external = not is_internal(request)
-    form = RFIForm(request.POST or None, request.FILES or None, project=project, external=external)
+    from viewer.pins import attach_pending, pending_pin, viewer_url
+    pending = pending_pin(request, project)  # opened from the drawing viewer to pin a new RFI
+    form = RFIForm(request.POST or None, request.FILES or None, project=project, external=external,
+                   initial={'document_reference': pending.label} if pending else None)
     if request.method == 'POST' and form.is_valid():
         rfi = form.save(commit=False)
         rfi.project = project
@@ -64,9 +67,14 @@ def rfi_create(request, org_slug, pk):
         notify_assignee(request, rfi.ball_in_court_user, f'{rfi.reference}: {rfi.title}', project, rfi.get_absolute_url())
         log_activity(request, 'raised', f'{rfi.reference} {rfi.title}', project=project, url=rfi.get_absolute_url(),
                      internal_only=not rfi.is_shared)
+        if pending:
+            pin = attach_pending(request, project, pending, rfi=rfi)
+            messages.success(request, f'{rfi.reference} raised and pinned to {pending.label}.')
+            return redirect(viewer_url(request, project, pending.doc, pending.rev, pin))
         messages.success(request, f'{rfi.reference} raised.')
         return redirect(rfi)
-    return render(request, 'rfis/rfi_form.html', project_context(request, project, 'rfis', form=form))
+    return render(request, 'rfis/rfi_form.html', project_context(request, project, 'rfis', form=form,
+                                                                 pending_pin=pending))
 
 
 def rfi_detail(request, org_slug, pk, rfi_id):

@@ -14,6 +14,7 @@ from projects import views as projects
 from rfis import views as rfis
 from tenders import views as tenders
 from variations import views as variations
+from viewer import urls as viewer_urls
 
 from . import views
 
@@ -72,6 +73,8 @@ urlpatterns = [
 
     # Documents tab (documents/urls.py), listed flat so every project URL is a named pattern here
     *[path(P + 'documents/' + str(u.pattern), u.callback, name=u.name) for u in documents_urls.urlpatterns],
+    # Drawing viewer and snag/RFI pins on drawings (viewer/urls.py)
+    *viewer_urls.project_patterns(P),
 
     path(P + 'rfis/', rfis.rfi_list, name='rfi_list'),
     path(P + 'rfis/new/', rfis.rfi_create, name='rfi_create'),

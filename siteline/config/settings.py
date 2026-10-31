@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'payments',
     'security',
     'costs',
+    'viewer',
 ]
 
 MIDDLEWARE = [
@@ -259,6 +260,9 @@ if STORAGE_BUCKET:
             'default_acl': None,            # never public; the bucket policy decides
             'querystring_auth': True,       # every link is signed...
             'querystring_expire': STORAGE_LINK_SECONDS,  # ...and short-lived
+            # Anything read through S3File spills to disk past 5 MB instead of sitting in worker memory
+            # (the drawing viewer streams in chunks instead; this is the backstop)
+            'max_memory_size': 5 * 1024 * 1024,
             # Every stored name contains a random folder, so the pre-upload "is this name taken?"
             # lookup is unnecessary, and it would be refused once the bucket only serves scanned files
             'file_overwrite': True,

@@ -1,4 +1,4 @@
-{% extends "project_base.html" %}{% load ui %}
+{% extends "project_base.html" %}{% load ui viewer_tags %}
 {% block project_actions %}{% if is_internal %}
   {% if rfi.status == 'RESPONDED' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="close"><button class="btn primary">Accept &amp; close</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn">Reopen</button></form>{% endif %}
   {% if rfi.status == 'CLOSED' or rfi.status == 'VOID' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn">Reopen</button></form>{% endif %}
@@ -25,7 +25,7 @@
       <dt>Required by</dt><dd class="{% if rfi.is_overdue %}overdue{% endif %}">{{ rfi.due_date|date:"j M Y"|default:"—" }}</dd>
       <dt>Raised</dt><dd>{{ rfi.created_at|date:"j M Y" }} by {{ rfi.created_by|default:"—" }}</dd>
       <dt>Category</dt><dd>{{ rfi.get_category_display }}</dd>
-      {% if rfi.document_reference %}<dt>Drawing / spec</dt><dd class="mono">{{ rfi.document_reference }}</dd>{% endif %}
+      {% if rfi.document_reference %}<dt>Drawing / spec</dt><dd class="mono">{{ rfi.document_reference }}</dd>{% endif %}{% record_pins rfi %}
       {% if is_internal %}<dt>Cost impact</dt><dd>{{ rfi.get_cost_impact_display }}</dd>
       <dt>Programme</dt><dd>{% if rfi.programme_impact_days %}{{ rfi.programme_impact_days }} days{% else %}—{% endif %}</dd>
       <dt>Visibility</dt><dd>{% if rfi.is_shared %}Shared with collaborators{% else %}Internal only{% endif %}</dd>{% endif %}

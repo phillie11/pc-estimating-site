@@ -1,0 +1,67 @@
+/* Drawing viewer (viewer/templates/viewer/viewer.html, viewer/static/viewer/viewer.js) */
+.dv { margin-bottom: 1rem; overflow: hidden; }
+.dv-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.dv-head h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.dv-meta { display: flex; gap: 16px; margin: 0; }
+.dv-meta dt { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.dv-meta dd { margin: 0; }
+.dv-toolbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #FCFBF8; }
+.dv-group { display: inline-flex; align-items: center; gap: 4px; }
+.dv-toolbar .btn { min-width: 44px; min-height: 44px; font-size: 15px; }
+.dv-toolbar .btn[data-act="prev"], .dv-toolbar .btn[data-act="next"], .dv-toolbar .btn[data-act="in"], .dv-toolbar .btn[data-act="out"] { font-size: 20px; padding: 4px 10px; }
+.dv-toolbar .btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.dv-toolbar .btn:disabled { opacity: .45; cursor: default; }
+.dv-label { min-width: 4.5em; text-align: center; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.dv-port { position: relative; height: min(72vh, 900px); min-height: 320px; overflow: auto; padding: 8px; box-sizing: border-box;
+  background: #7D838C; touch-action: pan-x pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; outline: none; }
+.dv-port:focus-visible { box-shadow: inset 0 0 0 3px var(--accent); }
+.dv-stage { position: relative; margin: 0 auto; transform-origin: 0 0; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.dv-stage canvas { display: block; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.dv.placing .dv-stage { cursor: crosshair; }
+.dv.dragging .dv-port { cursor: grabbing; }
+.dv-pins { position: absolute; inset: 0; pointer-events: none; }
+.dv-status { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: #fff; font-weight: 600; pointer-events: none; }
+.dv-status[hidden] { display: none; }
+.dv-status.error { background: rgba(21,25,31,.55); }
+.dv-hint { margin: 0; padding: 8px 16px; }
+.dv-current { margin: 0 0 1rem; }
+.dv-current .btn { min-height: 44px; }
+
+/* A pin: a 44px tap target centred on the point, drawn as a dot with its reference beside it */
+.dv-pin { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; display: grid; place-items: center; pointer-events: auto; text-decoration: none; z-index: 1; }
+.dv-pin .dv-dot { width: 20px; height: 20px; border-width: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+.dv-pin .dv-tag { position: absolute; left: 36px; top: 50%; transform: translateY(-50%); white-space: nowrap; font: 600 11.5px/1.2 var(--font); padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,.94); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.dv-pin.other .dv-dot { border-style: dashed; }
+.dv-pin.focus { z-index: 2; }
+.dv-pin.focus .dv-dot { outline: 4px solid rgba(232, 89, 12, .45); outline-offset: 3px; animation: dv-pulse 1.2s ease-in-out 3; }
+.dv-pin.temp .dv-dot { background: #fff; border-color: var(--ink); }
+@keyframes dv-pulse { 50% { outline-offset: 9px; } }
+@media (prefers-reduced-motion: reduce) { .dv-pin.focus .dv-dot { animation: none; } }
+
+.dv-dot { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; background: var(--ink-3); box-sizing: border-box; }
+.dv-dot.tone-accent { background: var(--accent); }
+.dv-dot.tone-info { background: var(--info); }
+.dv-dot.tone-good { background: var(--good); }
+.dv-dot.tone-warn { background: var(--warn); }
+.dv-dot.tone-bad { background: var(--bad); }
+.dv-dot.tone-muted { background: var(--ink-3); }
+.dv-list .list li { align-items: center; flex-wrap: wrap; }
+.dv-list .list .dv-dot { border-color: transparent; }
+.dv-list .grow { min-width: 12rem; }
+.dv-list .sub { display: block; }
+
+.dv-dialog { border: 1px solid var(--line-2); border-radius: var(--r); padding: 18px; width: min(440px, calc(100vw - 32px)); box-sizing: border-box; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+.dv-dialog::backdrop { background: rgba(21,25,31,.4); }
+.dv-dialog h3 { margin: 0 0 4px; }
+.dv-dialog .btn { min-height: 44px; }
+.dv-new { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.dv-existing { display: block; font-weight: 600; font-size: 13.5px; margin-top: 8px; }
+.dv-existing select { display: block; width: 100%; min-height: 44px; margin-top: 4px; font: inherit; font-weight: 400; }
+.dv-withdrawn .dv-port { background: #8C5A55; }
+
+@media (max-width: 600px) {
+  .dv-port { height: 66vh; padding: 4px; }
+  .dv-head, .dv-toolbar { padding-left: 10px; padding-right: 10px; }
+  .dv-toolbar { gap: 6px; }
+  .dv-label { min-width: 3.5em; }
+}
