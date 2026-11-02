@@ -13,7 +13,7 @@
         {% if is_internal %}<td class="small">{{ r.subcontractor }}</td>{% endif %}
         <td>{% badge r.get_status_display r.status_tone %}</td>
         <td class="small nowrap">{{ r.submitted_at|date:"j M Y" }}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<div class="empty"><h3>No RAMS here</h3><p>{% if is_internal %}Subcontractors upload their RAMS in the portal. You'll be notified to review each one.{% else %}Upload your RAMS for this job. {{ org.name }} reviews them here and you'll be notified of the outcome.{% endif %}</p></div>{% endif %}</div>
+    </tbody></table></div>{% else %}<div class="empty"><h2>No RAMS here</h2><p>{% if is_internal %}Subcontractors upload their RAMS in the portal. You'll be notified to review each one.{% else %}Upload your RAMS for this job. {{ org.name }} reviews them here and you'll be notified of the outcome.{% endif %}</p></div>{% endif %}</div>
   </div>
   {% if form %}<div class="card"><div class="card-head"><h2>Submit RAMS</h2></div><div class="card-body">
     <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Submit for review</button></div></form>

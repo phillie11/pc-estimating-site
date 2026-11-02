@@ -8,7 +8,7 @@
   <div class="kpi"><div class="label">Declined</div><div class="value">{{ stats.declined }}</div></div>
   <div class="kpi"><div class="label">Queries to answer</div><div class="value">{% if stats.unanswered %}<span class="bad">{{ stats.unanswered }}</span>{% else %}0{% endif %}</div></div>
 </div>
-{% if not has_packages %}<div class="card" style="margin-bottom:1.25rem"><div class="empty"><h3>No one is pricing yet</h3><p>Invite subcontractors from <a href="{% url 'package_list' org.slug project.pk %}">Packages &amp; quotes</a>. They get a notification with a link to this tender in the portal, where they find the scope, documents and addenda, ask questions and submit their quote.</p></div></div>{% endif %}
+{% if not has_packages %}<div class="card" style="margin-bottom:1.25rem"><div class="empty"><h2>No one is pricing yet</h2><p>Invite subcontractors from <a href="{% url 'package_list' org.slug project.pk %}">Packages &amp; quotes</a>. They get a notification with a link to this tender in the portal, where they find the scope, documents and addenda, ask questions and submit their quote.</p></div></div>{% endif %}
 
 {% if project.section == 'estimating' %}<div class="card" id="bid" style="margin-bottom:1.25rem"><div class="card-head"><h2>Bid or no bid</h2>
   {% if review.result %}<span>{% badge review.get_result_display review.result_tone %} <span class="mono small">{{ review.score }}/100</span></span>{% elif review.decision == 'SKIPPED' %}{% badge 'Check skipped' 'muted' %}{% elif review.decision == 'DECLINED' %}{% badge 'Declined' 'muted' %}{% else %}{% badge 'Not scored' 'muted' %}{% endif %}</div>

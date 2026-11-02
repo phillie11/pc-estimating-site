@@ -4,7 +4,7 @@
 <div class="grid split">
   <div class="card"><div class="card-head"><h2>{% if s %}Edit {{ s.ref }}{% else %}Ask for a submittal{% endif %}</h2></div><div class="card-body">
     <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
-      <div class="form-actions"><button class="btn primary">{% if s %}Save{% else %}Add submittal{% endif %}</button><a class="btn" href="{% if s %}{{ s.get_absolute_url }}{% else %}{% url 'submittal_list' org.slug project.pk %}{% endif %}">Cancel</a></div>
+      <div class="form-actions"><button class="btn primary">{% if s %}Save{% else %}Add submittal{% endif %}</button><a class="btn ghost" href="{% if s %}{{ s.get_absolute_url }}{% else %}{% url 'submittal_list' org.slug project.pk %}{% endif %}">Cancel</a></div>
     </form>
   </div></div>
   <div class="card"><div class="card-head"><h2>What happens next</h2></div><div class="card-body small">

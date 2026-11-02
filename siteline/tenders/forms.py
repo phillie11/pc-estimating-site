@@ -84,7 +84,8 @@ class QuoteForm(StyledModelForm):
 
 class DeclineForm(forms.Form):
     reason = forms.CharField(max_length=300, required=False, label='Reason (optional)',
-                             widget=forms.TextInput(attrs={'placeholder': 'e.g. no capacity on these dates'}))
+                             widget=forms.TextInput(attrs={'placeholder': 'e.g. no capacity on these dates',
+                                                           'aria-label': 'Why you are not pricing (optional)'}))
 
 
 class QueryForm(StyledModelForm):

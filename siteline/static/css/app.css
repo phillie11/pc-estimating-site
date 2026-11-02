@@ -231,7 +231,7 @@ textarea { resize: vertical; }
 .col { background: var(--paper-2); border-radius: var(--r); padding: 10px; min-height: 200px; display: flex; flex-direction: column; }
 .col.drop { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .col-head { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 4px 10px; }
-.col-head h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+.col-head h2, .col-head h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
 .col-head .total { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
 .bcard { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; margin-bottom: 8px; cursor: grab; box-shadow: var(--shadow); text-decoration: none; display: block; }
 .bcard:hover { border-color: var(--line-2); color: inherit; }
@@ -295,6 +295,7 @@ textarea { resize: vertical; }
 .prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
 .price { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 22px; display: flex; flex-direction: column; }
 .price.featured { border: 2px solid var(--ink); }
+.price h2 { font-size: 1rem; }
 .price .amt { font-size: 2.2rem; font-weight: 800; font-stretch: 112%; }
 .price ul { padding-left: 18px; color: var(--ink-2); margin: 12px 0 18px; }
 .price .btn { margin-top: auto; }
@@ -509,7 +510,10 @@ a.kpi:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ui-section { margin-bottom: 2rem; }
 .ui-section > h2 { border-bottom: 1px solid var(--line-2); padding-bottom: 6px; }
 pre.code { background: #FCFBF8; border: 1px solid var(--line); border-radius: 5px; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; }
-@media (max-width: 860px) { .btn { min-height: 44px; } .chip { min-height: 36px; display: inline-flex; align-items: center; } }
+@media (max-width: 860px) { .btn { min-height: 44px; } .chip { min-height: 36px; display: inline-flex; align-items: center; }
+  /* Tick boxes and their words are one 44px target on a phone */
+  .field .check, .checks label, .check label { min-height: 44px; }
+  .field input[type=checkbox], .checks input[type=checkbox], .field input[type=radio] { width: 20px; height: 20px; flex: none; } }
 /* Applications for payment (payments/) */
 .t.figures th { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); background: #F7F5F0; white-space: normal; }
 .t.figures .num { text-align: right; white-space: nowrap; }
@@ -591,6 +595,17 @@ tr.dim td { color: var(--ink-3); }
 .help-body > :first-child { margin-top: 0; }
 .search-hits li { align-items: baseline; }
 .search-hits .search-detail { display: block; }
+
+/* ---------- Usability sweep ---------- */
+/* Phone: long filter forms fold their drop-downs behind "More filters" (app.js) */
+.filters-folded select, .filters-folded label:has(> select), .filters-folded button:not(.filter-toggle),
+.filters-folded a.btn { display: none !important; }
+.filter-toggle { min-height: 44px; }
+/* A count inside any chip, not only in sub-navigation */
+.chip .n { font-family: var(--mono); font-size: 11px; padding: 0 6px; margin-left: 4px; border-radius: 9px; background: var(--paper-2); color: var(--ink-2); }
+.chip.on .n { background: rgba(255,255,255,.2); color: #fff; }
+/* Small text buttons in tables and lists are a full 44px target on a phone */
+@media (max-width: 860px) { .t .linkbtn, .list .linkbtn, td form .linkbtn { min-height: 44px; padding: 0 4px; } }
 
 /* ---------- Getting started checklist on the dashboards (help/onboarding.py) ---------- */
 .onboard { margin-bottom: 1.25rem; border-left: 3px solid var(--accent); }

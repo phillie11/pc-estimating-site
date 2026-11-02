@@ -13,10 +13,10 @@
         <td><a class="rowlink" href="{{ v.get_absolute_url }}">{{ v.title }}</a><span class="sub">{{ v.get_reason_display }}{% if v.instructed_by %} · {{ v.instructed_by }}{% endif %}</span>{% if is_internal and v.client_variation %}<span class="sub">Recovered as {{ v.client_variation.reference }}</span>{% endif %}</td>
         {% if is_internal %}<td class="small">{{ v.subcontractor }}</td>{% endif %}
         <td>{% badge v.get_status_display v.status_tone %}</td><td class="num">{{ v.value|money:currency }}</td><td class="num">{{ v.approved_value|money:currency }}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<div class="empty"><h3>No variations</h3><p>{% if is_internal %}Subcontractors submit variations from their portal. You decide them here and can pass them on to the client.{% else %}Submit a variation for extra or changed work. {{ org.name }} decides it here and you'll be notified.{% endif %}</p></div>{% endif %}</div>
+    </tbody></table></div>{% else %}<div class="empty"><h2>No variations</h2><p>{% if is_internal %}Subcontractors submit variations from their portal. You decide them here and can pass them on to the client.{% else %}Submit a variation for extra or changed work. {{ org.name }} decides it here and you'll be notified.{% endif %}</p></div>{% endif %}</div>
   </div>
   {% if form %}<div class="card"><div class="card-head"><h2>Submit a variation</h2></div><div class="card-body">
-    <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Submit</button></div></form>
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Submit variation</button></div></form>
     <p class="small dim" style="margin-top:10px">Only {{ org.name }} sees your variations.</p>
   </div></div>{% else %}<div class="card"><div class="card-head"><h2>Passing costs on</h2></div><div class="card-body small"><p style="margin:0">When you approve a subcontractor variation you can start a draft client variation from it in one step. It is linked, so you can see what has been recovered.</p></div></div>{% endif %}
 </div>

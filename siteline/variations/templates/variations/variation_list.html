@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% if is_internal %}<a class="btn primary" href="{% url 'variation_create' org.slug project.pk %}">{% icon 'plus' %} New variation</a>{% endif %}{% endblock %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% if is_internal %}<a class="btn primary" href="{% url 'variation_create' org.slug project.pk %}">{% icon 'plus' %} New variation</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "commercial/_subnav.html" %}
 <div class="kpis">
@@ -18,6 +18,6 @@
   <td>{% badge v.get_status_display v.status_tone %}</td><td class="num">{{ v.value|money:currency }}</td><td class="num">{{ v.approved_value|money:currency }}</td>
   <td class="small nowrap">{{ v.submitted_at|date:"j M Y"|default:"—" }}</td>
   <td class="small nowrap {% if v.is_overdue %}overdue{% endif %}">{% if v.status == 'SUBMITTED' and v.due_date %}{{ v.due_date|date:"j M Y" }}{% if v.is_overdue %} overdue{% endif %}{% else %}—{% endif %}</td></tr>{% endfor %}
-</tbody></table></div>{% elif status %}<div class="empty"><h3>Nothing with this status</h3><p>No variation is {{ status|lower }} right now. <a href="?">Show all variations</a>.</p></div>
-{% else %}<div class="empty"><h3>No variations</h3>{% if is_internal %}<p>Draft one, then submit it. Clients on the project can approve it from their portal.</p>{% else %}<p>When the contractor submits a variation for your approval it will appear here, and you'll get an email.</p>{% endif %}</div>{% endif %}</div>
+</tbody></table></div>{% elif status %}<div class="empty"><h2>Nothing with this status</h2><p>No variation is {{ status|lower }} right now. <a href="?">Show all variations</a>.</p></div>
+{% else %}<div class="empty"><h2>No variations</h2>{% if is_internal %}<p>Draft one, then submit it. Clients on the project can approve it from their portal.</p>{% else %}<p>When the contractor submits a variation for your approval it will appear here, and you'll get an email.</p>{% endif %}</div>{% endif %}</div>
 {% endblock %}

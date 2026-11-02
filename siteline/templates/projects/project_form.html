@@ -9,7 +9,7 @@
 </div></div>
 {% if project and is_org_admin and not project.is_archived %}{% if has_records %}
 <div class="card" style="max-width:900px;margin-top:1.25rem"><div class="card-body">
-  <h3>Archive project</h3><p class="dim small">Hides it from project lists, the pipeline, workload and your plan's project count, and removes collaborators' access. Its RFIs, variations, RAMS, documents and history are kept, and owners and admins can open or restore it from Archived.</p>
+  <h2>Archive project</h2><p class="dim small">Hides it from project lists, the pipeline, workload and your plan's project count, and removes collaborators' access. Its RFIs, variations, RAMS, documents and history are kept, and owners and admins can open or restore it from Archived.</p>
   <form method="post" action="{% url 'project_archive' org.slug project.pk %}" data-confirm="Archive {{ project.reference }}?">{% csrf_token %}<button class="btn">Archive project</button></form>
 </div></div>{% else %}
 <div class="card" style="max-width:900px;margin-top:1.25rem;border-color:#EDBDB7"><div class="card-body">

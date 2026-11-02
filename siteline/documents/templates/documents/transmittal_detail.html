@@ -20,7 +20,7 @@
       </dl>
       {% if transmittal.cover_note %}<p style="margin-top:12px;white-space:pre-line">{{ transmittal.cover_note }}</p>{% endif %}
     </div>
-    <div class="table-wrap"><table class="t"><thead><tr><th>Number</th><th>Title</th><th>Rev</th><th>Suit.</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table class="t"><thead><tr><th>Number</th><th>Title</th><th>Rev</th><th>Suit.</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
     {% for i in items %}<tr><td class="ref nowrap">{{ i.reference|default:i.revision.document.reference|default:"—" }}</td>
       <td><a href="{% url 'revision_detail' org.slug project.pk i.revision.document_id i.revision_id %}">{{ i.title|default:i.revision.document.title }}</a>
         {% if i.revision.newer_hidden %}<span class="sub small dim">A newer revision is being prepared</span>{% elif i.revision.is_superseded %}<span class="sub">{% badge 'Superseded' 'warn' %}{% if i.revision.newer %} by {{ i.revision.newer.revision }}{% endif %}</span>{% elif i.revision.is_withdrawn %}<span class="sub">{% badge 'Withdrawn' 'bad' %}</span>{% endif %}</td>

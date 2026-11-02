@@ -49,6 +49,6 @@
   <p class="dim">{{ vocab.early_warning_note }}</p>
 </div></div>
 {% else %}
-<div class="card"><div class="empty"><h3>No contract set up yet</h3><p>Pick the form of contract (JCT, NEC4 or bespoke) and Siteline fills in its standard payment, retention and defects terms for you to check against the signed contract. It also switches this job to that contract's words, and turns on the advisory notice clocks for NEC4 jobs.</p><p><a class="btn primary" href="{% url 'contract_edit' org.slug project.pk %}" style="min-height:44px">Set up the contract</a></p><p class="small dim">If the contract has no compliant payment terms, the {{ scheme.label }} applies. {{ advisory }}</p></div></div>
+<div class="card"><div class="empty"><h2>No contract set up yet</h2><p>Pick the form of contract (JCT, NEC4 or bespoke) and Siteline fills in its standard payment, retention and defects terms for you to check against the signed contract. It also switches this job to that contract's words, and turns on the advisory notice clocks for NEC4 jobs.</p><p><a class="btn primary" href="{% url 'contract_edit' org.slug project.pk %}" style="min-height:44px">Set up the contract</a></p><p class="small dim">If the contract has no compliant payment terms, the {{ scheme.label }} applies. {{ advisory }}</p></div></div>
 {% endif %}
 {% endblock %}

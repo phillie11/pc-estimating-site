@@ -168,6 +168,7 @@ class AddStaffForm(forms.Form):
     role = forms.ChoiceField(choices=ProjectMember.INTERNAL_ROLE_CHOICES)
 
     def __init__(self, *args, project=None, **kwargs):
+        kwargs.setdefault('auto_id', 'staff_%s')  # beside the invite form on the Team page: unique ids
         super().__init__(*args, **kwargs)
         existing = project.members.values_list('user_id', flat=True)
         self.fields['user'].queryset = staff_users(project.organization).exclude(pk__in=existing)
@@ -177,7 +178,7 @@ class CommentForm(forms.ModelForm):
     class Meta:
         model = Comment
         fields = ['body', 'internal_only']
-        widgets = {'body': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Add a comment…'})}
+        widgets = {'body': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Add a comment…', 'aria-label': 'Comment'})}
         labels = {'body': '', 'internal_only': 'Internal note (hidden from collaborators)'}
 
     def __init__(self, *args, external=False, **kwargs):
