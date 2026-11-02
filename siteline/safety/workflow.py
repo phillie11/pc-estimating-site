@@ -4,7 +4,8 @@ Incident status changes, registered in SafetyConfig.ready().
   REPORTED      --investigate (PM or admin)-------------------> INVESTIGATING  (ball: who starts it)
   REPORTED or
   INVESTIGATING --close (PM or admin; findings written, no open
-                  actions, RIDDOR reported if reportable)------> CLOSED         (ball: nobody)
+                  actions, RIDDOR reported if reportable, and
+                  answered if a worker was off > 7 days)-------> CLOSED         (ball: nobody)
   CLOSED        --reopen (PM or admin, with a reason)----------> INVESTIGATING  (ball: who reopens it)
 
 Reporting puts the ball with the job's project manager (or whoever reported it, if the job has
@@ -16,6 +17,7 @@ from django.utils import timezone
 from core.exceptions import InvalidTransition
 from core.workflow import Transition
 
+from . import rules
 from .models import Incident as I
 
 
@@ -29,6 +31,11 @@ def close_problems(incident):
     problems = []
     if not (incident.findings or '').strip():
         problems.append('Write up the findings and lessons learned.')
+    if not incident.riddor_category and incident.riddor_suggestion == rules.RIDDOR_OVER_7:
+        # The record itself says a worker was off for more than 7 days: that is reportable, so don't let it
+        # close with the RIDDOR question unanswered (advisory, like every RIDDOR rule)
+        problems.append('A worker was off for more than 7 days, so this may need reporting under RIDDOR. '
+                        'Answer the RIDDOR question (or correct the days off).')
     if incident.riddor_outstanding:
         problems.append('Record when it was reported to HSE under RIDDOR (or change the RIDDOR answer).')
     if incident.actions.filter(done_at__isnull=True).exists():
