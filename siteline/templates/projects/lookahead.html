@@ -5,7 +5,7 @@
 {% include "projects/_programme_nav.html" %}
 <div class="print-only la-print-head"><strong>{{ project.name }}: {{ weeks }}-week look-ahead</strong>, {{ start|date:"D j M" }} to {{ end|date:"D j M Y" }}{% if filtered %} (filtered){% endif %}. Printed {{ printed|date:"j M Y H:i" }}.</div>
 
-<div class="card">
+<div class="card mtg">
   <div class="card-head">
     <h2>{% if is_sub %}Your work in the next {{ weeks }} weeks{% else %}{{ weeks }}-week look-ahead{% endif %}</h2>
     <span class="small dim">{{ start|date:"D j M" }} to {{ end|date:"D j M Y" }}</span>

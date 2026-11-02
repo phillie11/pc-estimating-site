@@ -1,7 +1,7 @@
 {% extends "project_base.html" %}{% load ui %}
 {% block project_content %}
 {% include "projects/_programme_nav.html" %}
-<div class="card" style="max-width:1000px">
+<div class="card mtg" style="max-width:1000px">
   <div class="card-head"><h2>Check before importing: {{ imp.file_name }}</h2>{% status_badge imp %}</div>
   <div class="card-body">
   {% if not plan %}
