@@ -8,7 +8,8 @@ Signals connected in CloseoutConfig.ready():
   Issue post_save       When a defect reported by the client side is closed (the PM has checked
                         the fix), the person who reported it is told.
   MainContract save     A practical completion date typed on the contract is copied to the job's
-                        whole-works completion section, so the two never disagree.
+                        whole-works completion section (made if missing), and a new contract
+                        takes the date already recorded, so the two never disagree.
 """
 from django.urls import reverse
 from django.utils import timezone
@@ -48,9 +49,30 @@ def tell_reporter(sender, instance, created, **kwargs):
                  project=instance.project, org=instance.project.organization)
 
 
-def contract_pc(sender, instance, **kwargs):
+def contract_pc(sender, instance, created=False, **kwargs):
+    """
+    Keep the whole-works section and the contract's PC date the same. Writes use update(), so
+    neither side's save signal fires again (no loop).
+
+      no whole-works row yet     a PC date on the contract makes one, so the defect phase and the
+                                 end-of-defects reminder (which read the row) see it too
+      a new contract, PC blank   it takes the date already recorded on the Close-out tab, instead
+                                 of wiping it
+      otherwise                  the contract's date (blank included) is copied to the row
+    """
     from .models import CompletionSection
     row = CompletionSection.all_objects.filter(organization_id=instance.organization_id, project_id=instance.project_id,
                                                is_whole_works=True).first()
-    if row is not None and row.pc_date != instance.practical_completion_on:
-        CompletionSection.all_objects.filter(pk=row.pk).update(pc_date=instance.practical_completion_on)
+    pc = instance.practical_completion_on
+    if row is None:
+        if pc is not None and not CompletionSection.all_objects.filter(
+                project_id=instance.project_id, name=CompletionSection.WHOLE_WORKS).exists():
+            CompletionSection(organization_id=instance.organization_id, project_id=instance.project_id,
+                              is_whole_works=True, name=CompletionSection.WHOLE_WORKS, pc_date=pc).save()
+        return
+    if created and pc is None and row.pc_date is not None:
+        type(instance).all_objects.filter(pk=instance.pk).update(practical_completion_on=row.pc_date)
+        instance.practical_completion_on = row.pc_date
+        return
+    if row.pc_date != pc:
+        CompletionSection.all_objects.filter(pk=row.pk).update(pc_date=pc)

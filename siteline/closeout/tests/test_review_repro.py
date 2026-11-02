@@ -5,16 +5,20 @@ import shutil
 import sys
 import tempfile
 import types
+from datetime import date, timedelta
 from unittest import mock
 
 from django.test import override_settings
+from django.utils import timezone
 
+from contracts.models import MainContract
 from projects.models import Document, DocumentRevision
 from tenancy.context import org_context
 
-from .. import goldenthread, services
+from .. import goldenthread, rules, services
 from ..models import HandoverItem, HandoverPack
 from .base import CloseoutTestBase, pdf
+from .test_closeout import kinds
 
 MEDIA = tempfile.mkdtemp()
 
@@ -90,3 +94,32 @@ class FireStoppingRegisterHookTests(CloseoutTestBase):
                                        exports={'register': lambda project: self.fail('register was read')})
         with mods, installed, org_context(self.org_a):
             self.assertEqual(goldenthread.quality_items(self.pa), [])
+
+
+class ContractSyncTests(CloseoutTestBase):
+    """MainContract.practical_completion_on and the whole-works PC date stay in step both ways."""
+
+    def test_setting_up_the_contract_after_pc_keeps_the_recorded_date(self):
+        with org_context(self.org_a):
+            self.contract.delete()
+        s = self.section(pc=date(2026, 6, 1))
+        with org_context(self.org_a):
+            contract = MainContract.objects.create(project=self.pa, form='JCT_IC', defects_period_months=6)
+            self.assertEqual(MainContract.objects.get(pk=contract.pk).practical_completion_on, date(2026, 6, 1))
+        self.assertEqual(self.fresh(s).pc_date, date(2026, 6, 1))
+
+    def test_pc_typed_only_on_the_contract_turns_snags_into_defects_and_reminds_the_pm(self):
+        today = timezone.localdate()
+        with org_context(self.org_a):
+            self.contract.practical_completion_on = rules.add_months(today, -6) + timedelta(days=10)
+            self.contract.save()
+            self.pa.manager = self.pat
+            self.pa.save()
+        self.assertEqual(self.issue().issue_type, 'DEFECT')
+        self.assertEqual(len(kinds(self, self.pat, 'defects_end')), 1)
+        # clearing it on the contract clears it on the tab, and snags are snags again
+        with org_context(self.org_a):
+            self.contract.practical_completion_on = None
+            self.contract.save()
+            self.assertIsNone(services.whole_works(self.pa).pc_date)
+        self.assertEqual(self.issue().issue_type, 'SNAG')
