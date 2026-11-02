@@ -1,0 +1,21 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block project_content %}
+<div class="mtg">
+<div class="card" id="your-actions">
+  <div class="card-head"><h2>Your actions</h2></div>
+  <div class="card-body">
+    {% if actions %}<ul class="mtg-actions">{% for a in actions %}{% include "meetings/_action.html" with show_meeting=True can_update=a.is_open %}{% endfor %}</ul>
+    <p class="small dim">When you've done one, set it to Done and say what happened. The site team sees it straight away.</p>
+    {% else %}{% include "partials/empty_state.html" with title="No actions for you" message="The site team gives out actions in meeting minutes. Yours show here, with when they are due." left=True %}{% endif %}
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Minutes sent to you</h2></div>
+  {% if minutes %}<div class="table-wrap"><table class="t">
+    <thead><tr><th>Meeting</th><th>Date</th></tr></thead>
+    <tbody>{% for m in minutes %}<tr><td><a class="rowlink" href="{{ m.get_absolute_url }}">{{ m.title }}</a><span class="sub mono">{{ m.ref }}</span></td><td class="small nowrap">{{ m.held_on|date:"D j M Y" }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}{% include "partials/empty_state.html" with title="No minutes yet" message="The site team issues minutes after each meeting. Minutes of meetings you are invited to show here." left=True %}{% endif %}
+</div>
+</div>
+{% endblock %}

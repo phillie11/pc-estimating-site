@@ -134,6 +134,10 @@ def project_context(request, project, tab, **extra):
         ('documents', 'Documents', url('document_list'), None),
         ('team', 'Team', url('project_team'), None),
     ]
+    from meetings.access import meetings_tab  # staff: Meetings (under More); externals: their minutes and actions
+    meetings = meetings_tab(request, project)
+    if meetings:
+        tabs.append(meetings)
     return {**base, **arrange(request, project, tabs, tab)}
 
 

@@ -9,6 +9,7 @@ from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
 from levelling import urls as levelling_urls
+from meetings import urls as meetings_urls
 from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import programme_views
@@ -134,5 +135,8 @@ urlpatterns = [
     *subpayments_urls.org_patterns,
     # Sub quotes > Level quotes on a bid (levelling/urls.py)
     *levelling_urls.project_patterns(P),
+    # Meetings tab: minutes, actions and agenda templates (meetings/urls.py)
+    *meetings_urls.project_patterns(P),
+    *meetings_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

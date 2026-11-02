@@ -100,15 +100,21 @@ class RecordsProvider:
         from core.access import needs_me
 
         from . import registry
+        from core.registry import record_types
         qs = needs_me(request).exclude(record_type__in=registry.covered_record_types())
+        # A record type may word its own line: NEEDS_ME_ACTION and NEEDS_ME_LABEL on the model (meetings)
+        models = {rt.key: rt.model for rt in record_types()}
         out = []
         for idx in qs.select_related('project'):
             responded = idx.status == 'RESPONDED'
+            model = models.get(idx.record_type)
             out.append(Item(
                 kind=idx.record_type.split('.')[-1], title=idx.title, url=idx.url, ref=idx.ref, project=idx.project,
                 due=idx.due_date, status_label=idx.status_label, tone='info' if responded else 'accent',
-                action='Accept the answer or reopen it' if responded else 'Answer it',
-                kind_label='RFIs' if idx.record_type == 'rfis.rfi' else idx.record_type.split('.')[-1].upper(),
+                action=getattr(model, 'NEEDS_ME_ACTION', None)
+                or ('Accept the answer or reopen it' if responded else 'Answer it'),
+                kind_label='RFIs' if idx.record_type == 'rfis.rfi' else (
+                    getattr(model, 'NEEDS_ME_LABEL', None) or idx.record_type.split('.')[-1].upper()),
                 key=f'idx:{idx.pk}',
             ))
         return out
