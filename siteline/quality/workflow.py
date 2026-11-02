@@ -21,6 +21,7 @@ Permits to work (PTW-)
 
 Fire-stopping penetrations (FS-)
   TO_SEAL --seal--> SEALED --sign_off--> SIGNED_OFF     sign-off needs the system and an "after" photo
+                                                          (taken since it last failed or was reopened)
   SEALED --fail--> FAILED --reseal--> SEALED            failing needs a note of what's wrong
   SIGNED_OFF --reopen--> TO_SEAL        the PM or an admin, e.g. the seal was disturbed by later work
   Ball in court: the PM (else an admin) to inspect once sealed; whoever recorded it once failed.
@@ -160,8 +161,14 @@ def _sealed(record, user, installed_on=None, **params):
 
 
 def _signed_off(record, user, remark='', **params):
-    after = QualityPhoto.objects.filter(penetration=record, stage=QualityPhoto.AFTER).count()
-    problem = rules.sign_off_problem(after, record.system)
+    after = QualityPhoto.objects.filter(penetration=record, stage=QualityPhoto.AFTER)
+    if record.inspected_at is not None:
+        # Failed or reopened since: only a photo of the seal as it is now counts, not the earlier one
+        after = after.filter(uploaded_at__gt=record.inspected_at)
+    problem = rules.sign_off_problem(after.count(), record.system)
+    if problem and record.inspected_at is not None and (record.system or '').strip():
+        problem = ('Add a photo of the seal as it is now ("after") before signing it off. The earlier photos '
+                   'show it before it was failed or reopened.')
     if problem:
         raise InvalidTransition(problem)
     record.inspected_by, record.inspected_at, record.inspection_note = user, timezone.now(), (remark or '').strip()

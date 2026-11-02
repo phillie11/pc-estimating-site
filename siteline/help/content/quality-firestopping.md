@@ -10,6 +10,6 @@ Record every hole through a fire-rated wall or floor, so the building has eviden
 
 **Photos:** take one before sealing and one of the finished seal. Adding the finished photo marks it as sealed.
 
-**Sign-off:** sealed penetrations are on the project manager's Needs me. Sign it off, or fail it with a note of what's wrong so it gets resealed.
+**Sign-off:** sealed penetrations are on the project manager's Needs me. Sign it off, or fail it with a note of what's wrong so it gets resealed. A resealed or reopened one needs a new photo of the seal before it can be signed off again, and a signed-off one can only be changed after the project manager reopens it.
 
 *Export CSV* gives the whole register for the handover pack.
