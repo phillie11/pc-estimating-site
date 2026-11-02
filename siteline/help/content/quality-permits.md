@@ -1,6 +1,8 @@
 ---
 title: Permits to work
 pages: permit_list permit_create permit_detail permit_edit
+who: staff
+order: 61
 ---
 Hot works, working at height, isolations and confined spaces need a permit before the work starts.
 

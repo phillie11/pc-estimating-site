@@ -1,6 +1,8 @@
 ---
 title: Checklist library
 pages: quality_templates quality_template quality_template_create
+who: staff
+order: 63
 ---
 These are the checklists your teams inspect against on every job. Siteline starts you with typical fit-out checklists; change them to match your own specifications and quality plan.
 

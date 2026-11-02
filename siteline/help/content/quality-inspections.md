@@ -1,6 +1,8 @@
 ---
 title: Inspections
 pages: inspection_list inspection_create inspection_detail
+who: staff
+order: 60
 ---
 An inspection checks one area of the job against a checklist from your company's library, such as fire doors or partitions before boarding.
 

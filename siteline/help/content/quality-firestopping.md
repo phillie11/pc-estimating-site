@@ -1,6 +1,8 @@
 ---
 title: Fire-stopping register
 pages: penetration_list penetration_create penetration_detail penetration_edit
+who: staff
+order: 62
 ---
 Record every hole through a fire-rated wall or floor, so the building has evidence of how each one was sealed.
 
