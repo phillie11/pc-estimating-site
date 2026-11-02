@@ -45,8 +45,8 @@ class Topic:
     def for_reader(self, internal):
         return self.who == 'all' or self.who == ('staff' if internal else 'external')
 
-    def html(self, org_slug=''):
-        return render_markdown(self.body, org_slug)
+    def html(self, org_slug='', top=3):
+        return render_markdown(self.body, org_slug, top)
 
 
 def _parse(path):
@@ -124,7 +124,8 @@ def _inline(text, org_slug):
     return ITALIC.sub(r'<em>\1</em>', out)
 
 
-def render_markdown(text, org_slug=''):
+def render_markdown(text, org_slug='', top=3):
+    """`top` is the heading level ## becomes: 3 under the panel's h2, 2 on a help page under its h1."""
     blocks, para, items, kind = [], [], [], None
 
     def flush():
@@ -144,7 +145,7 @@ def render_markdown(text, org_slug=''):
         if line.startswith('#'):
             flush()
             level = len(line) - len(line.lstrip('#'))
-            tag = 'h3' if level <= 2 else 'h4'
+            tag = f'h{top}' if level <= 2 else f'h{top + 1}'
             blocks.append(f'<{tag}>{_inline(line.lstrip("#").strip(), org_slug)}</{tag}>')
             continue
         bullet = line[:2] in ('- ', '* ')

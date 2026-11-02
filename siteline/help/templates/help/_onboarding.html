@@ -5,7 +5,7 @@
     {% for s in checklist.steps %}<li class="{% if s.done %}done{% elif s == checklist.next %}next{% endif %}">
       <span class="onboard-tick" aria-hidden="true">{% if s.done %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
       <span class="grow"><strong>{{ s.label }}</strong>{% if s.done %} <span class="sr-only">(done)</span>{% endif %}<span class="small dim">{{ s.detail }}</span></span>
-      {% if not s.done %}<a class="btn{% if s == checklist.next %} primary{% endif %} sm" href="{{ s.url }}">{{ s.action }}</a>{% else %}<span class="badge good">Done</span>{% endif %}
+      {% if not s.done %}<a class="btn sm" href="{{ s.url }}">{{ s.action }}</a>{% else %}<span class="badge good">Done</span>{% endif %}
     </li>{% endfor %}
   </ol>
   <div class="card-foot row between"><span class="small dim">Each step ticks itself when it's done.</span>

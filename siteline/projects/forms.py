@@ -17,6 +17,12 @@ def style_widgets(form):
             field.widget = forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')
         elif isinstance(w, forms.Textarea):
             w.attrs.setdefault('rows', 4)
+        if isinstance(field, forms.ModelChoiceField) and field.empty_label == '---------':
+            field.empty_label = 'Choose…'
+        elif isinstance(field, forms.ChoiceField) and not isinstance(field, forms.ModelChoiceField):
+            choices = list(field.choices)
+            if choices and choices[0][0] in ('', None) and choices[0][1] == '---------':
+                field.choices = [(choices[0][0], 'Choose…')] + choices[1:]
 
 
 class StyledModelForm(forms.ModelForm):

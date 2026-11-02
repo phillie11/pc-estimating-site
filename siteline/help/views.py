@@ -14,7 +14,7 @@ def search_page(request, org_slug):
     groups = search.run(request, q)
     return render(request, 'help/search.html', {
         'q': q, 'groups': groups, 'too_short': 0 < len(q) < search.MIN_LENGTH,
-        'total': sum(len(hits) for _, _, hits in groups), 'internal': is_internal(request),
+        'capped': any(len(hits) >= search.PER_SOURCE for _, _, hits in groups), 'internal': is_internal(request),
     })
 
 

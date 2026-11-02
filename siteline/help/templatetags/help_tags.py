@@ -18,11 +18,11 @@ def help_for(context):
 
 
 @register.simple_tag(takes_context=True)
-def help_body(context, topic):
+def help_body(context, topic, top=3):
     org = context.get('org')
     # Reviewed for B308/B703: help.topics.render_markdown escapes every character of the file before adding
     # its own fixed tags, and only keeps links that start with / or https://.
-    return mark_safe(topic.html(org.slug if org else ''))  # nosec B308 B703
+    return mark_safe(topic.html(org.slug if org else '', top))  # nosec B308 B703
 
 
 @register.inclusion_tag('help/_onboarding.html', takes_context=True)

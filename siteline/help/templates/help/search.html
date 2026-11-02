@@ -9,12 +9,12 @@
 <div class="stack">
 {% for key, label, hits in groups %}
   <section class="card" aria-labelledby="sr-{{ key }}">
-    <div class="card-head"><h2 id="sr-{{ key }}">{{ label }}</h2><span class="small dim">{{ hits|length }}{% if hits|length == 6 %}+{% endif %}</span></div>
+    <div class="card-head"><h2 id="sr-{{ key }}">{{ label }}</h2><span class="small dim">{{ hits|length }}{% if hits|length >= 6 %}+{% endif %}</span></div>
     <ul class="list search-hits">{% for h in hits %}<li>{% if h.ref %}<span class="ref">{{ h.ref }}</span>{% endif %}<span class="grow"><a href="{{ h.url }}">{{ h.title }}</a>{% if h.detail %}<span class="small dim search-detail">{{ h.detail }}</span>{% endif %}</span></li>{% endfor %}</ul>
   </section>
 {% endfor %}
 </div>
-{% if total >= 6 %}<p class="small dim" style="margin-top:1rem">Showing the closest few of each. Add more words or a reference such as RFI-012 to narrow it down.</p>{% endif %}
+{% if capped %}<p class="small dim" style="margin-top:1rem">Showing the closest few of each. Add more words or a reference such as RFI-012 to narrow it down.</p>{% endif %}
 {% elif too_short %}
 {% include "partials/empty_state.html" with title="Type a little more" message="Enter at least 2 letters or numbers, such as a project name or RFI-012." %}
 {% elif q %}
