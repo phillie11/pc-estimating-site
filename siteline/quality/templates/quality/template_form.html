@@ -1,0 +1,13 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}{% if template %}{{ template.name }}{% else %}Add a checklist{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'quality_templates' org.slug %}">Checklist library</a></div><h1>{% if template %}{{ template.name }}{% else %}Add a checklist{% endif %}</h1></div></div>
+<div class="card q-narrow"><div class="card-body">
+  {% if template and used %}<p class="small dim">Used on {{ used }} inspection{{ used|pluralize }}. Changing it never alters inspections already started; untick <em>In use</em> to retire it.</p>{% endif %}
+  {% if template and not can_edit %}<p class="small dim">Only project managers and admins change checklists.</p>{% endif %}
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+    {% if can_edit or not template %}<div class="form-actions"><button class="btn primary">{% if template %}Save{% else %}Add checklist{% endif %}</button><a class="btn ghost" href="{% url 'quality_templates' org.slug %}">Cancel</a></div>
+    {% else %}<div class="form-actions"><a class="btn ghost" href="{% url 'quality_templates' org.slug %}">Back to the library</a></div>{% endif %}
+  </form>
+</div></div>
+{% endblock %}

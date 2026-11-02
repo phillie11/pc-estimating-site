@@ -1,0 +1,23 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Checklist library{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Checklist library</h1><p class="dim" style="margin:4px 0 0">The checklists your site teams inspect against on every job. Tailor them to your own specifications and quality plan.</p></div>
+  <div class="row">{% if can_edit %}<a class="btn primary" href="{% url 'quality_template_create' org.slug %}">{% icon 'plus' %} Add a checklist</a>{% endif %}</div></div>
+<nav class="filters" aria-label="Show checklists"><a class="chip{% if show != 'all' %} on{% endif %}" href="?"{% if show != 'all' %} aria-current="true"{% endif %}>In use</a><a class="chip{% if show == 'all' %} on{% endif %}" href="?show=all"{% if show == 'all' %} aria-current="true"{% endif %}>Including retired</a></nav>
+{% if page.paginator.count > 20 or q %}<form class="search filters" method="get" role="search">{% if show %}<input type="hidden" name="show" value="{{ show }}">{% endif %}<label class="sr-only" for="q-tpl">Search checklists</label><input id="q-tpl" type="search" name="q" value="{{ q }}" placeholder="Name or trade"><button class="btn">Search</button>{% if q %}<a class="btn ghost" href="?">Clear</a>{% endif %}</form>{% endif %}
+<div class="card">
+{% if templates %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Checklist</th><th>Trade</th><th class="num">Checks</th><th>Status</th></tr></thead>
+  <tbody>{% for t in templates %}<tr>
+    <td><a class="rowlink" href="{{ t.get_absolute_url }}">{{ t.name }}</a>{% if t.description %}<span class="sub">{{ t.description }}</span>{% endif %}</td>
+    <td class="small">{{ t.trade|default:"—" }}</td>
+    <td class="num">{{ t.n }}</td>
+    <td>{% if t.is_active %}{% badge 'In use' 'good' %}{% else %}{% badge 'Retired' 'muted' %}{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% include "quality/_pager.html" %}
+{% elif q %}{% include "partials/empty_state.html" with title="No checklists match" message="Nothing matches that search." cta_url="?" cta_label="Show every checklist" cta_plain=True left=True %}
+{% elif can_edit %}{% url 'quality_template_create' org.slug as new_url %}{% include "partials/empty_state.html" with title="No checklists in use" message="Add a checklist: a name and the checks, one per line." cta_url=new_url cta_label="Add a checklist" left=True %}
+{% else %}{% include "partials/empty_state.html" with title="No checklists in use" message="Your project managers and admins add checklists here." left=True %}{% endif %}
+</div>
+{% if request.membership.is_admin %}<p class="small dim">Permit lengths, the expiry warning and the fire watch time are in <a href="{% url 'quality_settings' org.slug %}">Quality settings</a>.</p>{% endif %}
+{% endblock %}

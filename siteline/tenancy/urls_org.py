@@ -11,6 +11,7 @@ from documents import urls as documents_urls
 from levelling import urls as levelling_urls
 from payments import urls as payments_urls
 from procurement import urls as procurement_urls
+from quality import urls as quality_urls
 from projects import views as projects
 from rfis import views as rfis
 from subpayments import urls as subpayments_urls
@@ -128,5 +129,8 @@ urlpatterns = [
     *subpayments_urls.org_patterns,
     # Sub quotes > Level quotes on a bid (levelling/urls.py)
     *levelling_urls.project_patterns(P),
+    # Quality tab: inspections, permits to work, fire-stopping; Settings > Checklists (quality/urls.py)
+    *quality_urls.project_patterns(P),
+    *quality_urls.org_patterns,
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

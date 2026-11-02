@@ -1,0 +1,48 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if viewer_link %}<a class="btn" href="{{ viewer_link }}">Show on drawing</a>{% endif %}{% if not project.is_archived %}<a class="btn" href="{% url 'penetration_edit' org.slug project.pk p.pk %}">Change details</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<div class="q-site q-touch">
+<div class="card"><div class="card-head"><h2><span class="ref">{{ p.ref }}</span> {{ p.title }}</h2>{% status_badge p %}</div><div class="card-body">
+  <dl class="dl">
+    <dt>Where</dt><dd>{{ p.location }}{% if p.is_pinned %}<span class="sub">On drawing {{ p.drawing.reference|default:p.drawing.title }}{% if p.drawing_revision %} rev {{ p.drawing_revision.revision }}{% endif %}, page {{ p.pin_page }}{% if viewer_link %} · <a href="{{ viewer_link }}">Show on drawing</a>{% endif %}</span>{% endif %}</dd>
+    <dt>Through</dt><dd>{{ p.get_element_display }}{% if p.fire_rating %}, {{ p.get_fire_rating_display }} fire rating{% else %} <span class="dim">(rating not known yet)</span>{% endif %}</dd>
+    <dt>What passes through</dt><dd>{% if p.service %}{{ p.get_service_display }}{% else %}<span class="dim">Not recorded</span>{% endif %}{% if p.size %}, {{ p.size }}{% endif %}</dd>
+    <dt>System or product</dt><dd>{{ p.system|default:"Not recorded yet" }}{% if p.detail_reference %}<span class="sub">Detail {{ p.detail_reference }}</span>{% endif %}</dd>
+    <dt>Installed by</dt><dd>{{ p.installed_by|default:"Not recorded yet" }}{% if p.installed_on %}, sealed {{ p.installed_on|date:"j M Y" }}{% endif %}</dd>
+    {% if p.inspected_at %}<dt>{% if p.status == 'FAILED' %}Failed by{% else %}Inspected by{% endif %}</dt><dd>{{ p.inspected_by.full_name|default:"—" }}, {{ p.inspected_at|date:"j M Y H:i" }}{% if p.inspection_note %}<span class="sub q-pre">{{ p.inspection_note }}</span>{% endif %}</dd>{% endif %}
+    {% if p.status == 'SEALED' %}<dt>To inspect</dt><dd>{{ p.ball_in_court_user.full_name|default:"The project manager" }}</dd>{% endif %}
+    {% if p.notes %}<dt>Notes</dt><dd class="q-pre">{{ p.notes }}</dd>{% endif %}
+  </dl>
+</div></div>
+
+<div class="card"><div class="card-head"><h2>Photos</h2><span class="small dim">{{ before|length }} before · {{ after|length }} after</span></div><div class="card-body">
+  <h3 class="q-sub">Before sealing</h3>
+  {% if before %}<ul class="q-thumbs">{% for ph in before %}<li><a href="{{ ph.display_url }}"><img src="{{ ph.thumb_url }}" alt="Before sealing, {{ ph.uploaded_at|date:'j M' }}" loading="lazy" width="96" height="96"></a>{% if p.status != 'SIGNED_OFF' and not project.is_archived %}<form method="post" action="{% url 'quality_photo_remove' org.slug project.pk ph.pk %}" data-confirm="Remove this photo?">{% csrf_token %}<button class="linkbtn" aria-label="Remove this before photo">Remove</button></form>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="small dim">None yet.</p>{% endif %}
+  <h3 class="q-sub">The finished seal</h3>
+  {% if after %}<ul class="q-thumbs">{% for ph in after %}<li><a href="{{ ph.display_url }}"><img src="{{ ph.thumb_url }}" alt="Finished seal, {{ ph.uploaded_at|date:'j M' }}" loading="lazy" width="96" height="96"></a>{% if p.status != 'SIGNED_OFF' and not project.is_archived %}<form method="post" action="{% url 'quality_photo_remove' org.slug project.pk ph.pk %}" data-confirm="Remove this photo?">{% csrf_token %}<button class="linkbtn" aria-label="Remove this after photo">Remove</button></form>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="small dim">None yet. Sign-off needs at least one.</p>{% endif %}
+  {% if p.status != 'SIGNED_OFF' and not project.is_archived %}<form method="post" action="{% url 'penetration_photo' org.slug project.pk p.pk %}" enctype="multipart/form-data" class="q-photo-form">{% csrf_token %}
+    <fieldset class="q-inline"><legend>This photo is</legend>{% for c in photo_form.stage %}<label class="q-tick">{{ c.tag }} <span>{{ c.choice_label }}</span></label>{% endfor %}</fieldset>
+    <div class="field q-file"><label for="id_photo">Photo</label><input id="id_photo" type="file" name="photo" accept="image/*" capture="environment" required></div>
+    <div class="form-actions"><button class="btn">Add photo</button></div>
+  </form>{% endif %}
+</div></div>
+
+{% if transitions %}<div class="card"><div class="card-head"><h2>{% if p.status == 'SEALED' %}Inspect and sign off{% elif p.status == 'SIGNED_OFF' %}Reopen{% else %}Next step{% endif %}</h2></div><div class="card-body">
+  {% if 'seal' in transitions or 'reseal' in transitions %}<form method="post" action="{% url 'penetration_action' org.slug project.pk p.pk %}">{% csrf_token %}<input type="hidden" name="action" value="{% if 'seal' in transitions %}seal{% else %}reseal{% endif %}">
+    <p class="small">{% if after %}When the seal is finished, mark it sealed. It then goes on the project manager's Needs me to inspect.{% else %}Add a photo of the finished seal above first if you can; it is needed for sign-off.{% endif %}</p>
+    <div class="form-actions"><button class="btn primary block">{% if 'seal' in transitions %}Mark as sealed{% else %}Mark as resealed{% endif %}</button></div></form>{% endif %}
+  {% if 'sign_off' in transitions %}<form method="post" action="{% url 'penetration_action' org.slug project.pk p.pk %}">{% csrf_token %}
+    <div class="field"><label for="id_note">Inspection note</label>{{ note_form.note }}<div class="help">Needed if it fails: say what's wrong.</div></div>
+    <div class="form-actions q-results"><button class="btn primary" name="action" value="sign_off" data-confirm="Sign off {{ p.ref }}? It goes in the fire-stopping register as inspected and signed off by you.">Sign off</button><button class="btn danger" name="action" value="fail" data-confirm="Fail {{ p.ref }}? It goes back to {{ p.created_by.full_name|default:'whoever recorded it' }} to get resealed.">Fail inspection</button></div>
+    <p class="small dim">Sign-off needs the system or product recorded and a photo of the finished seal.</p>
+  </form>{% endif %}
+  {% if 'reopen' in transitions %}<form method="post" action="{% url 'penetration_action' org.slug project.pk p.pk %}"><input type="hidden" name="action" value="reopen">{% csrf_token %}
+    <div class="field"><label for="id_note">Why it needs sealing again</label>{{ note_form.note }}<div class="help">For example, disturbed by later work.</div></div>
+    <div class="form-actions"><button class="btn" data-confirm="Reopen {{ p.ref }}? It will need sealing and signing off again.">Reopen</button></div></form>{% endif %}
+</div></div>{% endif %}
+
+{% if audit %}<div class="card"><div class="card-head"><h2>History</h2></div><ul class="list small">{% for a in audit %}<li><span class="grow">{{ a.label }}{% if a.note %}: {{ a.note }}{% endif %}</span><span class="dim nowrap">{{ a.actor.full_name|default:a.actor_name|default:"System" }}, {{ a.at|date:"j M H:i" }}</span></li>{% endfor %}</ul></div>{% endif %}
+</div>
+<p class="small dim">{% badge 'Advisory' 'warn' %} Install to the manufacturer's tested detail for this wall or floor. This record is evidence for the golden thread; it doesn't replace the fire engineer's or building control's checks.</p>
+{% endblock %}

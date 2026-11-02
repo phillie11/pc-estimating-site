@@ -1,0 +1,26 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if penetrations %}<a class="btn" href="{% qs export='csv' page='' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% if not project.is_archived %}<a class="btn primary" href="{% url 'penetration_create' org.slug project.pk %}">{% icon 'plus' %} Add a penetration</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<nav class="filters" aria-label="Show penetrations">{% for code, label, n in filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }} <span class="n">{{ n }}</span></a>{% endfor %}</nav>
+{% if counts.all > 20 or q or rating %}<form class="search filters" method="get" role="search"><input type="hidden" name="status" value="{{ status }}">
+  <label class="small" for="q-rating">Fire rating</label><select id="q-rating" name="rating"><option value="">Any rating</option>{% for v, label in ratings %}<option value="{{ v }}"{% if rating == v|stringformat:"s" %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <label class="sr-only" for="q-fs">Search the register</label><input id="q-fs" type="search" name="q" value="{{ q }}" placeholder="Where, product, installer or ref"><button class="btn">Search</button>{% if q or rating %}<a class="btn ghost" href="?status={{ status }}">Clear</a>{% endif %}</form>{% endif %}
+<div class="card">
+{% if penetrations %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Penetration</th><th>Where</th><th>Rating</th><th>System or product</th><th>Status</th><th class="num">Photos</th></tr></thead>
+  <tbody>{% for p in penetrations %}<tr>
+    <td><a class="rowlink" href="{{ p.get_absolute_url }}"><span class="ref">{{ p.ref }}</span> {{ p.title }}</a>{% if p.installed_by %}<span class="sub">{{ p.installed_by }}</span>{% endif %}</td>
+    <td class="small">{{ p.location }}{% if p.is_pinned %}<span class="sub">On drawing {{ p.drawing.reference|default:p.drawing.title }}</span>{% endif %}</td>
+    <td class="small nowrap">{% if p.fire_rating %}{{ p.fire_rating }} min{% else %}<span class="dim">Not known</span>{% endif %}</td>
+    <td class="small">{{ p.system|default:"—" }}</td>
+    <td>{% status_badge p %}</td>
+    <td class="num small nowrap">{{ p.n_before }} before · {{ p.n_after }} after</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% include "quality/_pager.html" %}
+{% elif filtered and counts.all %}{% include "partials/empty_state.html" with title="Nothing matches" message="No penetrations match this filter. Show the whole register instead." cta_url="?status=all" cta_label="Show the whole register" cta_plain=True left=True %}
+{% elif project.is_archived %}{% include "partials/empty_state.html" with title="No fire-stopping recorded" message="No penetrations were recorded on this job. It is archived, so it is read only." left=True %}
+{% else %}{% url 'penetration_create' org.slug project.pk as new_url %}{% include "partials/empty_state.html" with title="No fire-stopping recorded yet" message="Record each hole through a fire-rated wall or floor: where it is, what passes through, the product used and who sealed it, with photos before and after. Pin it on a drawing from the viewer. This register goes into the handover pack." cta_url=new_url cta_label="Add a penetration" left=True %}{% endif %}
+</div>
+<p class="small dim">{% badge 'Advisory' 'warn' %} Fire-stopping must be installed to the manufacturer's tested details for the wall or floor it passes through. This register is evidence for the building's golden thread under the Building Safety Act; it is not a substitute for the fire engineer's or building control's own checks.</p>
+{% endblock %}

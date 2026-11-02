@@ -1,0 +1,27 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if permits %}<a class="btn" href="{% qs export='csv' page='' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% if not project.is_archived %}<a class="btn primary" href="{% url 'permit_create' org.slug project.pk %}">{% icon 'plus' %} Ask for a permit</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<nav class="filters" aria-label="Show permits">{% for code, label, n in filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }} <span class="n">{{ n }}</span></a>{% endfor %}</nav>
+{% if counts.all > 20 or q or kind %}<form class="search filters" method="get" role="search"><input type="hidden" name="status" value="{{ status }}">
+  <label class="small" for="q-type">Type</label><select id="q-type" name="type"><option value="">Any type</option>{% for code, label in types %}<option value="{{ code }}"{% if kind == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <label class="sr-only" for="q-ptw">Search permits</label><input id="q-ptw" type="search" name="q" value="{{ q }}" placeholder="Work, where, who or ref"><button class="btn">Search</button>{% if q or kind %}<a class="btn ghost" href="?status={{ status }}">Clear</a>{% endif %}</form>{% endif %}
+<div class="card">
+{% if permits %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Permit</th><th>Type</th><th>Status</th><th>Starts</th><th>Runs out</th><th>Who</th></tr></thead>
+  <tbody>{% for p in permits %}<tr>
+    <td><a class="rowlink" href="{{ p.get_absolute_url }}"><span class="ref">{{ p.ref }}</span> {{ p.title }}</a><span class="sub">{{ p.location }}</span></td>
+    <td class="small">{{ p.type_label }}</td>
+    <td>{% status_badge p.state_label p.status_tone %}</td>
+    <td class="small nowrap">{{ p.starts_at|date:"D j M, H:i" }}</td>
+    <td class="small nowrap">{{ p.expires_at|date:"D j M, H:i" }}</td>
+    <td class="small">{{ p.who|default:"—" }}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% include "quality/_pager.html" %}
+{% elif filtered and counts.all %}{% include "partials/empty_state.html" with title="No permits match" message="Nothing matches this filter. Show every permit on the job instead." cta_url="?status=all" cta_label="Show all permits" cta_plain=True left=True %}
+{% elif counts.all %}{% include "partials/empty_state.html" with title="No live permits" message="Every permit on this job is closed, refused or withdrawn." cta_url="?status=all" cta_label="Show all permits" cta_plain=True left=True %}
+{% elif project.is_archived %}{% include "partials/empty_state.html" with title="No permits" message="No permits to work were issued on this job. It is archived, so it is read only." left=True %}
+{% else %}{% url 'permit_create' org.slug project.pk as new_url %}{% include "partials/empty_state.html" with title="No permits to work yet" message="Hot works, working at height, isolations and confined spaces need a permit before work starts. Ask for one here; the project manager checks the precautions and approves it." cta_url=new_url cta_label="Ask for a permit" left=True %}{% endif %}
+</div>
+<p class="small dim">{% badge 'Advisory' 'warn' %} A permit to work supports your safe system of work and RAMS; it doesn't replace them. Check with your safety adviser.</p>
+{% endblock %}
