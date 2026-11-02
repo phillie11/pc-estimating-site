@@ -54,7 +54,18 @@ class QueryCountsDontGrowTests(TestCase):
             ('sub', u('project_detail', pk)), ('sub', u('subpay_list', pk)), ('sub', u('document_list', pk)),
             ('sub', u('needs_me')),
             ('client', u('project_detail', pk)), ('client', u('needs_me')), ('client', u('application_list', pk)),
+            # Programme look-ahead and meetings (Release 3, stream C)
+            ('pm', u('programme', pk)), ('pm', u('programme_lookahead', pk)), ('pm', u('meeting_list', pk)),
+            ('pm', u('meeting_actions', pk) + '?show=all'), ('pm', u('meeting_detail', pk, self._meeting(built, job))),
+            ('sub', u('programme_lookahead', pk)), ('sub', u('meeting_list', pk)),
+            ('client', u('programme_lookahead', pk)), ('client', u('meeting_list', pk)),
         ]
+
+    def _meeting(self, built, job):
+        """The job's latest issued meeting (the one with the most brought forward)."""
+        from meetings.models import Meeting
+        with org_context(built.org):
+            return Meeting.objects.filter(project=job, status=Meeting.STATUS_ISSUED).order_by('-held_on').first().pk
 
     def _count(self, user, url):
         c = Client()

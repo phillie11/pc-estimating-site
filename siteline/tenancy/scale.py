@@ -360,6 +360,10 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
                                   kind='SHOP_DRAWING', due_date=line.submittals_due)
                     proc_services.initial_ball(s)
                     s.save(actor=p.manager)
+        # Programme lines (some given to subs, for the look-ahead) and meetings with actions (meetings/scale.py)
+        from meetings.scale import seed as seed_meetings
+        seed_meetings(org, live, appointed, sub_users, dict(zip([p.pk for p in live], clients)), rng)
+        say('programme lines and meetings done')
         issue_rows, task_rows = [], []
         for j, p in enumerate(live):
             mine = [x for x in appointed if x.project_id == p.pk]

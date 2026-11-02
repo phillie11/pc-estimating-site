@@ -367,6 +367,10 @@ class Command(BaseCommand):
             from procurement.demo import seed as seed_procurement
             seed_procurement(leeds=leeds, pm=pm, sub_user=subu, make_user=user, demo_pdf=demo_pdf)
 
+            # Programme look-ahead lines for subs, Salford imported from MS Project XML, and meetings (meetings/demo.py)
+            from meetings.demo import seed as seed_meetings
+            seed_meetings(leeds=leeds, pm=pm, owner=owner, client=client, sub_user=subu)
+
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')
             due = kings.quotes_due
