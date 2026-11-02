@@ -99,6 +99,11 @@ def penetration_create(request, org_slug, pk):
 def penetration_edit(request, org_slug, pk, pen_id):
     project = quality_project(request, pk)
     p = get_object_or_404(Penetration, project=project, pk=pen_id)
+    if p.status == Penetration.SIGNED_OFF:
+        # The signed-off record is what was inspected (golden thread): change it only after reopening
+        messages.error(request, f'{p.ref} is signed off, so its details are part of the record. '
+                                'The project manager can reopen it if something has changed.')
+        return redirect(p)
     form = PenetrationForm(request.POST or None, instance=p, project=project)
     if request.method == 'POST' and form.is_valid():
         try:

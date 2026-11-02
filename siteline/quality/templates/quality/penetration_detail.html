@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}{% if viewer_link %}<a class="btn" href="{{ viewer_link }}">Show on drawing</a>{% endif %}{% if not project.is_archived %}<a class="btn" href="{% url 'penetration_edit' org.slug project.pk p.pk %}">Change details</a>{% endif %}{% endblock %}
+{% block project_actions %}{% if viewer_link %}<a class="btn" href="{{ viewer_link }}">Show on drawing</a>{% endif %}{% if not project.is_archived and p.status != 'SIGNED_OFF' %}<a class="btn" href="{% url 'penetration_edit' org.slug project.pk p.pk %}">Change details</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "quality/_subnav.html" %}
 <div class="q-site q-touch">
