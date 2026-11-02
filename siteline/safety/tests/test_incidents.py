@@ -48,7 +48,8 @@ class ReportTests(SafetyTestBase):
         self.login(self.sam)
         r = self.client.post(self.u('incident_report', self.pa.pk), {'anyone_hurt': 'False'})
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, 'This field is required', count=2)  # what happened, where
+        self.assertContains(r, 'Say what happened')  # the only two required fields, with errors that say what to do
+        self.assertContains(r, 'Say where it happened')
         r = self.client.post(self.u('incident_report', self.pa.pk), {'description': 'Trip', 'location': 'Yard'})
         self.assertEqual(r.status_code, 302)  # "when" defaults to now, "anyone hurt" to no
         with org_context(self.org_a):
@@ -149,7 +150,8 @@ class WorkflowTests(SafetyTestBase):
         i = self.reload(i)
         self.assertEqual((i.status, i.closed_at), (Incident.STATUS_INVESTIGATING, None))
         with org_context(self.org_a):
-            notes = list(AuditEntry.objects.filter(record_idx__object_id=i.pk, record_idx__record_type='safety.incident')
+            notes = list(AuditEntry.objects.filter(record_idx__object_id=i.pk,
+                                                   record_idx__record_type='safety.incident')
                          .values_list('action', 'note'))
         self.assertIn(('reopen', 'New information from the hire company'), notes)
         self.assertIn(('action done', 'Toolbox talk'), notes)
@@ -228,7 +230,8 @@ class RiddorAndActionsNeedsMeTests(SafetyTestBase):
         r = self.client.post(self.u('incident_action_add', self.pa.pk, i.pk),
                              {'description': 'x', 'owner': self.stan.pk})
         self.assertContains(r, 'Select a valid choice')
-        r = self.client.post(self.u('incident_action_add', self.pa.pk, i.pk), {'description': 'x', 'owner': self.sid.pk})
+        r = self.client.post(self.u('incident_action_add', self.pa.pk, i.pk),
+                             {'description': 'x', 'owner': self.sid.pk})
         self.assertContains(r, 'Select a valid choice')
 
     def test_only_the_creator_or_pm_removes_an_open_action(self):
@@ -298,7 +301,7 @@ class RegisterTests(SafetyTestBase):
         self.login(self.sam)
         r = self.client.get(self.u('incident_list', self.pa.pk))
         self.assertContains(r, 'No incidents or near misses on this job')
-        self.assertContains(r, 'Report an incident or near miss')
+        self.assertContains(r, 'Report an incident</a>')
 
     def test_paged_at_fifty(self):
         with org_context(self.org_a):

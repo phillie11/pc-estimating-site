@@ -63,11 +63,14 @@ def _leeds(leeds, pm, sub_user, org, demo_pdf, today, now):
         (DutyHolder.PC, org.name, pm.full_name, start - datetime.timedelta(days=30)),
         ('DESIGNER', 'Lund Joinery Ltd', 'Joinery drawing office', None),
     ]:
-        DutyHolder.objects.create(project=leeds, role=role, company=company, contact_name=contact, appointed_on=appointed)
-    for version, days, note in [(1, -14, 'Issued before start on site'), (2, 10, 'Updated for the first floor kitchen works')]:
+        DutyHolder.objects.create(project=leeds, role=role, company=company, contact_name=contact,
+                                  appointed_on=appointed)
+    for version, days, note in [(1, -14, 'Issued before start on site'),
+                                (2, 10, 'Updated for the first floor kitchen works')]:
         f = ContentFile(demo_pdf('Construction phase plan', f'Version {version}'), name=f'CPP-v{version}.pdf')
-        PhasePlan.objects.create(project=leeds, version=version, file=f, original_name=f'Construction phase plan v{version}.pdf',
-                                 size=f.size, note=note, uploaded_by=pm, uploaded_at=_at(start + datetime.timedelta(days=days), 9))
+        PhasePlan.objects.create(project=leeds, version=version, file=f, size=f.size, note=note, uploaded_by=pm,
+                                 original_name=f'Construction phase plan v{version}.pdf',
+                                 uploaded_at=_at(start + datetime.timedelta(days=days), 9))
 
     d1 = today - datetime.timedelta(days=21)
     i1 = _incident(leeds, pm, pm, _at(d1, 10, 40),
@@ -79,7 +82,8 @@ def _leeds(leeds, pm, sub_user, org, demo_pdf, today, now):
                    findings='Boards only move on the A-frame trolley with the rail fitted. Covered in the next '
                             'toolbox talk; drylining sub briefed.')
     a = IncidentAction(incident=i1, description='Toolbox talk on moving board materials', owner=pm,
-                       due_date=d1 + datetime.timedelta(days=3), done_at=_at(d1 + datetime.timedelta(days=2), 8), done_by=pm,
+                       due_date=d1 + datetime.timedelta(days=3), done_at=_at(d1 + datetime.timedelta(days=2), 8),
+                       done_by=pm,
                        created_by=pm)
     a.save()
     i1.save(actor=pm, audit_action='action added', audit_note=a.description)

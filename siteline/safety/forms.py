@@ -18,6 +18,17 @@ CAMERA = {'accept': 'image/*', 'capture': 'environment'}
 YES_NO = [(False, 'No'), (True, 'Yes')]
 
 
+def required_says(form, **messages):
+    """Errors that say how to fix it (docs/ux.md), rather than "This field is required"."""
+    for name, text in messages.items():
+        if name in form.fields:
+            form.fields[name].error_messages['required'] = text
+
+
+WHAT = 'Say what happened, even in a few words.'
+WHERE = 'Say where it happened, for example the room or level.'
+
+
 def _yes_no(value):
     return value in (True, 'True', 'true', '1', 'on')
 
@@ -49,6 +60,7 @@ class ReportForm(StyledModelForm):
         when.help_text = 'Leave as now if it just happened.'
         self.fields['location'].help_text = ''
         self.fields['location'].widget.attrs['placeholder'] = 'e.g. First floor kitchen'
+        required_says(self, description=WHAT, location=WHERE)
 
     def clean_occurred_at(self):
         when = self.cleaned_data.get('occurred_at') or timezone.now()
@@ -88,6 +100,7 @@ class IncidentForm(RecordFormMixin, StyledModelForm):
         super().__init__(*args, **kwargs)
         phone_friendly(self)
         self.fields['riddor_category'].help_text = rules.ADVISORY
+        required_says(self, description=WHAT, location=WHERE, occurred_at='Put the date and time it happened.')
 
     def sections(self):
         return [(title, [self[name] for name in names]) for title, names in self.SECTIONS]
@@ -116,10 +129,12 @@ class ActionForm(StyledModelForm):
         self.fields['owner'].queryset = job_staff(project)
         self.fields['owner'].label_from_instance = lambda u: u.full_name or u.email
         self.fields['owner'].empty_label = 'Nobody yet'
+        required_says(self, description='Say what needs doing.')
 
 
 class PhotoForm(forms.Form):
-    photo = forms.FileField(label='Photo', widget=forms.ClearableFileInput(attrs=CAMERA))
+    photo = forms.FileField(label='Photo', widget=forms.ClearableFileInput(attrs=CAMERA),
+                            error_messages={'required': 'Take a photo or choose one from your phone.'})
     caption = forms.CharField(max_length=200, required=False)
 
     def clean_photo(self):
@@ -166,6 +181,7 @@ class DutyHolderForm(StyledModelForm):
         super().__init__(*args, **kwargs)
         phone_friendly(self)
         self.fields['phone'].widget.attrs['inputmode'] = 'tel'
+        required_says(self, role='Pick their role on the job.', company='Type the company name.')
 
 
 class PhasePlanForm(forms.ModelForm):
@@ -178,6 +194,7 @@ class PhasePlanForm(forms.ModelForm):
         self.fields['file'].label = 'Construction phase plan'
         self.fields['file'].widget.attrs['accept'] = '.pdf,.doc,.docx'
         self.fields['note'].widget.attrs['placeholder'] = 'e.g. Updated for the second floor works'
+        required_says(self, file='Choose the plan to upload: a PDF or Word document.')
 
     def clean_file(self):
         f = self.cleaned_data['file']
@@ -220,3 +237,4 @@ class ManualSignInForm(StyledModelForm):
         super().__init__(*args, **kwargs)
         phone_friendly(self)
         self.fields['kind'].initial = SiteAttendance.KIND_VISITOR
+        required_says(self, name='Type their name.', kind='Pick who they are.')

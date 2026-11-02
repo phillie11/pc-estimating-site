@@ -4,8 +4,8 @@
 'use strict';
 var CACHE = '{{ cache|escapejs }}';
 var PAGE = '{{ page|escapejs }}';
-var ASSETS = ['{% static "css/app.css" %}', '{% static "fonts/fonts.css" %}', '{% static "safety/safety.css" %}',
-              '{% static "safety/safety.js" %}', '{% static "js/app.js" %}'];
+var ASSETS = ['{% static "css/app.css" %}', '{% static "fonts/fonts.css" %}', '{% static "safety/safety.js" %}',
+              '{% static "js/app.js" %}'];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(caches.open(CACHE).then(function (cache) { return cache.addAll(ASSETS); })

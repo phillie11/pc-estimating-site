@@ -264,7 +264,7 @@ class SiteTeamTests(SafetyTestBase):
         self.assertContains(r, 'Lund Joinery')
         self.assertNotContains(r, 'Yuri Yesterday')
         self.assertNotContains(r, 'Bravo Person')
-        self.assertContains(r, '<span class="big">2</span>', html=False)
+        self.assertContains(r, '<span class="sf-big">2</span>', html=False)
 
     def test_sign_out_and_manual_sign_in(self):
         self.login(self.sam)
@@ -314,7 +314,8 @@ class SiteTeamTests(SafetyTestBase):
         self.assertEqual(sw['Content-Type'], 'application/javascript; charset=utf-8')
         body = sw.content.decode()
         self.assertIn("var PAGE = '/alpha\\u002Dfitout/projects/%d/safety/roll\\u002Dcall/'" % self.pa.pk, body)
-        self.assertIn('/static/safety/safety.css', body)
+        self.assertIn('/static/css/app.css', body)
+        self.assertIn('/static/safety/safety.js', body)
 
     def test_poster_and_replacing_the_code(self):
         g = self.gate()
@@ -325,7 +326,7 @@ class SiteTeamTests(SafetyTestBase):
         self.assertNotContains(r, 'Make a new QR code')  # site team can print, only the PM or an admin replaces
         printed = self.client.get(self.u('safety_poster', self.pa.pk) + '?print=1')
         self.assertContains(printed, 'Sign in and out here')
-        self.assertContains(printed, 'class="qr"')
+        self.assertContains(printed, 'class="sf-qr"')
         self.assertEqual(self.client.post(self.u('safety_poster_replace', self.pa.pk)).status_code, 403)
         self.login(self.pat)
         self.client.post(self.u('safety_poster_replace', self.pa.pk))

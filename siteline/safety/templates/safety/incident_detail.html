@@ -3,30 +3,30 @@
 {% block project_actions %}{% if incident.is_open %}<a class="btn" href="{% url 'incident_edit' org.slug project.pk incident.pk %}">Add details</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "safety/_subnav.html" %}
-<div class="site-mode touch incident">
-  <div class="incident-head">
-    <h2><span class="mono">{{ incident.ref }}</span> {{ incident.title }}</h2>
-    <p class="small dim">{% status_badge incident %} · {{ incident.get_kind_display }} · Reported by {{ incident.created_by.full_name|default:"someone" }} on {{ incident.created_at|date:"D j M, H:i" }}{% if incident.is_open and incident.ball_in_court_user %} · With {{ incident.ball_in_court_user.full_name }}{% if incident.due_date %}, investigation due {{ incident.due_date|date:"D j M" }}{% endif %}{% endif %}{% if incident.closed_at %} · Closed {{ incident.closed_at|date:"D j M" }} by {{ incident.closed_by.full_name|default:"someone" }}{% endif %}</p>
+<div class="site-mode touch sf-incident">
+  <div class="sf-incident-head">
+    <h2><span class="ref">{{ incident.ref }}</span> {{ incident.title }}</h2>
+    <p class="small dim">{% status_badge incident %} · {{ incident.get_kind_display }} · Reported by {{ incident.created_by.full_name|default:"someone" }}, {{ incident.created_at|date:"D j M, H:i" }}{% if incident.is_open and incident.ball_in_court_user %} · With {{ incident.ball_in_court_user.full_name }}{% if incident.due_date %}, investigation due {{ incident.due_date|date:"D j M" }}{% endif %}{% endif %}{% if incident.closed_at %} · Closed {{ incident.closed_at|date:"j M Y" }} by {{ incident.closed_by.full_name|default:"someone" }}{% endif %}</p>
   </div>
 
-  {% if incident.riddor_outstanding %}<div class="banner bad-banner" id="riddor-alert"><span><strong>{{ incident.riddor_label.0 }}.</strong> {{ incident.riddor_guidance }} <a href="{% url 'incident_edit' org.slug project.pk incident.pk %}#riddor">Record when it was reported</a></span></div>{% endif %}
+  {% if incident.riddor_outstanding %}<div class="banner bad-banner"><span><strong>{{ incident.riddor_label.0 }}.</strong> {{ incident.riddor_guidance }} <a href="{% url 'incident_edit' org.slug project.pk incident.pk %}#riddor">Record when it was reported</a></span></div>{% endif %}
 
-  {% if can_manage %}<div class="card next-step"><div class="card-body">
+  {% if can_manage and transitions %}<div class="card sf-next"><div class="card-body">
     {% if transitions.investigate %}<p style="margin-top:0"><strong>Next:</strong> find out why it happened and what will stop it happening again.</p>
-      <form method="post" action="{% url 'incident_transition' org.slug project.pk incident.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="transition" value="investigate"><button class="btn primary">Start the investigation</button></form>{% endif %}
-    {% if transitions.close %}{% if problems %}<p class="small" style="{% if transitions.investigate %}margin-bottom:0{% else %}margin-top:0{% endif %}"><strong>Before it can be closed:</strong></p><ul class="gap-list">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
-      {% else %}<form method="post" action="{% url 'incident_transition' org.slug project.pk incident.pk %}" data-confirm="Close {{ incident.ref }}? It can be reopened later if needed.">{% csrf_token %}<input type="hidden" name="transition" value="close"><p style="margin-top:0">The findings are written up and every action is done.</p><button class="btn{% if not transitions.investigate %} primary{% endif %}">Close the incident</button></form>{% endif %}{% endif %}
+      <form method="post" action="{% url 'incident_transition' org.slug project.pk incident.pk %}">{% csrf_token %}<input type="hidden" name="transition" value="investigate"><button class="btn primary">Start the investigation</button></form>{% endif %}
+    {% if transitions.close %}{% if problems %}<p class="small"{% if not transitions.investigate %} style="margin-top:0"{% endif %}><strong>Before it can be closed:</strong></p><ul class="sf-gaps">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+      {% else %}<form method="post" action="{% url 'incident_transition' org.slug project.pk incident.pk %}" data-confirm="Close {{ incident.ref }}? It stays in the register and can be reopened if anything new comes to light.">{% csrf_token %}<input type="hidden" name="transition" value="close"><p style="margin-top:0">The findings are written up and every action is done.</p><button class="btn{% if not transitions.investigate %} primary{% endif %}">Close the incident</button></form>{% endif %}{% endif %}
     {% if transitions.reopen %}<form method="post" action="{% url 'incident_transition' org.slug project.pk incident.pk %}">{% csrf_token %}<input type="hidden" name="transition" value="reopen">
       <div class="field full"><label for="reopen-note">Why does it need reopening?</label><input id="reopen-note" name="note" maxlength="255" required></div>
-      <div class="form-actions"><button class="btn">Reopen</button></div></form>{% endif %}
+      <div class="form-actions"><button class="btn">Reopen the incident</button></div></form>{% endif %}
   </div></div>{% endif %}
 
   <div class="stack">
     <div class="card"><div class="card-head"><h2>What happened</h2>{% if incident.is_open %}<a class="btn sm" href="{% url 'incident_edit' org.slug project.pk incident.pk %}">Edit</a>{% endif %}</div><div class="card-body">
-      <div class="wrap-any pre">{{ incident.description }}</div>
+      <div class="wrap-any sf-pre">{{ incident.description }}</div>
       <dl class="dl" style="margin-top:12px">
         <dt>Where</dt><dd>{{ incident.location }}</dd>
-        <dt>When</dt><dd>{{ incident.occurred_at|date:"l j F Y, H:i" }}</dd>
+        <dt>When</dt><dd>{{ incident.occurred_at|date:"D j M Y, H:i" }}</dd>
         <dt>Anyone hurt</dt><dd>{% if incident.anyone_hurt %}<strong class="bad">Yes</strong>{% else %}No{% endif %}</dd>
       </dl>
     </div></div>
@@ -35,40 +35,40 @@
       {% if incident.injured_name or incident.injury_details %}<dl class="dl">
         <dt>Name</dt><dd>{{ incident.injured_name|default:"Not recorded" }}{% if incident.injured_company %}<span class="sub">{{ incident.injured_company }}</span>{% endif %}</dd>
         <dt>Working on the job</dt><dd>{{ incident.injured_is_worker|yesno:"Yes,No (member of the public or visitor)" }}</dd>
-        <dt>Injury</dt><dd class="pre">{{ incident.injury_details|default:"Not recorded" }}</dd>
+        <dt>Injury</dt><dd class="sf-pre">{{ incident.injury_details|default:"Not recorded" }}</dd>
         <dt>First aid</dt><dd>{{ incident.first_aid_given|yesno:"Given,No" }}</dd>
         <dt>Hospital</dt><dd>{{ incident.taken_to_hospital|yesno:"Went to hospital,No" }}</dd>
         <dt>Days off work</dt><dd>{% if incident.days_off is None %}Not known yet{% else %}{{ incident.days_off }}{% endif %}</dd>
-      </dl>{% else %}{% url 'incident_edit' org.slug project.pk incident.pk as edit_url %}{% include "partials/empty_state.html" with message="Who was hurt and how isn't recorded yet. It's needed to decide whether this must be reported under RIDDOR." cta_url=edit_url cta_label="Add the injured person's details" left=True %}{% endif %}
+      </dl>{% elif incident.is_open %}{% url 'incident_edit' org.slug project.pk incident.pk as edit_url %}{% include "partials/empty_state.html" with message="Who was hurt and how isn't recorded yet. It's needed to decide whether this must be reported under RIDDOR." cta_url=edit_url cta_label="Add the injured person's details" cta_plain=True left=True %}{% else %}<div class="empty left">Not recorded.</div>{% endif %}
     </div></div>{% endif %}
 
-    <div class="card" id="riddor"><div class="card-head"><h2>RIDDOR</h2>{% with lbl=incident.riddor_label %}{% if lbl.0 %}{% status_badge lbl.0 lbl.1 %}{% endif %}{% endwith %}</div><div class="card-body">
+    <div class="card" id="riddor"><div class="card-head"><h2>RIDDOR</h2><span class="row">{% badge 'Advisory' 'warn' %}{% with lbl=incident.riddor_label %}{% if lbl.0 %} {% status_badge lbl.0 lbl.1 %}{% endif %}{% endwith %}</span></div><div class="card-body">
       {% if incident.riddor_category %}<p style="margin-top:0">{{ incident.get_riddor_category_display }}</p>
         {% if incident.riddor_guidance %}<p>{{ incident.riddor_guidance }}</p>{% endif %}
-        {% if incident.riddor_reported_on %}<p>Reported to HSE on {{ incident.riddor_reported_on|date:"j F Y" }}{% if incident.riddor_reference %}, reference <span class="mono">{{ incident.riddor_reference }}</span>{% endif %}.</p>{% endif %}
+        {% if incident.riddor_reported_on %}<p>Reported to HSE on {{ incident.riddor_reported_on|date:"j M Y" }}{% if incident.riddor_reference %}, reference <span class="ref">{{ incident.riddor_reference }}</span>{% endif %}.</p>{% endif %}
       {% else %}<p style="margin-top:0">Not marked as reportable.</p>
-        {% if incident.riddor_suggestion %}<p class="hint">From the injury details this may be: <strong>{{ incident.riddor_suggestion_label }}</strong>. Check, and set the RIDDOR answer if so.</p>{% endif %}{% endif %}
-      <p class="small dim" style="margin-bottom:0">Advisory: check your contract and your safety adviser. Deaths, specified injuries, dangerous occurrences and members of the public taken to hospital are reported within 10 days; a worker off for more than 7 days within 15 days. The injured person's employer normally reports.</p>
+        {% if incident.riddor_suggestion %}<p class="sf-hint">From the injury details this may be: <strong>{{ incident.riddor_suggestion_label }}</strong>. Check, and set the RIDDOR answer if so.</p>{% endif %}{% endif %}
+      <p class="small dim" style="margin-bottom:0">Check your contract and your safety adviser. Deaths, specified injuries, dangerous occurrences and members of the public taken to hospital are reported within 10 days; a worker off for more than 7 days, within 15 days. The injured person's employer normally reports; as principal contractor, make sure it has been done.</p>
     </div></div>
 
-    {% if incident.immediate_action or incident.root_cause or incident.findings or incident.status != 'REPORTED' %}<div class="card"><div class="card-head"><h2>Investigation</h2>{% if incident.is_open %}<a class="btn sm" href="{% url 'incident_edit' org.slug project.pk incident.pk %}#investigation">Edit</a>{% endif %}</div><div class="card-body">
+    {% if incident.immediate_action or incident.root_cause or incident.findings or incident.status != 'REPORTED' %}<div class="card" id="investigation"><div class="card-head"><h2>Investigation</h2>{% if incident.is_open %}<a class="btn sm" href="{% url 'incident_edit' org.slug project.pk incident.pk %}#investigation">Edit</a>{% endif %}</div><div class="card-body">
       <dl class="dl">
-        <dt>Done straight away</dt><dd class="pre">{{ incident.immediate_action|default:"Not recorded" }}</dd>
-        <dt>Why it happened</dt><dd class="pre">{{ incident.root_cause|default:"Not recorded" }}</dd>
-        <dt>Findings and lessons</dt><dd class="pre">{{ incident.findings|default:"Not written up yet" }}</dd>
+        <dt>Done straight away</dt><dd class="sf-pre">{{ incident.immediate_action|default:"Not recorded" }}</dd>
+        <dt>Why it happened</dt><dd class="sf-pre">{{ incident.root_cause|default:"Not recorded" }}</dd>
+        <dt>Findings and lessons</dt><dd class="sf-pre">{{ incident.findings|default:"Not written up yet" }}</dd>
       </dl>
     </div></div>{% endif %}
 
-    <div class="card" id="actions"><div class="card-head"><h2>Actions</h2>{% if incident.is_open %}<a class="btn sm" href="{% url 'incident_action_add' org.slug project.pk incident.pk %}">Add an action</a>{% endif %}</div>
+    <div class="card" id="actions"><div class="card-head"><h2>Actions</h2>{% if incident.is_open %}<a class="btn sm" href="{% url 'incident_action_add' org.slug project.pk incident.pk %}">{% icon 'plus' %} Add an action</a>{% endif %}</div>
       {% if actions %}<ul class="list">{% for a in actions %}<li><span class="grow"><span class="wrap-any">{{ a.description }}</span><span class="sub">{{ a.owner.full_name|default:"Nobody yet" }}{% if a.due_date %} · by {{ a.due_date|date:"D j M" }}{% endif %}{% if a.is_done %} · done {{ a.done_at|date:"j M" }}{% if a.done_by %} by {{ a.done_by.full_name }}{% endif %}{% endif %}</span></span>
         {% with s=a.status_label %}{% status_badge s.0 s.1 %}{% endwith %}
-        {% if incident.is_open %}<form method="post" action="{% url 'incident_action_update' org.slug project.pk incident.pk a.pk %}" class="inline">{% csrf_token %}{% if a.is_done %}<button class="btn sm" name="do" value="undo">Not done</button>{% else %}<button class="btn sm" name="do" value="done">Mark done</button><button class="btn ghost sm" name="do" value="remove" aria-label="Remove action: {{ a.description }}">Remove</button>{% endif %}</form>{% endif %}
+        {% if incident.is_open %}<form method="post" action="{% url 'incident_action_update' org.slug project.pk incident.pk a.pk %}" class="inline">{% csrf_token %}{% if a.is_done %}<button class="btn sm" name="do" value="undo">Mark not done</button>{% else %}<button class="btn sm" name="do" value="done">Mark done</button><button class="linkbtn" name="do" value="remove" aria-label="Remove action: {{ a.description }}">Remove</button>{% endif %}</form>{% endif %}
       </li>{% endfor %}</ul>
       {% elif incident.is_open %}{% url 'incident_action_add' org.slug project.pk incident.pk as add_url %}{% include "partials/empty_state.html" with message="Anything that needs doing so it doesn't happen again: a toolbox talk, a guard rail, a change to the RAMS. Each action goes on its owner's Needs me." cta_url=add_url cta_label="Add an action" cta_plain=True left=True %}
       {% else %}<div class="empty left">No actions were needed.</div>{% endif %}
     </div>
 
-    <div class="card" id="photos"><div class="card-head"><h2>Photos</h2>{% if incident.is_open %}<a class="btn sm" href="{% url 'incident_photo_add' org.slug project.pk incident.pk %}">Add a photo</a>{% endif %}</div><div class="card-body">
+    <div class="card" id="photos"><div class="card-head"><h2>Photos</h2>{% if incident.is_open %}<a class="btn sm" href="{% url 'incident_photo_add' org.slug project.pk incident.pk %}">{% icon 'plus' %} Add a photo</a>{% endif %}</div><div class="card-body">
       {% if photos %}<div class="photo-grid">{% for p in photos %}<a href="{% url 'incident_photo' org.slug project.pk incident.pk p.pk 'display' %}"><img src="{% url 'incident_photo' org.slug project.pk incident.pk p.pk 'thumb' %}" alt="{{ p.caption|default:'Incident photo' }}" loading="lazy"><span class="cap">{% if p.caption %}{{ p.caption }}{% else %}{{ p.uploaded_at|date:"j M H:i" }}{% endif %}</span></a>{% endfor %}</div>
       {% else %}<div class="empty left">No photos.</div>{% endif %}
     </div></div>

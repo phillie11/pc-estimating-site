@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Incident register</h1><p class="small dim" style="margin:4px 0 0">Every incident and near miss on every job, for owners and admins.</p></div>
-  <div class="row">{% if incidents %}<a class="btn" href="{% qs export='csv' page=None %}">Export CSV</a>{% endif %}</div>
+  <div class="row">{% if incidents %}<a class="btn" href="{% qs export='csv' page=None %}">{% icon 'download' %} Export CSV</a>{% endif %}</div>
 </div>
 <div class="kpis">
   <div class="kpi"><div class="label">Reported in {{ year }}</div><div class="value">{{ totals.all }}</div></div>
@@ -16,8 +16,8 @@
 <div class="touch">{% include "safety/_incident_filters.html" %}</div>
 <div class="card">
 {% if incidents %}{% include "safety/_incident_table.html" with show_project=True %}
-{% elif filtered %}{% include "partials/empty_state.html" with title="No incidents match" message="Nothing matches these filters. Clear them to see every incident." cta_url="?" cta_label="Clear filters" cta_plain=True %}
+{% elif filtered %}{% include "partials/empty_state.html" with title="No incidents match" message="Nothing matches these filters." cta_url="?" cta_label="Show every incident" cta_plain=True %}
 {% else %}{% include "partials/empty_state.html" with title="No incidents or near misses reported yet" message="Incidents are reported from each job's Safety tab, usually from a phone on site. They all appear here, so you can see the whole company's record in one place." %}{% endif %}
 </div>
-<p class="small dim">RIDDOR deadlines are advisory: check your contract and your safety adviser.</p>
+<p class="small dim">{% badge 'Advisory' 'warn' %} RIDDOR deadlines: check your contract and your safety adviser.</p>
 {% endblock %}

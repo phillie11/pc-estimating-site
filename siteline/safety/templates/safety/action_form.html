@@ -3,10 +3,10 @@
 {% block project_content %}
 {% include "safety/_subnav.html" %}
 <div class="site-mode touch">
-<div class="card"><div class="card-head"><h2>Add an action</h2><span class="small dim mono">{{ incident.ref }}</span></div><div class="card-body">
+<div class="card"><div class="card-head"><h2>Add an action</h2><span class="ref">{{ incident.ref }}</span></div><div class="card-body">
   <p class="small dim" style="margin-top:0">What needs doing so this doesn't happen again. Whoever you pick sees it on their Needs me until it is marked done.</p>
   <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
-  <div class="form-actions"><button class="btn primary">Add action</button><a class="btn ghost" href="{{ incident.get_absolute_url }}#actions">Cancel</a></div></form>
+  <div class="form-actions"><button class="btn primary block">Add action</button><a class="btn ghost" href="{{ incident.get_absolute_url }}#actions">Cancel</a></div></form>
 </div></div>
 </div>
 {% endblock %}

@@ -51,6 +51,8 @@ class QueryCountsDontGrowTests(TestCase):
             ('pm', u('needs_me')), ('pm', u('project_detail', pk)), ('pm', u('contract_detail', pk)),
             ('pm', u('cost_report', pk)), ('pm', u('application_list', pk)), ('pm', u('subpay_list', pk)),
             ('pm', u('diary_register', pk)), ('pm', u('document_list', pk)), ('pm', u('package_list', pk)),
+            ('pm', u('safety_home', pk)), ('pm', u('incident_list', pk)), ('pm', u('safety_on_site', pk)),
+            ('pm', u('safety_sign_in_log', pk)), ('owner', u('company_incidents')),
             ('sub', u('project_detail', pk)), ('sub', u('subpay_list', pk)), ('sub', u('document_list', pk)),
             ('sub', u('needs_me')),
             ('client', u('project_detail', pk)), ('client', u('needs_me')), ('client', u('application_list', pk)),

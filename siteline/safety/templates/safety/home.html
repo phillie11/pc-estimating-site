@@ -1,6 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
 {% block head %}{% include "safety/_head.html" %}{% endblock %}
-{% block project_actions %}<a class="btn primary" href="{% url 'incident_report' org.slug project.pk %}">Report an incident</a>{% endblock %}
 {% block project_content %}
 {% include "safety/_subnav.html" %}
 <div class="site-mode touch">
@@ -14,15 +13,15 @@
   </div>
 
   <div class="stack">
-    {% if counts.riddor %}<div class="banner bad-banner"><span><strong>{{ counts.riddor }} incident{{ counts.riddor|pluralize }} to report to HSE under RIDDOR.</strong> <a href="{% url 'incident_list' org.slug project.pk %}?riddor=1">See {{ counts.riddor|pluralize:"it,them" }}</a></span></div>{% endif %}
+    {% if counts.riddor %}<div class="banner bad-banner"><span><strong>{{ counts.riddor }} incident{{ counts.riddor|pluralize }} to report to HSE under RIDDOR.</strong> <a href="{% url 'incident_list' org.slug project.pk %}?riddor=1">Show {{ counts.riddor|pluralize:"it,them" }}</a></span></div>{% endif %}
 
     <div class="card"><div class="card-head"><h2>Incidents and near misses</h2><a class="btn sm" href="{% url 'incident_list' org.slug project.pk %}">See all{% if counts.open %} · {{ counts.open }} open{% endif %}</a></div>
-      {% if recent %}<ul class="list">{% for i in recent %}<li><span class="grow"><a href="{{ i.get_absolute_url }}"><span class="mono">{{ i.ref }}</span> {{ i.title }}</a><span class="sub">{{ i.get_kind_display }} · {{ i.occurred_at|date:"D j M, H:i" }} · {{ i.location }}</span></span>{% status_badge i %}</li>{% endfor %}</ul>
-      {% else %}{% url 'incident_report' org.slug project.pk as report_url %}{% include "partials/empty_state.html" with title="No incidents or near misses reported" message="Report anything that hurt someone, or nearly did, straight from your phone. It takes under a minute, and near misses are how accidents get prevented." cta_url=report_url cta_label="Report an incident or near miss" left=True %}{% endif %}
+      {% if recent %}<ul class="list">{% for i in recent %}<li><span class="grow"><a href="{{ i.get_absolute_url }}"><span class="ref">{{ i.ref }}</span> {{ i.title }}</a><span class="sub">{{ i.get_kind_display }} · {{ i.occurred_at|date:"D j M, H:i" }} · {{ i.location }}</span></span>{% status_badge i %}</li>{% endfor %}</ul>
+      {% else %}{% include "partials/empty_state.html" with title="No incidents or near misses reported" message="Anything that hurt someone, or nearly did, is reported with the button above, straight from a phone. It takes under a minute, and near misses are how accidents get prevented." left=True %}{% endif %}
     </div>
 
     <div class="card"><div class="card-head"><h2>CDM register</h2><a class="btn sm" href="{% url 'cdm_register' org.slug project.pk %}">Open</a></div><div class="card-body">
-      {% if gaps %}<p class="small dim" style="margin-top:0">Still to do:</p><ul class="gap-list">{% for msg, anchor in gaps %}<li><a href="{% url 'cdm_register' org.slug project.pk %}#{{ anchor }}">{{ msg }}</a></li>{% endfor %}</ul>
+      {% if gaps %}<p class="small dim" style="margin-top:0">Still to do:</p><ul class="sf-gaps">{% for msg, anchor in gaps %}<li><a href="{% url 'cdm_register' org.slug project.pk %}#{{ anchor }}">{{ msg }}</a></li>{% endfor %}</ul>
       {% else %}<p style="margin:0">{% badge 'Complete' 'good' %} Duty holders, the construction phase plan and the HSE notification are all recorded.</p>{% endif %}
     </div></div>
     {% if is_admin %}<p class="small dim">Owners and admins: every job's incidents are in the <a href="{% url 'company_incidents' org.slug %}">company incident register</a>.</p>{% endif %}

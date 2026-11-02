@@ -9,7 +9,7 @@
     {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
     <div class="field full file-pick{% if form.file.errors %} has-error{% endif %}"><label for="{{ form.file.id_for_label }}">{{ form.file.label }} <span class="dim">*</span></label>{{ form.file }}<div class="help">A PDF or Word document.</div>{% for e in form.file.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>
     {% include "partials/field.html" with field=form.note full=True %}
-    <div class="form-actions"><button class="btn primary">Upload</button><a class="btn ghost" href="{% url 'cdm_register' org.slug project.pk %}#plan">Cancel</a></div>
+    <div class="form-actions"><button class="btn primary">Upload plan</button><a class="btn ghost" href="{% url 'cdm_register' org.slug project.pk %}#plan">Cancel</a></div>
   </form>
 </div></div>
 </div>

@@ -1,13 +1,13 @@
 {% extends "project_base.html" %}{% load ui %}
 {% block head %}{% include "safety/_head.html" %}{% endblock %}
-{% block project_actions %}{% if incidents %}<a class="btn" href="{% qs export='csv' page=None %}">Export CSV</a>{% endif %}<a class="btn primary" href="{% url 'incident_report' org.slug project.pk %}">Report an incident</a>{% endblock %}
+{% block project_actions %}{% if incidents %}<a class="btn" href="{% qs export='csv' page=None %}">{% icon 'download' %} Export CSV</a>{% endif %}<a class="btn primary" href="{% url 'incident_report' org.slug project.pk %}">Report an incident</a>{% endblock %}
 {% block project_content %}
 {% include "safety/_subnav.html" %}
 <div class="touch">{% include "safety/_incident_filters.html" %}</div>
 <div class="card">
 {% if incidents %}{% include "safety/_incident_table.html" %}
-{% elif filtered %}{% include "partials/empty_state.html" with title="No incidents match" message="Nothing matches these filters. Clear them to see every incident on this job." cta_url="?" cta_label="Clear filters" cta_plain=True %}
-{% else %}{% url 'incident_report' org.slug project.pk as report_url %}{% include "partials/empty_state.html" with title="No incidents or near misses on this job" message="Anything that hurt someone, or nearly did, is reported here from a phone: what happened, where, a photo, and whether anyone was hurt. The project manager then investigates and closes it." cta_url=report_url cta_label="Report an incident or near miss" %}{% endif %}
+{% elif filtered %}{% include "partials/empty_state.html" with title="No incidents match" message="Nothing on this job matches these filters." cta_url="?" cta_label="Show every incident" cta_plain=True %}
+{% else %}{% include "partials/empty_state.html" with title="No incidents or near misses on this job" message="Anything that hurt someone, or nearly did, is reported here from a phone with Report an incident: what happened, where, a photo, and whether anyone was hurt. The project manager then investigates and closes it." %}{% endif %}
 </div>
 {% if is_admin %}<p class="small dim">Owners and admins: every job's incidents are in the <a href="{% url 'company_incidents' org.slug %}">company incident register</a>.</p>{% endif %}
 {% endblock %}

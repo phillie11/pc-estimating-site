@@ -530,7 +530,8 @@ def staff_sign_out(request, org_slug, pk, attendance_id):
         messages.success(request, f'{a.name} signed out.')
     nxt = request.POST.get('next', '')
     if nxt == 'log':
-        return redirect(reverse('safety_sign_in_log', args=[org_slug, pk]) + f'?date={timezone.localtime(a.signed_in_at).date()}')
+        day = timezone.localtime(a.signed_in_at).date()
+        return redirect(reverse('safety_sign_in_log', args=[org_slug, pk]) + f'?date={day}')
     return redirect('safety_on_site', org_slug=org_slug, pk=pk)
 
 

@@ -32,7 +32,8 @@ from .models import Activity, Comment, Issue, Project, ProjectInvite, ProjectMem
 
 def use_section(request, section):
     """Remember which side of the business a staff member is working in, for the sidebar."""
-    if is_internal(request) and section in request.membership.sections:
+    # Only when it changes: writing the same value still saves the session (three queries on every page)
+    if is_internal(request) and section in request.membership.sections and request.session.get('section') != section:
         request.session['section'] = section
     return section
 
@@ -126,10 +127,10 @@ def project_context(request, project, tab, **extra):
         tabs.append(procurement_tab)
     if internal:
         from diary.access import can_use_diary  # site diary: the PM, the project team, owners and admins
-        if can_use_diary(request, project):
+        on_job = can_use_diary(request, project)
+        if on_job:
             tabs.append(('diary', 'Diary', url('diary_register'), None))
-        from safety.access import can_use_safety  # incidents, CDM register, site sign-in: the same people as the diary
-        if can_use_safety(request, project):
+            # Safety (incidents, CDM, site sign-in): the same people, safety.access.can_use_safety
             tabs.append(('safety', 'Safety', url('safety_home'), None))
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), badges['issues']),

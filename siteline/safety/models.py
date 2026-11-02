@@ -125,7 +125,8 @@ class Incident(RecordBase):
 
     @property
     def status_tone(self):
-        return {self.STATUS_REPORTED: 'warn', self.STATUS_INVESTIGATING: 'info', self.STATUS_CLOSED: 'muted'}[self.status]
+        tones = {self.STATUS_REPORTED: 'warn', self.STATUS_INVESTIGATING: 'info', self.STATUS_CLOSED: 'muted'}
+        return tones[self.status]
 
     @property
     def occurred_on(self):

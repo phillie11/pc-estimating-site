@@ -9,7 +9,6 @@ class SafetyConfig(AppConfig):
 
     def ready(self):
         import actions
-        from actions.providers import HookProvider
         from core.registry import register_record_type
 
         from .models import Incident
@@ -18,5 +17,6 @@ class SafetyConfig(AppConfig):
         # project manager), so they reach Needs me through the record index.
         register_record_type(Incident, prefix='INC', transitions=TRANSITIONS,
                              open_statuses=Incident.OPEN_STATUSES, audit_fields=AUDIT_FIELDS, external_roles=())
-        # "Needs me": incident actions, RIDDOR reports due, CDM gaps before the start on site
-        actions.register(HookProvider('safety', 'Safety', 'safety.actions.items', staff=True))
+        # "Needs me": incident actions, RIDDOR reports due, CDM gaps before the start on site (one query)
+        from .actions import SafetyProvider
+        actions.register(SafetyProvider())

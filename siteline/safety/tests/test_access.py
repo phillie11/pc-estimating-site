@@ -65,7 +65,8 @@ class EveryPageEveryRoleTests(SafetyTestBase):
     def test_the_tab_shows_for_staff_on_the_job_only(self):
         for name in self.STAFF_ON_JOB:
             self.login(getattr(self, name))
-            self.assertContains(self.client.get(self.u('project_detail', self.pa.pk)), self.u('safety_home', self.pa.pk))
+            r = self.client.get(self.u('project_detail', self.pa.pk))
+            self.assertContains(r, self.u('safety_home', self.pa.pk))
         for user in (self.stan, self.carla, self.sid, self.connie):
             self.login(user)
             r = self.client.get(self.u('project_detail', self.pa.pk))

@@ -6,7 +6,7 @@
 <div class="card"><div class="card-head"><h2>{% if holder %}Change {{ holder.get_role_display|lower }}{% else %}Add a duty holder{% endif %}</h2></div><div class="card-body">
   <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
   <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'cdm_register' org.slug project.pk %}#duty-holders">Cancel</a></div></form>
-  {% if holder %}<form method="post" data-confirm="Remove {{ holder.company }} as {{ holder.get_role_display|lower }}?" style="margin-top:14px">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn danger sm">Remove from the register</button></form>{% endif %}
+  {% if holder %}<form method="post" data-confirm="Remove {{ holder.company }} as {{ holder.get_role_display|lower }}?" style="margin-top:14px">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn danger sm">Remove from the CDM register</button></form>{% endif %}
 </div></div>
 </div>
 {% endblock %}

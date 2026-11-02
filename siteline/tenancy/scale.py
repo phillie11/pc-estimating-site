@@ -42,7 +42,7 @@ class Built:
 @transaction.atomic
 def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, diary_per_job=50,
           docs_per_job=50, apps_per_job=12, subapps_per_job=8, actuals_per_job=170, seed=7, email_domain='scale.test',
-          stdout=None):
+          stdout=None, incidents_per_job=10, signins_per_job=30):
     from accounts.models import User
     from accounts.views import create_organization
     from changes.models import ChangeEvent
@@ -293,6 +293,8 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
                     DelayLine.objects.create(organization=org, entry=e, cause='WEATHER', hours_lost=Decimal('2'),
                                          description='Rain stopped external works', created_by=p.manager)
         say(f'{DiaryEntry.objects.count()} diary entries')
+        from safety.scale import seed as seed_safety  # incidents, CDM registers, site sign-ins
+        say(seed_safety(live, today, now, incidents_per_job=incidents_per_job, signins_per_job=signins_per_job))
         for j, p in enumerate(live):
             for k in range(10):
                 vo = Variation(project=p, title=f'Change {k}', description='Client instruction.',
