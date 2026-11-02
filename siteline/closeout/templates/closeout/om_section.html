@@ -1,0 +1,18 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "closeout/_subnav.html" %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>{% if section %}{{ section.title }}{% else %}Add an O&amp;M section{% endif %}</h2></div><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">Save</button><a class="btn" href="{% url 'closeout_om' org.slug project.pk %}">Back to the O&amp;M manual</a></div>
+    </form>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>Next</h2></div><div class="card-body small">
+    {% if section %}
+      {% if section.package %}<p><a class="btn primary" href="{% url 'closeout_om_request' org.slug project.pk section.pk %}">Ask {{ section.package.subcontractor }} for it</a></p>{% else %}<p>Choose the appointed subcontractor who supplies this section to ask them for it through their portal.</p>{% endif %}
+      <p><a class="btn" href="{% url 'closeout_om_upload' org.slug project.pk section.pk %}">Add a file ourselves</a></p>
+    {% endif %}
+    <p style="margin:0">"What goes in it" is sent to the subcontractor with the request, one item per line.</p>
+  </div></div>
+</div>
+{% endblock %}

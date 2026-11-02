@@ -1,0 +1,35 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="grid split">
+<div>
+<div class="card" id="report"><div class="card-head"><h2>Report a defect</h2></div><div class="card-body">
+  <p class="small dim" style="margin-top:0">Tell {{ org.name }} about anything that needs putting right. Take a photo if you can.</p>
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}
+    <div class="form-actions"><button class="btn primary block">Send to {{ org.name }}</button></div>
+  </form>
+</div></div>
+<div class="card" id="defects"><div class="card-head"><h2>Defects you have reported</h2></div>
+{% if defects %}<ul class="list">{% for i in defects %}<li style="flex-wrap:wrap"><span class="grow" style="flex-basis:12rem"><span class="ref">{{ i.reference }}</span> {{ i.title }}<br><span class="small dim">{{ i.location }} · reported {{ i.created_at|date:"j M Y" }}{% if i.closed_at %} · closed {{ i.closed_at|date:"j M Y" }}{% endif %}</span></span>{% status_badge i.label i.tone %}</li>{% endfor %}</ul>
+{% else %}<div class="empty left"><p>Nothing reported yet. Defects you send show here, with how they are getting on.</p></div>{% endif %}
+</div>
+</div>
+<div>
+<div class="card"><div class="card-head"><h2>Completion</h2></div>
+{% if sections %}<ul class="list">{% for s in sections %}<li style="flex-wrap:wrap"><span class="grow" style="flex-basis:10rem"><strong>{{ s.name }}</strong><br><span class="small dim">{% if s.pc_date %}{{ words.completion }} {{ s.pc_date|date:"j M Y" }}{% if s.made_good_on %} · defects made good {{ s.made_good_on|date:"j M Y" }}{% elif s.defects_end %} · {{ words.defects_period }} ends {{ s.defects_end|date:"j M Y" }}{% endif %}{% else %}Not complete yet{% endif %}</span></span>{% status_badge s %}</li>{% endfor %}</ul>
+<div class="card-body small dim">{{ advisory }}</div>
+{% else %}<div class="empty left"><p>{{ org.name }} hasn't recorded completion yet. The dates show here once they do.</p></div>{% endif %}
+</div>
+<div class="card" id="handover"><div class="card-head"><h2>Handover documents</h2></div>
+{% if manuals or packs %}<ul class="list">
+  {% for c in manuals %}<li><span class="grow"><a href="{% url 'closeout_om_download' org.slug project.pk c.pk %}">O&amp;M manual, version {{ c.number }}</a><br><span class="small dim">One download, {{ c.size|filesize }}, with a contents list</span></span></li>{% endfor %}
+  {% for p in packs %}<li style="flex-wrap:wrap"><span class="grow"><strong>Handover pack {{ p.number }}</strong><br><span class="small dim">Issued {{ p.issued_at|date:"j M Y" }} · {{ p.items.all|length }} items · <a href="{% url 'closeout_pack_manifest' org.slug project.pk p.pk %}">Manifest with checksums (PDF)</a></span></span>
+    <details style="flex-basis:100%"><summary class="small" style="min-height:44px;display:flex;align-items:center;cursor:pointer">Show the {{ p.items.all|length }} items</summary>
+      <ul class="list small">{% for it in p.items.all %}<li><span class="grow">{% if it.state == 'OK' %}<a href="{% url 'closeout_pack_item' org.slug project.pk p.pk it.pk %}">{{ it.title }}</a>{% else %}{{ it.title }} <span class="dim">({{ it.get_state_display|lower }})</span>{% endif %}<br><span class="dim mono" style="overflow-wrap:anywhere">SHA-256 {{ it.sha256|default:"—" }}</span></span></li>{% endfor %}</ul>
+    </details></li>{% endfor %}
+</ul>
+<div class="card-body small dim">The checksums let you confirm a copy is exactly what was handed over. Advisory: whether the Building Safety Act applies, and what the golden thread must hold, is for you and your advisers.</div>
+{% else %}<div class="empty left"><p>Nothing handed over yet. The O&amp;M manual and the handover pack appear here when {{ org.name }} issues them.</p></div>{% endif %}
+</div>
+</div>
+</div>
+{% endblock %}

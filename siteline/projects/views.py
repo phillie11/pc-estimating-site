@@ -134,6 +134,10 @@ def project_context(request, project, tab, **extra):
         ('documents', 'Documents', url('document_list'), None),
         ('team', 'Team', url('project_team'), None),
     ]
+    from closeout.access import tab_for as closeout_tab  # staff: Close-out; client side: Defects and handover
+    closeout = closeout_tab(request, project)
+    if closeout:
+        tabs.append(closeout)
     return {**base, **arrange(request, project, tabs, tab)}
 
 

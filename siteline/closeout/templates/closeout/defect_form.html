@@ -1,0 +1,15 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "closeout/_subnav.html" %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>Report a defect</h2></div><div class="card-body">
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">Add to the defects list</button><a class="btn" href="{% url 'closeout_defects' org.slug project.pk %}">Cancel</a></div>
+    </form>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>What happens next</h2></div><div class="card-body small">
+    <p>If you choose who will fix it, they are told and it shows on their <em>Needs me</em>. They mark it fixed; it then waits for you to check it and close it, or send it back.</p>
+    <p style="margin:0">Defects reported by the client are shown to the client with their progress. Ones you add here are internal unless the client reported them.</p>
+  </div></div>
+</div>
+{% endblock %}

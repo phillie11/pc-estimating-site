@@ -1,0 +1,16 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "closeout/_subnav.html" %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>Ask {{ section.package.subcontractor }} for {{ section.title }}</h2></div><div class="card-body">
+    <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">Send the request</button><a class="btn" href="{% url 'closeout_om' org.slug project.pk %}">Cancel</a></div>
+    </form>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>What happens next</h2></div><div class="card-body small">
+    {% if section.content_lines %}<p>They are asked for:</p><ul>{% for line in section.content_lines %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+    <p>{{ section.package.subcontractor }} is told, and it shows on their <em>Needs me</em> and under <em>Submittals</em> in their portal with this date.</p>
+    <p style="margin:0">When they upload it you give it A, B or C, as any submittal. A C sends it back to them. Accepted information goes into the manual next time you compile it.</p>
+  </div></div>
+</div>
+{% endblock %}

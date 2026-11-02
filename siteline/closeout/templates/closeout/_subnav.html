@@ -1,0 +1,1 @@
+{% if closeout_nav %}<nav class="subtabs closeout-nav" aria-label="Close-out">{% for code, label, url in closeout_nav %}<a class="chip{% if code == closeout_sub %} on{% endif %}" href="{{ url }}"{% if code == closeout_sub %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>{% endif %}

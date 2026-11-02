@@ -1,0 +1,21 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% url 'closeout_pack_manifest' org.slug project.pk pack.pk %}">{% icon 'download' %} Manifest PDF</a><a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endblock %}
+{% block project_content %}
+{% include "closeout/_subnav.html" %}
+<div class="card"><div class="card-head"><h2>Handover pack {{ pack.number }}</h2>{% status_badge pack %}</div><div class="card-body">
+  <p class="small dim" style="margin-top:0">Built {{ pack.created_at|date:"j M Y H:i" }} by {{ pack.created_by.full_name|default:"—" }}{% if pack.issued_at %}; issued to the client {{ pack.issued_at|date:"j M Y H:i" }} by {{ pack.issued_by.full_name|default:"—" }}{% endif %}.</p>
+  {% if pack.note %}<p>{{ pack.note|linebreaksbr }}</p>{% endif %}
+  {% if pack.status == 'READY' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="issue"><button class="btn primary">Issue to the client</button></form><p class="small dim">The client and consultants on this job are told, and can download every item and check its checksum. An issued pack can't be changed; build a new one if something changes.</p>
+  {% elif pack.status == 'BUILDING' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="recheck"><button class="btn">Check again</button></form><p class="small dim">Some files are still being virus-checked. Their checksums are worked out once they are cleared.</p>
+  {% elif pack.status == 'FAILED' %}<p class="overdue">{{ pack.error }}</p>{% endif %}
+  {% if pack.manifest_sha256 %}<p class="small" style="margin-bottom:0">Manifest checksum (SHA-256): <code class="mono" style="overflow-wrap:anywhere">{{ pack.manifest_sha256 }}</code></p>{% endif %}
+</div></div>
+{% for label, rows in groups %}<div class="card"><div class="card-head"><h2>{{ label }}</h2><span class="small dim">{{ rows|length }}</span></div>
+{% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Item</th><th>Ref / rev</th><th>SHA-256</th><th>Status</th></tr></thead><tbody>
+{% for it in rows %}<tr><td>{% if it.state == 'OK' %}<a class="rowlink" href="{% url 'closeout_pack_item' org.slug project.pk pack.pk it.pk %}">{{ it.title }}</a>{% else %}{{ it.title }}{% endif %}<span class="sub">{{ it.file_name }}{% if it.size %} · {{ it.size|filesize }}{% endif %}</span></td>
+  <td class="small">{{ it.reference|default:"" }} {{ it.revision|default:"" }}</td>
+  <td class="small mono" style="overflow-wrap:anywhere;max-width:22rem">{{ it.sha256|default:"—" }}</td>
+  <td>{% status_badge it %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty left"><p>Nothing in this part of the pack.</p></div>{% endif %}</div>{% endfor %}
+<p class="small dim">Advisory: this pack supports the golden thread of building information. Whether the Building Safety Act applies, and what the golden thread must hold, is for the client and their advisers.</p>
+{% endblock %}

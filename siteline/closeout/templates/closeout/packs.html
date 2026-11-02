@@ -1,0 +1,23 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "closeout/_subnav.html" %}
+<div class="grid split">
+<div class="card"><div class="card-head"><h2>Handover packs</h2></div>
+{% if packs %}<div class="table-wrap"><table class="t"><thead><tr><th>Pack</th><th>Built</th><th>Status</th></tr></thead><tbody>
+{% for p in packs %}<tr><td><a class="rowlink" href="{{ p.get_absolute_url }}">Handover pack {{ p.number }}</a>{% if p.note %}<span class="sub">{{ p.note|truncatechars:80 }}</span>{% endif %}</td>
+  <td class="small">{{ p.created_at|date:"j M Y H:i" }}<span class="sub">{{ p.created_by.full_name }}</span></td>
+  <td>{% status_badge p %}{% if p.issued_at %}<span class="sub">{{ p.issued_at|date:"j M Y" }}</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}{% include "partials/empty_state.html" with title="No handover pack yet" message="A handover pack is a manifest of everything you hand over: completion certificates, drawings at their current revision, the fire-stopping register, the O&M manual, and certificates and test results. Each item is a link to the exact file and its SHA-256 checksum, so anyone can check a copy later. Build one when you are ready, check it, then issue it to the client." left=True %}{% endif %}
+</div>
+<div class="card"><div class="card-head"><h2>Build a pack now</h2></div><div class="card-body">
+  <p class="small">It would hold <strong>{{ preview_total }} item{{ preview_total|pluralize }}</strong>:</p>
+  <ul class="list small">{% for label, n in preview %}<li><span class="grow">{{ label }}</span><span class="nowrap{% if not n %} dim{% endif %}">{{ n }}</span></li>{% endfor %}</ul>
+  {% if not quality %}<p class="small dim">The fire-stopping register comes from the Quality tab, which isn't switched on here yet. Upload fire-stopping certificates under <a href="{% url 'closeout_certificates' org.slug project.pk %}">Certificates</a> meanwhile.</p>{% endif %}
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+    <div class="form-actions"><button class="btn primary">Build handover pack</button></div>
+  </form>
+  <p class="small dim" style="margin-bottom:0">Building a pack freezes the list as it is now; later changes go in the next pack. Advisory: this supports the golden thread of building information. Whether the Building Safety Act applies to this building, and what its golden thread must hold, is for the client and their advisers.</p>
+</div></div>
+</div>
+{% endblock %}

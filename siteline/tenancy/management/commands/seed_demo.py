@@ -366,6 +366,9 @@ class Command(BaseCommand):
             # Procurement schedule and submittals on Leeds and Salford (procurement/demo.py)
             from procurement.demo import seed as seed_procurement
             seed_procurement(leeds=leeds, pm=pm, sub_user=subu, make_user=user, demo_pdf=demo_pdf)
+            # Close-out: bar handed over, client defects, O&M manual and a handover pack (closeout/demo.py)
+            from closeout.demo import seed as seed_closeout
+            seed_closeout(leeds=leeds, pm=pm, client=client, sub_user=subu, demo_pdf=demo_pdf)
 
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')
