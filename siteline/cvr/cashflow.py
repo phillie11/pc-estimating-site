@@ -30,7 +30,7 @@ to the end of the job. All excluding VAT. The rules (also in cvr/rules.py and th
 from dataclasses import dataclass
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
 
 from costs.money import pennies
@@ -84,16 +84,18 @@ def build(project, today):
     from payments import rules as pay_rules
     from payments.models import Application, Payment
     from projects.models import Activity
-    from subpayments.models import SubApplication, SubPayment
+    from subpayments.models import SubApplication
     from subpayments.models import settings_for as sub_settings
     from subpayments.rules import sub_cycle, sub_terms
-
-    from .figures import live_figures
+    from costs.report import final_accounts, forecast_costs
 
     this_month = _month(today)
+    month_end = rules.month_end(today)
     contract = MainContract.objects.filter(project=project).first()
     terms = pay_rules.terms_for(contract)
-    fig = live_figures([project], today)[project.pk]
+    # The same figures as the cost report and the commercial position (costs.report), two queries
+    final_account = pennies(final_accounts([project])[project.pk])
+    final_cost = forecast_costs([project.pk]).get(project.pk, ZERO)
     notes = []
     flows = {}  # month -> Month
 
@@ -117,9 +119,15 @@ def build(project, today):
             at(m).in_actual += step
 
     # --- actual money out: the cost ledger's actual costs by month --------------------------------------
+    cost_to_date = ZERO
     for row in LedgerEntry.objects.filter(project=project, kind=LedgerEntry.ACTUAL).annotate(m=TruncMonth('date')) \
             .values('m').annotate(s=Sum('amount')).order_by('m'):
         at(_month(row['m'])).out_actual += pennies(row['s'])
+        if _month(row['m']) <= this_month:
+            cost_to_date += pennies(row['s'])
+    counted = [a for a in apps.values() if a.valuation_date <= month_end]
+    latest = max(counted, key=lambda a: (a.valuation_date, a.number), default=None)
+    value_to_date = pennies(latest.gross_valuation) if latest else ZERO
 
     # --- forecast in: owed on applications already made --------------------------------------------------
     owed_in = ZERO
@@ -134,13 +142,10 @@ def build(project, today):
 
     # --- forecast out: owed on subcontractors' applications ---------------------------------------------
     owed_out = ZERO
-    sub_apps = list(SubApplication.objects.filter(project=project, status__in=SubApplication.AWAITING))
-    sub_paid = {}
-    if sub_apps:
-        sub_paid = dict(SubPayment.objects.filter(application__in=sub_apps, reversed_at__isnull=True)
-                        .values('application_id').annotate(s=Sum('gross')).values_list('application_id', 's'))
+    sub_apps = list(SubApplication.objects.filter(project=project, status__in=SubApplication.AWAITING).annotate(
+        paid=Sum('payments__gross', filter=Q(payments__reversed_at__isnull=True))))
     for sa in sub_apps:
-        sa._paid_gross = sub_paid.get(sa.pk) or ZERO
+        sa._paid_gross = sa.paid or ZERO
         left = sa.payable - sa._paid_gross
         if left > 0 and sa.final_date:
             at(_month(_not_before(sa.final_date, today))).out_forecast += left
@@ -164,7 +169,7 @@ def build(project, today):
         if uses_programme:
             notes.append('The programme has no work left after today, so the rest is spread evenly to completion.')
         weights = rules.even_weights(work_months, min(today, work_months[0]), finish)
-    remaining_value = max(fig.final_account - fig.value_to_date, ZERO)
+    remaining_value = max(final_account - value_to_date, ZERO)
     retention_pct = (contract.retention_percent or ZERO) if contract else ZERO
     val_day = (contract.valuation_day if contract and contract.valuation_day else 31)
     from contracts.presets import valuation_date_in
@@ -175,11 +180,11 @@ def build(project, today):
         at(_month(_not_before(cycle.final_date, today))).in_forecast += rules.less_retention(v, retention_pct)
 
     # Retention released at completion and at the end of the defects period
-    if retention_pct and fig.final_account > 0:
+    if retention_pct and final_account > 0:
         pc = (contract.practical_completion_on if contract else None) or project.completion_date or finish
         released_pct = contract.retention_released_at_pc_percent if contract else Decimal('50')
-        full = pay_rules.retention_held(fig.final_account, retention_pct, released_pct, pay_rules.STAGE_BEFORE_PC)
-        after_pc = pay_rules.retention_held(fig.final_account, retention_pct, released_pct, pay_rules.STAGE_AFTER_PC)
+        full = pay_rules.retention_held(final_account, retention_pct, released_pct, pay_rules.STAGE_BEFORE_PC)
+        after_pc = pay_rules.retention_held(final_account, retention_pct, released_pct, pay_rules.STAGE_AFTER_PC)
         end = pay_rules.defects_end(pc, contract.defects_period_months if contract else None)
         for when, amount in ((pc, full - after_pc), (end, after_pc)):
             if when is None or not amount:
@@ -191,7 +196,7 @@ def build(project, today):
         if end is None:
             notes.append('No defects period is set on the contract, so the last of the retention is not forecast.')
 
-    remaining_cost = max(fig.final_cost - fig.cost_to_date - owed_out, ZERO)
+    remaining_cost = max(final_cost - cost_to_date - owed_out, ZERO)
     defaults = sub_settings(project.organization, create=False)
     sterms = sub_terms(defaults.due_date_offset_days, defaults.payment_notice_days, defaults.final_date_offset_days,
                        defaults.pay_less_notice_days, contract.bank_holiday_region if contract else 'EW')
@@ -224,6 +229,6 @@ def build(project, today):
     totals['out'] = totals['out_actual'] + totals['out_forecast']
     totals['net'] = totals['in'] - totals['out']
     return {'months': out, 'totals': totals, 'notes': notes, 'finish': finish, 'uses_programme': uses_programme,
-            'figures': fig, 'owed_in': owed_in, 'owed_out': owed_out, 'remaining_value': remaining_value,
+            'final_account': final_account, 'final_cost': final_cost, 'owed_in': owed_in, 'owed_out': owed_out, 'remaining_value': remaining_value,
             'remaining_cost': remaining_cost, 'retention_pct': retention_pct, 'contract': contract,
             'lowest': min((r.cumulative for r in out), default=ZERO)}

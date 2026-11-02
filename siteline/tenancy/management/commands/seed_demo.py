@@ -359,6 +359,10 @@ class Command(BaseCommand):
             from subpayments.demo import seed as seed_subpayments
             seed_subpayments(leeds=leeds, pm=pm, owner=owner)
 
+            # Monthly CVR and dayworks on Leeds and Salford (cvr/demo.py)
+            from cvr.demo import seed as seed_cvr
+            seed_cvr(leeds=leeds, pm=pm, owner=owner)
+
             # Site diary: the last 10 working days on Leeds, with placeholder photos (diary/demo.py)
             from diary.demo import seed as seed_diary
             seed_diary(leeds=leeds, pm=pm)

@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui static %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 {% include "commercial/_subnav.html" %}
 <p class="small"><a href="{% url 'daywork_list' org.slug project.pk %}">← All daywork sheets</a></p>
 <div class="dw-card">
@@ -72,5 +72,6 @@
     <p class="small dim">It stays on the register, marked cancelled, and can't be signed or valued.</p>
     <div class="form-actions"><button class="btn danger">Cancel the sheet</button></div></form>
 </div></details>{% endif %}
+</div>
 </div>
 {% endblock %}

@@ -97,77 +97,108 @@ def live_figures(projects, month, periods=None):
     {project_id: Figures} worked out from the sources as at the month's end, for many jobs in a fixed
     number of queries. `periods` ({project_id: CVRPeriod}) adds each one's adjustments.
     """
+    return live_figures_months(projects, [month], {rules.month_start(month): periods or {}})[rules.month_start(month)]
+
+
+def live_figures_months(projects, months, periods=None):
+    """
+    {month: {project_id: Figures}} for several months at once, in the same six or seven queries as one
+    (each source is summed to every month's end with a conditional sum). `periods` is
+    {month: {project_id: CVRPeriod}} for the adjustments.
+    """
+    from django.db.models.functions import TruncDate
+
     from costs.models import ForecastOverride, LedgerEntry
     from payments.models import Application, Payment
     from payments.rules import ex_vat
     from variations.models import Variation
 
-    end = _end_of(month)
+    months = sorted({rules.month_start(m) for m in months})
+    ends = [_end_of(m) for m in months]
+    last = max(ends)
     projects = list(projects)
     ids = [p.pk for p in projects]
-    out = {p.pk: Figures(project_id=p.pk, month=rules.month_start(month), contract_sum=pennies(p.value or 0))
-           for p in projects}
+    out = {m: {p.pk: Figures(project_id=p.pk, month=m, contract_sum=pennies(p.value or 0)) for p in projects}
+           for m in months}
     if not ids:
         return out
 
-    # Payments: the latest counted application made up to the month's end, certified and paid to date
+    def by_month(field, extra=None):
+        """Conditional sums of `field`, one per month's end, named m0, m1..."""
+        return {f'm{i}': Sum(field, filter=(extra(e) if extra else Q())) for i, e in enumerate(ends)}
+
+    # Payments: the latest counted application made up to each month's end, certified and paid to date
     apps = list(Application.objects.filter(project_id__in=ids, status__in=Application.COUNTED,
-                                           valuation_date__lte=end))
-    paid = dict(Payment.objects.filter(application__in=[a.pk for a in apps], reversed_at__isnull=True,
-                                       received_on__lte=end).values('application_id')
-                .annotate(s=Sum('amount')).values_list('application_id', 's')) if apps else {}
-    latest = {}
-    for a in apps:
-        f = out[a.project_id]
-        f.has_activity = True
-        if a.is_certified:
-            f.certified_to_date += a.notified_sum
-        f.paid_to_date += ex_vat(paid.get(a.pk) or ZERO, a.vat_rate, a.reverse_charge)
-        key = (a.valuation_date, a.number)
-        if a.project_id not in latest or key > latest[a.project_id][0]:
-            latest[a.project_id] = (key, a)
-    for pid, (_, a) in latest.items():
-        out[pid].value_to_date = pennies(a.gross_valuation)
-        out[pid].retention_held = pennies(a.retention)
+                                           valuation_date__lte=last))
+    paid = {row['application_id']: row for row in Payment.objects.filter(
+        application__in=[a.pk for a in apps], reversed_at__isnull=True).values('application_id')
+        .annotate(**by_month('amount', lambda e: Q(received_on__lte=e)))} if apps else {}
+    for i, (m, e) in enumerate(zip(months, ends)):
+        latest = {}
+        for a in apps:
+            if a.valuation_date > e:
+                continue
+            f = out[m][a.project_id]
+            f.has_activity = True
+            if a.is_certified:
+                f.certified_to_date += a.notified_sum
+            f.paid_to_date += ex_vat((paid.get(a.pk) or {}).get(f'm{i}') or ZERO, a.vat_rate, a.reverse_charge)
+            key = (a.valuation_date, a.number)
+            if a.project_id not in latest or key > latest[a.project_id][0]:
+                latest[a.project_id] = (key, a)
+        for pid, (_, a) in latest.items():
+            out[m][pid].value_to_date = pennies(a.gross_valuation)
+            out[m][pid].retention_held = pennies(a.retention)
 
-    # The cost ledger to the month's end, by code and kind (for the forecast final cost too)
-    by_code = {}
-    for row in LedgerEntry.objects.filter(project_id__in=ids, date__lte=end) \
-            .values('project_id', 'cost_code_id', 'kind').annotate(s=Sum('amount')):
-        by_code.setdefault(row['project_id'], {}).setdefault(row['cost_code_id'], {})[row['kind']] = row['s']
-        f = out[row['project_id']]
-        f.has_activity = True
-        attr = {'ACTUAL': 'cost_to_date', 'COMMITMENT': 'committed_to_date', 'BUDGET': 'budget_to_date'}[row['kind']]
-        setattr(f, attr, getattr(f, attr) + pennies(row['s']))
-    overrides = {}
-    for pid, code, amount in ForecastOverride.objects.filter(project_id__in=ids, created_at__date__lte=end) \
-            .order_by('created_at', 'pk').values_list('project_id', 'cost_code_id', 'amount'):
-        overrides[(pid, code)] = amount  # the latest by the month's end wins (None: back to the standard rule)
-    for pid in ids:
-        codes = set(by_code.get(pid, {})) | {c for (p, c) in overrides if p == pid}
-        total = ZERO
-        for code in codes:
-            t = by_code.get(pid, {}).get(code, {})
-            override = overrides.get((pid, code))
-            total += override if override is not None else default_forecast(
-                t.get('BUDGET') or ZERO, t.get('COMMITMENT') or ZERO, t.get('ACTUAL') or ZERO)
-        out[pid].forecast_cost_base = pennies(total)
-        if codes:
-            out[pid].has_activity = True
+    # The cost ledger to each month's end, by code and kind (for the forecast final cost too)
+    ledger_rows = list(LedgerEntry.objects.filter(project_id__in=ids, date__lte=last)
+                       .values('project_id', 'cost_code_id', 'kind').annotate(**by_month('amount', lambda e: Q(date__lte=e))))
+    override_rows = list(ForecastOverride.objects.filter(project_id__in=ids, created_at__date__lte=last)
+                         .annotate(day=TruncDate('created_at')).order_by('created_at', 'pk')
+                         .values_list('project_id', 'cost_code_id', 'amount', 'day'))
+    attr = {'ACTUAL': 'cost_to_date', 'COMMITMENT': 'committed_to_date', 'BUDGET': 'budget_to_date'}
+    for i, (m, e) in enumerate(zip(months, ends)):
+        by_code = {}
+        for row in ledger_rows:
+            amount = row[f'm{i}']
+            if amount is None:
+                continue  # nothing on this code and kind by this month's end
+            by_code.setdefault(row['project_id'], {}).setdefault(row['cost_code_id'], {})[row['kind']] = amount
+            f = out[m][row['project_id']]
+            f.has_activity = True
+            setattr(f, attr[row['kind']], getattr(f, attr[row['kind']]) + pennies(amount))
+        overrides = {}
+        for pid, code, amount, day in override_rows:
+            if day <= e:
+                overrides[(pid, code)] = amount  # the latest by the month's end wins (None: back to the standard rule)
+        for pid in ids:
+            codes = set(by_code.get(pid, {})) | {c for (q, c) in overrides if q == pid}
+            total = ZERO
+            for code in codes:
+                t = by_code.get(pid, {}).get(code, {})
+                override = overrides.get((pid, code))
+                total += override if override is not None else default_forecast(
+                    t.get('BUDGET') or ZERO, t.get('COMMITMENT') or ZERO, t.get('ACTUAL') or ZERO)
+            out[m][pid].forecast_cost_base = pennies(total)
+            if codes:
+                out[m][pid].has_activity = True
 
-    # Client variations approved by the month's end, as payments.models.approved_variations_to counts them
-    approved = Variation.objects.filter(project_id__in=ids, status=Variation.STATUS_APPROVED).filter(
-        Q(decided_at__date__lte=end) | Q(decided_at__isnull=True, updated_at__date__lte=end))
-    for pid, s in approved.values('project_id').annotate(s=Sum('approved_value')).values_list('project_id', 's'):
-        out[pid].approved_variations = pennies(s or 0)
+    # Client variations approved by each month's end, as payments.models.approved_variations_to counts them
+    for row in Variation.objects.filter(project_id__in=ids, status=Variation.STATUS_APPROVED) \
+            .values('project_id').annotate(**by_month('approved_value', lambda e: (
+                Q(decided_at__date__lte=e) | Q(decided_at__isnull=True, updated_at__date__lte=e)))):
+        for i, m in enumerate(months):
+            out[m][row['project_id']].approved_variations = pennies(row[f'm{i}'] or 0)
 
-    if periods:
+    every = [per for by_pid in (periods or {}).values() for per in by_pid.values()]
+    if every:
         from .models import adjustment_totals
-        by_period = adjustment_totals([p.pk for p in periods.values()])
-        for pid, period in periods.items():
-            if pid in out:
-                for kind, total in by_period.get(period.pk, {}).items():
-                    setattr(out[pid], ADJ_FIELD[kind], pennies(total))
+        by_period = adjustment_totals([p.pk for p in every])
+        for m, by_pid in periods.items():
+            for pid, period in by_pid.items():
+                if m in out and pid in out[m]:
+                    for kind, total in by_period.get(period.pk, {}).items():
+                        setattr(out[m][pid], ADJ_FIELD[kind], pennies(total))
     return out
 
 
@@ -201,6 +232,23 @@ def month_figures(projects, month, periods):
     for pid, per in periods.items():
         if per.is_frozen:
             out[pid] = frozen_figures(per)
+    return out
+
+
+def month_figures_pair(projects, month, periods, prev_month, prev_periods):
+    """month_figures() for a month and the one before, with the live figures for both worked out together."""
+    want = {}
+    for m, by_pid in ((month, periods), (prev_month, prev_periods)):
+        want[m] = {pid: per for pid, per in by_pid.items() if not per.is_frozen}
+    live_ids = [p for p in projects if not all(by.get(p.pk) and by[p.pk].is_frozen for by in (periods, prev_periods))]
+    live = live_figures_months(live_ids, [month, prev_month], want)
+    out = []
+    for m, by_pid in ((month, periods), (prev_month, prev_periods)):
+        got = dict(live.get(m, {}))
+        for pid, per in by_pid.items():
+            if per.is_frozen:
+                got[pid] = frozen_figures(per)
+        out.append(got)
     return out
 
 

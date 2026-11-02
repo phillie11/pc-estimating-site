@@ -24,10 +24,13 @@ class CVRError(ValueError):
     """Something the CVR won't do, in words to show the person."""
 
 
-def settings_for(org):
+def settings_for(org, create=True):
+    """The company's settings; with create=False an unsaved row of defaults (Needs me, GET pages: no writes)."""
     obj = CommercialSettings.objects.filter(organization=org).first()
     if obj is not None:
         return obj
+    if not create:
+        return CommercialSettings(organization=org)
     try:
         with transaction.atomic():
             return CommercialSettings.objects.create(organization=org)
@@ -48,9 +51,9 @@ def first_month(project):
 def startable_months(project, today=None):
     """Months a new CVR can be started for: after the last signed-off one, up to this month, not started yet."""
     today = today or timezone.localdate()
-    existing = set(CVRPeriod.with_deleted.filter(project=project).values_list('month', flat=True))
-    last_signed = CVRPeriod.objects.filter(project=project, status=CVRPeriod.SIGNED_OFF).order_by('-month') \
-        .values_list('month', flat=True).first()
+    rows = list(CVRPeriod.with_deleted.filter(project=project).values_list('month', 'status', 'deleted_at'))
+    existing = {m for m, _, _ in rows}
+    last_signed = max((m for m, status, gone in rows if status == CVRPeriod.SIGNED_OFF and gone is None), default=None)
     earliest = first_month(project)
     if last_signed:
         earliest = max(earliest, rules.add_months(last_signed, 1))
@@ -75,7 +78,8 @@ def start_period(project, month, actor, today=None):
         return existing, False
     try:
         with transaction.atomic():
-            period = CVRPeriod(project=project, month=month)
+            due = rules.due_on(month, settings_for(project.organization, create=False).cvr_due_day)
+            period = CVRPeriod(project=project, month=month, due_date=due)
             period.save(actor=actor)
     except IntegrityError:  # started by someone else a moment ago
         return CVRPeriod.objects.get(project=project, month=month), False
@@ -184,8 +188,9 @@ def terms_for(project, create=False):
 
 def new_sheet(project, actor, **fields):
     terms = terms_for(project)
+    # The writer holds the ball until it is on the change register (cvr/actions.py reads it from the index)
     sheet = DayworkSheet(project=project, labour_pct=terms.labour_pct, materials_pct=terms.materials_pct,
-                         plant_pct=terms.plant_pct, **fields)
+                         plant_pct=terms.plant_pct, ball_in_court_user=actor, **fields)
     sheet.save(actor=actor)
     return sheet
 

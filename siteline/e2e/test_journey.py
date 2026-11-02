@@ -889,3 +889,21 @@ class JourneyTest(TestCase):
             self.assertEqual(self.c['rival'].get(url).status_code, 404, url)
         r = self.c['rival'].get(reverse('needs_me', args=[self.other_org.slug]))
         self.assertEqual(r.context['total_count'], 0)
+
+        # The month's CVR reconciles to the same figures: value from AP-001 (66,000 gross before retention),
+        # cost from the ledger (19,000), final account 256,000 and final cost 225,000 as the cost report says
+        r = self.get('pm', self.pu('cvr_list'))
+        now = r.context['now']
+        self.assertEqual((now.value, now.cost, now.margin), (Decimal('66000.00'), Decimal('19000.00'),
+                                                             Decimal('47000.00')))
+        self.assertEqual((now.final_account, now.final_cost, now.forecast_margin),
+                         (data['final_account'], data['final_cost'], data['margin']))
+        self.assertEqual((now.certified_to_date, now.paid_to_date), (Decimal('62700.00'), Decimal('62700.00')))
+        self.post('pm', self.pu('cvr_list'), {'month': TODAY().replace(day=1).isoformat()})
+        self.assertIn('CVR-001 Being prepared £66,000 £19,000 £47,000', text(self.get('pm', self.pu('cvr_list'))))
+        # Cashflow: 62,700 received ex VAT in, 19,000 out on the ledger, both this month
+        r = self.get('pm', self.pu('cvr_cashflow'))
+        month = next(m for m in r.context['data']['months'] if m.is_current)
+        self.assertEqual((month.in_actual, month.out_actual), (Decimal('62700.00'), Decimal('19000.00')))
+        for who in ('sub', 'client', 'est'):
+            self.assertIn(self.c[who].get(self.pu('cvr_list')).status_code, (403, 404))

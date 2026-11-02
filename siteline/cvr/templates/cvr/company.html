@@ -1,6 +1,6 @@
 {% extends "app.html" %}{% load ui static %}
 {% block title %}Company CVR{% endblock %}
-{% block content %}
+{% block content %}<div class="cvr-touch">
 <div class="page-head"><div><h1>Company CVR</h1><p class="small dim">Every job's cost value reconciliation for {{ month|date:"F Y" }}: signed-off and submitted months as fixed, the rest as they stand now.</p></div>
 <div class="row">{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}</div></div>
 
@@ -41,4 +41,5 @@
 {% else %}{% url 'project_list' org.slug as jobs_url %}{% include "partials/empty_state.html" with title="No jobs to report on" message="The company CVR lists the won and live jobs whose costs you can see. Owners and admins see every job; project managers and QSs see the jobs they run." cta_url=jobs_url cta_label="Go to projects" %}{% endif %}
 </div>
 <p class="small dim">{% badge 'Advisory' 'warn' %} Totals add up the jobs shown. Margin percentages in the total are on the total value and final account. {{ advisory }}</p>
+</div>
 {% endblock %}

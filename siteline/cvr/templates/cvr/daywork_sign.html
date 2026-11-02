@@ -1,6 +1,6 @@
 {% extends "project_base.html" %}{% load ui static %}
 {% block head %}<script src="{% static 'cvr/signature.js' %}" defer></script>{% endblock %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 <div class="dw-card">
 <p class="small"><a href="{{ sheet.get_absolute_url }}">← Back to {{ sheet.reference }}</a></p>
 <div class="card"><div class="card-body">
@@ -36,5 +36,6 @@
   <p class="small dim">Once signed, the sheet can't be changed. If something is wrong, cancel it and start a new one.</p>
 </form>
 </div></div>
+</div>
 </div>
 {% endblock %}

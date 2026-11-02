@@ -1,9 +1,10 @@
 {% extends "project_base.html" %}{% load static %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 {% include "commercial/_subnav.html" %}
 <div class="card dw-card"><div class="card-head"><h2>{% if sheet %}Change {{ sheet.reference }}{% else %}New daywork sheet{% endif %}</h2></div><div class="card-body">
 {% if creating %}<p class="small dim">Just say what the work was. The date is today unless you change it. You add the people, plant and materials next.</p>{% endif %}
 <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
 <div class="form-actions"><button class="btn primary block">{% if sheet %}Save{% else %}Start the sheet{% endif %}</button><a class="btn ghost" href="{% if sheet %}{{ sheet.get_absolute_url }}{% else %}{% url 'daywork_list' org.slug project.pk %}{% endif %}">Cancel</a></div></form>
 </div></div>
+</div>
 {% endblock %}

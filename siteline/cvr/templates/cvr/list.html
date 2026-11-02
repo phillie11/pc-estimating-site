@@ -1,6 +1,6 @@
 {% extends "project_base.html" %}{% load ui static %}
 {% block project_actions %}{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 {% include "commercial/_subnav.html" %}
 <section class="card" aria-labelledby="cvr-now"><div class="card-head"><h2 id="cvr-now">Where the job stands today</h2></div><div class="card-body">
 <div class="kpis cvr-kpis">
@@ -39,4 +39,5 @@
 {% else %}{% include "partials/empty_state.html" with title="No monthly CVRs yet" message="The job's project manager or QS starts each month's CVR. Once they do, it shows here." %}{% endif %}
 </div>
 <p class="small dim">{% badge 'Advisory' 'warn' %} Value is the gross valuation of the latest application made up to the month's end; cost is every actual cost on the cost ledger dated by then. Months are signed off in order and then locked: anything found later goes in a later month as an adjustment. {{ advisory }}</p>
+</div>
 {% endblock %}

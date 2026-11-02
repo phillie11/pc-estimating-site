@@ -619,6 +619,10 @@ tr.dim td { color: var(--ink-3); }
 .sig-canvas { width: 100%; max-width: 600px; aspect-ratio: 600 / 220; height: auto; border: 2px solid var(--line-2);
   border-radius: var(--r); background: var(--card); touch-action: none; cursor: crosshair; }
 .sig-field .label { display: block; font-weight: 600; margin-bottom: 6px; }
+/* A screen-reader-only header (absolutely positioned) must stay inside its scrolling table, or it widens the page */
+.cvr-touch .table-wrap { position: relative; }
+.cvr-touch input:not([type=checkbox]):not([type=radio]):not([type=hidden]), .cvr-touch select { min-height: 44px; }
+.cvr-touch .linkbtn { min-height: 44px; display: inline-flex; align-items: center; }
 @media (max-width: 600px) {
   .cvr-action { max-width: none; width: 100%; }
   .cvr-action .btn { width: 100%; justify-content: center; }

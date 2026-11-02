@@ -134,6 +134,8 @@ class CVRPageTests(CVRTestBase):
         page = self.client.get(period.get_absolute_url())
         self.assertContains(page, '£56,000.00')  # value to date, from AP-002
         self.assertContains(page, '£16,500.00')  # cost to date, from the ledger
+        # The budget was set this month, so last month's forecast final cost is flagged as short of it
+        self.assertContains(page, "budget went on the cost ledger on")
         # An adjustment with a reason; one with none is a form error
         r = self.client.post(period.get_absolute_url(), {'action': 'adjust', 'adj-kind': 'COST', 'adj-amount': '2500',
                                                          'adj-reason': 'Scaffold invoice not yet in'})

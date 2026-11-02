@@ -346,6 +346,9 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
                         except Exception:  # noqa: BLE001 - a dataset, not a test: skip a cycle that doesn't fit
                             pass
         say(f'{sub_apps} sub applications')
+        # Monthly CVRs and daywork sheets on every live job (cvr/scale.py)
+        from cvr.scale import build as build_cvr
+        build_cvr(live, owner, say=say)
 
         # --- procurement, submittals, snags, tasks ------------------------------------------
         for j, p in enumerate(live):

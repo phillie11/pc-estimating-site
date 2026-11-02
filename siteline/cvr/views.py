@@ -65,13 +65,29 @@ def _month_param(value, default):
 
 def _previous_figures(project, month):
     """Last month's figures for the movement: its frozen ones if submitted, else live with its adjustments."""
+    return _with_previous(project, None, month)[1]
+
+
+def _with_previous(project, period, month):
+    """(this month's figures, last month's or None), the live ones worked out together."""
     prev_month = rules.add_months(month, -1)
     prev = CVRPeriod.objects.filter(project=project, month=prev_month).first()
-    if prev is not None:
-        return figures.figures_for(prev, project)
-    if prev_month < services.first_month(project):
-        return None
-    return figures.live_figures([project], prev_month)[project.pk]
+    want = {}
+    if period is not None and not period.is_frozen:
+        want[period.month] = {project.pk: period}
+    if prev is not None and not prev.is_frozen:
+        want[prev_month] = {project.pk: prev}
+    elif prev is None and prev_month >= services.first_month(project):
+        want[prev_month] = {}
+    live = figures.live_figures_months([project], list(want), want) if want else {}
+    current = None
+    if period is not None:
+        current = figures.frozen_figures(period) if period.is_frozen else live[period.month][project.pk]
+    if prev is not None and prev.is_frozen:
+        previous = figures.frozen_figures(prev)
+    else:
+        previous = live[prev_month][project.pk] if prev_month in live else None
+    return current, previous
 
 
 @internal_required
@@ -79,7 +95,7 @@ def cvr_list(request, org_slug, pk):
     project = cvr_project(request, pk)
     today = timezone.localdate()
     months = services.startable_months(project, today)
-    can_prepare = prepares_cvr(request.user, project)
+    can_prepare = True  # cvr_project() let them in: owners, admins and the job's PM or QS, who prepare it
     start_form = StartForm(request.POST or None, months=months)
     if request.method == 'POST':
         if not can_prepare:
@@ -108,16 +124,19 @@ def cvr_list(request, org_slug, pk):
                                                       'Margin %', 'Forecast final account', 'Forecast final cost',
                                                       'Forecast margin', 'Forecast margin %'], rows)
     page = Paginator(periods, PAGE).get_page(request.GET.get('page'))
-    rows = [{'period': p, 'figures': figures.figures_for(p, project)} for p in page.object_list]
-    now = figures.live_figures([project], today)[project.pk]
+    drafts = {p.month: {project.pk: p} for p in page.object_list if not p.is_frozen}
+    live = figures.live_figures_months([project], [today, *drafts], drafts)
+    rows = [{'period': p, 'figures': figures.frozen_figures(p) if p.is_frozen else live[p.month][project.pk]}
+            for p in page.object_list]
+    now = live[rules.month_start(today)][project.pk] if rules.month_start(today) not in drafts else \
+        figures.live_figures([project], today)[project.pk]
     return render(request, 'cvr/list.html', commercial_context(
         request, project, 'cvr', page=page, rows=rows, now=now, today=today, start_form=start_form,
         can_prepare=can_prepare, months=months, advisory=rules.ADVISORY))
 
 
 def _period_ctx(request, project, period, **extra):
-    current = figures.figures_for(period, project)
-    previous = _previous_figures(project, period.month)
+    current, previous = _with_previous(project, period, period.month)
     adjustments = list(CVRAdjustment.objects.filter(period=period).select_related('created_by'))
     reversed_ids = {a.reverses_id for a in adjustments if a.reverses_id}
     for a in adjustments:
@@ -130,10 +149,15 @@ def _period_ctx(request, project, period, **extra):
         'contract': reverse('contract_detail', args=[org, project.pk]),
         'variations': reverse('variation_list', args=[org, project.pk]),
     }
+    budget_after = None
+    if not current.budget_to_date:
+        from costs.models import LedgerEntry
+        budget_after = LedgerEntry.objects.filter(project=project, kind=LedgerEntry.BUDGET, date__gt=period.month_end) \
+            .order_by('date').values_list('date', flat=True).first()
     return commercial_context(
-        request, project, 'cvr', period=period, f=current, previous=previous, move=current.movement(previous),
+        request, project, 'cvr', period=period, f=current, budget_after=budget_after, previous=previous, move=current.movement(previous),
         adjustments=adjustments, transitions=available_transitions(period, request.user),
-        can_prepare=prepares_cvr(request.user, project), drift=figures.drift(period, project),
+        can_prepare=True, drift=figures.drift(period, project),
         has_previous=services.previous_period(period) is not None, sources=sources,
         month_ended=rules.has_ended(period.month, timezone.localdate()), advisory=rules.ADVISORY, **extra)
 
@@ -231,8 +255,7 @@ def company_cvr(request, org_slug):
     prev_month = rules.add_months(month, -1)
     prev_periods = {p.project_id: p for p in CVRPeriod.objects.filter(project__in=[x.pk for x in projects],
                                                                       month=prev_month)}
-    now = figures.month_figures(projects, month, periods)
-    before = figures.month_figures(projects, prev_month, prev_periods)
+    now, before = figures.month_figures_pair(projects, month, periods, prev_month, prev_periods)
     status = request.GET.get('status', '')
     rows = []
     for p in projects:
@@ -297,7 +320,7 @@ def cashflow(request, org_slug, pk):
                      for m in data['months']])
     has_money = any(m.money_in or m.money_out for m in data['months'])
     return render(request, 'cvr/cashflow.html', commercial_context(
-        request, project, 'cashflow', data=data, chart=chart.geometry(data['months']) if has_money else None,
+        request, project, 'cashflow', data=data, chart=chart.geometry(data['months'], today) if has_money else None,
         has_money=has_money, today=today, advisory=rules.ADVISORY))
 
 

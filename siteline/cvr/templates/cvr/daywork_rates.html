@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui static %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 {% include "commercial/_subnav.html" %}
 <p class="small"><a href="{% url 'daywork_list' org.slug project.pk %}">← Daywork sheets</a></p>
 <section class="card" aria-labelledby="rates-h"><div class="card-head"><h2 id="rates-h">Daywork rates for this job</h2></div>
@@ -23,4 +23,5 @@
 {% else %}<p>Labour {{ terms.labour_pct|floatformat:"-2" }}%, materials {{ terms.materials_pct|floatformat:"-2" }}%, plant {{ terms.plant_pct|floatformat:"-2" }}%.{% if terms.basis %} {{ terms.basis }}.{% endif %}</p>{% endif %}
 <p class="small dim">Each line is hours or quantity times the rate, to the penny. Each of labour, plant and materials is totalled as prime cost, then its percentage is added (rounded half up to the penny). Sheets not yet signed follow these figures; signed ones keep theirs. {% badge 'Advisory' 'warn' %} {{ advisory }}</p>
 </div></section>
+</div>
 {% endblock %}

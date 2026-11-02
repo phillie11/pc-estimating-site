@@ -50,6 +50,8 @@ class QueryCountsDontGrowTests(TestCase):
             ('owner', u('delivery_home')), ('owner', u('estimating_home')), ('owner', u('subpay_cis')),
             ('pm', u('needs_me')), ('pm', u('project_detail', pk)), ('pm', u('contract_detail', pk)),
             ('pm', u('cost_report', pk)), ('pm', u('application_list', pk)), ('pm', u('subpay_list', pk)),
+            ('pm', u('cvr_list', pk)), ('pm', u('cvr_cashflow', pk)), ('pm', u('daywork_list', pk)),
+            ('owner', u('company_cvr')),
             ('pm', u('diary_register', pk)), ('pm', u('document_list', pk)), ('pm', u('package_list', pk)),
             ('sub', u('project_detail', pk)), ('sub', u('subpay_list', pk)), ('sub', u('document_list', pk)),
             ('sub', u('needs_me')),

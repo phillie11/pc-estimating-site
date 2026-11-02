@@ -22,6 +22,7 @@ Every model is a TenantModel; CVRPeriod and DayworkSheet are RecordBase register
 """
 import os
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -280,6 +281,13 @@ class DayworkSheet(RecordBase):
 
     def save(self, *args, **kwargs):
         self.visibility = VIS_INTERNAL
+        # Due a week after the work while unsigned, a week after signing once signed (cvr/actions.py)
+        if self.status == self.DRAFT and self.work_date:
+            self.due_date = self.work_date + timedelta(days=7)
+        elif self.status == self.SIGNED and self.signed_at:
+            self.due_date = timezone.localdate(self.signed_at) + timedelta(days=7)
+        else:
+            self.due_date = None
         return super().save(*args, **kwargs)
 
     def get_absolute_url(self):

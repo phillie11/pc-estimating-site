@@ -82,6 +82,16 @@ class EarlierMonthsTests(CVRTestBase):
         super().setUp()
         self.rows = self.build_money()
 
+    def test_several_months_at_once_equal_one_at_a_time(self):
+        with org_context(self.org_a):
+            together = figures.live_figures_months([self.pa], [self.m2, self.m1, self.today])
+            for month in (self.m2, self.m1, self.m0):
+                alone = figures.live_figures([self.pa], month)[self.pa.pk]
+                with self.subTest(month=month):
+                    got = together[month][self.pa.pk]
+                    for name in figures.SNAPSHOT_FIELDS:
+                        self.assertEqual(getattr(got, name), getattr(alone, name), name)
+
     def test_last_month(self):
         with org_context(self.org_a):
             f = figures.live_figures([self.pa], self.m1)[self.pa.pk]
@@ -135,6 +145,8 @@ class CashflowReconcilesTests(CVRTestBase):
         with org_context(self.org_a):
             data = cashflow.build(self.pa, self.today)
             f = figures.live_figures([self.pa], self.today)[self.pa.pk]
+            report = cost_report(self.pa)
+        self.assertEqual((data['final_account'], data['final_cost']), (f.final_account, report['final_cost']))
         # In: received + still owed on AP-002 + the rest less retention + the retention, all ex VAT
         self.assertEqual(data['totals']['in'], f.final_account)
         # Out: the ledger's actuals plus the rest of the forecast final cost

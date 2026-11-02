@@ -7,6 +7,7 @@ a <title>, which browsers show as a tooltip; the table under the chart has every
 
     geometry(months) -> dict for cvr/_cashflow_chart.html
 """
+import calendar
 from decimal import Decimal
 
 WIDTH, HEIGHT = 760, 300
@@ -36,7 +37,7 @@ def short(value):
     return f'{sign}£{v:.0f}'
 
 
-def geometry(months):
+def geometry(months, today=None):
     if not months:
         return None
     top = max([m.money_in for m in months] + [m.cumulative for m in months] + [Decimal('0')])
@@ -60,7 +61,8 @@ def geometry(months):
         x0 = LEFT + i * col
         cx = x0 + col / 2
         if m.is_current:
-            today_x = x0
+            share = 0.5 if today is None else (today.day - 0.5) / calendar.monthrange(today.year, today.month)[1]
+            today_x = x0 + col * share
         y_in, y_out = y(m.money_in), y(-m.money_out)
         cols.append({
             'x': round(x0, 1), 'w': round(col, 1), 'cx': round(cx, 1), 'bar_x': round(cx - bar / 2, 1),

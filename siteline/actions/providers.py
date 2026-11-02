@@ -55,12 +55,31 @@ def _my_memberships(request, roles):
                                         project__in=visible_projects(request).values('pk'))
 
 
+# Apps add their own per-job flags to my_jobs() by dotted path: fn(request) -> {name: expression}. They become
+# subqueries in its one query, so a provider that needs a flag per job costs no query of its own. A module not
+# merged yet is skipped, as for HOOKS.
+JOB_ANNOTATIONS = ['cvr.actions.job_annotations']
+
+
+def _job_annotations(request):
+    import importlib
+    out = {}
+    for path in JOB_ANNOTATIONS:
+        module, _, name = path.rpartition('.')
+        try:
+            fn = getattr(importlib.import_module(module), name)
+        except (ModuleNotFoundError, AttributeError):
+            continue
+        out.update(fn(request))
+    return out
+
+
 def my_jobs(request):
     """
     Won, live and complete jobs this member of staff can open, with what they are on each one:
-    `is_manager`, `on_team_pm`, `on_team_qs` and `has_ledger`. One query per request, shared by
-    the providers that list a job's payments, sub payments, costs and diary (each applies its own
-    rule to these flags), because all of them run behind the badge on every page.
+    `is_manager`, `on_team_pm`, `on_team_qs` and `has_ledger` (plus any JOB_ANNOTATIONS). One query per
+    request, shared by the providers that list a job's payments, sub payments, costs and diary (each
+    applies its own rule to these flags), because all of them run behind the badge on every page.
     """
     from projects.access import visible_projects
     from projects.models import Project, ProjectMember
@@ -73,7 +92,8 @@ def my_jobs(request):
             stage__in=Project.DELIVERY_STAGES + (Project.STAGE_COMPLETE,)).annotate(
             on_team_pm=Exists(member.filter(role=ProjectMember.ROLE_PM)),
             on_team_qs=Exists(member.filter(role=ProjectMember.ROLE_QS)),
-            has_ledger=Exists(LedgerEntry.objects.filter(project=OuterRef('pk')))))
+            has_ledger=Exists(LedgerEntry.objects.filter(project=OuterRef('pk'))),
+            **_job_annotations(request)))
     return request_memo(('needs_me_jobs', request.user.pk), fetch)
 
 

@@ -1,6 +1,6 @@
 {% extends "project_base.html" %}{% load ui static %}
 {% block project_actions %}{% if sheets %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}<a class="btn" href="{% url 'daywork_rates' org.slug project.pk %}">Rates</a>{% if not project.is_archived %}<a class="btn primary" href="{% url 'daywork_create' org.slug project.pk %}">{% icon 'plus' %} New daywork sheet</a>{% endif %}{% endblock %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 {% include "commercial/_subnav.html" %}
 {% if not has_rates %}<div class="banner cvr-warn" role="status">No daywork rates are set for this job yet, so each line needs its rate typed in.{% if can_set_rates %} <a href="{% url 'daywork_rates' org.slug project.pk %}">Set the rates from the contract</a>.{% else %} The project manager or QS sets them.{% endif %}</div>{% endif %}
 {% if all_count %}<div class="row between cvr-filters">
@@ -21,5 +21,6 @@
   {% if page.has_other_pages %}<div class="card-foot row between small">{% if page.has_previous %}<a class="btn sm" href="{% qs page=page.previous_page_number %}">Newer</a>{% else %}<span></span>{% endif %}<span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn sm" href="{% qs page=page.next_page_number %}">Older</a>{% else %}<span></span>{% endif %}</div>{% endif %}
 {% elif filtered %}{% include "partials/empty_state.html" with title="No daywork sheets match" message="Nothing matches these filters. Clear them to see every sheet." cta_url="?" cta_label="Clear filters" cta_plain=True %}
 {% else %}{% url 'daywork_create' org.slug project.pk as new_url %}{% include "partials/empty_state.html" with title="No daywork sheets yet" message="Record work done on daywork as it happens: who worked and how long, plant and materials, with photos. Get the client side to sign it on your phone, then put it on the change register in one step." cta_url=new_url cta_label="Start a daywork sheet" %}{% endif %}
+</div>
 </div>
 {% endblock %}

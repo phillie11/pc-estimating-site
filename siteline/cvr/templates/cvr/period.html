@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui static %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 {% include "commercial/_subnav.html" %}
 <p class="small"><a href="{% url 'cvr_list' org.slug project.pk %}">← All months</a></p>
 <div class="row between cvr-head">
@@ -9,6 +9,7 @@
 {% if period.status == 'DRAFT' %}<div class="banner cvr-info" role="status">Being prepared: the figures are worked out live as at {{ period.month_end|date:"j M Y" }}{% if not month_ended %} (the month hasn't ended, so they can still move){% endif %}. Add accruals and adjustments below, then submit it for sign-off.</div>
 {% elif period.status == 'SUBMITTED' %}<div class="banner" role="status">Waiting for sign-off. The figures were fixed when it was submitted on {{ period.submitted_at|date:"j M Y" }}.</div>
 {% else %}<div class="banner cvr-good" role="status">Signed off and locked. Nothing on it can change; anything found later goes in a later month as an adjustment.</div>{% endif %}
+{% if budget_after %}<div class="banner cvr-warn" role="status">This job's budget went on the cost ledger on {{ budget_after|date:"j M Y" }}, after {{ period.month_end|date:"j M Y" }}, so the forecast final cost for {{ period.label }} is only what was committed and spent by then. Add a final cost adjustment for the rest of the forecast{% if period.status == 'DRAFT' %} below{% endif %}.</div>{% endif %}
 {% if drift %}<div class="banner cvr-warn" role="status">Since it was signed off, the source figures for {{ period.label }} have changed ({% for k, v in drift.items %}{{ k }} {{ v|money_exact:currency }}{% if not forloop.last %}, {% endif %}{% endfor %}): something was posted or reversed later with a date in this month. It shows in the next open month's figures.</div>{% endif %}
 
 {% if transitions %}<div class="card cvr-actions"><div class="card-body">
@@ -21,7 +22,7 @@
 
 <div class="kpis cvr-kpis">
   <div class="kpi"><div class="label">Value</div><div class="value">{{ f.value|money:currency }}</div><div class="note">{% include "cvr/_move.html" with v=move.value %}</div></div>
-  <div class="kpi"><div class="label">Cost</div><div class="value">{{ f.cost|money:currency }}</div><div class="note">{% include "cvr/_move.html" with v=move.cost %}</div></div>
+  <div class="kpi"><div class="label">Cost</div><div class="value">{{ f.cost|money:currency }}</div><div class="note">{% include "cvr/_move.html" with v=move.cost invert=1 %}</div></div>
   <div class="kpi"><div class="label">Margin to date</div><div class="value{% if f.margin < 0 %} bad{% endif %}">{{ f.margin|money:currency }}</div><div class="note">{% if f.margin_pct is not None %}{{ f.margin_pct }}% · {% endif %}{% include "cvr/_move.html" with v=move.margin %}</div></div>
   <div class="kpi"><div class="label">Forecast margin</div><div class="value{% if f.forecast_margin < 0 %} bad{% endif %}">{{ f.forecast_margin|money:currency }}</div><div class="note">{% if f.forecast_margin_pct is not None %}{{ f.forecast_margin_pct }}% · {% endif %}{% include "cvr/_move.html" with v=move.forecast_margin %}</div></div>
 </div>
@@ -36,7 +37,7 @@
     <tr class="total"><th scope="row">Value</th><td class="num">{{ f.value|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.value|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.value exact=1 %}</td></tr>
     <tr><th scope="row">Cost to date <span class="sub">Actual costs on the ledger dated by {{ period.month_end|date:"j M" }} · <a href="{{ sources.ledger }}">cost ledger</a></span></th><td class="num">{{ f.cost_to_date|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.cost_to_date|money_exact:currency }}{% else %}—{% endif %}</td><td class="num"></td></tr>
     <tr><th scope="row">Cost accruals and adjustments <span class="sub">Costs incurred but not yet on the ledger, below</span></th><td class="num">{{ f.cost_adjustments|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.cost_adjustments|money_exact:currency }}{% else %}—{% endif %}</td><td class="num"></td></tr>
-    <tr class="total"><th scope="row">Cost</th><td class="num">{{ f.cost|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.cost|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.cost exact=1 %}</td></tr>
+    <tr class="total"><th scope="row">Cost</th><td class="num">{{ f.cost|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.cost|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.cost exact=1 invert=1 %}</td></tr>
     <tr class="total"><th scope="row">Margin to date <span class="sub">Value less cost{% if f.margin_pct is not None %}: {{ f.margin_pct }}% of value{% endif %}</span></th><td class="num{% if f.margin < 0 %} overdue{% endif %}">{{ f.margin|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.margin|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.margin exact=1 %}</td></tr>
     <tr><th scope="row">Contract sum <span class="sub"><a href="{{ sources.contract }}">contract</a></span></th><td class="num">{{ f.contract_sum|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.contract_sum|money_exact:currency }}{% else %}—{% endif %}</td><td class="num"></td></tr>
     <tr><th scope="row">Approved {{ vocab.change_plural }} <span class="sub">Approved by {{ period.month_end|date:"j M" }} · <a href="{{ sources.variations }}">client {{ vocab.change_plural }}</a></span></th><td class="num">{{ f.approved_variations|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.approved_variations|money_exact:currency }}{% else %}—{% endif %}</td><td class="num"></td></tr>
@@ -44,7 +45,7 @@
     <tr class="total"><th scope="row">Forecast final account</th><td class="num">{{ f.final_account|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.final_account|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.final_account exact=1 %}</td></tr>
     <tr><th scope="row">Forecast final cost from the cost report <span class="sub"><a href="{{ sources.report }}">cost report</a></span></th><td class="num">{{ f.forecast_cost_base|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.forecast_cost_base|money_exact:currency }}{% else %}—{% endif %}</td><td class="num"></td></tr>
     <tr><th scope="row">Final cost adjustments <span class="sub">Risks and opportunities, below</span></th><td class="num">{{ f.final_cost_adjustments|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.final_cost_adjustments|money_exact:currency }}{% else %}—{% endif %}</td><td class="num"></td></tr>
-    <tr class="total"><th scope="row">Forecast final cost</th><td class="num">{{ f.final_cost|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.final_cost|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.final_cost exact=1 %}</td></tr>
+    <tr class="total"><th scope="row">Forecast final cost</th><td class="num">{{ f.final_cost|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.final_cost|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.final_cost exact=1 invert=1 %}</td></tr>
     <tr class="total"><th scope="row">Forecast margin <span class="sub">Final account less final cost{% if f.forecast_margin_pct is not None %}: {{ f.forecast_margin_pct }}%{% endif %}</span></th><td class="num{% if f.forecast_margin < 0 %} overdue{% endif %}">{{ f.forecast_margin|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.forecast_margin|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.forecast_margin exact=1 %}</td></tr>
   </tbody></table></div>
 <div class="card-body"><p class="small dim">{% badge 'Advisory' 'warn' %} Also as at {{ period.month_end|date:"j M Y" }}: certified {{ f.certified_to_date|money_exact:currency }} and paid {{ f.paid_to_date|money_exact:currency }} (both excluding VAT), retention held {{ f.retention_held|money_exact:currency }}; committed {{ f.committed_to_date|money_exact:currency }} against a budget of {{ f.budget_to_date|money_exact:currency }}. Last month is its signed-off figures if it was signed off, otherwise as it stands now. {{ advisory }}</p></div>
@@ -75,4 +76,5 @@
   <div class="form-actions"><button class="btn">Save commentary</button></div></form>
 {% elif period.commentary %}<p class="cvr-pre">{{ period.commentary }}</p>{% else %}<p class="small dim">No commentary.</p>{% endif %}
 </div></section>
+</div>
 {% endblock %}

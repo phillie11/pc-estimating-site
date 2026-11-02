@@ -1,6 +1,6 @@
 {% extends "project_base.html" %}{% load ui static %}
 {% block project_actions %}{% if has_money %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
-{% block project_content %}
+{% block project_content %}<div class="cvr-touch">
 {% include "commercial/_subnav.html" %}
 {% if has_money %}
 <div class="kpis cvr-kpis">
@@ -60,4 +60,5 @@
 {% else %}
 <div class="card">{% url 'application_list' org.slug project.pk as apps_url %}{% include "partials/empty_state.html" with title="No money in or out yet" message="The cashflow fills in from applications for payment, the cost ledger and the contract sum. Set up the contract and the budget, or make the first application, and it appears here." cta_url=apps_url cta_label="Go to applications" %}</div>
 {% endif %}
+</div>
 {% endblock %}
