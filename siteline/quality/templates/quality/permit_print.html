@@ -35,7 +35,7 @@
       <tr><th scope="row">Work finished, area left safe, permit closed</th><td>{{ permit.closed_by.full_name|default:"" }}</td><td></td><td>{{ permit.closed_at|date:"j M Y H:i"|default:"" }}</td></tr>
     </tbody></table>
   </section>
-  <p class="small dim">Printed {{ now|date:"j M Y H:i" }}. The live permit is on Siteline: if this sheet and Siteline disagree, Siteline is right. {{ advisory }} A permit to work supports your safe system of work and RAMS; it doesn't replace them.</p>
+  <p class="small dim">Printed {{ now|date:"j M Y H:i" }}. The live permit is on Siteline: if this sheet and Siteline disagree, Siteline is right. Advisory: {{ advisory|lower }} A permit to work supports your safe system of work and RAMS; it doesn't replace them.</p>
 </main>
 {% endblock %}
 {% block scripts %}<script src="{% static 'quality/print.js' %}" defer></script>{% endblock %}

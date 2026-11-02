@@ -2,7 +2,7 @@
 {% block project_actions %}{% if permits %}<a class="btn" href="{% qs export='csv' page='' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% if not project.is_archived %}<a class="btn primary" href="{% url 'permit_create' org.slug project.pk %}">{% icon 'plus' %} Ask for a permit</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "quality/_subnav.html" %}
-<nav class="filters" aria-label="Show permits">{% for code, label, n in filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }} <span class="n">{{ n }}</span></a>{% endfor %}</nav>
+<nav class="filters q-chips" aria-label="Show permits">{% for code, label, n in filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }} <span class="n">{{ n }}</span></a>{% endfor %}</nav>
 {% if counts.all > 20 or q or kind %}<form class="search filters" method="get" role="search"><input type="hidden" name="status" value="{{ status }}">
   <label class="small" for="q-type">Type</label><select id="q-type" name="type"><option value="">Any type</option>{% for code, label in types %}<option value="{{ code }}"{% if kind == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
   <label class="sr-only" for="q-ptw">Search permits</label><input id="q-ptw" type="search" name="q" value="{{ q }}" placeholder="Work, where, who or ref"><button class="btn">Search</button>{% if q or kind %}<a class="btn ghost" href="?status={{ status }}">Clear</a>{% endif %}</form>{% endif %}

@@ -21,7 +21,7 @@ contractor's own safe system of work. Check with your safety adviser.
 """
 import datetime
 
-ADVISORY = 'Advisory: check with your safety adviser.'
+ADVISORY = 'Check with your safety adviser.'
 
 # --- permits to work --------------------------------------------------------------------
 

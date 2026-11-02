@@ -2,7 +2,7 @@
 {% block project_actions %}{% if penetrations %}<a class="btn" href="{% qs export='csv' page='' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% if not project.is_archived %}<a class="btn primary" href="{% url 'penetration_create' org.slug project.pk %}">{% icon 'plus' %} Add a penetration</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "quality/_subnav.html" %}
-<nav class="filters" aria-label="Show penetrations">{% for code, label, n in filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }} <span class="n">{{ n }}</span></a>{% endfor %}</nav>
+<nav class="filters q-chips" aria-label="Show penetrations">{% for code, label, n in filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }} <span class="n">{{ n }}</span></a>{% endfor %}</nav>
 {% if counts.all > 20 or q or rating %}<form class="search filters" method="get" role="search"><input type="hidden" name="status" value="{{ status }}">
   <label class="small" for="q-rating">Fire rating</label><select id="q-rating" name="rating"><option value="">Any rating</option>{% for v, label in ratings %}<option value="{{ v }}"{% if rating == v|stringformat:"s" %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
   <label class="sr-only" for="q-fs">Search the register</label><input id="q-fs" type="search" name="q" value="{{ q }}" placeholder="Where, product, installer or ref"><button class="btn">Search</button>{% if q or rating %}<a class="btn ghost" href="?status={{ status }}">Clear</a>{% endif %}</form>{% endif %}

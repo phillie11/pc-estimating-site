@@ -560,7 +560,9 @@ tr.dim td { color: var(--ink-3); }
 
 /* Quality (quality/): inspections, permits to work, fire-stopping. Phone first: every target in .q-touch is 44px+ */
 .q-subnav .chip { min-height: 44px; display: inline-flex; align-items: center; }
-.q-pager .chip { min-height: 44px; display: inline-flex; align-items: center; }
+.q-pager .chip, .q-chips .chip { min-height: 44px; display: inline-flex; align-items: center; gap: 4px; }
+.q-chips + .search input, .q-chips + .search select, .q-chips + .search .btn { min-height: 44px; }
+.q-site .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .q-narrow { max-width: 900px; }
 .q-site { max-width: 760px; }
 .q-site > .card, .q-site > form { margin-bottom: 14px; }
@@ -568,6 +570,7 @@ tr.dim td { color: var(--ink-3); }
 .q-touch input:not([type=checkbox]):not([type=radio]), .q-touch textarea { min-height: 44px; }
 .q-touch input, .q-touch select, .q-touch textarea { font-size: 16px; } /* 16px stops iOS zooming the page */
 .q-touch input[type=checkbox], .q-touch input[type=radio] { width: 24px; height: 24px; flex: none; margin: 0; }
+.q-touch .check { min-height: 44px; display: flex; align-items: center; gap: 10px; }
 .q-pre { white-space: pre-line; overflow-wrap: anywhere; }
 .q-progress { height: 8px; background: var(--paper-2); border-radius: 4px; overflow: hidden; margin-top: 12px; }
 .q-progress span { display: block; height: 100%; background: var(--good); }

@@ -34,7 +34,7 @@
     </details>
   </form>
   {% elif item.note %}<p class="q-pre small">{{ item.note }}</p>{% endif %}
-  {% if item.result == 'FAIL' %}<div class="q-snag">{% if item.snag %}Snag <a href="{% url 'issue_detail' org.slug project.pk item.snag.pk %}"><span class="ref">{{ item.snag.reference }}</span></a> {% status_badge item.snag %}{% elif not project.is_archived %}<form method="post" action="{% url 'inspection_snag' org.slug project.pk ins.pk item.pk %}">{% csrf_token %}<button class="btn">Raise a snag for this</button></form><span class="small dim">{% if ins.package %}It goes to {{ ins.package.subcontractor }}.{% else %}You can assign it on the snag.{% endif %}</span>{% endif %}</div>{% endif %}
+  {% if item.result == 'FAIL' %}<div class="q-snag">{% if item.snag %}<a class="btn" href="{% url 'issue_detail' org.slug project.pk item.snag.pk %}">Snag <span class="ref">{{ item.snag.reference }}</span></a> {% status_badge item.snag %}{% elif not project.is_archived %}<form method="post" action="{% url 'inspection_snag' org.slug project.pk ins.pk item.pk %}">{% csrf_token %}<button class="btn">Raise a snag for this</button></form><span class="small dim">{% if ins.package %}It goes to {{ ins.package.subcontractor }}.{% else %}You can assign it on the snag.{% endif %}</span>{% endif %}</div>{% endif %}
   {% if item.answered_by and item.result %}<p class="small dim q-who">{{ item.answered_by.full_name }}, {{ item.answered_at|date:"j M H:i" }}</p>{% endif %}
   </div>
 </li>{% empty %}<li class="card">{% include "partials/empty_state.html" with title="This inspection has no checks" message="Its checklist was empty. Cancel it and start another from a checklist with checks on it." left=True %}</li>{% endfor %}

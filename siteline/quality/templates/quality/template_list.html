@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><h1>Checklist library</h1><p class="dim" style="margin:4px 0 0">The checklists your site teams inspect against on every job. Tailor them to your own specifications and quality plan.</p></div>
   <div class="row">{% if can_edit %}<a class="btn primary" href="{% url 'quality_template_create' org.slug %}">{% icon 'plus' %} Add a checklist</a>{% endif %}</div></div>
-<nav class="filters" aria-label="Show checklists"><a class="chip{% if show != 'all' %} on{% endif %}" href="?"{% if show != 'all' %} aria-current="true"{% endif %}>In use</a><a class="chip{% if show == 'all' %} on{% endif %}" href="?show=all"{% if show == 'all' %} aria-current="true"{% endif %}>Including retired</a></nav>
+<nav class="filters q-chips" aria-label="Show checklists"><a class="chip{% if show != 'all' %} on{% endif %}" href="?"{% if show != 'all' %} aria-current="true"{% endif %}>In use</a><a class="chip{% if show == 'all' %} on{% endif %}" href="?show=all"{% if show == 'all' %} aria-current="true"{% endif %}>Including retired</a></nav>
 {% if page.paginator.count > 20 or q %}<form class="search filters" method="get" role="search">{% if show %}<input type="hidden" name="show" value="{{ show }}">{% endif %}<label class="sr-only" for="q-tpl">Search checklists</label><input id="q-tpl" type="search" name="q" value="{{ q }}" placeholder="Name or trade"><button class="btn">Search</button>{% if q %}<a class="btn ghost" href="?">Clear</a>{% endif %}</form>{% endif %}
 <div class="card">
 {% if templates %}<div class="table-wrap"><table class="t">
