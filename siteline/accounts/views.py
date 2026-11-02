@@ -83,7 +83,11 @@ def admin_login(request):
 @require_POST
 def logout_view(request):
     logout(request)
-    return redirect('login')
+    resp = redirect('login')
+    # A shared phone or site-office PC: drop what pages kept for offline use (the fire roll call's service
+    # worker and its copy of who is on site, safety/templates/safety/roll_call_sw.js) and local storage
+    resp['Clear-Site-Data'] = '"cache", "storage"'
+    return resp
 
 
 @login_required

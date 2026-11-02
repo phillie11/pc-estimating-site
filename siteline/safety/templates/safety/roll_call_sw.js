@@ -26,6 +26,9 @@ self.addEventListener('fetch', function (event) {
       if (response.ok && !response.redirected) {
         var copy = response.clone();
         caches.open(CACHE).then(function (cache) { cache.put(PAGE, copy); });
+      } else if (response.redirected || response.status === 403 || response.status === 404) {
+        // Logged out, or no longer on this job: forget the copy of who is on site, and this worker with it
+        event.waitUntil(caches.delete(CACHE).then(function () { return self.registration.unregister(); }));
       }
       return response;
     }).catch(function () {
