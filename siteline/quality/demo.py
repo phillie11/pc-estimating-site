@@ -155,8 +155,11 @@ def seed(*, leeds, pm, owner):
     tomorrow = (now + datetime.timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
     _permit(leeds, rules.HOT_WORKS, 'Braze copper pipework to the kitchen sinks', 'Kitchen, wash-up area', owner,
             tomorrow, 8, holder='Plumbing supervisor', notes='RAMS ref PL-04. Kitchen extract isolated by others.')
+    # Runs out within the hour, but always later today (so it is "Expiring soon" and on today's Needs me)
+    end_of_day = now.replace(hour=23, minute=59, second=0, microsecond=0)
+    runs_out = min(now.replace(second=0, microsecond=0) + datetime.timedelta(minutes=50), end_of_day)
     p3 = _permit(leeds, rules.HEIGHT, 'Install feature pendants from a tower scaffold', 'Bar, high-level ceiling',
-                 pm, now.replace(minute=0, second=0, microsecond=0) - datetime.timedelta(hours=7), 8,
+                 pm, runs_out - datetime.timedelta(hours=8), 8,
                  holder='Electrical supervisor', package=pkg.get('Electrical'))
     _approve(p3, owner)
     p4 = _permit(leeds, rules.ISOLATION, 'Isolate DB-K1 to extend kitchen small power', 'Kitchen, DB-K1', pm,
