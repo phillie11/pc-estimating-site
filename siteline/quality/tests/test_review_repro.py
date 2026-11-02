@@ -128,6 +128,45 @@ class ResignOffNeedsANewPhotoTests(QualityTestBase):
 
 
 @override_settings(MEDIA_ROOT=MEDIA)
+class InspectorMustBeAbleToOpenTheJobTests(QualityTestBase):
+    """
+    The bid's estimator often stays on the team after the job is won. Estimating-only staff can't open
+    live jobs (projects.access.visible_projects), so an inspection given to them is on nobody's Needs me
+    and they can't open it. They must not be offered as the inspector.
+    """
+
+    def test_estimating_only_team_member_is_not_offered_as_inspector(self):
+        from projects.models import ProjectMember
+
+        from ..access import on_job_staff
+        with org_context(self.org_a):
+            ProjectMember.objects.create(project=self.pa, user=self.eve, role=ProjectMember.ROLE_ESTIMATOR)
+            people = set(on_job_staff(self.pa))
+        self.assertIn(self.sam, people)
+        self.assertIn(self.pat, people)
+        self.assertNotIn(self.eve, people)
+        self.login(self.pat)
+        r = self.client.post(self.purl('inspection_create'), {
+            'template': self.template.pk, 'area': 'L1', 'ball_in_court_user': self.eve.pk,
+            'due_date': timezone.localdate().isoformat()})
+        self.assertEqual(r.status_code, 200)  # form error: not a valid choice
+        with org_context(self.org_a):
+            from ..models import Inspection
+            self.assertFalse(Inspection.objects.filter(ball_in_court_user=self.eve).exists())
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class CsvFormulaGuardTests(QualityTestBase):
+    def test_fire_stopping_csv_cells_cant_run_as_formulas(self):
+        self.penetration(location=' =HYPERLINK("http://x","y")', system='@SUM(A1)', installer='+1+1',
+                         size='-2+3', detail_reference='\t=1')
+        self.login(self.pat)
+        body = self.client.get(self.purl('penetration_list') + '?export=csv').content.decode()
+        for raw in (' =HYPERLINK', '@SUM(A1)', '+1+1', '-2+3', '\t=1'):
+            self.assertIn("'" + raw, body, raw)
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
 class DeleteGuardTests(QualityTestBase):
     def test_quality_photos_stay_fast_deletable(self):
         self.assertTrue(Collector(using='default').can_fast_delete(QualityPhoto.objects.none()),
