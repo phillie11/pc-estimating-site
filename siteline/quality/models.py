@@ -50,7 +50,8 @@ class QualitySettings(TenantModel):
         help_text='A new permit runs out this long after it starts, unless the person asking changes it.')
     expiry_warning_hours = models.PositiveSmallIntegerField(
         'Warn before a permit runs out (hours)', default=2, validators=[MinValueValidator(1), MaxValueValidator(48)],
-        help_text='An approved permit goes on Needs me this long before it expires.')
+        help_text='An approved permit shows as "Expiring soon" this long before it runs out. It is on Needs me '
+                  'all day on the day it runs out.')
     fire_watch_minutes = models.PositiveSmallIntegerField(
         'Fire watch after hot works (minutes)', default=60, validators=[MinValueValidator(0), MaxValueValidator(480)],
         help_text='How long someone watches the area after hot works stop. Check your insurer\'s conditions.')

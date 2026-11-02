@@ -7,7 +7,7 @@ and the printable page.
 import datetime
 
 from django.core import mail
-from django.test import RequestFactory, override_settings
+from django.test import override_settings
 from django.utils import timezone
 
 import actions
@@ -15,7 +15,6 @@ from tenancy.context import org_context
 from tenancy.models import Membership
 
 from .. import rules
-from ..actions import PermitProvider
 from ..models import Permit, QualitySettings
 from .base import MEDIA, QualityTestBase, tearDownModule  # noqa: F401
 
@@ -202,21 +201,28 @@ class PermitFlowTests(QualityTestBase):
 
 @override_settings(MEDIA_ROOT=MEDIA)
 class PermitNeedsMeTests(QualityTestBase):
-    def items(self, user, now=None):
-        req = self.request_for(user)
-        with org_context(self.org_a):
-            from projects.access import is_internal  # noqa: F401 - imported for the request shape
-            return PermitProvider().items(req, now=now)
+    """Through actions.for_user, as the badge and the Needs me page get them (one index query, no extra)."""
 
-    def request_for(self, user, org=None):
-        req = super().request_for(user, org)
-        req.project_member = None
-        return req
+    def items(self, user, org=None):
+        org = org or self.org_a
+        m = Membership.objects.filter(organization=org, user=user).first()
+        if m is None:
+            return []
+        with org_context(org):
+            return [i for i in actions.for_user(actions.request_for(user, m)) if i.kind == 'permit']
 
     def approve(self, p, by):
         with org_context(self.org_a):
             from core.workflow import apply_transition
             apply_transition(p, 'approve', by, precautions=rules.precautions_for(p.permit_type))
+        return self.fresh(p)
+
+    def runs_out(self, p, when):
+        with org_context(self.org_a):
+            p = Permit.objects.get(pk=p.pk)
+            p.expires_at = when
+            p.save(actor=self.pat)
+        return p
 
     def test_waiting_permits_go_to_the_approver(self):
         p = self.permit()
@@ -224,30 +230,26 @@ class PermitNeedsMeTests(QualityTestBase):
         self.assertEqual(self.items(self.sam), [])
         self.assertEqual(self.items(self.alice), [])
 
-    def test_expiring_and_expired_permits_go_to_the_holder_and_the_approver(self):
-        p = self.permit(starts=timezone.now() - datetime.timedelta(hours=1), hours=8)
-        self.approve(p, self.pat)
-        self.assertEqual(self.items(self.sam), [])  # 7 hours left: not yet
-        soon = timezone.now() + datetime.timedelta(hours=5, minutes=30)  # 1.5 hours left
-        for user in (self.sam, self.pat):
-            items = self.items(user, now=soon)
-            self.assertEqual([(i.ref, i.status_label) for i in items], [(p.ref, 'Expiring soon')], user)
-        later = timezone.now() + datetime.timedelta(hours=9)
-        item = self.items(self.sam, now=later)[0]
-        self.assertEqual(item.status_label, 'Expired')
+    def test_approved_permits_go_to_whoever_asked_on_the_day_they_run_out(self):
+        today = timezone.localdate()
+        end_of_today = timezone.make_aware(datetime.datetime.combine(today, datetime.time(23, 59)))
+        p = self.approve(self.permit(kind=rules.HEIGHT, starts=end_of_today - datetime.timedelta(days=2), hours=60),
+                         self.pat)
+        self.runs_out(p, end_of_today + datetime.timedelta(days=1))
+        self.assertEqual(self.items(self.sam), [])  # runs out tomorrow: not yet
+        self.runs_out(p, end_of_today)
+        item = self.items(self.sam)[0]
+        self.assertEqual((item.ref, item.status_label, item.due), (p.ref, 'Runs out today', today))
+        self.runs_out(p, end_of_today - datetime.timedelta(days=1))
+        item = self.items(self.sam)[0]
+        self.assertEqual((item.status_label, item.tone), ('Expired', 'bad'))
         self.assertIn('Close the permit', item.action)
-        self.assertEqual(self.items(self.alice, now=later), [])
-
-    def test_the_companys_warning_time(self):
-        with org_context(self.org_a):
-            QualitySettings.objects.filter(organization=self.org_a).update(expiry_warning_hours=8)
-        p = self.permit(starts=timezone.now() - datetime.timedelta(hours=1), hours=8)
-        self.approve(p, self.pat)
-        self.assertEqual(len(self.items(self.sam)), 1)
+        for user in (self.pat, self.alice):  # the approver and others: not theirs
+            self.assertEqual(self.items(user), [], user)
 
     def test_closed_permits_drop_off(self):
-        p = self.permit(kind=rules.ISOLATION, starts=timezone.now() - datetime.timedelta(hours=1), hours=2)
-        self.approve(p, self.pat)
+        p = self.approve(self.permit(kind=rules.ISOLATION), self.pat)  # in date when approved, then it lapses
+        p = self.runs_out(p, timezone.now() - datetime.timedelta(days=1))
         self.assertEqual(len(self.items(self.sam)), 1)
         with org_context(self.org_a):
             from core.workflow import apply_transition
@@ -260,20 +262,15 @@ class PermitNeedsMeTests(QualityTestBase):
         r = self.client.get(self.url('needs_me'))
         self.assertContains(r, 'Approve or refuse the permit')
         self.assertContains(r, 'PTW-001', count=1)
+        self.assertContains(self.client.get(self.url('needs_me') + '?kind=permit'), 'PTW-001')
 
     def test_externals_and_staff_off_the_job_get_nothing(self):
-        self.permit(ball_in_court_user=None)
-        for user in (self.carla, self.sid, self.connie, self.stan, self.eve):
+        self.permit()
+        for user in (self.carla, self.sid, self.connie, self.stan, self.eve, self.bea):
             self.assertEqual(self.items(user), [], user)
 
     def test_another_company_and_no_company(self):
         self.permit()
-        with org_context(self.org_b):
-            Membership.objects.create(organization=self.org_b, user=self.pat, role=Membership.ROLE_ADMIN)
-        req = self.request_for(self.pat, org=self.org_b)
-        with org_context(self.org_b):
-            self.assertEqual(PermitProvider().items(req), [])
-        rf = RequestFactory().get('/')
-        rf.user, rf.membership, rf.org = self.pat, None, None
-        self.assertEqual(PermitProvider().items(rf), [])
-        self.assertTrue(actions)
+        Membership.objects.create(organization=self.org_b, user=self.pat, role=Membership.ROLE_ADMIN)
+        self.assertEqual(self.items(self.pat, org=self.org_b), [])
+        self.assertEqual(len(self.items(self.pat)), 1)

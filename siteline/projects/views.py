@@ -126,10 +126,10 @@ def project_context(request, project, tab, **extra):
         tabs.append(procurement_tab)
     if internal:
         from diary.access import can_use_diary  # site diary: the PM, the project team, owners and admins
-        if can_use_diary(request, project):
+        on_job = can_use_diary(request, project)
+        if on_job:
             tabs.append(('diary', 'Diary', url('diary_register'), None))
-        from quality.access import can_use_quality  # inspections, permits, fire-stopping: staff on the job
-        if can_use_quality(request, project):
+            # Quality (inspections, permits, fire-stopping) has the same rule: quality.access.can_use_quality
             tabs.append(('quality', 'Quality', url('inspection_list'), None))
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), badges['issues']),

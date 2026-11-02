@@ -8,11 +8,12 @@ class QualityConfig(AppConfig):
     verbose_name = 'Quality'
 
     def ready(self):
-        import actions
+        from actions.providers import register_record_formatter
         from core.registry import register_record_type
 
         from . import workflow as w
-        from .actions import FirestopProvider, InspectionProvider, PermitProvider
+        from .actions import TYPES
+        from .actions import format as format_item
         from .models import Inspection, Penetration, Permit
         # All internal (external_roles=()): nothing in Quality is shared with clients, consultants or subs yet
         register_record_type(Inspection, prefix='INS', transitions=w.INSPECTION_TRANSITIONS,
@@ -24,6 +25,6 @@ class QualityConfig(AppConfig):
         register_record_type(Penetration, prefix='FS', transitions=w.PENETRATION_TRANSITIONS,
                              open_statuses=Penetration.OPEN_STATUSES, audit_fields=w.PENETRATION_AUDIT_FIELDS,
                              draft_statuses=(Penetration.TO_SEAL,), external_roles=())
-        actions.register(InspectionProvider())
-        actions.register(PermitProvider())
-        actions.register(FirestopProvider())
+        # Needs me: worded by quality.actions.format from the records provider's one index query
+        for record_type in TYPES:
+            register_record_formatter(record_type, format_item)

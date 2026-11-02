@@ -212,10 +212,10 @@ class SeedDemoTests(TestCase):
             def kinds(email):
                 user = User.objects.get(email=email)
                 m = Membership.objects.get(organization=org, user=user)
-                return [i.kind for i in actions.for_user(actions.request_for(user, m))]
+                return [i.kind_label for i in actions.for_user(actions.request_for(user, m)) if i.kind in ('inspection', 'permit', 'firestopping')]
             pm = kinds('pm@demo.test')
-            self.assertEqual(pm.count('inspection'), 1)
-            self.assertEqual(pm.count('permit'), 3)  # one to approve, one expiring, one expired
-            self.assertEqual(pm.count('firestopping'), 2)  # one to inspect, one to get resealed
+            self.assertEqual(pm.count('Inspection'), 1)
+            self.assertEqual(pm.count('Permit to work'), 3)  # one to approve, one expiring, one expired
+            self.assertEqual(pm.count('Fire-stopping'), 2)  # one to inspect, one to get resealed
             for email in ('client@demo.test', 'sub@demo.test', 'estimator@demo.test'):
-                self.assertFalse({'inspection', 'permit', 'firestopping'} & set(kinds(email)), email)
+                self.assertEqual(kinds(email), [], email)

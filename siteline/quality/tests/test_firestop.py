@@ -10,7 +10,6 @@ from core.workflow import apply_transition
 from projects.models import Document, DocumentRevision
 from tenancy.context import org_context
 
-from ..actions import FirestopProvider
 from ..exports import HEADER, register
 from ..models import Penetration, QualityPhoto
 from .base import MEDIA, QualityTestBase, jpeg, tearDownModule  # noqa: F401
@@ -147,10 +146,11 @@ class FirestopFlowTests(QualityTestBase):
 @override_settings(MEDIA_ROOT=MEDIA)
 class FirestopNeedsMeTests(QualityTestBase):
     def items(self, user):
-        req = self.request_for(user)
-        req.project_member = None
+        import actions
+        from tenancy.models import Membership
+        m = Membership.objects.get(organization=self.org_a, user=user)
         with org_context(self.org_a):
-            return FirestopProvider().items(req)
+            return [i for i in actions.for_user(actions.request_for(user, m)) if i.kind == 'firestopping']
 
     def test_sealed_goes_to_the_pm_failed_back_to_who_recorded_it(self):
         p = self.penetration(actor=self.sam)

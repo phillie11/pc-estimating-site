@@ -9,10 +9,10 @@ from django.utils import timezone
 
 from core.forms import RecordFormMixin
 from directory.models import Package
-from projects.access import assignable_users
 from projects.forms import StyledModelForm, style_widgets
 
 from . import rules
+from .access import on_job_staff
 from .models import ChecklistTemplate, Inspection, Penetration, Permit, QualitySettings
 from .photos import validate_photo
 
@@ -66,7 +66,7 @@ class InspectionStartForm(StyledModelForm):
         self.fields['package'] = PackageChoice(appointed_packages(project), required=False, label='Whose work',
                                                empty_label='Our own work, or not one subcontractor',
                                                help_text='Snags raised from failed checks go to them.')
-        self.fields['ball_in_court_user'].queryset = assignable_users(project)
+        self.fields['ball_in_court_user'].queryset = on_job_staff(project)
         self.fields['ball_in_court_user'].required = True
         self.fields['ball_in_court_user'].empty_label = None
         self.fields['ball_in_court_user'].help_text = 'It goes on their Needs me until it is finished.'

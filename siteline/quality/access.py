@@ -23,9 +23,33 @@ __all__ = ['can_use_quality', 'quality_project', 'is_pm_or_admin', 'user_on_job'
 
 
 def can_use_quality(request, project):
+    """Staff on a won, live or completed job. Worked out once per request and job (every page asks twice)."""
     if not is_internal(request) or project.section != 'delivery':  # won, live or complete
         return False
-    return user_on_job(request.user, project, request.membership)
+    cache = getattr(request, '_quality_on_job', None)
+    if cache is None:
+        cache = {}
+        try:
+            request._quality_on_job = cache
+        except AttributeError:  # pragma: no cover - a request that won't take attributes
+            pass
+    if project.pk not in cache:
+        cache[project.pk] = user_on_job(request.user, project, request.membership)
+    return cache[project.pk]
+
+
+def on_job_staff(project):
+    """Staff who can use Quality on this job: owners and admins, the project manager and the project team."""
+    from django.db.models import Q
+
+    from projects.access import assignable_users
+    from projects.models import ProjectMember
+    from tenancy.models import Membership
+    team = ProjectMember.objects.filter(project=project, role__in=[r for r, _ in ProjectMember.INTERNAL_ROLE_CHOICES]) \
+        .values('user_id')
+    admins = Membership.objects.filter(organization_id=project.organization_id, role__in=Membership.ADMIN_ROLES,
+                                       is_active=True).values('user_id')
+    return assignable_users(project).filter(Q(pk__in=team) | Q(pk__in=admins) | Q(pk=project.manager_id or 0))
 
 
 def quality_project(request, pk):

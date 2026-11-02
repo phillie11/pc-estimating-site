@@ -42,7 +42,7 @@ class Built:
 @transaction.atomic
 def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, diary_per_job=50,
           docs_per_job=50, apps_per_job=12, subapps_per_job=8, actuals_per_job=170, seed=7, email_domain='scale.test',
-          stdout=None):
+          stdout=None, quality_per_job=(12, 8, 40)):
     from accounts.models import User
     from accounts.views import create_organization
     from changes.models import ChangeEvent
@@ -360,6 +360,10 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
                                   kind='SHOP_DRAWING', due_date=line.submittals_due)
                     proc_services.initial_ball(s)
                     s.save(actor=p.manager)
+        # Quality: inspections, permits and fire-stopping per live job (quality/scale.py)
+        from quality import scale as quality_scale
+        quality_scale.seed(org, owner, live, rng, *quality_per_job)
+        say('quality done')
         issue_rows, task_rows = [], []
         for j, p in enumerate(live):
             mine = [x for x in appointed if x.project_id == p.pk]

@@ -11,7 +11,9 @@ contractor's own safe system of work. Check with your safety adviser.
     validity_problem()       why a start and expiry can't be used (None if they can)
     permit_state()           requested / approved (not started) / active / expiring / expired /
                              closed / refused / withdrawn, from the stored status and the clock
-    expiring()               whether an approved permit belongs on Needs me yet
+    expiring()               whether an approved permit shows as expiring or expired on its page and
+                             in the register (Needs me lists approved permits from the day they run
+                             out: quality/actions.py)
 
   Inspections
     inspection_outcome()     passed / failed / not finished, from the item results
