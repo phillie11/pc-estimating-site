@@ -1,6 +1,5 @@
 {% extends "project_base.html" %}{% load ui static %}
-{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
-{% block project_actions %}{% if has_money %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endif %}{% endblock %}
+{% block project_actions %}{% if has_money %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "commercial/_subnav.html" %}
 {% if has_money %}
@@ -56,7 +55,7 @@
 <details class="card cvr-how"><summary class="card-body"><strong>How the forecast is worked out</strong></summary><div class="card-body small">
 <p><strong>In.</strong> Payments received, excluding VAT, in the month received. Then what the client still owes on applications already made ({{ data.owed_in|money:currency }}), at each one's final date for payment. Then the rest of the forecast final account ({{ data.remaining_value|money:currency }}), spread over the months to {{ data.finish|date:"M Y" }} {% if data.uses_programme %}by the work the programme has left in each month{% else %}evenly (there is no programme){% endif %}, less {{ data.retention_pct|floatformat:"-2" }}% retention, received at the final date for payment under the contract's terms. Retention comes back at practical completion and the end of the defects period.</p>
 <p><strong>Out.</strong> Actual costs on the cost ledger, by the date posted. Then what we owe subcontractors on applications we have ({{ data.owed_out|money:currency }}), at each final date. Then the rest of the forecast final cost ({{ data.remaining_cost|money:currency }}), spread the same way and paid at the final date under the company's default subcontract terms.</p>
-<p>All figures exclude VAT. {{ advisory }}</p>
+<p>{% badge 'Advisory' 'warn' %} All figures exclude VAT. {{ advisory }}</p>
 </div></details>
 {% else %}
 <div class="card">{% url 'application_list' org.slug project.pk as apps_url %}{% include "partials/empty_state.html" with title="No money in or out yet" message="The cashflow fills in from applications for payment, the cost ledger and the contract sum. Set up the contract and the budget, or make the first application, and it appears here." cta_url=apps_url cta_label="Go to applications" %}</div>

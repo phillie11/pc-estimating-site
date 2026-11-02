@@ -1,7 +1,7 @@
 {% extends "project_base.html" %}{% load ui static %}
-{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}"><script src="{% static 'cvr/signature.js' %}" defer></script>{% endblock %}
+{% block head %}<script src="{% static 'cvr/signature.js' %}" defer></script>{% endblock %}
 {% block project_content %}
-<div class="site-card">
+<div class="dw-card">
 <p class="small"><a href="{{ sheet.get_absolute_url }}">← Back to {{ sheet.reference }}</a></p>
 <div class="card"><div class="card-body">
   <h2 class="dw-title">Sign daywork sheet {{ sheet.reference }}</h2>

@@ -1,20 +1,18 @@
 {% extends "project_base.html" %}{% load ui static %}
-{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
-{% block project_actions %}{% if sheets %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endif %}<a class="btn" href="{% url 'daywork_rates' org.slug project.pk %}">Rates</a>{% if not project.is_archived %}<a class="btn primary" href="{% url 'daywork_create' org.slug project.pk %}">{% icon 'plus' %} New daywork sheet</a>{% endif %}{% endblock %}
+{% block project_actions %}{% if sheets %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}<a class="btn" href="{% url 'daywork_rates' org.slug project.pk %}">Rates</a>{% if not project.is_archived %}<a class="btn primary" href="{% url 'daywork_create' org.slug project.pk %}">{% icon 'plus' %} New daywork sheet</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "commercial/_subnav.html" %}
 {% if not has_rates %}<div class="banner cvr-warn" role="status">No daywork rates are set for this job yet, so each line needs its rate typed in.{% if can_set_rates %} <a href="{% url 'daywork_rates' org.slug project.pk %}">Set the rates from the contract</a>.{% else %} The project manager or QS sets them.{% endif %}</div>{% endif %}
-{% if all_count %}<form method="get" class="filters cvr-filters">
-  <label class="small" for="dw-show">Show</label><select id="dw-show" name="show">{% for code, label in filters %}<option value="{{ code }}"{% if code == show %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-  <label class="small" for="dw-q">Search</label><input id="dw-q" type="search" name="q" value="{{ q }}" placeholder="Work, ref or where">
-  <button class="btn sm">Show</button>{% if filtered %}<a class="btn ghost sm" href="?">Clear</a>{% endif %}
-</form>{% endif %}
+{% if all_count %}<div class="row between cvr-filters">
+<nav class="filters" aria-label="Show">{% for code, label in filters %}<a class="chip{% if code == show %} on{% endif %}" href="{% qs show=code page='' %}"{% if code == show %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+<form class="search" method="get">{% if show %}<input type="hidden" name="show" value="{{ show }}">{% endif %}<input type="search" name="q" value="{{ q }}" aria-label="Search daywork sheets" placeholder="Work, ref or where"><button class="btn">Search</button></form>
+</div>{% endif %}
 <div class="card">
 {% if sheets %}<div class="table-wrap"><table class="t register">
   <caption class="sr-only">Daywork sheets on this job</caption>
   <thead><tr><th scope="col">Sheet</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Signed by</th><th scope="col" class="num">Priced</th></tr></thead>
   <tbody>{% for s in sheets %}<tr>
-    <td><a class="rowlink" href="{{ s.get_absolute_url }}">{{ s.title }}</a><span class="sub mono">{{ s.reference }}{% if s.location %} · {{ s.location }}{% endif %}</span></td>
+    <td><a class="rowlink" href="{{ s.get_absolute_url }}">{{ s.title }}</a><span class="sub ref">{{ s.reference }}{% if s.location %} · {{ s.location }}{% endif %}</span></td>
     <td class="nowrap">{{ s.work_date|date:"D j M Y" }}</td>
     <td>{% status_badge s %}{% if s.change_event %}<span class="sub"><a href="{{ s.change_event.get_absolute_url }}">{{ s.change_event.reference }}</a></span>{% endif %}</td>
     <td class="small">{{ s.signed_by_name|default:"—" }}</td>

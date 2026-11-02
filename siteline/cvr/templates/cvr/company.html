@@ -1,16 +1,15 @@
 {% extends "app.html" %}{% load ui static %}
 {% block title %}Company CVR{% endblock %}
-{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Company CVR</h1><p class="small dim">Every job's cost value reconciliation for {{ month|date:"F Y" }}: signed-off and submitted months as fixed, the rest as they stand now.</p></div>
-<div class="row">{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endif %}</div></div>
+<div class="row">{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}</div></div>
 
-<form method="get" class="filters cvr-filters">
+<form method="get" class="filters cvr-filters">{% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
   <label class="small" for="cvr-month">Month</label><select id="cvr-month" name="month">{% for m in month_choices %}<option value="{{ m|date:'Y-m' }}"{% if m == month %} selected{% endif %}>{{ m|date:"F Y" }}</option>{% endfor %}</select>
-  <label class="small" for="cvr-status">CVR</label><select id="cvr-status" name="status">{% for code, label in status_filters %}<option value="{{ code }}"{% if code == status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-  <label class="small" for="cvr-q">Job</label><input id="cvr-q" type="search" name="q" value="{{ q }}" placeholder="Name or reference">
-  <button class="btn sm">Show</button>{% if filtered %}<a class="btn ghost sm" href="?month={{ month|date:'Y-m' }}">Clear</a>{% endif %}
+  <input type="search" name="q" value="{{ q }}" aria-label="Search jobs" placeholder="Job name or reference">
+  <button class="btn">Show month</button>{% if filtered %}<a class="btn ghost" href="?month={{ month|date:'Y-m' }}">Clear filters</a>{% endif %}
 </form>
+<nav class="filters" aria-label="CVR status">{% for code, label in status_filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 
 {% if rows %}
 <div class="kpis cvr-kpis">
@@ -25,7 +24,7 @@
   <caption class="sr-only">CVR by job for {{ month|date:"F Y" }}</caption>
   <thead><tr><th scope="col">Job</th><th scope="col">CVR</th><th scope="col" class="num">Value</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Margin</th><th scope="col" class="num">Forecast final account</th><th scope="col" class="num">Forecast margin</th><th scope="col" class="num">Moved since last month</th></tr></thead>
   <tbody>{% for r in rows %}<tr>
-    <td><a class="rowlink" href="{% if r.period %}{{ r.period.get_absolute_url }}{% else %}{% url 'cvr_list' org.slug r.project.pk %}{% endif %}">{{ r.project.name }}</a><span class="sub mono">{{ r.project.reference }}</span></td>
+    <td><a class="rowlink" href="{% if r.period %}{{ r.period.get_absolute_url }}{% else %}{% url 'cvr_list' org.slug r.project.pk %}{% endif %}">{{ r.project.name }}</a><span class="sub ref">{{ r.project.reference }}</span></td>
     <td>{% if r.period %}{% status_badge r.period %}{% else %}{% badge 'Not started' 'muted' %}{% endif %}</td>
     <td class="num">{{ r.f.value|money:currency }}</td>
     <td class="num">{{ r.f.cost|money:currency }}</td>
@@ -41,5 +40,5 @@
 {% elif any_jobs %}{% include "partials/empty_state.html" with title="No figures for this month" message="None of your jobs had applications, costs or a CVR by the end of this month. Pick a later month." %}
 {% else %}{% url 'project_list' org.slug as jobs_url %}{% include "partials/empty_state.html" with title="No jobs to report on" message="The company CVR lists the won and live jobs whose costs you can see. Owners and admins see every job; project managers and QSs see the jobs they run." cta_url=jobs_url cta_label="Go to projects" %}{% endif %}
 </div>
-<p class="small dim">Totals add up the jobs shown. Margin percentages in the total are on the total value and final account. {{ advisory }}</p>
+<p class="small dim">{% badge 'Advisory' 'warn' %} Totals add up the jobs shown. Margin percentages in the total are on the total value and final account. {{ advisory }}</p>
 {% endblock %}

@@ -557,3 +557,69 @@ tr.dim td { color: var(--ink-3); }
 .lv-exc-form select, .lv-exc-form input { min-height: 44px; width: auto; }
 .lv-rates input[inputmode] { min-height: 44px; width: 8rem; }
 .lv-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+
+/* CVR, cashflow and dayworks (cvr/). Own prefixes (cvr-, cf-, dw-, sig-), existing tokens only. */
+.cvr-kpis .kpi { flex: 1 1 200px; }
+.cvr-note { margin: 0; }
+.cvr-title { margin: 0 0 4px; }
+.cvr-start-row { align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.cvr-start-row .field { min-width: 220px; }
+.cvr-start-row select, .cvr-filters select, .cvr-filters input { min-height: 44px; }
+.cvr-actions .card-body { display: flex; flex-wrap: wrap; gap: 16px; }
+.cvr-action { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; max-width: 420px; }
+.cvr-action p { margin: 0; }
+.cvr-filters { align-items: center; gap: 8px; flex-wrap: wrap; }
+.cvr-table th[scope="row"] { font-weight: 500; text-align: left; }
+.cvr-table tr.total th, .cvr-table tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
+.banner.cvr-info { background: var(--info-bg); color: var(--info); }
+.banner.cvr-good { background: var(--good-bg); color: var(--good); }
+.banner.cvr-warn { background: var(--warn-bg); color: var(--warn); }
+.banner.cvr-info a, .banner.cvr-good a, .banner.cvr-warn a { color: inherit; }
+.cvr-move.up { color: var(--good); }
+.cvr-move.down { color: var(--bad); }
+.cvr-pre { white-space: pre-wrap; }
+.cvr-how summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+/* The cashflow chart: inline SVG drawn on the server. Money in var(--info), money out var(--warn): a pair that
+   passes the colour-blind checks. Forecast months are paler with a dashed edge, right of the Today marker. */
+.cf-chart-wrap { width: 100%; overflow: hidden; }
+.cf-chart { width: 100%; height: auto; display: block; font-family: var(--font); }
+.cf-chart .grid { stroke: var(--line); stroke-width: 1; }
+.cf-chart .zero { stroke: var(--ink-3); stroke-width: 1.5; }
+.cf-chart .tick { fill: var(--ink-3); font-size: 11px; }
+.cf-chart .bar.in { fill: var(--info); }
+.cf-chart .bar.out { fill: var(--warn); }
+.cf-chart .fc .bar { fill-opacity: .4; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.cf-chart .fc .bar.in { stroke: var(--info); }
+.cf-chart .fc .bar.out { stroke: var(--warn); }
+.cf-chart .hit { fill: transparent; }
+.cf-chart .col:hover .hit { fill: var(--paper-2); fill-opacity: .6; }
+.cf-chart .cum { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.cf-chart .today { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 4 3; }
+.cf-chart .today-label { fill: var(--ink); font-size: 11px; font-weight: 600; text-anchor: middle; }
+.cf-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; padding: 0; margin: 0 0 8px; }
+.cf-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.cf-legend .sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.cf-legend .sw.in { background: var(--info); }
+.cf-legend .sw.out { background: var(--warn); }
+.cf-legend .sw.line { height: 2px; background: var(--ink); }
+.cf-legend .sw.fc { background: var(--info); opacity: .4; outline: 1.5px dashed var(--info); }
+.cf-table tr.current th, .cf-table tr.current td { background: var(--paper); }
+/* Dayworks: one-handed on a phone */
+.dw-card { max-width: 760px; }
+.dw-card .btn, .dw-card input, .dw-card select, .cvr-start .btn { min-height: 44px; }
+.dw-next { border-left: 4px solid var(--info); }
+.dw-table tr.group th { background: var(--paper); text-align: left; }
+.dw-table tr.sub-total td { color: var(--ink-2); font-size: 13px; }
+.dw-photos { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 12px; }
+.dw-photos li { display: flex; flex-direction: column; gap: 4px; width: 160px; }
+.dw-photos img { width: 160px; height: 120px; object-fit: cover; border-radius: var(--r); border: 1px solid var(--line); }
+.dw-signed { margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.dw-signed img { max-width: 100%; height: auto; }
+.sig-pad { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.sig-canvas { width: 100%; max-width: 600px; aspect-ratio: 600 / 220; height: auto; border: 2px solid var(--line-2);
+  border-radius: var(--r); background: var(--card); touch-action: none; cursor: crosshair; }
+.sig-field .label { display: block; font-weight: 600; margin-bottom: 6px; }
+@media (max-width: 600px) {
+  .cvr-action { max-width: none; width: 100%; }
+  .cvr-action .btn { width: 100%; justify-content: center; }
+}

@@ -1,5 +1,4 @@
 {% extends "project_base.html" %}{% load ui static %}
-{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
 {% block project_content %}
 {% include "commercial/_subnav.html" %}
 <p class="small"><a href="{% url 'cvr_list' org.slug project.pk %}">← All months</a></p>
@@ -13,7 +12,7 @@
 {% if drift %}<div class="banner cvr-warn" role="status">Since it was signed off, the source figures for {{ period.label }} have changed ({% for k, v in drift.items %}{{ k }} {{ v|money_exact:currency }}{% if not forloop.last %}, {% endif %}{% endfor %}): something was posted or reversed later with a date in this month. It shows in the next open month's figures.</div>{% endif %}
 
 {% if transitions %}<div class="card cvr-actions"><div class="card-body">
-  {% for t in transitions %}<form method="post" class="cvr-action">{% csrf_token %}<input type="hidden" name="action" value="{{ t.name }}">
+  {% for t in transitions %}<form method="post" class="cvr-action"{% if t.name == 'submit' %} data-confirm="Submit {{ period.reference }} for sign-off? Its figures will be fixed as they stand, and whoever signs off will see it on their Needs me."{% elif t.name == 'sign_off' %} data-confirm="Sign off {{ period.reference }}? It will be locked for good: nothing on it can change again, and any correction goes in a later month."{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="{{ t.name }}">
     {% if t.name == 'submit' %}<p class="small">Submitting fixes the figures as they stand and puts it on the sign-off list.{% if not month_ended %} <strong>{{ period.label }} hasn't ended yet, so it can't be submitted until it has.</strong>{% endif %}</p><button class="btn primary"{% if not month_ended %} disabled{% endif %}>Submit for sign-off</button>
     {% elif t.name == 'sign_off' %}<p class="small">Signing off locks this month for good.</p><button class="btn primary">Sign off and lock</button>
     {% elif t.name == 'send_back' %}<label class="small" for="note-{{ t.name }}">Why it is going back (optional)</label><input type="text" id="note-{{ t.name }}" name="note" maxlength="250"><button class="btn">Send back for changes</button>{% endif %}
@@ -48,18 +47,18 @@
     <tr class="total"><th scope="row">Forecast final cost</th><td class="num">{{ f.final_cost|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.final_cost|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.final_cost exact=1 %}</td></tr>
     <tr class="total"><th scope="row">Forecast margin <span class="sub">Final account less final cost{% if f.forecast_margin_pct is not None %}: {{ f.forecast_margin_pct }}%{% endif %}</span></th><td class="num{% if f.forecast_margin < 0 %} overdue{% endif %}">{{ f.forecast_margin|money_exact:currency }}</td><td class="num">{% if previous %}{{ previous.forecast_margin|money_exact:currency }}{% else %}—{% endif %}</td><td class="num">{% include "cvr/_move.html" with v=move.forecast_margin exact=1 %}</td></tr>
   </tbody></table></div>
-<div class="card-body"><p class="small dim">Also as at {{ period.month_end|date:"j M Y" }}: certified {{ f.certified_to_date|money_exact:currency }} and paid {{ f.paid_to_date|money_exact:currency }} (both excluding VAT), retention held {{ f.retention_held|money_exact:currency }}; committed {{ f.committed_to_date|money_exact:currency }} against a budget of {{ f.budget_to_date|money_exact:currency }}. Last month is its signed-off figures if it was signed off, otherwise as it stands now. {{ advisory }}</p></div>
+<div class="card-body"><p class="small dim">{% badge 'Advisory' 'warn' %} Also as at {{ period.month_end|date:"j M Y" }}: certified {{ f.certified_to_date|money_exact:currency }} and paid {{ f.paid_to_date|money_exact:currency }} (both excluding VAT), retention held {{ f.retention_held|money_exact:currency }}; committed {{ f.committed_to_date|money_exact:currency }} against a budget of {{ f.budget_to_date|money_exact:currency }}. Last month is its signed-off figures if it was signed off, otherwise as it stands now. {{ advisory }}</p></div>
 </section>
 
-<section class="card" aria-labelledby="cvr-adj"><div class="card-head"><h2 id="cvr-adj">Accruals and adjustments</h2>{% if period.status == 'DRAFT' and can_prepare and has_previous %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="bring_forward"><button class="btn sm">Bring last month's forward</button></form>{% endif %}</div>
+<section class="card" aria-labelledby="cvr-adj"><div class="card-head"><h2 id="cvr-adj">Accruals and adjustments</h2>{% if period.status == 'DRAFT' and can_prepare and has_previous %}<form method="post" data-confirm="Add last month's accruals and adjustments that still count to this month, with the same reasons?">{% csrf_token %}<input type="hidden" name="action" value="bring_forward"><button class="btn sm">Bring last month's forward</button></form>{% endif %}</div>
 {% if adjustments %}<div class="table-wrap"><table class="t">
   <caption class="sr-only">Accruals and adjustments this month</caption>
   <thead><tr><th scope="col">What</th><th scope="col">Reason</th><th scope="col" class="num">Amount</th><th scope="col">By</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
   <tbody>{% for a in adjustments %}<tr{% if a.is_reversed or a.reverses_id %} class="dim"{% endif %}>
     <td>{{ a.short_kind }}</td><td>{{ a.reason }}{% if a.is_reversed %} <span class="badge muted">Reversed</span>{% endif %}</td>
     <td class="num">{{ a.amount|money_exact:currency }}</td>
-    <td class="small">{{ a.created_by.full_name|default:"—" }}<span class="sub">{{ a.created_at|date:"j M" }}</span></td>
-    <td>{% if period.status == 'DRAFT' and can_prepare and not a.is_reversed and not a.reverses_id %}<a class="btn sm ghost" href="{% url 'cvr_reverse' org.slug project.pk period.pk a.pk %}">Reverse</a>{% endif %}</td>
+    <td class="small">{{ a.created_by.full_name|default:"—" }}<span class="sub">{{ a.created_at|date:"j M Y" }}</span></td>
+    <td>{% if period.status == 'DRAFT' and can_prepare and not a.is_reversed and not a.reverses_id %}<a class="linkbtn" href="{% url 'cvr_reverse' org.slug project.pk period.pk a.pk %}">Reverse<span class="sr-only"> {{ a.reason }}</span></a>{% endif %}</td>
   </tr>{% endfor %}</tbody></table></div>
 {% else %}<div class="card-body"><p class="small dim">None this month.{% if period.status == 'DRAFT' and can_prepare %} Add accruals for costs incurred but not yet invoiced, and any under or over valuation.{% endif %}</p></div>{% endif %}
 {% if period.status == 'DRAFT' and can_prepare %}<div class="card-body"><form method="post" novalidate>{% csrf_token %}<input type="hidden" name="action" value="adjust">
@@ -74,6 +73,6 @@
 {% if period.status == 'DRAFT' and can_prepare %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="commentary">
   {% include "partials/form_fields.html" with form=commentary_form %}
   <div class="form-actions"><button class="btn">Save commentary</button></div></form>
-{% elif period.commentary %}<p class="pre">{{ period.commentary }}</p>{% else %}<p class="small dim">No commentary.</p>{% endif %}
+{% elif period.commentary %}<p class="cvr-pre">{{ period.commentary }}</p>{% else %}<p class="small dim">No commentary.</p>{% endif %}
 </div></section>
 {% endblock %}
