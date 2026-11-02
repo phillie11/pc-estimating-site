@@ -110,7 +110,7 @@ RULES = (
     # The public QR site sign-in page (safety/public.py): per address, generous for a crew on one site
     # Wi-Fi at 7:30; safety/public.py also caps each poster at GATE_LIMIT an hour
     Rule('site-signin', ('site_signin', 'site_signout'), limit=60, window=600),
-    Rule('site-signin-view', ('site_signin',), limit=120, window=600, methods=('GET',)),
+    Rule('site-signin-view', ('site_signin',), limit=120, window=600, methods=('GET', 'HEAD')),  # HEAD is answered too
 )
 
 
