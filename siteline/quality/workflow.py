@@ -15,7 +15,7 @@ Permits to work (PTW-)
             --refuse--> REFUSED         the PM or an admin, with a reason
   APPROVED  --close--> CLOSED           anyone on the job: work finished and the area left safe
                                         (hot works: the fire watch done)
-  REQUESTED / APPROVED --withdraw--> WITHDRAWN
+  REQUESTED / APPROVED --withdraw--> WITHDRAWN   approved: only before work starts (after that, close it)
   Ball in court: the approver while requested (due the day work starts); whoever asked for it once
   approved (due the day it runs out). Active / expiring / expired are worked out from the clock.
 
@@ -127,6 +127,12 @@ def _closed(record, user, remark='', fire_watch_minutes=None, **params):
 
 
 def _withdrawn(record, user, **params):
+    # Withdrawing skips the closing checks, so it is only for a permit whose work hasn't started.
+    # (record.status is already the target here; approved_at says it was approved.)
+    if record.approved_at is not None and timezone.now() >= record.starts_at:
+        raise InvalidTransition(f'Work under {record.reference} has started, so it can\'t be withdrawn. '
+                                'When the work is finished, close it instead: confirm the area is safe'
+                                f'{" and the fire watch is done" if record.is_hot_works else ""}.')
     record.ball_in_court_user = None
 
 

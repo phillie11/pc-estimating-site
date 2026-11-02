@@ -50,7 +50,7 @@
   </form>
 </div></div>{% endif %}
 
-{% if 'withdraw' in transitions %}<form method="post" action="{% url 'permit_action' org.slug project.pk permit.pk %}" data-confirm="Withdraw {{ permit.ref }}? It can't be used again, and stays on the register as withdrawn.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn danger">Withdraw permit</button></form>{% endif %}
+{% if 'withdraw' in transitions and permit.can_withdraw %}<form method="post" action="{% url 'permit_action' org.slug project.pk permit.pk %}" data-confirm="Withdraw {{ permit.ref }}? It can't be used again, and stays on the register as withdrawn.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn danger">Withdraw permit</button></form>{% endif %}
 <p class="small dim">{% badge 'Advisory' 'warn' %} {{ advisory }} A permit to work supports your safe system of work and RAMS; it doesn't replace them.</p>
 </div>
 {% endblock %}

@@ -263,6 +263,16 @@ class Permit(RecordBase):
     def status_label(self):
         return self.state_label
 
+    def can_withdraw_at(self, now=None):
+        """Withdraw only before work starts: once it has started, the permit is closed (area safe, fire watch)."""
+        if self.status == rules.REQUESTED:
+            return True
+        return self.status == rules.APPROVED and (now or timezone.now()) < self.starts_at
+
+    @property
+    def can_withdraw(self):
+        return self.can_withdraw_at()
+
     @property
     def who(self):
         company = str(self.package.subcontractor) if self.package_id else ''
