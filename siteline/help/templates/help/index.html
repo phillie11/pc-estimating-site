@@ -1,0 +1,7 @@
+{% extends "app.html" %}
+{% block title %}Help{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Help</h1><p class="small dim" style="margin:4px 0 0">Short guides to each part of {{ PRODUCT_NAME }}. The <strong>?</strong> at the top of a page opens the one for that page.</p></div></div>
+{% if topics %}<div class="card"><ul class="list">{% for t in topics %}<li><span class="grow"><a href="{% url 'help_topic' org.slug t.slug %}">{{ t.title }}</a></span></li>{% endfor %}</ul></div>
+{% else %}{% include "partials/empty_state.html" with title="No help topics yet" message="Help topics are markdown files in the help/content folder." %}{% endif %}
+{% endblock %}

@@ -61,6 +61,7 @@
     </div>
   </aside>
   <main class="main">
+    {% include "partials/utilbar.html" %}
     {% if org.access_state == 'ok' and org.subscription_status == 'past_due' and is_org_admin %}<div class="banner">Your last payment failed. Update your card to keep the workspace open. <a href="{% url 'billing_portal' org.slug %}">Update billing</a></div>{% endif %}
     {% include "partials/messages.html" %}
     {% block content %}{% endblock %}

@@ -74,6 +74,7 @@ INSTALLED_APPS = [
     'subpayments',
     'levelling',
     'viewer',
+    'help',
 ]
 
 MIDDLEWARE = [

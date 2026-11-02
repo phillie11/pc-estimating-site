@@ -151,4 +151,47 @@
     var visible = wrap.clientWidth - (label ? label.offsetWidth : 0);
     wrap.scrollLeft = Math.max(0, today.offsetLeft - visible / 3);
   });
+
+  // Global search: "/" anywhere outside a text box jumps to the search box in the top bar
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    var box = document.querySelector('[data-search-box]');
+    if (!box) return;
+    e.preventDefault();
+    box.focus();
+    box.select();
+  });
+
+  // Help: the ? opens this page's help in a panel; without <dialog> support it opens the help page instead
+  document.addEventListener('click', function (e) {
+    var open = e.target.closest('[data-help-open]');
+    if (open) {
+      var panel = document.getElementById(open.getAttribute('data-help-open'));
+      if (panel && typeof panel.showModal === 'function') {
+        e.preventDefault();
+        panel.showModal();
+        var close = panel.querySelector('[data-help-close]');
+        if (close) close.focus();
+      }
+      return;
+    }
+    if (e.target.closest('[data-help-close]')) {
+      var dlg = e.target.closest('dialog');
+      if (dlg) dlg.close();
+      return;
+    }
+    // A click on the backdrop (outside the panel's box) closes it
+    if (e.target.tagName === 'DIALOG' && e.target.classList.contains('help-panel')) {
+      var r = e.target.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.target.close();
+    }
+  });
+  document.querySelectorAll('dialog.help-panel').forEach(function (dlg) {
+    dlg.addEventListener('close', function () {
+      var btn = document.querySelector('[data-help-open="' + dlg.id + '"]');
+      if (btn) btn.focus();
+    });
+  });
 })();

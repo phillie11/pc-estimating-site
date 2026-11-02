@@ -557,3 +557,52 @@ tr.dim td { color: var(--ink-3); }
 .lv-exc-form select, .lv-exc-form input { min-height: 44px; width: auto; }
 .lv-rates input[inputmode] { min-height: 44px; width: 8rem; }
 .lv-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+
+/* ---------- Top of every page: global search and the ? help button (templates/partials/utilbar.html) ---------- */
+.utilbar { display: flex; gap: 8px; align-items: center; margin: -8px 0 18px; }
+.gsearch { position: relative; flex: 0 1 440px; min-width: 0; display: flex; align-items: center; }
+.gsearch svg { position: absolute; left: 11px; width: 17px; height: 17px; color: var(--ink-3); pointer-events: none; }
+.gsearch input[type=search] { padding-left: 36px; padding-right: 34px; min-height: 40px; background: var(--card); }
+.gsearch .kbd { position: absolute; right: 9px; }
+.gsearch input:focus ~ .kbd { display: none; }
+.kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; background: #fff; font: 600 11.5px/18px var(--mono); color: var(--ink-3); text-align: center; }
+.help-btn { flex: none; margin-left: auto; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-2); background: var(--card); color: var(--ink-2); font: 700 17px/1 var(--font); text-decoration: none; }
+.help-btn:hover, .help-btn:focus-visible { border-color: var(--ink-3); color: var(--ink); }
+.help-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 860px) {
+  .utilbar { margin: -4px 0 14px; }
+  .gsearch { flex: 1 1 auto; }
+  .gsearch input[type=search], .help-btn { min-height: 44px; height: 44px; }
+  .help-btn { width: 44px; }
+  .gsearch .kbd { display: none; }
+}
+.help-panel { width: min(520px, calc(100vw - 32px)); max-height: min(80vh, 640px); padding: 0; border: 1px solid var(--line-2); border-radius: 8px; box-shadow: 0 24px 60px -20px rgba(21,25,31,.45); color: var(--ink); background: var(--card); margin: 8vh auto auto; }
+.help-panel::backdrop { background: rgba(21,25,31,.35); }
+.help-panel[open] { display: flex; flex-direction: column; }
+.help-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 18px; border-bottom: 1px solid var(--line); }
+.help-panel-head h2 { margin: 0; font-size: 1.05rem; }
+.help-panel-head .btn { min-width: 44px; min-height: 44px; }
+.help-panel .help-body { padding: 14px 18px; overflow-y: auto; }
+.help-panel-foot { padding: 10px 18px; border-top: 1px solid var(--line); font-size: 13px; }
+.help-body h3 { font-size: .95rem; margin: 1rem 0 .35rem; }
+.help-body h4 { font-size: .9rem; margin: .8rem 0 .3rem; }
+.help-body ul, .help-body ol { margin: 0 0 .75rem; padding-left: 20px; }
+.help-body li { margin-bottom: 3px; }
+.help-body > :first-child { margin-top: 0; }
+.search-hits li { align-items: baseline; }
+.search-hits .search-detail { display: block; }
+
+/* ---------- Getting started checklist on the dashboards (help/onboarding.py) ---------- */
+.onboard { margin-bottom: 1.25rem; border-left: 3px solid var(--accent); }
+.onboard-progress { border-radius: 0; height: 4px; }
+.onboard-steps { list-style: none; margin: 0; padding: 0; }
+.onboard-steps li { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.onboard-steps li:last-child { border-bottom: 0; }
+.onboard-steps .grow { flex: 1; min-width: 0; }
+.onboard-steps .grow .small { display: block; }
+.onboard-steps li.done strong { color: var(--ink-3); }
+.onboard-tick { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--mono); background: var(--paper-2); color: var(--ink-2); }
+.onboard-steps li.done .onboard-tick { background: var(--good-bg); color: var(--good); }
+.onboard-steps li.next .onboard-tick { background: var(--accent); color: var(--accent-ink); }
+.onboard-steps .btn { flex: none; }
+@media (max-width: 600px) { .onboard-steps li { flex-wrap: wrap; } .onboard-steps .btn { margin-left: 38px; width: calc(100% - 38px); } }

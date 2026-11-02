@@ -128,5 +128,6 @@ urlpatterns = [
     *subpayments_urls.org_patterns,
     # Sub quotes > Level quotes on a bid (levelling/urls.py)
     *levelling_urls.project_patterns(P),
+    path('', include('help.urls')),  # global search, help topics, getting-started checklist (help/)
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]
