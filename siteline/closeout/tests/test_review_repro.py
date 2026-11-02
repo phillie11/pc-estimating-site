@@ -2,15 +2,18 @@
 Review of the close-out branch: one test per defect found, each failing before its fix.
 """
 import shutil
+import sys
 import tempfile
+import types
+from unittest import mock
 
 from django.test import override_settings
 
 from projects.models import Document, DocumentRevision
 from tenancy.context import org_context
 
-from .. import services
-from ..models import HandoverPack
+from .. import goldenthread, services
+from ..models import HandoverItem, HandoverPack
 from .base import CloseoutTestBase, pdf
 
 MEDIA = tempfile.mkdtemp()
@@ -39,3 +42,51 @@ class InternalDrawingsStayOutOfThePackTests(CloseoutTestBase):
         self.assertIn('GA plan', titles)
         self.assertNotIn('Internal cost markup', titles)
         self.assertEqual(pack.status, HandoverPack.READY)
+
+
+def fake_quality(**modules):
+    """A stand-in `quality` app (it isn't installed on main) exposing only the given modules."""
+    pkg = types.ModuleType('quality')
+    pkg.__path__ = []
+    mods = {'quality': pkg}
+    for name, attrs in modules.items():
+        m = types.ModuleType(f'quality.{name}')
+        for k, v in attrs.items():
+            setattr(m, k, v)
+        mods[f'quality.{name}'] = m
+    return mock.patch.dict(sys.modules, mods), mock.patch('closeout.goldenthread.quality_installed',
+                                                          return_value=True)
+
+
+class FireStoppingRegisterHookTests(CloseoutTestBase):
+    """The golden thread reads stream A's quality.exports.register explicitly, not by guessing model names."""
+
+    def test_register_rows_become_a_formula_safe_csv_snapshot(self):
+        seen = []
+
+        def register(project):
+            seen.append(project)
+            return ['Ref', 'Where', 'Installed by'], [['FS-001', '=HYPERLINK("x")', 'Acme Fire'], ['FS-002', 'Riser', '']]
+        mods, installed = fake_quality(exports={'register': register})
+        with mods, installed, org_context(self.org_a):
+            items = goldenthread.quality_items(self.pa)
+        self.assertEqual(seen, [self.pa])
+        self.assertEqual(len(items), 1)
+        src = items[0]
+        self.assertEqual((src.category, src.title), (HandoverItem.FIRE_STOPPING, 'Fire-stopping register (2 rows)'))
+        name, body = src.generated
+        text = body.decode('utf-8-sig')
+        self.assertTrue(name.endswith('.csv'))
+        self.assertIn('FS-001', text)
+        self.assertIn("'=HYPERLINK", text)  # formula-safe
+
+    def test_installed_without_either_hook_is_empty_not_an_error(self):
+        mods, installed = fake_quality()
+        with mods, installed, org_context(self.org_a):
+            self.assertEqual(goldenthread.quality_items(self.pa), [])
+
+    def test_handover_hook_wins_over_the_register(self):
+        mods, installed = fake_quality(handover={'golden_thread_items': lambda project: []},
+                                       exports={'register': lambda project: self.fail('register was read')})
+        with mods, installed, org_context(self.org_a):
+            self.assertEqual(goldenthread.quality_items(self.pa), [])

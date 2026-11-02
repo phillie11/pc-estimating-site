@@ -109,72 +109,61 @@ def quality_installed():
     return apps.is_installed('quality')
 
 
+def _quality_hook(module, name):
+    """quality.<module>.<name>, or None when that module or function isn't there."""
+    import importlib
+    try:
+        found = importlib.import_module(f'quality.{module}')
+    except ImportError:
+        return None
+    return getattr(found, name, None)
+
+
 def quality_items(project):
     """
-    The fire-stopping register, if the `quality` app is installed. It may offer
-    `quality.handover.golden_thread_items(project)`, returning dicts with title, file (a stored
-    FieldFile) and optionally reference, revision and file_name; that is used as it is. Otherwise
-    any quality model with "fire" in its name and a `project` field is read: its rows go into a
-    CSV snapshot of the register, and every photo or file on them is linked on its own.
-    Without the app this is empty, and the pack says so.
+    The fire-stopping register, only if the `quality` app is installed (it is not on every
+    installation). Two explicit, optional entry points; nothing is guessed from model names:
+
+      quality.handover.golden_thread_items(project)  dicts with title, file (a stored FieldFile)
+                                                     and optionally reference, revision and
+                                                     file_name; used as they are
+      quality.exports.register(project)              (header, rows) of the register; frozen in
+                                                     the pack as a formula-safe CSV snapshot
+
+    Without the app, or without either function, this is empty and the pack page says so.
     """
     if not quality_installed():
         return []
-    import importlib
-    try:
-        hook = importlib.import_module('quality.handover').golden_thread_items
-    except (ImportError, AttributeError):
-        hook = None
+    hook = _quality_hook('handover', 'golden_thread_items')
     if hook is not None:
         return [Source(HandoverItem.FIRE_STOPPING, str(row.get('title', '')), row.get('file'),
                        reference=str(row.get('reference', '')), revision=str(row.get('revision', '')),
                        file_name=str(row.get('file_name', '')) or getattr(row.get('file'), 'name', '').rsplit('/', 1)[-1])
                 for row in hook(project) or () if row.get('file')]
-    out = []
-    for model in apps.get_app_config('quality').get_models():
-        name = f'{model.__name__} {model._meta.verbose_name}'.lower()
-        if 'fire' not in name or not any(f.name == 'project' for f in model._meta.get_fields()):
-            continue
-        out.extend(_snapshot(model, project))
-    return out
+    register = _quality_hook('exports', 'register')
+    if register is None:
+        return []
+    header, rows = register(project)
+    return [_register_csv(header, rows)]
 
 
-def _snapshot(model, project):
-    from django.db import models as m
+def _register_csv(header, rows):
     try:
         from core.exports import safe
     except ImportError:  # until the shared helper is on main
         from levelling.exports import safe
-    fields = [f for f in model._meta.concrete_fields if f.name not in ('organization', 'project')]
-    file_fields = [f for f in fields if isinstance(f, m.FileField)]
-    manager = getattr(model, 'objects')
-    rows = list(manager.filter(project=project).order_by('pk'))
+
+    def cell(v):
+        return safe(v if isinstance(v, str) else ('' if v is None else str(v)))
+    rows = list(rows)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow([str(f.verbose_name).capitalize() for f in fields])
-    out = []
-    label = str(model._meta.verbose_name_plural).capitalize()
+    w.writerow([cell(h) for h in header])
     for row in rows:
-        values = []
-        for f in fields:
-            v = getattr(row, f.attname)
-            if isinstance(f, m.FileField):
-                v = v.name.rsplit('/', 1)[-1] if v else ''
-            elif f.choices:
-                v = getattr(row, f'get_{f.name}_display')()
-            elif isinstance(f, m.ForeignKey):
-                v = str(getattr(row, f.name) or '')
-            values.append(safe(v if isinstance(v, str) else ('' if v is None else str(v))))
-        w.writerow(values)
-        for f in file_fields:
-            fieldfile = getattr(row, f.name)
-            if fieldfile:
-                out.append(Source(HandoverItem.FIRE_STOPPING, f'{row}: {f.verbose_name}', fieldfile,
-                                  file_name=fieldfile.name.rsplit('/', 1)[-1]))
-    name = f'{model.__name__.lower()}-register.csv'
-    out.insert(0, Source(HandoverItem.FIRE_STOPPING, f'{label} (register, {len(rows)} rows)',
-                         generated=(name, buf.getvalue().encode('utf-8-sig')), file_name=name))
-    return out
+        w.writerow([cell(v) for v in row])
+    name = 'fire-stopping-register.csv'
+    return Source(HandoverItem.FIRE_STOPPING, f'Fire-stopping register ({len(rows)} rows)',
+                  generated=(name, buf.getvalue().encode('utf-8-sig')), file_name=name)
 
 
 def collect(project):
