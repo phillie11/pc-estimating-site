@@ -1,6 +1,8 @@
 ---
 title: Defects and handover
 pages: closeout_client
+who: external
+order: 58
 ---
 This page is for anything that needs putting right after handover, and for your handover documents.
 

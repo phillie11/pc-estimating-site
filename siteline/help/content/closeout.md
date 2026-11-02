@@ -1,6 +1,8 @@
 ---
 title: Close-out
 pages: closeout_overview closeout_section closeout_section_add closeout_defects closeout_defect_new closeout_om closeout_om_section closeout_om_section_new closeout_om_request closeout_om_upload closeout_certificates closeout_packs closeout_pack
+who: staff
+order: 58
 ---
 Close-out takes a job from practical completion to the end of the defects period.
 
