@@ -1,10 +1,10 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_content %}
+{% block project_content %}<div class="co-page">
 {% include "closeout/_subnav.html" %}
 <div class="card" style="max-width:640px"><div class="card-head"><h2>Add a completion section</h2></div><div class="card-body">
   <p class="small dim">Use sections when parts of the works are handed over at different times (sectional completion). Each has its own defects period.</p>
   <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
-    <div class="form-actions"><button class="btn primary">Add section</button><a class="btn" href="{% url 'closeout_overview' org.slug project.pk %}">Cancel</a></div>
+    <div class="form-actions"><button class="btn primary">Add section</button><a class="btn ghost" href="{% url 'closeout_overview' org.slug project.pk %}">Cancel</a></div>
   </form>
 </div></div>
-{% endblock %}
+</div>{% endblock %}

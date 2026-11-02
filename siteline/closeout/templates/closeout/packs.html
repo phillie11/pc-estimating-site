@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_content %}
+{% block project_content %}<div class="co-page">
 {% include "closeout/_subnav.html" %}
 <div class="grid split">
 <div class="card"><div class="card-head"><h2>Handover packs</h2></div>
@@ -17,7 +17,7 @@
   <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
     <div class="form-actions"><button class="btn primary">Build handover pack</button></div>
   </form>
-  <p class="small dim" style="margin-bottom:0">Building a pack freezes the list as it is now; later changes go in the next pack. Advisory: this supports the golden thread of building information. Whether the Building Safety Act applies to this building, and what its golden thread must hold, is for the client and their advisers.</p>
+  <p class="small dim" style="margin-bottom:0">Building a pack freezes the list as it is now; later changes go in the next pack. {% badge 'Advisory' 'warn' %} This supports the golden thread of building information. Whether the Building Safety Act applies to this building, and what its golden thread must hold, is for the client and their advisers.</p>
 </div></div>
 </div>
-{% endblock %}
+</div>{% endblock %}

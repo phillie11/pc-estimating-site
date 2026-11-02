@@ -557,3 +557,14 @@ tr.dim td { color: var(--ink-3); }
 .lv-exc-form select, .lv-exc-form input { min-height: 44px; width: auto; }
 .lv-rates input[inputmode] { min-height: 44px; width: 8rem; }
 .lv-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+/* ---------- Close-out (closeout/) ---------- */
+.co-page .table-wrap { position: relative; } /* keeps sr-only labels in a scrolled table from widening the page */
+.closeout-nav .chip { min-height: 44px; display: inline-flex; align-items: center; }
+.co-page .closeout-steps li { align-items: center; }
+.co-page .co-narrow { display: none; }
+@media (max-width: 700px) { .co-page .co-wide { display: none; } .co-page .co-narrow { display: block; } }
+@media (max-width: 860px) {
+  .co-page input:not([type=checkbox]):not([type=radio]):not([type=hidden]), .co-page select { min-height: 44px; }
+  .co-page input[type=file] { padding: 10px 0; }
+  .co-page .linkbtn { min-height: 44px; }
+}

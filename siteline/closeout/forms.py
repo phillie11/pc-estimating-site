@@ -87,10 +87,12 @@ class DefectForm(StyledModelForm):
                       'location': 'Room, floor or area, e.g. "First floor kitchen".'}
         widgets = {'photo': forms.ClearableFileInput(attrs={'accept': PHOTO_ACCEPT, 'capture': 'environment'}),
                    'description': forms.Textarea(attrs={'rows': 3})}
+        error_messages = {'title': {'required': 'Say what is wrong, for example "Door to WC 2 does not close".'}}
 
     def __init__(self, *args, project=None, staff=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['location'].required = True
+        self.fields['location'].error_messages['required'] = 'Say where it is: a room, floor or area.'
         if staff:
             self.fields['assignee'] = forms.ModelChoiceField(
                 assignable_users(project), required=False, label='Who will fix it',
@@ -107,6 +109,7 @@ class OMSectionForm(StyledModelForm):
         model = OMSection
         fields = ['title', 'package', 'contents', 'not_needed']
         widgets = {'contents': forms.Textarea(attrs={'rows': 4})}
+        error_messages = {'title': {'required': 'Give the section a name, for example "Joinery".'}}
 
     def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -118,7 +121,9 @@ class OMSectionForm(StyledModelForm):
 
 
 class OMRequestForm(forms.Form):
-    due_date = forms.DateField(label='Send it by', help_text='Suggested: two weeks before completion.')
+    due_date = forms.DateField(label='Send it by', help_text='Suggested: two weeks before completion.',
+                               error_messages={'required': 'Pick the date you need it by.',
+                                               'invalid': 'Enter a date, for example 14/12/2026.'})
     note = forms.CharField(label='Note to the subcontractor', required=False, widget=forms.Textarea(attrs={'rows': 2}))
 
     def __init__(self, *args, **kwargs):
@@ -132,6 +137,8 @@ class OMDocumentForm(StyledModelForm):
         fields = ['title', 'file']
         help_texts = {'title': 'For example "Ceiling tile data sheet".'}
         widgets = {'file': forms.ClearableFileInput(attrs={'accept': DOC_ACCEPT})}
+        error_messages = {'title': {'required': 'Say what the file is, for example "Ceiling tile data sheet".'},
+                          'file': {'required': 'Choose the file to add.'}}
 
     def clean_file(self):
         return _check_file(self.cleaned_data.get('file'))
@@ -143,6 +150,7 @@ class CertificateForm(StyledModelForm):
         fields = ['kind', 'file', 'issued_by', 'issued_on', 'title']
         widgets = {'file': forms.ClearableFileInput(attrs={'accept': DOC_ACCEPT, 'capture': 'environment'})}
         labels = {'file': 'Certificate (PDF or photo)'}
+        error_messages = {'file': {'required': 'Choose the certificate: a PDF, or a photo of it.'}}
 
     def clean_file(self):
         return _check_file(self.cleaned_data.get('file'))

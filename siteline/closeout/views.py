@@ -59,7 +59,7 @@ def _context(request, project, sub, **extra):
             ('packs', 'Handover pack', reverse('closeout_packs', args=[org, pk])),
         ]
         extra['closeout_sub'] = sub
-    extra.setdefault('advisory', rules.ADVISORY)
+    extra.setdefault('advisory', 'Check your contract.')
     return project_context(request, project, 'closeout', **extra)
 
 

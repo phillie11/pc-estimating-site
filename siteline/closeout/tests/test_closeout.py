@@ -58,7 +58,8 @@ class CompletionTests(CloseoutTestBase):
         r = self.client.get(self.url('closeout_overview', self.pa.pk))
         self.assertContains(r, '28 Feb 2027')
         self.assertContains(r, 'Rectification Period')  # JCT words
-        self.assertContains(r, 'Advisory: check your contract.')
+        self.assertContains(r, 'Advisory')
+        self.assertContains(r, 'Check your contract.')
 
     def test_a_section_can_have_its_own_defects_period(self):
         self.login(self.pat)
@@ -141,7 +142,8 @@ class DefectTests(CloseoutTestBase):
         self.assertContains(r, 'Reported')
         # Only what and where are needed
         r = self.client.post(self.url('closeout_client', self.pa.pk), {'title': ''})
-        self.assertContains(r, 'This field is required', count=2)
+        self.assertContains(r, 'Say what is wrong')
+        self.assertContains(r, 'Say where it is')
 
     def test_client_sees_only_client_side_defects(self):
         self.issue(title='Client one', issue_type='DEFECT', created_by=self.carla)

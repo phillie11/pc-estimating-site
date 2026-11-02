@@ -1,21 +1,20 @@
 {% extends "project_base.html" %}{% load ui %}
 {% block project_actions %}<a class="btn" href="{% url 'closeout_section_add' org.slug project.pk %}">{% icon 'plus' %} Add a section</a>{% if not sections.0.pc_date %}<a class="btn primary" href="{% url 'closeout_section' org.slug project.pk 'whole' %}">Record practical completion</a>{% endif %}{% endblock %}
-{% block project_content %}
+{% block project_content %}<div class="co-page">
 {% include "closeout/_subnav.html" %}
 <div class="grid split">
 <div class="card"><div class="card-head"><h2>{{ words.completion }} and the {{ words.defects_period }}</h2></div>
-<div class="table-wrap"><table class="t"><thead><tr><th>Section</th><th>{{ words.completion }}</th><th>{{ words.defects_period|capfirst }}</th><th>Ends</th><th>Status</th><th><span class="sr-only">Change</span></th></tr></thead><tbody>
+<div class="table-wrap"><table class="t"><thead><tr><th>Section</th><th>{{ words.completion }}</th><th>{{ words.defects_period|capfirst }}</th><th>Ends</th><th>Status</th></tr></thead><tbody>
 {% for s in sections %}<tr id="section-{{ s.pk|default:'whole' }}">
-  <td>{{ s.name }}{% if s.certificate %}<span class="sub"><a href="{% url 'closeout_section_certificate' org.slug project.pk s.pk %}">Certificate</a></span>{% endif %}</td>
+  <td><a class="rowlink" href="{% if s.pk and not s.is_whole_works %}{% url 'closeout_section' org.slug project.pk s.pk %}{% else %}{% url 'closeout_section' org.slug project.pk 'whole' %}{% endif %}">{{ s.name }}</a><span class="sub">{% if s.pc_date %}Change dates{% else %}Record completion{% endif %}</span>{% if s.certificate %}<span class="sub"><a href="{% url 'closeout_section_certificate' org.slug project.pk s.pk %}">Certificate</a></span>{% endif %}</td>
   <td class="nowrap">{{ s.pc_date|date:"j M Y"|default:"Not yet" }}</td>
   <td class="small">{% if s.months %}{{ s.months }} months{% if s.months_from_contract %}<span class="sub">from the contract</span>{% endif %}{% else %}<span class="dim">Not set</span>{% endif %}</td>
   <td class="nowrap">{% if s.made_good_on %}Made good {{ s.made_good_on|date:"j M Y" }}{% else %}{{ s.defects_end|date:"j M Y"|default:"—" }}{% endif %}</td>
-  <td>{% status_badge s %}</td>
-  <td><a class="btn sm" href="{% if s.pk and not s.is_whole_works %}{% url 'closeout_section' org.slug project.pk s.pk %}{% else %}{% url 'closeout_section' org.slug project.pk 'whole' %}{% endif %}">{% if s.pc_date %}Change{% else %}Record{% endif %}<span class="sr-only"> {{ s.name }}</span></a></td></tr>{% endfor %}
+  <td>{% status_badge s %}</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="card-body small dim">
 {% if not contract %}<p>There is no contract set up on this job, so the {{ words.defects_period }} comes from each section. <a href="{% url 'contract_detail' org.slug project.pk %}">Set up the contract</a>.</p>{% elif not contract.defects_period_months %}<p>The contract has no {{ words.defects_period }} set. <a href="{% url 'contract_detail' org.slug project.pk %}">Add it on the contract</a>, or type it on each section.</p>{% endif %}
-<p style="margin:0">The {{ words.defects_period }} ends that many calendar months after {{ words.completion }}. It goes on the project manager's <em>Needs me</em> {{ reminder_days }} days before it ends, so there is time to book the end-of-defects inspection. {{ advisory }}</p>
+<p style="margin:0">{% badge 'Advisory' 'warn' %} The {{ words.defects_period }} ends that many calendar months after {{ words.completion }}. It goes on the project manager's <em>Needs me</em> {{ reminder_days }} days before it ends, so there is time to book the end-of-defects inspection. {{ advisory }}</p>
 </div></div>
 <div class="card"><div class="card-head"><h2>Close-out checklist</h2></div>
 <ul class="list closeout-steps">{% for label, done, url, note in steps %}<li><span class="grow"><a href="{{ url }}">{{ label }}</a><br><span class="small dim">{{ note }}</span></span>{% if done %}{% badge 'Done' 'good' %}{% else %}{% badge 'To do' 'muted' %}{% endif %}</li>{% endfor %}</ul>
@@ -23,4 +22,4 @@
   <p style="margin:0"><a href="{% url 'closeout_defects' org.slug project.pk %}?status=unassigned">{{ counts.unassigned }} defect{{ counts.unassigned|pluralize }} to give out</a> · <a href="{% url 'closeout_defects' org.slug project.pk %}?status=READY">{{ counts.ready }} to check</a></p>
 </div></div>
 </div>
-{% endblock %}
+</div>{% endblock %}

@@ -374,6 +374,10 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
         Issue.objects.bulk_create(issue_rows, batch_size=2000)
         Task.objects.bulk_create(task_rows, batch_size=2000)
 
+        # --- close-out: defects, O&M requests, certificates, handover packs (closeout/scale.py) ---
+        from closeout.scale import seed as seed_closeout
+        seed_closeout(org, live, say)
+
         # --- activity and notifications -------------------------------------------------------
         act = []
         for i in range(20_000 if jobs >= 100 else jobs * 40):

@@ -1,6 +1,6 @@
 {% extends "app.html" %}{% load ui %}
 {% block title %}O&amp;M manual contents{% endblock %}
-{% block content %}
+{% block content %}<div class="co-page">
 <div class="page-head"><div><h1>O&amp;M manual contents</h1><p class="dim" style="margin:4px 0 0">The sections every job's O&amp;M manual starts with. Each job can then add, change or drop sections of its own.</p></div></div>
 <form method="post">{% csrf_token %}{{ formset.management_form }}
 {% if formset.non_form_errors %}<ul class="errorlist">{% for e in formset.non_form_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
@@ -11,4 +11,4 @@
 </div></div>{% endfor %}
 <div class="form-actions"><button class="btn primary">Save the contents list</button></div>
 </form>
-{% endblock %}
+</div>{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}{% if total %}<a class="btn" href="{% qs export='csv' page=None %}">{% icon 'download' %} CSV</a>{% endif %}{% endblock %}
-{% block project_content %}
+{% block project_actions %}{% if total %}<a class="btn" href="{% qs export='csv' page=None %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
+{% block project_content %}<div class="co-page">
 {% include "closeout/_subnav.html" %}
 <div class="grid split">
 <div class="card"><div class="card-head"><h2>Certificates and test results</h2></div>
@@ -8,7 +8,7 @@
 {% if page.object_list %}<div class="table-wrap"><table class="t"><thead><tr><th>Certificate</th><th>Issued by</th><th>Date on it</th><th><span class="sr-only">Remove</span></th></tr></thead><tbody>
 {% for c in page %}<tr><td><a class="rowlink" href="{% url 'closeout_certificate_file' org.slug project.pk c.pk %}">{{ c.label }}</a><span class="sub">{{ c.get_kind_display }} · {{ c.size|filesize }}</span></td>
   <td class="small">{{ c.issued_by|default:"—" }}</td><td class="small nowrap">{{ c.issued_on|date:"j M Y"|default:"—" }}</td>
-  <td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="certificate" value="{{ c.pk }}"><button class="btn sm ghost">Remove<span class="sr-only"> {{ c.label }}</span></button></form></td></tr>{% endfor %}
+  <td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="certificate" value="{{ c.pk }}"><button class="linkbtn" style="min-height:44px" data-confirm="Remove {{ c.label }}? Handover packs already built keep their copy.">Remove<span class="sr-only"> {{ c.label }}</span></button></form></td></tr>{% endfor %}
 </tbody></table></div>
 {% if page.has_other_pages %}<nav class="filters card-body" aria-label="Pages"><span class="small dim">{{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>{% if page.has_previous %}<a class="chip" href="{% qs page=page.previous_page_number %}">Previous</a>{% endif %}{% if page.has_next %}<a class="chip" href="{% qs page=page.next_page_number %}">Next</a>{% endif %}</nav>{% endif %}
 {% elif total %}{% include "partials/empty_state.html" with title="Nothing of this type" message="No certificates of this type yet." cta_url="?" cta_label="Show every type" cta_plain=True %}
@@ -20,4 +20,4 @@
   </form>
 </div></div>
 </div>
-{% endblock %}
+</div>{% endblock %}
