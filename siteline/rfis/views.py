@@ -1,14 +1,12 @@
-import csv
-
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
+from core import exports
 from core.exceptions import InvalidTransition, RecordConflict
 from core.workflow import apply_transition
-from levelling.exports import safe
 from projects.access import get_project, is_internal, portal_projects
 from projects.files import serve
 from projects.forms import CommentForm
@@ -47,22 +45,22 @@ def _register_csv(request, project):
     """
     Every RFI on the project this person can see, whatever filter the page is on: the register's
     columns plus their dates. Externals get only the shared RFIs the register shows them. Every
-    text cell goes through levelling.exports.safe, so a spreadsheet never runs one as a formula.
+    text cell goes through core.exports.safe, so a spreadsheet never runs one as a formula.
     """
     internal = is_internal(request)
     rfis = _visible(request, project).order_by('number')
     resp = HttpResponse(content_type='text/csv')
     resp['Content-Disposition'] = f'attachment; filename="{project.reference}-rfi-register.csv"'
-    w = csv.writer(resp)
+    w = exports.writer(resp)
     day = lambda dt: timezone.localdate(dt).isoformat() if dt else ''  # noqa: E731
     w.writerow(['Ref', 'Subject', 'Category', 'Priority', 'Status', 'Raised by', 'Raised', 'Ball in court',
                 'Required by', 'Responded', 'Closed', 'Days open', *(['Shared'] if internal else []), 'Response'])
     for r in rfis:
-        w.writerow([safe(v) for v in (
+        w.writerow((
             r.reference, r.title, r.get_category_display(), r.get_priority_display(), r.get_status_display(),
             str(r.created_by or ''), day(r.created_at), str(r.ball_in_court_user or ''),
             r.due_date.isoformat() if r.due_date else '', day(r.responded_at), day(r.closed_at), str(r.days_open),
-            *([('Yes' if r.is_shared else 'No, internal')] if internal else []), r.response)])
+            *([('Yes' if r.is_shared else 'No, internal')] if internal else []), r.response))
     return resp
 
 
