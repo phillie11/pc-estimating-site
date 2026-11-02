@@ -25,7 +25,8 @@
     <span class="label" id="sig-label">Signature <span class="dim">*</span></span>
     <div class="sig-pad" hidden>
       <canvas class="sig-canvas" width="600" height="220" role="img" aria-labelledby="sig-label" aria-describedby="sig-help"></canvas>
-      <button type="button" class="btn sig-clear">Clear and sign again</button>
+      <div class="row"><button type="button" class="btn sig-clear">Clear and sign again</button>
+        <button type="button" class="btn ghost sig-use-photo">Use a photo of a signed paper sheet</button></div>
     </div>
     <div class="sig-upload"><label for="{{ form.signature.id_for_label }}">Photo of the signed paper sheet</label>{{ form.signature }}</div>
     <div class="help" id="sig-help">{{ form.signature.help_text }}</div>

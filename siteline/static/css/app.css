@@ -569,7 +569,9 @@ tr.dim td { color: var(--ink-3); }
 .cvr-action { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; max-width: 420px; }
 .cvr-action p { margin: 0; }
 .cvr-filters { align-items: center; gap: 8px; flex-wrap: wrap; }
-.cvr-table th[scope="row"] { font-weight: 500; text-align: left; }
+.cvr-table th[scope="row"], .cf-table th[scope="row"] { font-weight: 500; text-align: left; text-transform: none;
+  letter-spacing: normal; font-size: 13.5px; color: var(--ink); white-space: normal; }
+.cvr-table th[scope="row"] .sub { font-weight: 400; color: var(--ink-3); }
 .cvr-table tr.total th, .cvr-table tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
 .banner.cvr-info { background: var(--info-bg); color: var(--info); }
 .banner.cvr-good { background: var(--good-bg); color: var(--good); }
@@ -610,6 +612,8 @@ tr.dim td { color: var(--ink-3); }
 .dw-next { border-left: 4px solid var(--info); }
 .dw-table tr.group th { background: var(--paper); text-align: left; }
 .dw-table tr.sub-total td { color: var(--ink-2); font-size: 13px; }
+.dw-table tfoot th { text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--ink); text-align: left; }
+.dw-rate-sub { display: none; }
 .dw-photos { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 12px; }
 .dw-photos li { display: flex; flex-direction: column; gap: 4px; width: 160px; }
 .dw-photos img { width: 160px; height: 120px; object-fit: cover; border-radius: var(--r); border: 1px solid var(--line); }
@@ -624,6 +628,13 @@ tr.dim td { color: var(--ink-3); }
 .cvr-touch input:not([type=checkbox]):not([type=radio]):not([type=hidden]), .cvr-touch select { min-height: 44px; }
 .cvr-touch .linkbtn { min-height: 44px; display: inline-flex; align-items: center; }
 @media (max-width: 600px) {
+  /* On a phone: the month and its movement; last month's column and who added an adjustment are on wider screens */
+  .cvr-table tr > :nth-child(3), .cvr-adj tr > :nth-child(4) { display: none; }
+  /* Daywork lines: the rate goes under the hours, so the amount stays on screen */
+  .dw-table .dw-rate { display: none; }
+  .dw-table th, .dw-table td { padding-left: 8px; padding-right: 8px; }
+  .dw-table td.num { white-space: nowrap; }
+  .dw-rate-sub { display: block; }
   .cvr-action { max-width: none; width: 100%; }
   .cvr-action .btn { width: 100%; justify-content: center; }
 }

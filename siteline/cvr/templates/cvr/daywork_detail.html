@@ -21,19 +21,18 @@
 <section class="card" aria-labelledby="dw-lines"><div class="card-head"><h2 id="dw-lines">Labour, plant and materials</h2></div>
 {% if lines %}<div class="table-wrap"><table class="t dw-table">
   <caption class="sr-only">Lines on {{ sheet.reference }}, priced at the daywork rates</caption>
-  <thead><tr><th scope="col">Who or what</th><th scope="col" class="num">Hours or qty</th><th scope="col" class="num">Rate</th><th scope="col" class="num">Amount</th>{% if sheet.is_editable %}<th scope="col"><span class="sr-only">Remove</span></th>{% endif %}</tr></thead>
+  <thead><tr><th scope="col">Who or what</th><th scope="col" class="num">Hours or qty</th><th scope="col" class="num dw-rate">Rate</th><th scope="col" class="num">Amount</th></tr></thead>
   {% for code, label, group_lines, k in groups %}{% if group_lines %}<tbody>
-    <tr class="group"><th scope="rowgroup" colspan="{% if sheet.is_editable %}5{% else %}4{% endif %}">{{ label }}</th></tr>
-    {% for ln in group_lines %}<tr><td>{{ ln.description }}</td><td class="num">{{ ln.quantity|floatformat:"-2" }} {{ ln.unit }}</td><td class="num">{{ ln.unit_rate|money_exact:currency }}</td><td class="num">{{ ln.amount|money_exact:currency }}</td>
-      {% if sheet.is_editable %}<td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_line"><input type="hidden" name="line" value="{{ ln.pk }}"><button class="linkbtn" aria-label="Remove {{ ln.description }}">Remove</button></form></td>{% endif %}</tr>{% endfor %}
-    <tr class="sub-total"><td colspan="3">{{ label }} prime cost{% if k.1 %}, plus {{ k.1|floatformat:"-2" }}% ({{ k.2|money_exact:currency }}){% endif %}</td><td class="num">{{ k.0|money_exact:currency }}</td>{% if sheet.is_editable %}<td></td>{% endif %}</tr>
+    <tr class="group"><th scope="rowgroup" colspan="4">{{ label }}</th></tr>
+    {% for ln in group_lines %}<tr><td>{{ ln.description }}{% if sheet.is_editable %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_line"><input type="hidden" name="line" value="{{ ln.pk }}"><button class="linkbtn" aria-label="Remove {{ ln.description }}">Remove</button></form>{% endif %}</td><td class="num">{{ ln.quantity|floatformat:"-2" }} {{ ln.unit }}<span class="sub dw-rate-sub">at {{ ln.unit_rate|money_exact:currency }}</span></td><td class="num dw-rate">{{ ln.unit_rate|money_exact:currency }}</td><td class="num">{{ ln.amount|money_exact:currency }}</td></tr>{% endfor %}
+    <tr class="sub-total"><td colspan="2">{{ label }} prime cost{% if k.1 %}, plus {{ k.1|floatformat:"-2" }}% ({{ k.2|money_exact:currency }}){% endif %}</td><td class="dw-rate"></td><td class="num">{{ k.0|money_exact:currency }}</td></tr>
   </tbody>{% endif %}{% endfor %}
-  <tfoot><tr><th scope="row" colspan="3">Total at daywork rates <span class="sub">Prime cost {{ price.prime|money_exact:currency }} plus additions {{ price.additions|money_exact:currency }}</span></th><td class="num"><strong>{{ price.total|money_exact:currency }}</strong></td>{% if sheet.is_editable %}<td></td>{% endif %}</tr></tfoot>
+  <tfoot><tr><th scope="row" colspan="2">Total at daywork rates <span class="sub">Prime cost {{ price.prime|money_exact:currency }} plus additions {{ price.additions|money_exact:currency }}</span></th><td class="dw-rate"></td><td class="num"><strong>{{ price.total|money_exact:currency }}</strong></td></tr></tfoot>
 </table></div>
 {% else %}<div class="card-body"><p class="small dim">Nothing on it yet. Add each person, item of plant or material below.</p></div>{% endif %}
 
 {% if sheet.is_editable and not project.is_archived %}<div class="card-body">
-  <nav class="subtabs" aria-label="What to add">{% for code, label in line_form.fields.kind.choices %}<a class="chip{% if code == kind %} on{% endif %}" href="?kind={{ code }}#add-line"{% if code == kind %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+  <nav class="subtabs" aria-label="What to add">{% for code, label in line_form.fields.kind.choices %}{% if code %}<a class="chip{% if code == kind %} on{% endif %}" href="?kind={{ code }}#add-line"{% if code == kind %} aria-current="true"{% endif %}>{{ label }}</a>{% endif %}{% endfor %}</nav>
   <form method="post" id="add-line" novalidate>{% csrf_token %}<input type="hidden" name="action" value="add_line">
     {% if line_form.non_field_errors %}<ul class="errorlist">{% for e in line_form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
     <div class="form-grid">

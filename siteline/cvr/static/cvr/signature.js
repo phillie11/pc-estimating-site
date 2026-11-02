@@ -68,9 +68,21 @@
     form.querySelector('.sig-clear').addEventListener('click', reset);
     reset();
 
+    // No finger signature possible (a paper sheet was signed instead): back to the plain file input
+    var usePhoto = false;
+    var photoButton = form.querySelector('.sig-use-photo');
+    if (photoButton) {
+      photoButton.addEventListener('click', function () {
+        usePhoto = true;
+        pad.hidden = true;
+        upload.hidden = false;
+        input.focus();
+      });
+    }
+
     var sending = false;
     form.addEventListener('submit', function (e) {
-      if (sending) { return; }
+      if (sending || usePhoto) { return; }
       if (!drawn) { return; }  // the server says the box is empty
       e.preventDefault();
       canvas.toBlob(function (blob) {

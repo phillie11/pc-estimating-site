@@ -77,14 +77,14 @@ def seed(*, leeds, pm, owner):
                      ('MATERIALS', None, '18mm MDF sheets', '4', 'sheets', '24.60'),
                      ('MATERIALS', None, 'Fixings and adhesive', '1', 'lot', '38.25'),
                      ('PLANT', 'Mobile tower', '', '8', '', None)])
-    _sign(dw1, pm, "Client's representative")
+    _sign(dw1, pm, 'Site representative, Neon Leisure')
     services.send_to_change(dw1, pm)
     dw2 = _sheet(leeds, pm, rates, 'Extra sockets behind the back bar', today - timedelta(days=3), 'Back bar',
                  'Interior designer site instruction SI-07', [
                      ('LABOUR', 'Electrician', '', '6', '', None),
                      ('MATERIALS', None, 'Double sockets and back boxes', '6', 'nr', '11.40'),
                      ('PLANT', 'Scissor lift', '', '3', '', None)])
-    _sign(dw2, pm, "Client's representative")
+    _sign(dw2, pm, 'Site representative, Neon Leisure')
     _sheet(leeds, pm, rates, 'Make good to corridor C1 after client move-in damage', today, 'Corridor C1',
            'Client asked on site this morning', [
                ('LABOUR', 'Joiner', '', '3.5', '', None), ('LABOUR', 'Labourer', '', '3.5', '', None),

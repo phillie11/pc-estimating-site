@@ -52,7 +52,7 @@
 </section>
 
 <section class="card" aria-labelledby="cvr-adj"><div class="card-head"><h2 id="cvr-adj">Accruals and adjustments</h2>{% if period.status == 'DRAFT' and can_prepare and has_previous %}<form method="post" data-confirm="Add last month's accruals and adjustments that still count to this month, with the same reasons?">{% csrf_token %}<input type="hidden" name="action" value="bring_forward"><button class="btn sm">Bring last month's forward</button></form>{% endif %}</div>
-{% if adjustments %}<div class="table-wrap"><table class="t">
+{% if adjustments %}<div class="table-wrap"><table class="t cvr-adj">
   <caption class="sr-only">Accruals and adjustments this month</caption>
   <thead><tr><th scope="col">What</th><th scope="col">Reason</th><th scope="col" class="num">Amount</th><th scope="col">By</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
   <tbody>{% for a in adjustments %}<tr{% if a.is_reversed or a.reverses_id %} class="dim"{% endif %}>
