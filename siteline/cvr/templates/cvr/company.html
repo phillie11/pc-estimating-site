@@ -1,0 +1,45 @@
+{% extends "app.html" %}{% load ui static %}
+{% block title %}Company CVR{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Company CVR</h1><p class="small dim">Every job's cost value reconciliation for {{ month|date:"F Y" }}: signed-off and submitted months as fixed, the rest as they stand now.</p></div>
+<div class="row">{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endif %}</div></div>
+
+<form method="get" class="filters cvr-filters">
+  <label class="small" for="cvr-month">Month</label><select id="cvr-month" name="month">{% for m in month_choices %}<option value="{{ m|date:'Y-m' }}"{% if m == month %} selected{% endif %}>{{ m|date:"F Y" }}</option>{% endfor %}</select>
+  <label class="small" for="cvr-status">CVR</label><select id="cvr-status" name="status">{% for code, label in status_filters %}<option value="{{ code }}"{% if code == status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <label class="small" for="cvr-q">Job</label><input id="cvr-q" type="search" name="q" value="{{ q }}" placeholder="Name or reference">
+  <button class="btn sm">Show</button>{% if filtered %}<a class="btn ghost sm" href="?month={{ month|date:'Y-m' }}">Clear</a>{% endif %}
+</form>
+
+{% if rows %}
+<div class="kpis cvr-kpis">
+  <div class="kpi"><div class="label">Value</div><div class="value">{{ total.value|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Cost</div><div class="value">{{ total.cost|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Margin to date</div><div class="value{% if total.margin < 0 %} bad{% endif %}">{{ total.margin|money:currency }}</div><div class="note">{% if total.margin_pct is not None %}{{ total.margin_pct }}%{% endif %}</div></div>
+  <div class="kpi"><div class="label">Forecast margin</div><div class="value{% if total.forecast_margin < 0 %} bad{% endif %}">{{ total.forecast_margin|money:currency }}</div><div class="note">{% if total.forecast_margin_pct is not None %}{{ total.forecast_margin_pct }}% of {{ total.final_account|money:currency }}{% endif %}</div></div>
+</div>
+{% endif %}
+<div class="card">
+{% if rows %}<div class="table-wrap"><table class="t register">
+  <caption class="sr-only">CVR by job for {{ month|date:"F Y" }}</caption>
+  <thead><tr><th scope="col">Job</th><th scope="col">CVR</th><th scope="col" class="num">Value</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Margin</th><th scope="col" class="num">Forecast final account</th><th scope="col" class="num">Forecast margin</th><th scope="col" class="num">Moved since last month</th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><a class="rowlink" href="{% if r.period %}{{ r.period.get_absolute_url }}{% else %}{% url 'cvr_list' org.slug r.project.pk %}{% endif %}">{{ r.project.name }}</a><span class="sub mono">{{ r.project.reference }}</span></td>
+    <td>{% if r.period %}{% status_badge r.period %}{% else %}{% badge 'Not started' 'muted' %}{% endif %}</td>
+    <td class="num">{{ r.f.value|money:currency }}</td>
+    <td class="num">{{ r.f.cost|money:currency }}</td>
+    <td class="num{% if r.f.margin < 0 %} overdue{% endif %}">{{ r.f.margin|money:currency }}{% if r.f.margin_pct is not None %}<span class="sub">{{ r.f.margin_pct }}%</span>{% endif %}</td>
+    <td class="num">{{ r.f.final_account|money:currency }}</td>
+    <td class="num{% if r.f.forecast_margin < 0 %} overdue{% endif %}">{{ r.f.forecast_margin|money:currency }}{% if r.f.forecast_margin_pct is not None %}<span class="sub">{{ r.f.forecast_margin_pct }}%</span>{% endif %}</td>
+    <td class="num">{% include "cvr/_move.html" with v=r.move %}</td>
+  </tr>{% endfor %}</tbody>
+  <tfoot><tr><th scope="row">Total</th><td></td><td class="num">{{ total.value|money:currency }}</td><td class="num">{{ total.cost|money:currency }}</td><td class="num">{{ total.margin|money:currency }}</td><td class="num">{{ total.final_account|money:currency }}</td><td class="num">{{ total.forecast_margin|money:currency }}</td><td></td></tr></tfoot>
+</table></div>
+  {% if page.has_other_pages %}<div class="card-foot row between small">{% if page.has_previous %}<a class="btn sm" href="{% qs page=page.previous_page_number %}">Previous</a>{% else %}<span></span>{% endif %}<span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn sm" href="{% qs page=page.next_page_number %}">Next</a>{% else %}<span></span>{% endif %}</div>{% endif %}
+{% elif filtered %}{% include "partials/empty_state.html" with title="No jobs match" message="Nothing matches these filters for this month. Clear them to see every job." cta_url="?" cta_label="Clear filters" cta_plain=True %}
+{% elif any_jobs %}{% include "partials/empty_state.html" with title="No figures for this month" message="None of your jobs had applications, costs or a CVR by the end of this month. Pick a later month." %}
+{% else %}{% url 'project_list' org.slug as jobs_url %}{% include "partials/empty_state.html" with title="No jobs to report on" message="The company CVR lists the won and live jobs whose costs you can see. Owners and admins see every job; project managers and QSs see the jobs they run." cta_url=jobs_url cta_label="Go to projects" %}{% endif %}
+</div>
+<p class="small dim">Totals add up the jobs shown. Margin percentages in the total are on the total value and final account. {{ advisory }}</p>
+{% endblock %}

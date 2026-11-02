@@ -1,0 +1,43 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
+{% block project_actions %}{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<section class="card" aria-labelledby="cvr-now"><div class="card-head"><h2 id="cvr-now">Where the job stands today</h2></div><div class="card-body">
+<div class="kpis cvr-kpis">
+  <div class="kpi"><div class="label">Value to date</div><div class="value">{{ now.value|money:currency }}</div><div class="note">Latest application, before retention</div></div>
+  <div class="kpi"><div class="label">Cost to date</div><div class="value">{{ now.cost|money:currency }}</div><div class="note">Actual costs on the ledger</div></div>
+  <div class="kpi"><div class="label">Margin to date</div><div class="value{% if now.margin < 0 %} bad{% endif %}">{{ now.margin|money:currency }}</div><div class="note">{% if now.margin_pct is not None %}{{ now.margin_pct }}% of value{% else %}No value yet{% endif %}</div></div>
+  <div class="kpi"><div class="label">Forecast margin</div><div class="value{% if now.forecast_margin < 0 %} bad{% endif %}">{{ now.forecast_margin|money:currency }}</div><div class="note">{% if now.forecast_margin_pct is not None %}{{ now.forecast_margin_pct }}% of {{ now.final_account|money:currency }}{% else %}No contract sum yet{% endif %}</div></div>
+</div>
+<p class="small dim cvr-note">Worked out live from applications for payment, the cost ledger and the contract, with no accruals. A month's CVR adds its accruals and adjustments and is fixed once signed off.</p>
+</div></section>
+
+{% if can_prepare and months %}<form method="post" class="card cvr-start" aria-labelledby="cvr-start-h">{% csrf_token %}<div class="card-body">
+  <h2 id="cvr-start-h">Start a month's CVR</h2>
+  <div class="row cvr-start-row">
+    <div class="field"><label for="{{ start_form.month.id_for_label }}">{{ start_form.month.label }}</label>{{ start_form.month }}</div>
+    <button class="btn primary">Start the CVR</button>
+  </div>
+</div></form>{% endif %}
+
+<div class="card">
+{% if rows %}<div class="table-wrap"><table class="t register">
+  <caption class="sr-only">Monthly CVRs on this job, newest first</caption>
+  <thead><tr><th scope="col">Month</th><th scope="col">Status</th><th scope="col" class="num">Value</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Margin</th><th scope="col" class="num">Forecast final account</th><th scope="col" class="num">Forecast final cost</th><th scope="col" class="num">Forecast margin</th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><a class="rowlink" href="{{ r.period.get_absolute_url }}">{{ r.period.label }}</a><span class="sub mono">{{ r.period.reference }}</span></td>
+    <td>{% status_badge r.period %}{% if r.period.signed_off_by %}<span class="sub">by {{ r.period.signed_off_by.full_name }}</span>{% endif %}</td>
+    <td class="num">{{ r.figures.value|money:currency }}</td>
+    <td class="num">{{ r.figures.cost|money:currency }}</td>
+    <td class="num{% if r.figures.margin < 0 %} overdue{% endif %}">{{ r.figures.margin|money:currency }}{% if r.figures.margin_pct is not None %}<span class="sub">{{ r.figures.margin_pct }}%</span>{% endif %}</td>
+    <td class="num">{{ r.figures.final_account|money:currency }}</td>
+    <td class="num">{{ r.figures.final_cost|money:currency }}</td>
+    <td class="num{% if r.figures.forecast_margin < 0 %} overdue{% endif %}">{{ r.figures.forecast_margin|money:currency }}{% if r.figures.forecast_margin_pct is not None %}<span class="sub">{{ r.figures.forecast_margin_pct }}%</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% if page.has_other_pages %}<div class="card-foot row between small">{% if page.has_previous %}<a class="btn sm" href="{% qs page=page.previous_page_number %}">Newer</a>{% else %}<span></span>{% endif %}<span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn sm" href="{% qs page=page.next_page_number %}">Older</a>{% else %}<span></span>{% endif %}</div>{% endif %}
+{% elif can_prepare %}{% include "partials/empty_state.html" with title="No monthly CVRs yet" message="Each month, the CVR sets what the job is worth against what it has cost, with the forecast to the end. Start one above: the figures fill in from applications, the cost ledger and the contract." %}
+{% else %}{% include "partials/empty_state.html" with title="No monthly CVRs yet" message="The job's project manager or QS starts each month's CVR. Once they do, it shows here." %}{% endif %}
+</div>
+<p class="small dim">Value is the gross valuation of the latest application made up to the month's end; cost is every actual cost on the cost ledger dated by then. Months are signed off in order and then locked: anything found later goes in a later month as an adjustment. {{ advisory }}</p>
+{% endblock %}

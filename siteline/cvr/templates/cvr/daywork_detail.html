@@ -1,0 +1,77 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small"><a href="{% url 'daywork_list' org.slug project.pk %}">← All daywork sheets</a></p>
+<div class="site-card">
+<div class="card"><div class="card-body">
+  <h2 class="dw-title">{{ sheet.title }}</h2>
+  <p class="small dim"><span class="mono">{{ sheet.reference }}</span> · {% status_badge sheet %} · {{ sheet.work_date|date:"D j M Y" }}{% if sheet.location %} · {{ sheet.location }}{% endif %}</p>
+  {% if sheet.instructed_by %}<p class="small">Instructed by: {{ sheet.instructed_by }}</p>{% endif %}
+  {% if sheet.description %}<p class="pre">{{ sheet.description }}</p>{% endif %}
+  {% if sheet.is_editable and not project.is_archived %}<a class="btn sm" href="{% url 'daywork_edit' org.slug project.pk sheet.pk %}">Change details</a>{% endif %}
+  {% if sheet.signed_at %}<div class="dw-signed"><img src="{% url 'daywork_signature' org.slug project.pk sheet.pk %}" alt="Signature of {{ sheet.signed_by_name }}" width="240" height="90"><p class="small">Signed by <strong>{{ sheet.signed_by_name }}</strong> ({{ sheet.get_signed_by_role_display|lower }}) on {{ sheet.signed_at|date:"j M Y, H:i" }}.</p></div>{% endif %}
+  {% if sheet.change_event %}<p class="small">On the change register as <a href="{{ sheet.change_event.get_absolute_url }}">{{ sheet.change_event.reference }} {{ sheet.change_event.title }}</a>.</p>{% endif %}
+</div></div>
+
+{% if sheet.status == 'DRAFT' and lines and not project.is_archived %}<div class="dw-next card"><div class="card-body">
+  <p><strong>Next:</strong> get the client or contract administrator to check the sheet and sign it on this phone.</p>
+  <a class="btn primary block" href="{% url 'daywork_sign' org.slug project.pk sheet.pk %}">Get it signed</a>
+</div></div>{% endif %}
+
+<section class="card" aria-labelledby="dw-lines"><div class="card-head"><h2 id="dw-lines">Labour, plant and materials</h2></div>
+{% if lines %}<div class="table-wrap"><table class="t dw-table">
+  <caption class="sr-only">Lines on {{ sheet.reference }}, priced at the daywork rates</caption>
+  <thead><tr><th scope="col">Who or what</th><th scope="col" class="num">Hours or qty</th><th scope="col" class="num">Rate</th><th scope="col" class="num">Amount</th>{% if sheet.is_editable %}<th scope="col"><span class="sr-only">Remove</span></th>{% endif %}</tr></thead>
+  {% for code, label, group_lines, k in groups %}{% if group_lines %}<tbody>
+    <tr class="group"><th scope="rowgroup" colspan="{% if sheet.is_editable %}5{% else %}4{% endif %}">{{ label }}</th></tr>
+    {% for ln in group_lines %}<tr><td>{{ ln.description }}</td><td class="num">{{ ln.quantity|floatformat:"-2" }} {{ ln.unit }}</td><td class="num">{{ ln.unit_rate|money_exact:currency }}</td><td class="num">{{ ln.amount|money_exact:currency }}</td>
+      {% if sheet.is_editable %}<td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_line"><input type="hidden" name="line" value="{{ ln.pk }}"><button class="btn sm ghost" aria-label="Remove {{ ln.description }}">Remove</button></form></td>{% endif %}</tr>{% endfor %}
+    <tr class="sub-total"><td colspan="3">{{ label }} prime cost{% if k.1 %}, plus {{ k.1|floatformat:"-2" }}% ({{ k.2|money_exact:currency }}){% endif %}</td><td class="num">{{ k.0|money_exact:currency }}</td>{% if sheet.is_editable %}<td></td>{% endif %}</tr>
+  </tbody>{% endif %}{% endfor %}
+  <tfoot><tr><th scope="row" colspan="3">Total at daywork rates <span class="sub">Prime cost {{ price.prime|money_exact:currency }} plus additions {{ price.additions|money_exact:currency }}</span></th><td class="num"><strong>{{ price.total|money_exact:currency }}</strong></td>{% if sheet.is_editable %}<td></td>{% endif %}</tr></tfoot>
+</table></div>
+{% else %}<div class="card-body"><p class="small dim">Nothing on it yet. Add each person, item of plant or material below.</p></div>{% endif %}
+
+{% if sheet.is_editable and not project.is_archived %}<div class="card-body">
+  <nav class="subtabs" aria-label="What to add">{% for code, label in line_form.fields.kind.choices %}<a class="chip{% if code == kind %} on{% endif %}" href="?kind={{ code }}#add-line"{% if code == kind %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+  <form method="post" id="add-line" novalidate>{% csrf_token %}<input type="hidden" name="action" value="add_line">
+    {% if line_form.non_field_errors %}<ul class="errorlist">{% for e in line_form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    <div class="form-grid">
+      {% include "partials/field.html" with field=line_form.kind %}
+      {% if kind != 'MATERIALS' %}{% include "partials/field.html" with field=line_form.rate %}{% endif %}
+      {% include "partials/field.html" with field=line_form.description %}
+      {% include "partials/field.html" with field=line_form.quantity %}
+      {% if kind == 'MATERIALS' %}{% include "partials/field.html" with field=line_form.unit %}{% endif %}
+      {% include "partials/field.html" with field=line_form.unit_rate %}
+    </div>
+    <div class="form-actions"><button class="btn primary">Add to the sheet</button></div>
+  </form>
+  {% if not rates and kind != 'MATERIALS' %}<p class="small dim">No {{ kind|lower }} rates are set for this job, so type the rate.{% if can_set_rates %} <a href="{% url 'daywork_rates' org.slug project.pk %}">Set the rates</a>.{% endif %}</p>{% endif %}
+</div>{% endif %}
+</section>
+
+<section class="card" aria-labelledby="dw-photos"><div class="card-head"><h2 id="dw-photos">Photos</h2></div><div class="card-body">
+  {% if photos %}<ul class="dw-photos">{% for p in photos %}<li><a href="{% url 'daywork_photo' org.slug project.pk sheet.pk p.pk 'full' %}"><img src="{% url 'daywork_photo' org.slug project.pk sheet.pk p.pk 'thumb' %}" alt="{{ p.caption|default:'Daywork photo' }}" loading="lazy" width="160" height="120"></a>{% if p.caption %}<span class="small">{{ p.caption }}</span>{% endif %}
+    {% if sheet.is_editable %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_photo"><input type="hidden" name="photo" value="{{ p.pk }}"><button class="btn sm ghost">Remove photo</button></form>{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="small dim">No photos. A before and after photo makes the daywork easier to agree.</p>{% endif %}
+  {% if sheet.is_editable and not project.is_archived %}<form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="add_photo">
+    {% include "partials/form_fields.html" with form=photo_form %}
+    <div class="form-actions"><button class="btn">Add photo</button></div></form>{% endif %}
+</div></section>
+
+{% if 'send_to_change' in transitions and lines and not project.is_archived %}<section class="card" aria-labelledby="dw-send"><div class="card-head"><h2 id="dw-send">Put it on the change register</h2></div><div class="card-body">
+  <p class="small">This adds the sheet to a change event in one step: revenue at the priced total ({{ price.total|money_exact:currency }}) and cost at the prime cost ({{ price.prime|money_exact:currency }}). The sheet is then fixed.{% if sheet.status == 'DRAFT' %} <strong>It isn't signed yet</strong>; the change event will say so.{% endif %}</p>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="send">
+    {% include "partials/form_fields.html" with form=send_form %}
+    <div class="form-actions"><button class="btn{% if sheet.status == 'SIGNED' %} primary{% endif %}">Add to the change register</button></div></form>
+</div></section>{% endif %}
+
+{% if 'cancel' in transitions and not project.is_archived %}<details class="card"><summary class="card-body small">Cancel this sheet</summary><div class="card-body">
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="cancel">
+    <div class="field"><label for="dw-cancel-note">Why (optional)</label><input id="dw-cancel-note" type="text" name="note" maxlength="250"></div>
+    <p class="small dim">It stays on the register, marked cancelled, and can't be signed or valued.</p>
+    <div class="form-actions"><button class="btn">Cancel the sheet</button></div></form>
+</div></details>{% endif %}
+</div>
+{% endblock %}

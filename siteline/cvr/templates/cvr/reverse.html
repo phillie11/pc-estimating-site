@@ -1,0 +1,10 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<div class="card" style="max-width:640px"><div class="card-head"><h2>Reverse an adjustment</h2></div><div class="card-body">
+<p>{{ adj.get_kind_display }}: <strong>{{ adj.amount|money_exact:currency }}</strong>. {{ adj.reason }}</p>
+<p class="small dim">This adds an equal and opposite adjustment to {{ period.label }}. Both stay on the record.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Reverse it</button><a class="btn ghost" href="{{ period.get_absolute_url }}">Cancel</a></div></form>
+</div></div>
+{% endblock %}

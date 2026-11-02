@@ -4,6 +4,7 @@ from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
 from costs import urls as costs_urls
+from cvr import urls as cvr_urls
 from delivery import views as delivery
 from diary import urls as diary_urls
 from directory import views as directory
@@ -126,6 +127,9 @@ urlpatterns = [
     # Commercial > Sub payments, Decisions > Payments for subs, CIS and default terms (subpayments/urls.py)
     *subpayments_urls.project_patterns(P),
     *subpayments_urls.org_patterns,
+    # Commercial > CVR, Cashflow and Dayworks, the company CVR, Settings > Commercial reporting (cvr/urls.py)
+    *cvr_urls.project_patterns(P),
+    *cvr_urls.org_patterns,
     # Sub quotes > Level quotes on a bid (levelling/urls.py)
     *levelling_urls.project_patterns(P),
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)

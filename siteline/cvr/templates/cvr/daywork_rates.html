@@ -1,0 +1,27 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}">{% endblock %}
+{% block project_content %}
+{% include "commercial/_subnav.html" %}
+<p class="small"><a href="{% url 'daywork_list' org.slug project.pk %}">← Daywork sheets</a></p>
+<section class="card" aria-labelledby="rates-h"><div class="card-head"><h2 id="rates-h">Daywork rates for this job</h2></div>
+{% if rates %}<div class="table-wrap"><table class="t">
+  <caption class="sr-only">Labour and plant rates</caption>
+  <thead><tr><th scope="col">Labour or plant</th><th scope="col">Trade, grade or plant</th><th scope="col" class="num">Rate</th><th scope="col">State</th>{% if editable %}<th scope="col"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+  <tbody>{% for r in rates %}<tr{% if not r.is_active %} class="dim"{% endif %}><td>{{ r.get_kind_display }}</td><td>{{ r.name }}</td><td class="num">{{ r.rate|money_exact:currency }} / {{ r.unit }}</td><td>{% if r.is_active %}{% badge 'In use' 'good' %}{% else %}{% badge 'Retired' 'muted' %}{% endif %}</td>
+  {% if editable %}<td><form method="post">{% csrf_token %}<input type="hidden" name="rate" value="{{ r.pk }}"><button class="btn sm ghost" name="action" value="{% if r.is_active %}retire{% else %}restore{% endif %}">{% if r.is_active %}Retire{% else %}Use again{% endif %}</button></form></td>{% endif %}</tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="card-body"><p class="small dim">No rates yet.{% if editable %} Add them from the contract's daywork schedule below.{% else %} The job's project manager or QS sets them.{% endif %}</p></div>{% endif %}
+{% if editable %}<div class="card-body"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_rate">
+  <h3>Add a rate</h3>{% include "partials/form_fields.html" with form=rate_form %}
+  <div class="form-actions"><button class="btn primary">Add rate</button></div></form>
+  <p class="small dim">A rate in use on a sheet keeps its value on that sheet if you change it later: retire it and add the new one.</p></div>{% endif %}
+</section>
+
+<section class="card" aria-labelledby="terms-h"><div class="card-head"><h2 id="terms-h">Percentage additions</h2></div><div class="card-body">
+{% if editable %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="terms">
+  {% include "partials/form_fields.html" with form=terms_form %}
+  <div class="form-actions"><button class="btn">Save percentages</button></div></form>
+{% else %}<p>Labour {{ terms.labour_pct|floatformat:"-2" }}%, materials {{ terms.materials_pct|floatformat:"-2" }}%, plant {{ terms.plant_pct|floatformat:"-2" }}%.{% if terms.basis %} {{ terms.basis }}.{% endif %}</p>{% endif %}
+<p class="small dim">Each line is hours or quantity times the rate, to the penny. Each of labour, plant and materials is totalled as prime cost, then its percentage is added (rounded half up to the penny). Sheets not yet signed follow these figures; signed ones keep theirs. {{ advisory }}</p>
+</div></section>
+{% endblock %}

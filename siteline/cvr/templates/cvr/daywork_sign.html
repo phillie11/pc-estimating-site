@@ -1,0 +1,40 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<link rel="stylesheet" href="{% static 'cvr/cvr.css' %}"><script src="{% static 'cvr/signature.js' %}" defer></script>{% endblock %}
+{% block project_content %}
+<div class="site-card">
+<p class="small"><a href="{{ sheet.get_absolute_url }}">← Back to {{ sheet.reference }}</a></p>
+<div class="card"><div class="card-body">
+  <h2 class="dw-title">Sign daywork sheet {{ sheet.reference }}</h2>
+  <p><strong>{{ sheet.title }}</strong><br><span class="small">{{ sheet.work_date|date:"l j F Y" }}{% if sheet.location %}, {{ sheet.location }}{% endif %}</span></p>
+  <table class="t dw-table">
+    <caption class="sr-only">What is being signed for</caption>
+    <thead><tr><th scope="col">Who or what</th><th scope="col" class="num">Hours or qty</th></tr></thead>
+    <tbody>{% for ln in lines %}<tr><td>{{ ln.get_kind_display }}: {{ ln.description }}</td><td class="num">{{ ln.quantity|floatformat:"-2" }} {{ ln.unit }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <p class="small dim">Signing confirms the hours, plant and materials were used on this work. The value is agreed separately through the change register.</p>
+</div></div>
+
+<div class="card"><div class="card-body">
+<form method="post" enctype="multipart/form-data" class="sig-form" novalidate>{% csrf_token %}
+  {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <div class="form-grid">
+    {% include "partials/field.html" with field=form.name full=1 %}
+    {% include "partials/field.html" with field=form.role full=1 %}
+  </div>
+  <div class="field full sig-field{% if form.signature.errors %} has-error{% endif %}">
+    <span class="label" id="sig-label">Signature <span class="dim">*</span></span>
+    <div class="sig-pad" hidden>
+      <canvas class="sig-canvas" width="600" height="220" role="img" aria-labelledby="sig-label" aria-describedby="sig-help"></canvas>
+      <button type="button" class="btn sig-clear">Clear and sign again</button>
+    </div>
+    <div class="sig-upload"><label for="{{ form.signature.id_for_label }}">Photo of the signed paper sheet</label>{{ form.signature }}</div>
+    <div class="help" id="sig-help">{{ form.signature.help_text }}</div>
+    {% for e in form.signature.errors %}<div class="err">{{ e }}</div>{% endfor %}
+  </div>
+  {% include "partials/field.html" with field=form.confirm %}
+  <div class="form-actions"><button class="btn primary block">Save the signature</button><a class="btn ghost" href="{{ sheet.get_absolute_url }}">Not now</a></div>
+  <p class="small dim">Once signed, the sheet can't be changed. If something is wrong, cancel it and start a new one.</p>
+</form>
+</div></div>
+</div>
+{% endblock %}
