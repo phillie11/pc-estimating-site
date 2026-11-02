@@ -8,7 +8,7 @@
 
 <div class="stack">
   <div class="card" id="duty-holders"><div class="card-head"><h2>Duty holders</h2><a class="btn sm" href="{% url 'duty_holder_add' org.slug project.pk %}">Add someone</a></div>
-    {% if holders %}<div class="table-wrap"><table class="t">
+    {% if holders %}<div class="table-wrap sf-table"><table class="t">
       <thead><tr><th>Role</th><th>Company</th><th>Contact</th><th>Appointed in writing</th><th><span class="sr-only">Change</span></th></tr></thead>
       <tbody>{% for h in holders %}<tr>
         <td><strong>{{ h.get_role_display }}</strong></td>

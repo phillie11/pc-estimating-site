@@ -18,7 +18,8 @@ signout_url) and the visitor form: never the project or organisation, so nothing
     <p class="sf-signin-note">Sign out when you leave site, so the fire roll call is right.</p>
   {% elif member_name %}
     <form method="post">{% csrf_token %}<button class="btn primary block sf-big-btn" name="me" value="1">Sign in as {{ member_name }}</button></form>
-    <p class="sf-signin-note">You are logged in, so one tap does it. Not you? <a href="{% url 'logout' %}">Log out</a> first.</p>
+    <p class="sf-signin-note">You are logged in, so one tap does it. Not you? Log out first.</p>
+    <a class="btn ghost block" href="{% url 'logout' %}">Log out</a>
   {% else %}
     <form method="post" class="sf-signin-form" novalidate>{% csrf_token %}
       {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
@@ -27,7 +28,8 @@ signout_url) and the visitor form: never the project or organisation, so nothing
         {% if field.help_text %}<div class="help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</div>{% endif %}{% for e in field.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>{% endfor %}
       <button class="btn primary block sf-big-btn">Sign in</button>
     </form>
-    <p class="sf-signin-note">Have an account with the contractor? <a href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in</a> to sign in with one tap next time.</p>
+    <p class="sf-signin-note">Have an account with the contractor? Log in once and next time it's one tap.</p>
+    <a class="btn ghost block" href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in</a>
   {% endif %}
   <p class="sf-signin-small">Your name, company and times are kept by the contractor running this site for the site record and the fire roll call.</p>
 </main>
