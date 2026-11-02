@@ -9,7 +9,7 @@ never the project or organisation object.
 
   * Unknown, replaced, archived, not-yet-won and completed jobs' tokens all get the same 404 page.
   * Rate limits: per address in security/ratelimit.py RULES ('site-signin', 'site-signin-view'),
-    and per poster here (GATE_LIMIT), so a script can't flood one job's roll call.
+    and per poster here (GATE_LIMIT, sign-ins only), so a script can't flood one job's roll call.
   * Someone with an account in the company signs in with one tap (recorded against their login).
     Anyone else types a name and company. A visitor can only sign themselves out, from the phone
     they signed in on (a signed cookie, scoped to this poster's path); the site team can sign anyone
@@ -35,7 +35,7 @@ from . import rules
 from .forms import VisitorForm
 from .models import SiteAttendance, SiteGate
 
-GATE_LIMIT = (400, 3600)  # sign-ins and sign-outs per poster per hour, from every phone together
+GATE_LIMIT = (400, 3600)  # sign-ins per poster per hour, from every phone together (sign-outs aren't capped)
 MAX_TOKEN = 64
 
 
@@ -126,10 +126,12 @@ def site_signin(request, token):
         form = VisitorForm(request.POST or None, initial={'name': request.user.full_name}
                            if request.user.is_authenticated and membership is None else None)
         if request.method == 'POST':
-            if _over_gate_limit(gate):
-                return too_many_requests(request, ratelimit.retry_after(GATE_LIMIT[1]))
             if current is not None:
                 return redirect(gate.public_path())  # already signed in: don't make a second entry
+            # The poster's cap counts sign-ins only: a post that signs nobody in mustn't use it up
+            creating = membership is not None or form.is_valid()
+            if creating and _over_gate_limit(gate):
+                return too_many_requests(request, ratelimit.retry_after(GATE_LIMIT[1]))
             if membership is not None:
                 company, kind = _company_for(gate, request.user, membership)
                 a = SiteAttendance.objects.create(project=gate.project, user=request.user,
@@ -167,8 +169,8 @@ def site_signout(request, token):
     if gate is None:
         return _invalid(request)
     with org_context(gate.organization):
-        if _over_gate_limit(gate):
-            return too_many_requests(request, ratelimit.retry_after(GATE_LIMIT[1]))
+        # No poster cap here: signing out only closes your own row, and a full poster mustn't leave
+        # people who have gone home on the fire roll call (the per-address limit still applies)
         current = _current(request, gate, _membership(request, gate))
         if current is None:
             messages.info(request, 'You are not signed in to this site on this phone.')
