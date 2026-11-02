@@ -432,7 +432,8 @@ class PackTests(CloseoutTestBase):
     def setUp(self):
         super().setUp()
         with org_context(self.org_a):
-            doc = Document.objects.create(project=self.pa, title='GA plan', reference='GA-01', category='DRAWING')
+            doc = Document.objects.create(project=self.pa, title='GA plan', reference='GA-01', category='DRAWING',
+                                          visibility=Document.VIS_SHARED)  # only drawings given to the client go in
             doc.add_revision(DocumentRevision(revision='P01', file=pdf('ga-p01.pdf', b'%PDF-1.4 p01'),
                                               original_name='ga-p01.pdf', size=12))
             doc.add_revision(DocumentRevision(revision='C01', file=pdf('ga-c01.pdf', b'%PDF-1.4 c01'),

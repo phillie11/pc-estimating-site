@@ -36,8 +36,27 @@ class Source:
 
 
 def drawings(project):
-    from projects.models import DocumentRevision
+    """
+    Current revisions of the drawings the client side has been given: a document shared with the
+    client role (the documents app's own rule: visibility SHARED, share roles blank or naming the
+    client, and the revision shared at some point), or a revision on an issued transmittal to
+    someone on the job as client or consultant. Internal-only and never-issued (WIP) drawings stay
+    out, because issuing a pack lets the client download every item in it.
+    """
+    from django.db.models import Q
+
+    from documents.models import Transmittal, TransmittalItem
+    from projects.models import Document, DocumentRevision, ProjectMember
+
+    from .access import CLIENT_ROLES
+    client_side = ProjectMember.objects.filter(project=project, role__in=CLIENT_ROLES).values('user_id')
+    transmitted = TransmittalItem.objects.filter(
+        transmittal__project=project, transmittal__status__in=Transmittal.SENT_STATUSES,
+        transmittal__deleted_at__isnull=True, transmittal__recipients__user__in=client_side).values('revision_id')
+    shared = Q(document__visibility=Document.VIS_SHARED, shared_at__isnull=False) & (
+        Q(document__share_roles='') | Q(document__share_roles__contains=f',{ProjectMember.ROLE_CLIENT},'))
     revs = DocumentRevision.objects.filter(document__project=project, document__category='DRAWING', is_current=True) \
+        .filter(shared | Q(pk__in=transmitted)) \
         .exclude(status=DocumentRevision.WITHDRAWN).select_related('document').order_by('document__reference', 'pk')
     return [Source(HandoverItem.DRAWING, r.document.title, r.file, reference=r.document.reference,
                    revision=r.revision, file_name=r.original_name, size=r.size, sha256=r.sha256)
