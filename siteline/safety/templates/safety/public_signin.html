@@ -19,7 +19,7 @@ signout_url) and the visitor form: never the project or organisation, so nothing
   {% elif member_name %}
     <form method="post">{% csrf_token %}<button class="btn primary block sf-big-btn" name="me" value="1">Sign in as {{ member_name }}</button></form>
     <p class="sf-signin-note">You are logged in, so one tap does it. Not you? Log out first.</p>
-    <a class="btn ghost block" href="{% url 'logout' %}">Log out</a>
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn ghost block">Log out</button></form>
   {% else %}
     <form method="post" class="sf-signin-form" novalidate>{% csrf_token %}
       {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
