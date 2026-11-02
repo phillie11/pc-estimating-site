@@ -49,7 +49,14 @@ def on_job_staff(project):
         .values('user_id')
     admins = Membership.objects.filter(organization_id=project.organization_id, role__in=Membership.ADMIN_ROLES,
                                        is_active=True).values('user_id')
-    return assignable_users(project).filter(Q(pk__in=team) | Q(pk__in=admins) | Q(pk=project.manager_id or 0))
+    # Only staff who can open a live job: estimating-only staff left on the team after the win can't
+    # (projects.access.visible_projects), so a record given to them would be on nobody's Needs me
+    delivers = Membership.objects.filter(organization_id=project.organization_id, is_active=True) \
+        .filter(Q(role__in=Membership.ADMIN_ROLES)
+                | Q(role__in=Membership.INTERNAL_ROLES, area__in=[Membership.AREA_BOTH, Membership.AREA_DELIVERY])) \
+        .values('user_id')
+    return assignable_users(project).filter(Q(pk__in=team) | Q(pk__in=admins) | Q(pk=project.manager_id or 0)) \
+        .filter(pk__in=delivers)
 
 
 def quality_project(request, pk):
