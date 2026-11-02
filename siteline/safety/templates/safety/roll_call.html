@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% load static %}
+{% block title %}Fire roll call · {{ project.name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'safety/safety.css' %}">{% endblock %}
+{% block body_class %}roll-call-page{% endblock %}
+{% block body %}
+<main class="roll-call" data-roll-call data-sw="{{ sw_url }}" data-cache="roll-call-{{ project.pk }}" data-key="roll-call-{{ project.pk }}-{{ now|date:'Y-m-d' }}">
+  <div class="rc-tools no-print">
+    <a class="btn" href="{{ back_url }}">Back</a>
+    <button type="button" class="btn primary" data-print>Print</button>
+    <button type="button" class="btn" data-reset>Clear ticks</button>
+  </div>
+  <h1>Fire roll call</h1>
+  <p class="rc-site">{{ project.name }}</p>
+  <p class="rc-meta"><strong>{{ people|length }}</strong> {% if people|length == 1 %}person{% else %}people{% endif %} signed in at {{ now|date:"H:i, l j F Y" }}.
+    <span class="rc-tally" data-tally aria-live="polite"></span></p>
+  <p class="rc-offline no-print" data-offline hidden>No signal: this is the copy from {{ now|date:"H:i" }}. Anyone who signed in or out since then isn't shown.</p>
+  <p class="rc-saved no-print small" data-saved hidden>Saved on this phone: it opens without a signal.</p>
+  {% if people %}
+  {% for company, rows in by_company %}<section class="rc-group">
+    <h2>{{ company }} <span>· {{ rows|length }}</span></h2>
+    <ul>{% for a in rows %}<li><label><input type="checkbox" data-person value="{{ a.pk }}"> <span class="rc-name">{{ a.name }}</span> <span class="rc-in">in {{ a.signed_in_at|date:"H:i" }}</span></label></li>{% endfor %}</ul>
+  </section>{% endfor %}
+  {% else %}<p class="rc-empty">Nobody is signed in today. Check the site by sight, and ask the site team who was working.</p>{% endif %}
+  <p class="rc-foot">Tick each person at the assembly point. Report anyone not accounted for to the fire service straight away. Visitors signed in by the site team are included.</p>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{% static 'safety/safety.js' %}" defer></script>{% endblock %}

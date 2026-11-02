@@ -362,6 +362,9 @@ class Command(BaseCommand):
             # Site diary: the last 10 working days on Leeds, with placeholder photos (diary/demo.py)
             from diary.demo import seed as seed_diary
             seed_diary(leeds=leeds, pm=pm)
+            # Safety: incidents (one RIDDOR to report), CDM registers and today's site sign-in (safety/demo.py)
+            from safety.demo import seed as seed_safety
+            seed_safety(leeds=leeds, pm=pm, sub_user=subu, demo_pdf=demo_pdf)
 
             # Procurement schedule and submittals on Leeds and Salford (procurement/demo.py)
             from procurement.demo import seed as seed_procurement

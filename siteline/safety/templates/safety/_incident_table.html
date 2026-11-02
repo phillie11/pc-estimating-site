@@ -1,0 +1,11 @@
+{% load ui %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Incident</th>{% if show_project %}<th>Job</th>{% endif %}<th>When</th><th>Where</th><th>RIDDOR</th><th>Status</th></tr></thead>
+  <tbody>{% for i in incidents %}<tr>
+    <td><a class="rowlink" href="{{ i.get_absolute_url }}">{{ i.title }}</a><span class="sub"><span class="mono">{{ i.ref }}</span> · {{ i.get_kind_display }}{% if i.anyone_hurt %} · <span class="bad">someone hurt</span>{% endif %}</span></td>
+    {% if show_project %}<td class="small">{{ i.project.name }}</td>{% endif %}
+    <td class="small nowrap">{{ i.occurred_at|date:"D j M Y, H:i" }}</td>
+    <td class="small">{{ i.location }}</td>
+    <td>{% with lbl=i.riddor_label %}{% if lbl.0 %}{% status_badge lbl.0 lbl.1 %}{% if i.riddor_outstanding and i.riddor_deadline %}<span class="sub">by {{ i.riddor_deadline|date:"j M" }}</span>{% endif %}{% else %}<span class="dim small">No</span>{% endif %}{% endwith %}</td>
+    <td>{% status_badge i %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+{% if page.has_other_pages %}<div class="card-foot row between small">{% if page.has_previous %}<a class="btn sm" href="{% qs page=page.previous_page_number %}">Newer</a>{% else %}<span></span>{% endif %}<span class="dim">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="btn sm" href="{% qs page=page.next_page_number %}">Older</a>{% else %}<span></span>{% endif %}</div>{% endif %}

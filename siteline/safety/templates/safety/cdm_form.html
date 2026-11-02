@@ -1,0 +1,18 @@
+{% extends "project_base.html" %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <div class="card"><div class="card-head"><h2>HSE notification (F10)</h2></div><div class="card-body">
+    <p class="small dim" style="margin-top:0">Notifiable if planned to last more than {{ thresholds.days }} working days with more than {{ thresholds.workers }} people on site at once, or more than {{ thresholds.person_days }} person-days. Fill in the figures you know and the register will say which it looks like. Advisory: check your contract and your safety adviser.</p>
+    <div class="form-grid">{% for field in form.notification_fields %}{% include "partials/field.html" %}{% endfor %}</div>
+  </div></div>
+  <div class="card"><div class="card-head"><h2>Key dates</h2></div><div class="card-body">
+    <div class="form-grid">{% for field in form.date_fields %}{% include "partials/field.html" %}{% endfor %}</div>
+  </div></div>
+  <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'cdm_register' org.slug project.pk %}">Cancel</a></div>
+</form>
+</div>
+{% endblock %}

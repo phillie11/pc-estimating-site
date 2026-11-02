@@ -1,0 +1,23 @@
+{% extends "app.html" %}{% load ui static %}
+{% block title %}Incident register{% endblock %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Incident register</h1><p class="small dim" style="margin:4px 0 0">Every incident and near miss on every job, for owners and admins.</p></div>
+  <div class="row">{% if incidents %}<a class="btn" href="{% qs export='csv' page=None %}">Export CSV</a>{% endif %}</div>
+</div>
+<div class="kpis">
+  <div class="kpi"><div class="label">Reported in {{ year }}</div><div class="value">{{ totals.all }}</div></div>
+  <div class="kpi"><div class="label">Near misses</div><div class="value">{{ totals.near_misses }}</div><div class="note"><a href="?kind=NEAR_MISS&amp;from={{ year }}-01-01">See them</a></div></div>
+  <div class="kpi"><div class="label">Someone hurt</div><div class="value">{{ totals.hurt }}</div></div>
+  <div class="kpi"><div class="label">RIDDOR reportable</div><div class="value{% if totals.riddor %} bad{% endif %}">{{ totals.riddor }}</div><div class="note"><a href="?riddor=1&amp;from={{ year }}-01-01">See them</a></div></div>
+  <div class="kpi"><div class="label">Open now</div><div class="value">{{ totals.open }}</div><div class="note"><a href="?status=open">See them</a></div></div>
+</div>
+<div class="touch">{% include "safety/_incident_filters.html" %}</div>
+<div class="card">
+{% if incidents %}{% include "safety/_incident_table.html" with show_project=True %}
+{% elif filtered %}{% include "partials/empty_state.html" with title="No incidents match" message="Nothing matches these filters. Clear them to see every incident." cta_url="?" cta_label="Clear filters" cta_plain=True %}
+{% else %}{% include "partials/empty_state.html" with title="No incidents or near misses reported yet" message="Incidents are reported from each job's Safety tab, usually from a phone on site. They all appear here, so you can see the whole company's record in one place." %}{% endif %}
+</div>
+<p class="small dim">RIDDOR deadlines are advisory: check your contract and your safety adviser.</p>
+{% endblock %}

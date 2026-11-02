@@ -1,0 +1,12 @@
+{% extends "project_base.html" %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+<div class="card"><div class="card-head"><h2>Sign someone in</h2></div><div class="card-body">
+  <p class="small dim" style="margin-top:0">For someone without a phone, or a delivery driver coming on site. They are signed in now, and you sign them out from "On site now" when they leave.</p>
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+  <div class="form-actions"><button class="btn primary">Sign in</button><button class="btn" name="another" value="1">Sign in and add another</button><a class="btn ghost" href="{% url 'safety_on_site' org.slug project.pk %}">Cancel</a></div></form>
+</div></div>
+</div>
+{% endblock %}

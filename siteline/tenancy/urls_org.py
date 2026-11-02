@@ -13,6 +13,7 @@ from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import views as projects
 from rfis import views as rfis
+from safety import urls as safety_urls
 from subpayments import urls as subpayments_urls
 from tenders import views as tenders
 from variations import views as variations
@@ -120,6 +121,9 @@ urlpatterns = [
     # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)
     *diary_urls.project_patterns(P),
     *diary_urls.org_patterns,
+    # Safety tab: incidents and near misses, CDM register, site sign-in (safety/urls.py)
+    *safety_urls.project_patterns(P),
+    *safety_urls.org_patterns,
     # Commercial > Costs and Settings > Cost control (costs/urls.py)
     *costs_urls.project_patterns(P),
     *costs_urls.org_patterns,

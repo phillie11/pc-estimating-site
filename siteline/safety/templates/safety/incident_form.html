@@ -1,0 +1,20 @@
+{% extends "project_base.html" %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  {% for h in form.hidden_fields %}{{ h }}{% endfor %}
+  <p class="small dim"><span class="mono">{{ incident.ref }}</span> {{ incident.title }}. Fill in what you know now; everything can be added to later.</p>
+  {% for title, fields in form.sections %}
+  <div class="card" id="{% if forloop.counter == 2 %}injury{% elif forloop.counter == 3 %}riddor{% elif forloop.counter == 4 %}investigation{% else %}what{% endif %}"><div class="card-head"><h2>{{ title }}</h2></div><div class="card-body">
+    {% if forloop.counter == 2 and not incident.anyone_hurt %}<p class="small dim" style="margin-top:0">Only needed if someone was hurt. If they were, change "Was anyone hurt?" above to Yes.</p>{% endif %}
+    {% if forloop.counter == 3 %}<p class="small dim" style="margin-top:0">Advisory: check your contract and your safety adviser. The injured person's employer normally reports to HSE; as principal contractor, make sure it has been done.{% if incident.riddor_suggestion %} From the injury details this may be: <strong>{{ incident.riddor_suggestion_label }}</strong>.{% endif %}</p>{% endif %}
+    <div class="form-grid">{% for field in fields %}{% include "partials/field.html" with full=True %}{% endfor %}</div>
+  </div></div>
+  {% endfor %}
+  <div class="form-actions sticky-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{{ incident.get_absolute_url }}">Cancel</a></div>
+</form>
+</div>
+{% endblock %}

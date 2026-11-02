@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% load static %}{% comment %}
+The public QR sign-in page. Given plain strings only (site_name, who, member_name, signed_in_at,
+signout_url) and the visitor form: never the project or organisation, so nothing else can leak.
+{% endcomment %}
+{% block title %}Sign in · {{ site_name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'safety/safety.css' %}">{% endblock %}
+{% block body_class %}signin-page{% endblock %}
+{% block body %}
+<main class="signin">
+  <p class="signin-kicker">Site sign-in</p>
+  <h1>{{ site_name }}</h1>
+  {% include "partials/messages.html" %}
+  {% if signed_in_at %}
+    <div class="signin-state on">
+      <p class="signin-big">You're signed in</p>
+      <p>{{ who }}, since {{ signed_in_at|date:"H:i" }} today.</p>
+    </div>
+    <form method="post" action="{{ signout_url }}">{% csrf_token %}<button class="btn big-btn">Sign out</button></form>
+    <p class="signin-note">Sign out when you leave site, so the fire roll call is right.</p>
+  {% elif member_name %}
+    <form method="post">{% csrf_token %}<button class="btn primary big-btn" name="me" value="1">Sign in as {{ member_name }}</button></form>
+    <p class="signin-note">You are logged in, so one tap does it. Not you? <a href="{% url 'logout' %}">Log out</a> first.</p>
+  {% else %}
+    <form method="post" class="signin-form" novalidate>{% csrf_token %}
+      {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      {% for field in form %}<div class="field{% if field.errors %} has-error{% endif %}">
+        <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="dim">*</span>{% endif %}</label>{{ field }}
+        {% if field.help_text %}<div class="help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</div>{% endif %}{% for e in field.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>{% endfor %}
+      <button class="btn primary big-btn">Sign in</button>
+    </form>
+    <p class="signin-note">Have an account with the contractor? <a href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in</a> to sign in with one tap next time.</p>
+  {% endif %}
+  <p class="signin-small">Your name, company and times are kept by the contractor running this site for the site record and the fire roll call.</p>
+</main>
+{% endblock %}

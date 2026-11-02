@@ -128,6 +128,9 @@ def project_context(request, project, tab, **extra):
         from diary.access import can_use_diary  # site diary: the PM, the project team, owners and admins
         if can_use_diary(request, project):
             tabs.append(('diary', 'Diary', url('diary_register'), None))
+        from safety.access import can_use_safety  # incidents, CDM register, site sign-in: the same people as the diary
+        if can_use_safety(request, project):
+            tabs.append(('safety', 'Safety', url('safety_home'), None))
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), badges['issues']),
         ('tasks', 'Tasks', url('task_list'), badges['tasks']),

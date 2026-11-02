@@ -1,0 +1,18 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_actions %}<a class="btn" href="{% url 'safety_roll_call' org.slug project.pk %}">Fire roll call</a><a class="btn primary" href="{% url 'safety_manual_sign_in' org.slug project.pk %}">Sign someone in</a>{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+  <div class="onsite-count"><span class="big">{{ people|length }}</span> {% if people|length == 1 %}person{% else %}people{% endif %} on site now<span class="small dim"> · {{ now|date:"D j M, H:i" }}</span></div>
+  <div class="card">
+  {% if people %}
+    {% for company, rows in by_company %}<h3 class="group">{{ company }} <span class="dim">· {{ rows|length }}</span></h3>
+    <ul class="list">{% for a in rows %}<li><span class="grow"><strong>{{ a.name }}</strong><span class="sub">{{ a.get_kind_display }} · in at {{ a.signed_in_at|date:"H:i" }}{% if a.method == 'MANUAL' %} · signed in by {{ a.signed_in_by.full_name|default:"the site team" }}{% endif %}</span></span>
+      <form method="post" action="{% url 'safety_sign_out' org.slug project.pk a.pk %}" class="inline" data-confirm="Sign {{ a.name }} out?">{% csrf_token %}<button class="btn sm" aria-label="Sign out {{ a.name }}">Sign out</button></form></li>{% endfor %}</ul>
+    {% endfor %}
+  {% else %}{% url 'safety_poster' org.slug project.pk as poster_url %}{% include "partials/empty_state.html" with title="Nobody is signed in today" message="People sign in by scanning the QR poster at the site entrance with their phone camera: one tap with an account, or name and company for visitors. Print the poster and put it up where everyone passes." cta_url=poster_url cta_label="Print the QR poster" %}{% endif %}
+  </div>
+  <p class="small dim">The list starts afresh each midnight. Anyone who forgets to sign out drops off it then, and shows in the <a href="{% url 'safety_sign_in_log' org.slug project.pk %}">sign-in log</a> as "No sign-out recorded".</p>
+</div>
+{% endblock %}

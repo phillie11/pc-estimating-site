@@ -1,0 +1,56 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_actions %}<a class="btn" href="{% url 'cdm_edit' org.slug project.pk %}">Edit dates and notification</a>{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="touch">
+{% if gaps %}<div class="card gaps"><div class="card-body"><p style="margin-top:0"><strong>Still to do</strong></p><ul class="gap-list">{% for msg, anchor in gaps %}<li><a href="#{{ anchor }}">{{ msg }}</a></li>{% endfor %}</ul></div></div>{% endif %}
+
+<div class="stack">
+  <div class="card" id="duty-holders"><div class="card-head"><h2>Duty holders</h2><a class="btn sm" href="{% url 'duty_holder_add' org.slug project.pk %}">Add someone</a></div>
+    {% if holders %}<div class="table-wrap"><table class="t">
+      <thead><tr><th>Role</th><th>Company</th><th>Contact</th><th>Appointed in writing</th><th><span class="sr-only">Change</span></th></tr></thead>
+      <tbody>{% for h in holders %}<tr>
+        <td><strong>{{ h.get_role_display }}</strong></td>
+        <td>{{ h.company }}{% if h.notes %}<span class="sub">{{ h.notes }}</span>{% endif %}</td>
+        <td class="small">{{ h.contact_name|default:"—" }}{% if h.phone %}<span class="sub"><a href="tel:{{ h.phone }}">{{ h.phone }}</a></span>{% endif %}{% if h.email %}<span class="sub"><a href="mailto:{{ h.email }}">{{ h.email }}</a></span>{% endif %}</td>
+        <td class="small">{% if h.appointed_on %}{{ h.appointed_on|date:"j M Y" }}{% else %}<span class="dim">Not recorded</span>{% endif %}</td>
+        <td class="num"><a class="btn sm" href="{% url 'duty_holder_edit' org.slug project.pk h.pk %}" aria-label="Change {{ h.get_role_display }}: {{ h.company }}">Change</a></td>
+      </tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if missing_roles %}<div class="card-body missing-roles">{% if not holders %}<p style="margin-top:0">Record who the client, principal designer and principal contractor are. On most fit-outs the principal contractor is you.</p>{% endif %}
+      <div class="row">{% for role, label in missing_roles %}<a class="btn{% if forloop.first and not holders %} primary{% endif %}" href="{% url 'duty_holder_add' org.slug project.pk %}?role={{ role }}">Add the {{ label|lower }}</a>{% endfor %}</div></div>{% endif %}
+  </div>
+
+  <div class="card" id="plan"><div class="card-head"><h2>Construction phase plan</h2><a class="btn sm{% if not plans %} primary{% endif %}" href="{% url 'phase_plan_upload' org.slug project.pk %}">{% if plans %}Upload a new version{% else %}Upload the plan{% endif %}</a></div>
+    {% if plans %}<ul class="list">{% for p in plans %}<li><span class="grow"><a href="{{ p.get_absolute_url }}">Version {{ p.version }}</a>{% if forloop.first %} {% badge 'Current' 'good' %}{% else %} {% badge 'Superseded' 'muted' %}{% endif %}<span class="sub">{{ p.original_name }} · {{ p.size|filesize }} · {{ p.uploaded_by.full_name|default:"someone" }}, {{ p.uploaded_at|date:"j M Y" }}{% if p.note %} · {{ p.note }}{% endif %}</span></span></li>{% endfor %}</ul>
+    {% else %}<div class="card-body"><p style="margin:0">{% if cdm.cpp_in_place_on %}Recorded as in place on {{ cdm.cpp_in_place_on|date:"j M Y" }} and kept elsewhere.{% else %}No plan uploaded yet. The principal contractor draws it up before work starts on site{% if project.start_date %} ({{ project.start_date|date:"j M Y" }}){% endif %}. Upload it here so everyone on the job opens the same version.{% endif %}</p></div>{% endif %}
+  </div>
+
+  <div class="card" id="notification"><div class="card-head"><h2>HSE notification (F10)</h2><a class="btn sm" href="{% url 'cdm_edit' org.slug project.pk %}">Edit</a></div><div class="card-body">
+    <dl class="dl">
+      <dt>Notifiable</dt><dd>{% if cdm.notifiable %}{{ cdm.get_notifiable_display }}{% else %}<span class="dim">Not checked yet</span>{% endif %}
+        {% if suggestion is not None and not cdm.notifiable %}<span class="sub hint">From the figures below it looks {% if suggestion %}<strong>notifiable</strong>{% else %}<strong>not notifiable</strong>{% endif %}.</span>{% endif %}
+        {% if suggestion is not None and cdm.notifiable == 'NO' and suggestion %}<span class="sub hint">The figures below suggest it is notifiable: check this.</span>{% endif %}</dd>
+      <dt>Length</dt><dd>{% if cdm.working_days %}{{ cdm.working_days }} working days{% else %}<span class="dim">Not recorded</span>{% endif %}</dd>
+      <dt>Most people at once</dt><dd>{{ cdm.peak_workers|default:"—" }}</dd>
+      <dt>Person-days</dt><dd>{{ cdm.person_days|default:"—" }}</dd>
+      {% if cdm.notifiable == 'YES' or cdm.f10_reference %}<dt>F10 sent</dt><dd>{% if cdm.f10_submitted_on %}{{ cdm.f10_submitted_on|date:"j M Y" }}{% else %}<span class="bad">Not recorded</span>{% endif %}{% if cdm.f10_reference %}<span class="sub">Reference <span class="mono">{{ cdm.f10_reference }}</span></span>{% endif %}</dd>{% endif %}
+    </dl>
+    <p class="small dim" style="margin-bottom:0">A job is notifiable if it is planned to last more than {{ thresholds.days }} working days with more than {{ thresholds.workers }} people on site at once, or more than {{ thresholds.person_days }} person-days. The client sends the F10 to HSE before work starts; contractors often do it for them. {{ advisory }}</p>
+  </div></div>
+
+  <div class="card" id="dates"><div class="card-head"><h2>Key dates</h2><a class="btn sm" href="{% url 'cdm_edit' org.slug project.pk %}">Edit</a></div><div class="card-body">
+    <dl class="dl">
+      <dt>Pre-construction information received</dt><dd>{{ cdm.pci_received_on|date:"j M Y"|default:"—" }}</dd>
+      <dt>Start on site</dt><dd>{{ project.start_date|date:"j M Y"|default:"—" }}</dd>
+      <dt>Construction phase plan in place</dt><dd>{% if current_plan %}Version {{ current_plan.version }}, {{ current_plan.uploaded_at|date:"j M Y" }}{% else %}{{ cdm.cpp_in_place_on|date:"j M Y"|default:"—" }}{% endif %}</dd>
+      <dt>Completion</dt><dd>{{ project.completion_date|date:"j M Y"|default:"—" }}</dd>
+      <dt>Health and safety file due</dt><dd>{{ cdm.hs_file_due_on|date:"j M Y"|default:"—" }}</dd>
+      <dt>Health and safety file handed over</dt><dd>{{ cdm.hs_file_issued_on|date:"j M Y"|default:"—" }}</dd>
+    </dl>
+    {% if cdm.notes %}<p class="pre wrap-any">{{ cdm.notes }}</p>{% endif %}
+    {% if cdm.updated_at %}<p class="small dim" style="margin-bottom:0">Last changed by {{ cdm.updated_by.full_name|default:"someone" }}, {{ cdm.updated_at|date:"j M Y H:i" }}.</p>{% endif %}
+  </div></div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "project_base.html" %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+<div class="site-mode touch">
+<div class="card"><div class="card-head"><h2>Report an incident or near miss</h2></div><div class="card-body">
+  <p class="small dim" style="margin-top:0">Just the basics now. The project manager is told straight away, and the details can be added later. If someone is badly hurt, call 999 first.</p>
+  <form method="post" enctype="multipart/form-data" class="report-form">{% csrf_token %}
+    {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    {% include "partials/field.html" with field=form.description full=True %}
+    {% include "partials/field.html" with field=form.location full=True %}
+    <fieldset class="field full yes-no{% if form.anyone_hurt.errors %} has-error{% endif %}">
+      <legend>{{ form.anyone_hurt.label }}</legend>
+      <div class="yes-no-opts">{% for c in form.anyone_hurt %}<label class="choice">{{ c.tag }} <span>{{ c.choice_label }}</span></label>{% endfor %}</div>
+      {% for e in form.anyone_hurt.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    </fieldset>
+    {% include "partials/field.html" with field=form.occurred_at full=True %}
+    <div class="field full file-pick{% if form.photo.errors %} has-error{% endif %}">
+      <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>{{ form.photo }}
+      <div class="help">{{ form.photo.help_text }}</div>{% for e in form.photo.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="form-actions"><button class="btn primary">Send report</button><a class="btn ghost" href="{% url 'safety_home' org.slug project.pk %}">Cancel</a></div>
+  </form>
+</div></div>
+</div>
+{% endblock %}

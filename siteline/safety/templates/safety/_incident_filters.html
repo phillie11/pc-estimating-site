@@ -1,0 +1,10 @@
+<form method="get" class="filters" role="search" aria-label="Filter incidents">
+  <label class="small">Search <input type="search" name="q" value="{{ filters.q }}" placeholder="Ref, what or where"></label>
+  {% if projects %}<label class="small">Job <select name="project"><option value="">Every job</option>{% for p in projects %}<option value="{{ p.pk }}"{% if filters.project == p.pk|stringformat:"s" %} selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></label>{% endif %}
+  <label class="small">Status <select name="status"><option value="">Any</option><option value="open"{% if filters.status == 'open' %} selected{% endif %}>Open</option><option value="closed"{% if filters.status == 'closed' %} selected{% endif %}>Closed</option></select></label>
+  <label class="small">Kind <select name="kind"><option value="">Any</option>{% for k, label in kinds %}<option value="{{ k }}"{% if filters.kind == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label class="small">From <input type="date" name="from" value="{{ filters.from|date:'Y-m-d' }}"></label>
+  <label class="small">To <input type="date" name="to" value="{{ filters.to|date:'Y-m-d' }}"></label>
+  <label class="small check"><input type="checkbox" name="riddor" value="1"{% if filters.riddor %} checked{% endif %}> RIDDOR only</label>
+  <button class="btn sm">Filter</button>{% if filtered %}<a class="btn ghost sm" href="?">Clear</a>{% endif %}
+</form>

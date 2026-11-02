@@ -8,6 +8,7 @@ from django.urls import include, path
 from accounts import views as accounts
 from actions import views as actions
 from billing import views as billing
+from safety import urls as safety_urls
 from security import views as security
 
 admin.site.site_header = 'Platform admin'
@@ -51,6 +52,9 @@ urlpatterns = [
     # Invites (public links; the token is the credential)
     path('invite/team/<str:token>/', accounts.accept_team_invite, name='accept_team_invite'),
     path('invite/project/<str:token>/', accounts.accept_project_invite, name='accept_project_invite'),
+
+    # QR site sign-in (public; the poster's secret token is the credential; safety/public.py)
+    *safety_urls.public_patterns,
 
     # Stripe
     path('billing/webhook/', billing.webhook, name='stripe_webhook'),
