@@ -65,14 +65,25 @@ def _csv(filename, header, rows):
     return resp
 
 
+def _locked(incident):
+    """
+    The incident re-read and locked for the rest of this transaction. Changes to its actions and photos
+    check it is still open on this copy, so a close that lands between opening the page and posting can't
+    end up with an open action on a closed incident (closing checks the actions, then saves with the
+    version; _touch bumps the version, so whichever comes second fails).
+    """
+    return Incident.objects.select_for_update().get(pk=incident.pk)
+
+
 def _touch(incident, actor, action, note=''):
-    """An audited save on the incident for a change to one of its actions or photos (retried once on a race)."""
-    try:
-        incident.save(actor=actor, audit_action=action, audit_note=str(note)[:255])
-    except RecordConflict:
-        incident = Incident.objects.get(pk=incident.pk)
-        incident.save(actor=actor, audit_action=action, audit_note=str(note)[:255])
+    """An audited save on the incident (a locked copy from _locked) for a change to one of its actions or photos."""
+    incident.save(actor=actor, audit_action=action, audit_note=str(note)[:255])
     return incident
+
+
+def _closed_now(request, incident, verb):
+    messages.error(request, f'{incident.ref} has just been closed. Reopen it to {verb}.')
+    return redirect(incident)
 
 
 def _local(dt):
@@ -282,6 +293,9 @@ def incident_action_add(request, org_slug, pk, incident_id):
     form = ActionForm(request.POST or None, project=project)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
+            incident = _locked(incident)
+            if not incident.is_open:
+                return _closed_now(request, incident, 'add actions')
             action = form.save(commit=False)
             action.incident, action.created_by = incident, request.user
             action.save()
@@ -305,6 +319,10 @@ def incident_action_update(request, org_slug, pk, incident_id, action_id):
         return redirect(incident)
     what = request.POST.get('do', '')
     with transaction.atomic():
+        incident = _locked(incident)
+        if not incident.is_open:
+            return _closed_now(request, incident, 'change its actions')
+        action = IncidentAction.objects.get(pk=action.pk)
         if what == 'done' and not action.is_done:
             action.done_at, action.done_by = timezone.now(), request.user
             action.save()
@@ -337,6 +355,10 @@ def incident_photo_add(request, org_slug, pk, incident_id):
         photo = IncidentPhoto(incident=incident, caption=form.cleaned_data['caption'], uploaded_by=request.user)
         try:
             with transaction.atomic():
+                incident = _locked(incident)
+                if not incident.is_open:
+                    return _closed_now(request, incident, 'add photos')
+                photo.incident = incident
                 photo_files.attach(photo, form.cleaned_data['photo'])
                 photo.save()
                 _touch(incident, request.user, 'photo added', photo)
