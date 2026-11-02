@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Hand-written MSPDI fixture: a small fit-out programme as Microsoft Project saves it as XML. -->
+<Project xmlns="http://schemas.microsoft.com/project">
+  <SaveVersion>14</SaveVersion>
+  <Name>Bar fit-out.xml</Name>
+  <Title>Bar fit-out</Title>
+  <StartDate>2026-11-02T08:00:00</StartDate>
+  <MinutesPerDay>480</MinutesPerDay>
+  <Tasks>
+    <Task>
+      <UID>0</UID><ID>0</ID><Name>Bar fit-out</Name><OutlineLevel>0</OutlineLevel><Summary>1</Summary>
+      <Start>2026-11-02T08:00:00</Start><Finish>2026-12-18T17:00:00</Finish>
+    </Task>
+    <Task>
+      <UID>1</UID><ID>1</ID><Name>Ground floor</Name><WBS>1</WBS><OutlineNumber>1</OutlineNumber>
+      <OutlineLevel>1</OutlineLevel><Summary>1</Summary>
+      <Start>2026-11-02T08:00:00</Start><Finish>2026-11-27T17:00:00</Finish><PercentComplete>40</PercentComplete>
+    </Task>
+    <Task>
+      <UID>2</UID><ID>2</ID><Name>Strip out &amp; soft demolition</Name><WBS>1.1</WBS><OutlineNumber>1.1</OutlineNumber>
+      <OutlineLevel>2</OutlineLevel><Summary>0</Summary><Milestone>0</Milestone>
+      <Start>2026-11-02T08:00:00</Start><Finish>2026-11-06T17:00:00</Finish><PercentComplete>100</PercentComplete>
+    </Task>
+    <Task>
+      <UID>3</UID><ID>3</ID><Name>Partitions   and
+        ceilings</Name><WBS>1.2</WBS><OutlineLevel>2</OutlineLevel><Summary>0</Summary><Milestone>0</Milestone>
+      <Start>2026-11-09T08:00:00</Start><Finish>2026-11-20T17:00:00</Finish><PercentComplete>25</PercentComplete>
+      <PredecessorLink><PredecessorUID>2</PredecessorUID><Type>1</Type><LinkLag>0</LinkLag></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>4</UID><ID>4</ID><Name>Practical completion</Name><WBS>1.3</WBS><OutlineLevel>2</OutlineLevel>
+      <Milestone>1</Milestone><Start>2026-12-18T17:00:00</Start><Finish>2026-12-18T17:00:00</Finish>
+      <PercentComplete>0</PercentComplete>
+      <PredecessorLink><PredecessorUID>8</PredecessorUID><Type>1</Type></PredecessorLink>
+    </Task>
+    <Task>
+      <UID>5</UID><ID>5</ID><IsNull>1</IsNull>
+    </Task>
+    <Task>
+      <UID>6</UID><ID>6</ID><Name>Option: feature wall</Name><OutlineLevel>2</OutlineLevel><Active>0</Active>
+      <Start>2026-11-09T08:00:00</Start><Finish>2026-11-10T17:00:00</Finish>
+    </Task>
+    <Task>
+      <UID>7</UID><ID>7</ID><Name>Not yet scheduled</Name><OutlineLevel>2</OutlineLevel>
+    </Task>
+    <Task>
+      <UID>8</UID><ID>8</ID><Name>Bar joinery install</Name><WBS>1.4</WBS><OutlineLevel>2</OutlineLevel>
+      <Start>2026-11-09T08:00:00</Start><Finish>2026-11-14T00:00:00</Finish><PercentComplete>0</PercentComplete>
+      <PredecessorLink><PredecessorUID>99</PredecessorUID><Type>1</Type></PredecessorLink>
+    </Task>
+  </Tasks>
+  <Resources>
+    <Resource><UID>0</UID><ID>0</ID><Name>Unassigned</Name></Resource>
+    <Resource><UID>1</UID><ID>1</ID><Name>Pennine Drylining</Name></Resource>
+    <Resource><UID>2</UID><ID>2</ID><Name>Sid Joinery</Name></Resource>
+  </Resources>
+  <Assignments>
+    <Assignment><UID>1</UID><TaskUID>3</TaskUID><ResourceUID>1</ResourceUID></Assignment>
+    <Assignment><UID>2</UID><TaskUID>8</TaskUID><ResourceUID>2</ResourceUID></Assignment>
+    <Assignment><UID>3</UID><TaskUID>2</TaskUID><ResourceUID>-65535</ResourceUID></Assignment>
+  </Assignments>
+</Project>

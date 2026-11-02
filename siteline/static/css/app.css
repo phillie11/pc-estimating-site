@@ -557,3 +557,58 @@ tr.dim td { color: var(--ink-3); }
 .lv-exc-form select, .lv-exc-form input { min-height: 44px; width: auto; }
 .lv-rates input[inputmode] { min-height: 44px; width: 8rem; }
 .lv-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+
+/* Programme look-ahead and meetings (projects/programme_views.py, meetings/). Phone first: touch targets in .mtg are at least 44px. */
+.mtg .btn, .mtg button, .mtg select, .mtg input:not([type=checkbox]):not([type=radio]), .mtg textarea,
+.mtg .chip { min-height: 44px; }
+.mtg input[type=checkbox], .mtg input[type=radio] { width: 22px; height: 22px; }
+.mtg input, .mtg select, .mtg textarea { font-size: 16px; } /* 16px stops iOS zooming the page */
+.mtg .chip { display: inline-flex; align-items: center; }
+.mtg .checks label, .mtg .radios label { min-height: 44px; display: flex; align-items: center; gap: 10px; margin: 0; font-weight: 500; }
+.mtg .radios { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+
+.mtg-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0 0 1rem; }
+.mtg-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.mtg-people li { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.mtg-item { border-top: 1px solid var(--line); padding: 12px 0; }
+.mtg-item:first-child { border-top: 0; }
+.mtg-item h3 { font-size: 1rem; margin: 0 0 6px; }
+.mtg-item .minutes { white-space: pre-wrap; margin: 0 0 6px; }
+.mtg-item textarea { width: 100%; min-height: 88px; }
+.mtg-actions { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
+.mtg-action { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: #fff; }
+.mtg-action .head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; justify-content: space-between; }
+.mtg-action .what { white-space: pre-wrap; margin: 4px 0; }
+.mtg-action form.upd { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-top: 8px; }
+.mtg-action form.upd label { flex: 1 1 160px; margin: 0; }
+.mtg-action form.upd textarea { min-height: 44px; }
+.mtg-sticky { position: sticky; bottom: 0; background: var(--bg, #fff); padding: 10px 0; border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: 8px; z-index: 2; }
+.mtg-print, .la-print-head { display: none; }
+
+@media (max-width: 560px) {
+  .mtg .form-actions .btn, .mtg-sticky .btn { flex: 1 1 100%; }
+}
+
+/* Programme look-ahead grid (projects/lookahead.html) and summary lines on the chart */
+.g-summary { font-weight: 700; }
+.la-grid { border-collapse: separate; border-spacing: 0; }
+.la-grid th.la-what { text-align: left; min-width: 240px; max-width: 360px; position: sticky; left: 0; background: #fff; z-index: 1;
+  font-weight: 500; vertical-align: top; }
+.la-grid th.la-what .rowlink { font-weight: 600; }
+.la-grid .la-week { text-align: center; font-size: 12px; white-space: nowrap; border-left: 1px solid var(--line-2); }
+.la-grid .la-day { text-align: center; font-size: 12px; padding: 4px 0; width: 24px; min-width: 24px; }
+.la-grid .la-day abbr { text-decoration: none; }
+.la-grid .la-today { box-shadow: inset 0 -3px 0 var(--accent); }
+.la-cell { width: 24px; min-width: 24px; padding: 0; border-left: 1px solid var(--line); }
+.la-cell.on { background: color-mix(in srgb, var(--accent) 40%, white); }
+.la-cell.on.ms { background: var(--ink); }
+.la-cell.on.late { background: color-mix(in srgb, var(--bad, #b42318) 45%, white); }
+@media (max-width: 560px) { .la-grid th.la-what { min-width: 170px; } }
+@media print {
+  .mtg-print, .la-print-head { display: block; }
+  .mtg-noprint, .mtg-sticky { display: none !important; }
+  .mtg-action { break-inside: avoid; border-color: #999; }
+  .la-grid th.la-what { position: static; }
+  .la-cell.on { background: #bbb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

@@ -597,7 +597,7 @@ def workload(request, org_slug):
 
 
 def _visible_activities(request, project):
-    qs = Activity.objects.filter(project=project).select_related('after')
+    qs = Activity.objects.filter(project=project).select_related('after', 'subcontractor')
     return qs if is_internal(request) else qs.filter(is_shared=True)
 
 
@@ -618,6 +618,7 @@ def programme(request, org_slug, pk):
             return redirect('programme', org_slug=org_slug, pk=pk)
     activities = list(_visible_activities(request, project))
     chart = gantt.build(activities, today=timezone.localdate())
+    from .programme_views import programme_nav  # Chart, Look-ahead, Import (Release 3)
     summary = None
     if activities:
         summary = {
@@ -630,7 +631,8 @@ def programme(request, org_slug, pk):
         if project.completion_date:
             summary['slip_days'] = (summary['finish'] - project.completion_date).days
     return render(request, 'projects/programme.html', project_context(
-        request, project, 'programme', chart=chart, form=form, activities=activities, summary=summary))
+        request, project, 'programme', chart=chart, form=form, activities=activities, summary=summary,
+        **programme_nav(request, project, 'chart')))
 
 
 def activity_edit(request, org_slug, pk, activity_id):
@@ -645,8 +647,9 @@ def activity_edit(request, org_slug, pk, activity_id):
     if request.method == 'POST' and form.is_valid():
         form.save()
         return redirect('programme', org_slug=org_slug, pk=pk)
+    from .programme_views import programme_nav
     return render(request, 'projects/activity_form.html', project_context(
-        request, project, 'programme', form=form, activity=activity))
+        request, project, 'programme', form=form, activity=activity, **programme_nav(request, project, 'chart')))
 
 
 # ---------------------------------------------------------------------------

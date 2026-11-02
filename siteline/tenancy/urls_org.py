@@ -11,6 +11,7 @@ from documents import urls as documents_urls
 from levelling import urls as levelling_urls
 from payments import urls as payments_urls
 from procurement import urls as procurement_urls
+from projects import programme_views
 from projects import views as projects
 from rfis import views as rfis
 from subpayments import urls as subpayments_urls
@@ -62,6 +63,11 @@ urlpatterns = [
 
     path(P + 'programme/', projects.programme, name='programme'),
     path(P + 'programme/<int:activity_id>/', projects.activity_edit, name='activity_edit'),
+    # Programme > Look-ahead and Import from MS Project (projects/programme_views.py)
+    path(P + 'programme/look-ahead/', programme_views.lookahead, name='programme_lookahead'),
+    path(P + 'programme/import/', programme_views.programme_import, name='programme_import'),
+    path(P + 'programme/import/<int:import_id>/', programme_views.programme_import_preview,
+         name='programme_import_preview'),
 
     path(P + 'tasks/', projects.task_list, name='task_list'),
     path(P + 'tasks/<int:task_id>/update/', projects.task_update, name='task_update'),
