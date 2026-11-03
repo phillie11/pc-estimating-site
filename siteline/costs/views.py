@@ -2,7 +2,6 @@
 Cost control pages, under the job's Commercial tab (Costs), and the company's cost code library
 under Settings. Every job view fetches the job through costs.access.costs_project().
 """
-import csv
 from decimal import Decimal
 
 from django.contrib import messages
@@ -13,6 +12,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from core import exports
 from contracts.commercial import commercial_context
 from projects.access import posted_id
 from projects.files import serve
@@ -38,12 +38,6 @@ def costs_context(request, project, sub, **extra):
     ]
     return commercial_context(request, project, 'costs', costs_nav=nav, costs_sub=sub,
                               read_only=project.is_archived, **extra)
-
-
-def _safe(value):
-    """A text CSV cell that a spreadsheet won't run as a formula."""
-    s = str(value)
-    return "'" + s if s[:1] in ('=', '+', '-', '@', '\t', '\r') else s
 
 
 def _form_key(request, scope):
@@ -87,11 +81,11 @@ def report(request, org_slug, pk):
 def _report_csv(project, data):
     resp = HttpResponse(content_type='text/csv')
     resp['Content-Disposition'] = f'attachment; filename="{project.reference}-cost-report.csv"'
-    w = csv.writer(resp)
+    w = exports.writer(resp)
     w.writerow(['Cost code', 'Name', 'Group', 'Budget', 'Committed', 'Actual to date', 'Forecast final cost',
                 'Forecast set by hand', 'Variance'])
     for r in data['rows']:
-        w.writerow([_safe(r.code.code), _safe(r.code.name), r.code.get_group_display(), r.budget, r.committed,
+        w.writerow([r.code.code, r.code.name, r.code.get_group_display(), r.budget, r.committed,
                     r.actual, r.forecast, 'Yes' if r.override else '', r.variance])
     t = data['total']
     w.writerow(['', 'Total', '', t.budget, t.committed, t.actual, t.forecast, '', t.variance])

@@ -132,5 +132,6 @@ urlpatterns = [
     # Quality tab: inspections, permits to work, fire-stopping; Settings > Checklists (quality/urls.py)
     *quality_urls.project_patterns(P),
     *quality_urls.org_patterns,
+    path('', include('help.urls')),  # global search, help topics, getting-started checklist (help/)
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

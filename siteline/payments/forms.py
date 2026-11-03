@@ -73,12 +73,13 @@ class NoticeForm(forms.Form):
     given_on = forms.DateField(label='Date the client gave the notice', required=False,
                                widget=forms.DateInput(attrs={'type': 'date'}))
     note = forms.CharField(label='How the client gave it', required=False,
-                           help_text='For example: email from J. Smith, 3 Nov.')
+                           help_text="For example: email from the client's quantity surveyor, 3 Nov.")
     evidence = forms.FileField(label="The client's notice", required=False,
                                widget=forms.ClearableFileInput(attrs={'accept': EVIDENCE_ACCEPT}),
                                help_text='Their email (saved as PDF or .eml) or letter.')
 
     def __init__(self, *args, application=None, kind='payment_notice', on_behalf=False, **kwargs):
+        kwargs.setdefault('auto_id', 'payless_%s' if kind == 'pay_less' else 'id_%s')  # unique ids on one page
         super().__init__(*args, **kwargs)
         self.application, self.kind, self.on_behalf = application, kind, on_behalf
         self.fields['amount'].widget.attrs.setdefault('inputmode', 'decimal')
@@ -137,6 +138,7 @@ class PaymentForm(StyledModelForm):
         widgets = {'received_on': forms.DateInput(attrs={'type': 'date'})}
 
     def __init__(self, *args, application=None, **kwargs):
+        kwargs.setdefault('auto_id', 'payment_%s')  # shown beside the notice forms: unique ids
         super().__init__(*args, **kwargs)
         self.application = application
         self.fields['amount'].widget.attrs.setdefault('inputmode', 'decimal')

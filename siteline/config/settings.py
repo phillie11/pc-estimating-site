@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'levelling',
     'quality',
     'viewer',
+    'help',
 ]
 
 MIDDLEWARE = [

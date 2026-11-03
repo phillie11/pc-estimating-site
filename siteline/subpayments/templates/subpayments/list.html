@@ -6,7 +6,7 @@
 
 <div class="card"><div class="card-head"><h2>{% if staff %}Subcontracts{% else %}Your packages{% endif %}</h2></div>
 {% if rows %}<div class="table-wrap"><table class="t register">
-  <thead><tr><th>Package</th>{% if staff %}<th>CIS</th>{% endif %}<th>Terms</th><th class="num">Sum due to date</th><th class="num">Paid to date (gross)</th><th class="num">Retention held</th><th></th></tr></thead>
+  <thead><tr><th>Package</th>{% if staff %}<th>CIS</th>{% endif %}<th>Terms</th><th class="num">Sum due to date</th><th class="num">Paid to date (gross)</th><th class="num">Retention held</th><th><span class="sr-only">Actions</span></th></tr></thead>
   <tbody>{% for r in rows %}<tr>
     <td>{{ r.package.subcontractor.company_name }}<span class="sub">{{ r.package.trade|default:"Package" }}{% if staff and r.order %} · {{ r.order.ref }}{% elif staff %} · <span class="overdue">no order in Costs yet</span>{% endif %}</span></td>
     {% if staff %}<td>{% badge r.tax.get_cis_status_display r.tax.cis_tone %}{% if r.tax.reverse_charge %}<span class="sub">Reverse charge</span>{% endif %}</td>{% endif %}

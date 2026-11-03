@@ -1,0 +1,17 @@
+{% load ui help_tags %}{% comment %}
+The bar at the top of every signed-in page: global search (press / anywhere) and, where the page has
+a help topic (help/content/*.md, by URL name), the ? that opens it. Without JavaScript the ? opens the
+topic as a page and search still works.
+{% endcomment %}{% help_for as help_topic %}<div class="utilbar">
+  <form class="gsearch" role="search" method="get" action="{% url 'search' org.slug %}">
+    <label for="gsearch" class="sr-only">Search projects, RFIs, drawings and people</label>
+    {% icon 'search' %}<input type="search" id="gsearch" name="q" value="{% if request.resolver_match.url_name == 'search' %}{{ q }}{% endif %}" placeholder="Search projects, RFIs, drawings…" autocomplete="off" maxlength="80" enterkeyhint="search" data-search-box>
+    <kbd class="kbd" aria-hidden="true" title="Press / to search">/</kbd>
+  </form>
+  {% if help_topic %}<a class="help-btn" href="{% url 'help_topic' org.slug help_topic.slug %}" data-help-open="help-panel" aria-haspopup="dialog" title="Help with this page"><span aria-hidden="true">?</span><span class="sr-only">Help: {{ help_topic.title }}</span></a>{% endif %}
+</div>
+{% if help_topic %}<dialog class="help-panel" id="help-panel" aria-labelledby="help-panel-title">
+  <div class="help-panel-head"><h2 id="help-panel-title">{{ help_topic.title }}</h2><button type="button" class="btn ghost sm" data-help-close aria-label="Close help">✕</button></div>
+  <div class="help-body">{% help_body help_topic %}</div>
+  <div class="help-panel-foot"><a href="{% url 'help_index' org.slug %}">All help topics</a></div>
+</dialog>{% endif %}

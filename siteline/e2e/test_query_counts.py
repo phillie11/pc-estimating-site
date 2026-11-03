@@ -58,6 +58,9 @@ class QueryCountsDontGrowTests(TestCase):
             # Quality (quality/): the three registers and the busiest record pages
             ('pm', u('inspection_list', pk) + '?status=all'), ('pm', u('permit_list', pk) + '?status=all'),
             ('pm', u('penetration_list', pk)), *self._quality_pages(built, job, u),
+            # Global search (help/search.py): common letters, so every source finds something
+            ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
+            ('client', u('search') + '?q=an'),
         ]
 
     def _quality_pages(self, built, job, u):

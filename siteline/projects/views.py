@@ -1,4 +1,3 @@
-import csv
 import json
 from decimal import Decimal
 
@@ -13,6 +12,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from core import exports
 from tenancy import notify
 from tenancy.models import log_activity
 from tenancy.permissions import admin_required, estimating_required, internal_required
@@ -215,7 +215,7 @@ def project_list(request, org_slug, section=None):
     if request.GET.get('export') == 'csv' and is_internal(request):
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = 'attachment; filename="projects.csv"'
-        w = csv.writer(resp)
+        w = exports.writer(resp)
         w.writerow(['Ref', 'Name', 'Client', 'Stage', 'Sector', 'Value', 'Probability', 'Tender due', 'Start', 'Completion', 'Lead'])
         for p in qs:
             w.writerow([p.reference, p.name, p.client_name, p.get_stage_display(), p.get_sector_display(), _money(p.value),

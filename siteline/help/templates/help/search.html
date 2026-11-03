@@ -1,0 +1,26 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}{% if q %}Search: {{ q }}{% else %}Search{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{% if q %}Results for “{{ q }}”{% else %}Search{% endif %}</h1>
+    <p class="small dim" style="margin:4px 0 0">Projects, RFIs, {% if internal %}client variations, {% endif %}drawings and documents{% if internal %}, subcontractors{% endif %} and people, by reference or title. Press <kbd class="kbd">/</kbd> on any page to search.</p></div>
+</div>
+{% if groups %}
+<div class="stack">
+{% for key, label, hits in groups %}
+  <section class="card" aria-labelledby="sr-{{ key }}">
+    <div class="card-head"><h2 id="sr-{{ key }}">{{ label }}</h2><span class="small dim">{{ hits|length }}{% if hits|length >= 6 %}+{% endif %}</span></div>
+    <ul class="list search-hits">{% for h in hits %}<li>{% if h.ref %}<span class="ref">{{ h.ref }}</span>{% endif %}<span class="grow"><a href="{{ h.url }}">{{ h.title }}</a>{% if h.detail %}<span class="small dim search-detail">{{ h.detail }}</span>{% endif %}</span></li>{% endfor %}</ul>
+  </section>
+{% endfor %}
+</div>
+{% if capped %}<p class="small dim" style="margin-top:1rem">Showing the closest few of each. Add more words or a reference such as RFI-012 to narrow it down.</p>{% endif %}
+{% elif too_short %}
+{% include "partials/empty_state.html" with title="Type a little more" message="Enter at least 2 letters or numbers, such as a project name or RFI-012." %}
+{% elif q %}
+{% if internal %}{% url 'project_list' org.slug as all_url %}{% include "partials/empty_state.html" with title="Nothing found" message="Check the spelling, try part of a name, or search by reference such as RFI-012 or VO-003. Archived projects only show for owners and admins." cta_url=all_url cta_label="Browse all projects" cta_plain=True %}
+{% else %}{% include "partials/empty_state.html" with title="Nothing found" message="You can only find things the site team has shared with you. Check the spelling, or search by reference such as RFI-012." %}{% endif %}
+{% else %}
+{% include "partials/empty_state.html" with title="What are you looking for?" message="Type a project name, a reference such as RFI-012 or VO-003, a drawing number, a subcontractor or a person in the box above." %}
+{% endif %}
+{% endblock %}
