@@ -71,6 +71,22 @@ def visible_lines(request, project):
     return qs
 
 
+def hide_who(request, activities):
+    """
+    A subcontractor sees the shared programme, but not who else is on the job: on any line that isn't
+    theirs, "who" (typed in, or MS Project resource names) and the subcontractor are blanked for this page.
+    The rows are never saved.
+    """
+    pm = getattr(request, 'project_member', None)
+    if is_internal(request) or pm is None or pm.role != pm.ROLE_SUBCONTRACTOR:
+        return activities
+    mine = _sub_of(request)
+    for a in activities:
+        if mine is None or a.subcontractor_id != mine:
+            a.responsible, a.subcontractor = '', None
+    return activities
+
+
 def lookahead(request, org_slug, pk):
     project = get_project(request, pk)
     internal = is_internal(request)
@@ -148,7 +164,12 @@ def programme_import_preview(request, org_slug, pk, import_id):
             messages.success(request, f'Discarded {imp.file_name}. Nothing on the programme changed.')
             return redirect('programme_import', org_slug=org_slug, pk=pk)
         if action == 'apply':
-            result = importer.apply(imp, request.user, remove_missing=bool(request.POST.get('remove_missing')))
+            try:
+                result = importer.apply(imp, request.user, remove_missing=bool(request.POST.get('remove_missing')))
+            except importer.Overtaken as e:
+                importer.discard(imp)
+                messages.error(request, str(e))
+                return redirect('programme_import', org_slug=org_slug, pk=pk)
             log_activity(request, 'imported the programme from', imp.file_name, project=project,
                          url=reverse('programme', args=[org_slug, pk]), internal_only=True)
             messages.success(request, f"Programme updated from {imp.file_name}: {result['created']} added, "

@@ -17,12 +17,20 @@ Rules (also in the README):
     a line that has none.
   * Lines from an earlier import that aren't in this file are kept unless the person ticks
     "remove them" on the preview.
+  * A preview can't be applied once a file uploaded after it has been applied (Overtaken): it would
+    put the older dates back. Applies on one project run one at a time (the project row is locked).
 """
 from django.db import transaction
 from django.utils import timezone
 
 from . import mspdi
-from .models import Activity, ProgrammeImport
+from .models import Activity, ProgrammeImport, Project
+
+
+
+class Overtaken(ValueError):
+    """A newer file has been applied since this one was uploaded. str() is shown to the user."""
+
 
 # Fields a re-import may change, as (field on Activity, key in the task dict)
 FROM_FILE = (('name', 'name'), ('start', 'start'), ('finish', 'finish'), ('is_milestone', 'milestone'),
@@ -88,10 +96,15 @@ def compare(imp):
 @transaction.atomic
 def apply(imp, user, remove_missing=False):
     """Create and update lines from the staged import. Returns {'created', 'updated', 'removed'}."""
-    imp = ProgrammeImport.objects.select_for_update().get(pk=imp.pk)
+    # One apply at a time per project: two at once would both create the same task IDs
+    project = Project.objects.select_for_update().get(pk=imp.project_id)
+    imp = ProgrammeImport.objects.select_for_update().get(pk=imp.pk, project=project)
     if imp.status != ProgrammeImport.PREVIEW:
         raise ValueError('This import has already been applied or discarded.')
-    project = imp.project
+    if ProgrammeImport.objects.filter(project=project, status=ProgrammeImport.APPLIED, pk__gt=imp.pk).exists():
+        raise Overtaken(f'A programme file uploaded after {imp.file_name} has already been applied, so applying '
+                        'this one would put the older dates back. If this file really is the latest, upload it '
+                        'again.')
     existing = {a.source_uid: a for a in Activity.objects.filter(project=project, source_uid__isnull=False)}
     subs, trades = _matchers(project)
     created = 0
