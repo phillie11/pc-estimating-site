@@ -49,10 +49,11 @@ class InternalDrawingsStayOutOfThePackTests(CloseoutTestBase):
 
 
 def fake_quality(**modules):
-    """A stand-in `quality` app (it isn't installed on main) exposing only the given modules."""
+    """A stand-in `quality` app exposing only the given modules (whether or not the real one is installed)."""
     pkg = types.ModuleType('quality')
     pkg.__path__ = []
-    mods = {'quality': pkg}
+    # None blocks the real quality.handover / quality.exports once the real app is installed and imported
+    mods = {'quality': pkg, 'quality.handover': None, 'quality.exports': None}
     for name, attrs in modules.items():
         m = types.ModuleType(f'quality.{name}')
         for k, v in attrs.items():
