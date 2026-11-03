@@ -6,11 +6,11 @@ order: 61
 ---
 Hot works, working at height, isolations and confined spaces need a permit before the work starts.
 
-**To ask for one:** choose *Ask for a permit*, pick the type, and say what the work is, where, and when it starts and finishes. The project manager is told.
+**To ask for one:** choose *Ask for a permit*, pick the type, and say what, where and when. The approver is told.
 
-**To approve:** the project manager or an admin opens it, ticks each precaution once it is in place, and approves it. If a precaution can't be met, refuse it and say why. Nobody approves a permit they asked for themselves: the project manager's own permits go to an owner or admin.
+**To approve:** the project manager, or an admin, ticks each precaution once it is in place and approves it, or refuses it with a reason. Nobody approves their own permit.
 
-**While it runs:** it shows as *Active*, then *Expiring soon* near the end, then *Expired*. On the day it runs out it is on the Needs me of whoever asked for it.
+**While it runs:** *Active*, then *Expiring soon*, then *Expired*. On the day it runs out it is on the requester's Needs me.
 
 **To close:** confirm the area has been left safe (and, for hot works, that the fire watch has been kept), then close it. Use *Print permit* for the site board.
 
