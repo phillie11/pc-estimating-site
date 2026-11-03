@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Valid XML, but not a Microsoft Project programme (a drawing register export). -->
+<register>
+  <drawing number="SLN-ABC-ZZ-02-DR-A-1001" revision="P2">General arrangement</drawing>
+</register>

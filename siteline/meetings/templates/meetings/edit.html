@@ -1,0 +1,20 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block project_content %}
+{% include "meetings/_subnav.html" %}
+<div class="card mtg" style="max-width:820px">
+  <div class="card-head"><h2>Details and people: {{ meeting.ref }}</h2></div>
+  <div class="card-body">
+    <form method="post">{% csrf_token %}
+      {% include "partials/form_fields.html" %}
+      <fieldset class="field" style="border:0;padding:0;margin:1rem 0">
+        <legend style="font-weight:600;margin-bottom:6px">{{ people.attendees.label }}</legend>
+        {% if people.attendees.field.choices %}<div class="checks">{% for c in people.attendees %}<label>{{ c.tag }} {{ c.choice_label }}</label>{% endfor %}</div>
+        {% else %}<p class="small dim">Nobody is on this job's team or portal yet.</p>{% endif %}
+        <div class="help">{{ people.attendees.help_text }}</div>
+      </fieldset>
+      <div class="form-grid">{% include "partials/field.html" with field=people.others full=True %}</div>
+      <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{{ meeting.get_absolute_url }}">Cancel</a></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

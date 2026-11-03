@@ -1,5 +1,6 @@
-{% extends "project_base.html" %}{% load ui %}
+{% extends "project_base.html" %}{% load ui static %}
 {% block project_content %}
+{% include "projects/_programme_nav.html" %}
 {% if summary %}
 <div class="kpis">
   <div class="kpi"><div class="label">Programme</div><div class="value">{{ summary.start|date:"j M" }} – {{ summary.finish|date:"j M y" }}</div><div class="note">{{ summary.count }} activit{{ summary.count|pluralize:"y,ies" }}</div></div>
@@ -19,8 +20,8 @@
       {% for r in chart.rows %}{% with a=r.item %}
       <div class="g-row">
         <div class="g-label">
-          {% if is_internal %}<a class="t1" href="{% url 'activity_edit' org.slug project.pk a.pk %}">{{ a.name }}</a>{% else %}<span class="t1">{{ a.name }}</span>{% endif %}
-          <span class="sub">{% if a.is_milestone %}{{ a.start|date:"j M" }}{% else %}{{ a.start|date:"j M" }} – {{ a.finish|date:"j M" }} · {{ a.duration_days }}d{% endif %}{% if a.responsible %} · {{ a.responsible }}{% endif %}</span>
+          {% if is_internal %}<a class="t1{% if a.is_summary %} g-summary{% endif %}" href="{% url 'activity_edit' org.slug project.pk a.pk %}">{% if a.wbs %}<span class="dim">{{ a.wbs }}</span> {% endif %}{{ a.name }}</a>{% else %}<span class="t1{% if a.is_summary %} g-summary{% endif %}">{{ a.name }}</span>{% endif %}
+          <span class="sub">{% if a.is_milestone %}{{ a.start|date:"j M" }}{% else %}{{ a.start|date:"j M" }} – {{ a.finish|date:"j M" }} · {{ a.duration_days }}d{% endif %}{% if a.who %} · {{ a.who }}{% endif %}</span>
           {% if a.is_late %}{% badge 'Behind' 'bad' %}{% elif a.is_complete %}{% badge 'Complete' 'good' %}{% endif %}{% if a.is_out_of_sequence and is_internal %} {% badge 'Starts before '|add:a.after.name|truncatechars:34 'warn' %}{% endif %}{% if is_internal and not a.is_shared %} {% badge 'Internal' 'muted' %}{% endif %}
         </div>
         <div class="g-track">
@@ -32,7 +33,7 @@
     </div>
   </div></div>
   {% else %}
-  <div class="empty"><h2>No programme yet</h2><p>{% if is_internal %}Add activities below. Each one becomes a bar on the chart, and milestones show as diamonds.{% else %}The contractor hasn't shared a programme for this project yet.{% endif %}</p></div>
+  {% if is_internal %}{% url 'programme_import' org.slug project.pk as import_url %}{% include "partials/empty_state.html" with title="No programme yet" message="Bring in your Microsoft Project or Asta programme as an XML file, or add activities one by one below. Each one becomes a bar on the chart, and milestones show as diamonds." cta_url=import_url cta_label="Import from MS Project" %}{% else %}{% include "partials/empty_state.html" with title="No programme yet" message="The contractor hasn't shared a programme for this project yet. It will appear here when they do." %}{% endif %}
   {% endif %}
 </div>
 

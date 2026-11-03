@@ -36,6 +36,12 @@ def commercial_context(request, project, sub, **extra):
             ctx['commercial_nav'].append(('costs', 'Costs', reverse('cost_report', args=[org, pk])))
             # Sub payments: the same people as Costs (subpayments/access.py)
             ctx['commercial_nav'].append(('subpayments', 'Sub payments', reverse('subpay_list', args=[org, pk])))
+            # CVR and cashflow: the same people as Costs (cvr/access.py)
+            ctx['commercial_nav'].append(('cvr', 'CVR', reverse('cvr_list', args=[org, pk])))
+            ctx['commercial_nav'].append(('cashflow', 'Cashflow', reverse('cvr_cashflow', args=[org, pk])))
+        from costs.access import COST_STAGES
+        if project.stage in COST_STAGES:  # Dayworks: all staff on a won or live job (cvr/access.py)
+            ctx['commercial_nav'].append(('dayworks', 'Dayworks', reverse('daywork_list', args=[org, pk])))
         ctx['commercial_sub'] = sub
     return ctx
 

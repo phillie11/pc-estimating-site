@@ -1,0 +1,64 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block project_actions %}{% if has_money %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
+{% block project_content %}<div class="cvr-touch">
+{% include "commercial/_subnav.html" %}
+{% if has_money %}
+<div class="kpis cvr-kpis">
+  <div class="kpi"><div class="label">Received to date</div><div class="value">{{ data.totals.in_actual|money:currency }}</div><div class="note">Excluding VAT</div></div>
+  <div class="kpi"><div class="label">Spent to date</div><div class="value">{{ data.totals.out_actual|money:currency }}</div><div class="note">Actual costs on the ledger</div></div>
+  <div class="kpi"><div class="label">Cash position at the end</div><div class="value{% if data.totals.net < 0 %} bad{% endif %}">{{ data.totals.net|money:currency }}</div><div class="note">All money in less all out</div></div>
+  <div class="kpi"><div class="label">Lowest point</div><div class="value{% if data.lowest < 0 %} bad{% endif %}">{{ data.lowest|money:currency }}</div><div class="note">{% if data.lowest < 0 %}The job needs funding then{% else %}The job stays in funds{% endif %}</div></div>
+</div>
+{% for n in data.notes %}<p class="banner cvr-warn" role="status">{{ n }}</p>{% endfor %}
+
+<section class="card" aria-labelledby="cf-chart-h"><div class="card-head"><h2 id="cf-chart-h">Money in and out by month</h2></div><div class="card-body">
+<ul class="cf-legend small" aria-hidden="true">
+  <li><span class="sw in"></span>Money in</li><li><span class="sw out"></span>Money out</li>
+  <li><span class="sw line"></span>Running total</li><li><span class="sw fc"></span>Paler: forecast</li>
+</ul>
+<div class="cf-chart-wrap">
+<svg class="cf-chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-labelledby="cf-title cf-desc" preserveAspectRatio="xMinYMin meet">
+  <title id="cf-title">Cashflow for {{ project.name }}</title>
+  <desc id="cf-desc">Money in above the line and money out below it each month, with the running total as a line. Months right of the Today marker are forecast. Every figure is in the table below.</desc>
+  {% for t in chart.ticks %}<line class="grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/><text class="tick" x="{{ chart.tick_x }}" y="{{ t.y }}" text-anchor="end" dominant-baseline="middle">{{ t.label }}</text>{% endfor %}
+  {% if chart.today_x is not None %}<line class="today" x1="{{ chart.today_x }}" x2="{{ chart.today_x }}" y1="{{ chart.top }}" y2="{{ chart.bottom }}"/><text class="today-label" x="{{ chart.today_x }}" y="{{ chart.top }}" dy="-4">Today</text>{% endif %}
+  {% for c in chart.cols %}<g class="col{% if c.forecast %} fc{% endif %}">
+    <title>{{ c.tip }}</title>
+    <rect class="hit" x="{{ c.x }}" y="{{ chart.top }}" width="{{ c.w }}" height="{{ chart.plot_h }}"/>
+    {% if c.in_h %}<rect class="bar in" x="{{ c.bar_x }}" y="{{ c.in_y }}" width="{{ c.bar_w }}" height="{{ c.in_h }}" rx="2"/>{% endif %}
+    {% if c.out_h %}<rect class="bar out" x="{{ c.bar_x }}" y="{{ c.out_y }}" width="{{ c.bar_w }}" height="{{ c.out_h }}" rx="2"/>{% endif %}
+    {% if c.label %}<text class="tick" x="{{ c.cx }}" y="{{ chart.label_y }}" text-anchor="middle">{{ c.label }}</text>{% endif %}
+  </g>{% endfor %}
+  <line class="zero" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ chart.zero }}" y2="{{ chart.zero }}"/>
+  <polyline class="cum" points="{{ chart.line }}"/>
+</svg>
+</div>
+<p class="small dim">Hover or tap a month for its figures. The table below has every month.</p>
+</div></section>
+
+<section class="card" aria-labelledby="cf-table-h"><div class="card-head"><h2 id="cf-table-h">Cashflow table</h2></div>
+<div class="table-wrap"><table class="t cf-table">
+  <caption class="sr-only">Money in and out each month, actual and forecast, excluding VAT</caption>
+  <thead><tr><th scope="col">Month</th><th scope="col" class="num">In: actual</th><th scope="col" class="num">In: forecast</th><th scope="col" class="num">Out: actual</th><th scope="col" class="num">Out: forecast</th><th scope="col" class="num">Net</th><th scope="col" class="num">Running total</th></tr></thead>
+  <tbody>{% for m in data.months %}<tr{% if m.is_current %} class="current"{% endif %}>
+    <th scope="row">{{ m.month|date:"M Y" }}{% if m.is_current %} <span class="badge accent">This month</span>{% elif not m.is_past %} <span class="sub">forecast</span>{% endif %}</th>
+    <td class="num">{% if m.in_actual %}{{ m.in_actual|money:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td class="num">{% if m.in_forecast %}{{ m.in_forecast|money:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td class="num">{% if m.out_actual %}{{ m.out_actual|money:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td class="num">{% if m.out_forecast %}{{ m.out_forecast|money:currency }}{% else %}<span class="dim">—</span>{% endif %}</td>
+    <td class="num{% if m.net < 0 %} overdue{% endif %}">{{ m.net|money:currency }}</td>
+    <td class="num{% if m.cumulative < 0 %} overdue{% endif %}">{{ m.cumulative|money:currency }}</td>
+  </tr>{% endfor %}</tbody>
+  <tfoot><tr><th scope="row">Total</th><td class="num">{{ data.totals.in_actual|money:currency }}</td><td class="num">{{ data.totals.in_forecast|money:currency }}</td><td class="num">{{ data.totals.out_actual|money:currency }}</td><td class="num">{{ data.totals.out_forecast|money:currency }}</td><td class="num">{{ data.totals.net|money:currency }}</td><td></td></tr></tfoot>
+</table></div></section>
+
+<details class="card cvr-how"><summary class="card-body"><strong>How the forecast is worked out</strong></summary><div class="card-body small">
+<p><strong>In.</strong> Payments received, excluding VAT, in the month received. Then what the client still owes on applications already made ({{ data.owed_in|money:currency }}), at each one's final date for payment. Then the rest of the forecast final account ({{ data.remaining_value|money:currency }}), spread over the months to {{ data.finish|date:"M Y" }} {% if data.uses_programme %}by the work the programme has left in each month{% else %}evenly (there is no programme){% endif %}, less {{ data.retention_pct|floatformat:"-2" }}% retention, received at the final date for payment under the contract's terms. Retention comes back at practical completion and the end of the defects period.</p>
+<p><strong>Out.</strong> Actual costs on the cost ledger, by the date posted. Then what we owe subcontractors on applications we have ({{ data.owed_out|money:currency }}), at each final date. Then the rest of the forecast final cost ({{ data.remaining_cost|money:currency }}), spread the same way and paid at the final date under the company's default subcontract terms.</p>
+<p>{% badge 'Advisory' 'warn' %} All figures exclude VAT. {{ advisory }}</p>
+</div></details>
+{% else %}
+<div class="card">{% url 'application_list' org.slug project.pk as apps_url %}{% include "partials/empty_state.html" with title="No money in or out yet" message="The cashflow fills in from applications for payment, the cost ledger and the contract sum. Set up the contract and the budget, or make the first application, and it appears here." cta_url=apps_url cta_label="Go to applications" %}</div>
+{% endif %}
+</div>
+{% endblock %}

@@ -42,7 +42,7 @@ class Built:
 @transaction.atomic
 def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, diary_per_job=50,
           docs_per_job=50, apps_per_job=12, subapps_per_job=8, actuals_per_job=170, seed=7, email_domain='scale.test',
-          stdout=None, quality_per_job=(12, 8, 40)):
+          stdout=None, quality_per_job=(12, 8, 40), incidents_per_job=10, signins_per_job=30):
     from accounts.models import User
     from accounts.views import create_organization
     from changes.models import ChangeEvent
@@ -293,6 +293,8 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
                     DelayLine.objects.create(organization=org, entry=e, cause='WEATHER', hours_lost=Decimal('2'),
                                          description='Rain stopped external works', created_by=p.manager)
         say(f'{DiaryEntry.objects.count()} diary entries')
+        from safety.scale import seed as seed_safety  # incidents, CDM registers, site sign-ins
+        say(seed_safety(live, today, now, incidents_per_job=incidents_per_job, signins_per_job=signins_per_job))
         for j, p in enumerate(live):
             for k in range(10):
                 vo = Variation(project=p, title=f'Change {k}', description='Client instruction.',
@@ -346,6 +348,9 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
                         except Exception:  # noqa: BLE001 - a dataset, not a test: skip a cycle that doesn't fit
                             pass
         say(f'{sub_apps} sub applications')
+        # Monthly CVRs and daywork sheets on every live job (cvr/scale.py)
+        from cvr.scale import build as build_cvr
+        build_cvr(live, owner, say=say)
 
         # --- procurement, submittals, snags, tasks ------------------------------------------
         for j, p in enumerate(live):
@@ -360,6 +365,10 @@ def build(name='Scale Fitout', jobs=200, staff=40, subs=300, rfis_per_job=30, di
                                   kind='SHOP_DRAWING', due_date=line.submittals_due)
                     proc_services.initial_ball(s)
                     s.save(actor=p.manager)
+        # Programme lines (some given to subs, for the look-ahead) and meetings with actions (meetings/scale.py)
+        from meetings.scale import seed as seed_meetings
+        seed_meetings(org, live, appointed, sub_users, dict(zip([p.pk for p in live], clients)), rng)
+        say('programme lines and meetings done')
         # Quality: inspections, permits and fire-stopping per live job (quality/scale.py)
         from quality import scale as quality_scale
         quality_scale.seed(org, owner, live, rng, *quality_per_job)

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!DOCTYPE Project [
+  <!ENTITY lol "lol">
+  <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+  <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+]>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Tasks><Task><UID>1</UID><Name>&lol4;</Name><Start>2026-11-02T08:00:00</Start></Task></Tasks>
+</Project>

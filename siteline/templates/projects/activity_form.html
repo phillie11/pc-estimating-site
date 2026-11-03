@@ -1,6 +1,8 @@
 {% extends "project_base.html" %}
 {% block project_content %}
+{% include "projects/_programme_nav.html" %}
 <div class="card" style="max-width:900px"><div class="card-head"><h2>Edit activity</h2></div><div class="card-body">
+{% if activity.source_uid %}<p class="small dim">Imported from MS Project (task ID {{ activity.source_uid }}{% if activity.wbs %}, WBS {{ activity.wbs }}{% endif %}). The next import updates its name, dates, % done and what it follows from the file. Who sees it, its subcontractor and its trade stay as you set them here.</p>{% endif %}
 <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'programme' org.slug project.pk %}">Cancel</a></div></form>
 <form method="post" data-confirm="Remove this activity from the programme?" style="margin-top:14px">{% csrf_token %}<input type="hidden" name="delete" value="1"><button class="btn danger sm">Remove activity</button></form>
 </div></div>

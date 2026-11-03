@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load static %}
+{% block title %}Sign-in poster · {{ project.name }}{% endblock %}
+{% block body_class %}sf-poster-page{% endblock %}
+{% block body %}
+<main class="sf-poster">
+  <div class="sf-rc-tools sf-no-print sf-poster-tools"><a class="btn" href="{{ back_url }}">Back</a><button type="button" class="btn primary" data-print>Print</button></div>
+  <p class="sf-poster-kicker">Everyone on this site</p>
+  <h1>Sign in and out here</h1>
+  <p class="sf-poster-site">{{ project.name }}</p>
+  <div class="sf-poster-qr">{{ qr_svg|safe }}</div>
+  <ol class="sf-poster-steps">
+    <li>Open your phone camera and point it at the code.</li>
+    <li>Tap the link, then <strong>Sign in</strong>. Visitors type their name and company.</li>
+    <li>Scan again and tap <strong>Sign out</strong> when you leave.</li>
+  </ol>
+  <p class="sf-poster-why">This is the fire roll call. If you are on site and not signed in, nobody knows to look for you.</p>
+  <p class="sf-poster-link">No camera? Go to <span>{{ signin_url }}</span> or ask the site team to sign you in.</p>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{% static 'safety/safety.js' %}" defer></script>{% endblock %}

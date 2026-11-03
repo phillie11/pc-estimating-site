@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- An MSPDI project with resources but no task list. -->
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Empty.xml</Name>
+  <Resources><Resource><UID>1</UID><Name>Pennine Drylining</Name></Resource></Resources>
+</Project>

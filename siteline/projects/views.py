@@ -131,12 +131,18 @@ def project_context(request, project, tab, **extra):
             tabs.append(('diary', 'Diary', url('diary_register'), None))
             # Quality (inspections, permits, fire-stopping) has the same rule: quality.access.can_use_quality
             tabs.append(('quality', 'Quality', url('inspection_list'), None))
+            # Safety (incidents, CDM, site sign-in): the same people, safety.access.can_use_safety
+            tabs.append(('safety', 'Safety', url('safety_home'), None))
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), badges['issues']),
         ('tasks', 'Tasks', url('task_list'), badges['tasks']),
         ('documents', 'Documents', url('document_list'), None),
         ('team', 'Team', url('project_team'), None),
     ]
+    from meetings.access import meetings_tab  # staff: Meetings (under More); externals: their minutes and actions
+    meetings = meetings_tab(request, project)
+    if meetings:
+        tabs.append(meetings)
     from closeout.access import tab_for as closeout_tab  # staff: Close-out; client side: Defects and handover
     closeout = closeout_tab(request, project)
     if closeout:
@@ -604,7 +610,7 @@ def workload(request, org_slug):
 
 
 def _visible_activities(request, project):
-    qs = Activity.objects.filter(project=project).select_related('after')
+    qs = Activity.objects.filter(project=project).select_related('after', 'subcontractor')
     return qs if is_internal(request) else qs.filter(is_shared=True)
 
 
@@ -624,6 +630,8 @@ def programme(request, org_slug, pk):
             messages.success(request, f'Added {a.name}.')
             return redirect('programme', org_slug=org_slug, pk=pk)
     activities = list(_visible_activities(request, project))
+    from .programme_views import hide_who, programme_nav  # Chart, Look-ahead, Import (Release 3)
+    hide_who(request, activities)
     chart = gantt.build(activities, today=timezone.localdate())
     summary = None
     if activities:
@@ -637,7 +645,8 @@ def programme(request, org_slug, pk):
         if project.completion_date:
             summary['slip_days'] = (summary['finish'] - project.completion_date).days
     return render(request, 'projects/programme.html', project_context(
-        request, project, 'programme', chart=chart, form=form, activities=activities, summary=summary))
+        request, project, 'programme', chart=chart, form=form, activities=activities, summary=summary,
+        **programme_nav(request, project, 'chart')))
 
 
 def activity_edit(request, org_slug, pk, activity_id):
@@ -652,8 +661,9 @@ def activity_edit(request, org_slug, pk, activity_id):
     if request.method == 'POST' and form.is_valid():
         form.save()
         return redirect('programme', org_slug=org_slug, pk=pk)
+    from .programme_views import programme_nav
     return render(request, 'projects/activity_form.html', project_context(
-        request, project, 'programme', form=form, activity=activity))
+        request, project, 'programme', form=form, activity=activity, **programme_nav(request, project, 'chart')))
 
 
 # ---------------------------------------------------------------------------

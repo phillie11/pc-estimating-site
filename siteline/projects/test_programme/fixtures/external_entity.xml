@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<!DOCTYPE Project [ <!ENTITY secret SYSTEM "file:///etc/passwd"> ]>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Tasks><Task><UID>1</UID><Name>&secret;</Name><Start>2026-11-02T08:00:00</Start></Task></Tasks>
+</Project>

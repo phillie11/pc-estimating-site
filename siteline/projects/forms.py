@@ -104,16 +104,28 @@ class TaskForm(StyledModelForm):
 class ActivityForm(StyledModelForm):
     class Meta:
         model = Activity
-        fields = ['name', 'responsible', 'start', 'finish', 'progress', 'after', 'is_milestone', 'is_shared']
+        fields = ['name', 'responsible', 'subcontractor', 'trade', 'start', 'finish', 'progress', 'after',
+                  'is_milestone', 'is_shared']
+        labels = {'name': 'Activity', 'responsible': 'Who (as shown on the chart)'}
 
     def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
+        from directory.models import Package, Subcontractor, Trade
         others = Activity.objects.filter(project=project)
         if self.instance.pk:
             others = others.exclude(pk=self.instance.pk)
         self.fields['after'].queryset = others
         self.fields['finish'].required = False
         self.fields['progress'].widget.attrs.update({'min': 0, 'max': 100, 'step': 5})
+        # Subcontractors on this job (appointed, or the one already on the line); every company trade
+        on_job = Package.objects.filter(project=project, status=Package.APPOINTED).values('subcontractor')
+        subs = Subcontractor.objects.filter(pk__in=on_job)
+        if self.instance.subcontractor_id:
+            subs = subs | Subcontractor.objects.filter(pk=self.instance.subcontractor_id)
+        self.fields['subcontractor'].queryset = subs.order_by('company_name')
+        self.fields['subcontractor'].empty_label = 'None (our own work, or not appointed yet)'
+        self.fields['trade'].queryset = Trade.objects.all()
+        self.fields['trade'].empty_label = 'No trade'
 
     def clean_progress(self):
         p = self.cleaned_data.get('progress')
@@ -129,6 +141,19 @@ class ActivityForm(StyledModelForm):
         elif start and finish and finish < start:
             self.add_error('finish', 'Finish cannot be before the start.')
         return data
+
+
+class ProgrammeUploadForm(forms.Form):
+    file = forms.FileField(
+        label='Programme file (.xml)',
+        help_text='Microsoft Project: File > Save As > "XML Format (*.xml)". Asta Powerproject: File > Save As > '
+                  '"Microsoft Project XML". Up to 5 MB.',
+        widget=forms.ClearableFileInput(attrs={'accept': '.xml,application/xml,text/xml'}))
+
+    def clean_file(self):
+        f = self.cleaned_data['file']
+        validate_upload(f)
+        return f
 
 
 class IssueForm(StyledModelForm):

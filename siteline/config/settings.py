@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'documents',
     'procurement',
     'diary',
+    'safety',
     'jobs',
     'actions',
     'payments',
@@ -75,6 +76,8 @@ INSTALLED_APPS = [
     'levelling',
     'quality',
     'viewer',
+    'cvr',
+    'meetings',
     'closeout',
     'help',
 ]

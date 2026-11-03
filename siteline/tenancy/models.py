@@ -17,6 +17,7 @@ RESERVED_SLUGS = {
     'password', 'files', 'help', 'support', 'about', 'terms', 'privacy', 'www', 'app',
     'settings', 'dashboard', 'stripe', 'webhook', 'webhooks', 'health', 'home',
     'password-reset', 'platform-admin',
+    'sign-in',  # the public QR site sign-in page (safety/urls.py public_patterns)
 }
 
 

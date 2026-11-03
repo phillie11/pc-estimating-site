@@ -55,12 +55,39 @@ def _my_memberships(request, roles):
                                         project__in=visible_projects(request).values('pk'))
 
 
+# Apps add their own per-job flags to my_jobs() by dotted path: fn(request) -> {name: expression}. They become
+# subqueries in its one query, so a provider that needs a flag per job costs no query of its own. A module not
+# merged yet is skipped, as for HOOKS.
+JOB_ANNOTATIONS = ['cvr.actions.job_annotations']
+
+
+def _job_annotations(request):
+    import importlib
+    out = {}
+    for path in JOB_ANNOTATIONS:
+        module, _, name = path.rpartition('.')
+        try:
+            fn = getattr(importlib.import_module(module), name)
+        except ModuleNotFoundError as e:
+            if e.name and (module == e.name or module.startswith(e.name + '.')):
+                continue  # that app hasn't been merged yet (as HookProvider.resolve)
+            raise  # a broken import inside the app is a bug, not a missing app
+        except AttributeError:
+            continue
+        flags = fn(request)
+        clash = set(flags) & set(out)
+        if clash:
+            raise ValueError(f'{path} adds job flags another app already adds: {", ".join(sorted(clash))}')
+        out.update(flags)
+    return out
+
+
 def my_jobs(request):
     """
     Won, live and complete jobs this member of staff can open, with what they are on each one:
-    `is_manager`, `on_team_pm`, `on_team_qs` and `has_ledger`. One query per request, shared by
-    the providers that list a job's payments, sub payments, costs and diary (each applies its own
-    rule to these flags), because all of them run behind the badge on every page.
+    `is_manager`, `on_team_pm`, `on_team_qs` and `has_ledger` (plus any JOB_ANNOTATIONS). One query per
+    request, shared by the providers that list a job's payments, sub payments, costs and diary (each
+    applies its own rule to these flags), because all of them run behind the badge on every page.
     """
     from projects.access import visible_projects
     from projects.models import Project, ProjectMember
@@ -73,7 +100,8 @@ def my_jobs(request):
             stage__in=Project.DELIVERY_STAGES + (Project.STAGE_COMPLETE,)).annotate(
             on_team_pm=Exists(member.filter(role=ProjectMember.ROLE_PM)),
             on_team_qs=Exists(member.filter(role=ProjectMember.ROLE_QS)),
-            has_ledger=Exists(LedgerEntry.objects.filter(project=OuterRef('pk')))))
+            has_ledger=Exists(LedgerEntry.objects.filter(project=OuterRef('pk'))),
+            **_job_annotations(request)))
     return request_memo(('needs_me_jobs', request.user.pk), fetch)
 
 
@@ -102,6 +130,23 @@ def register_record_formatter(record_type, fn):
     RECORD_FORMATTERS[record_type] = fn
 
 
+def default_item(idx, action=None, kind_label=None):
+    """The Needs me line for a record index row; a formatter can call this and change only the wording."""
+    responded = idx.status == 'RESPONDED'
+    return Item(
+        kind=idx.record_type.split('.')[-1], title=idx.title, url=idx.url, ref=idx.ref, project=idx.project,
+        due=idx.due_date, status_label=idx.status_label, tone='info' if responded else 'accent',
+        action=action or ('Accept the answer or reopen it' if responded else 'Answer it'),
+        kind_label=kind_label or ('RFIs' if idx.record_type == 'rfis.rfi' else idx.record_type.split('.')[-1].upper()),
+        key=f'idx:{idx.pk}',
+    )
+
+
+def worded(action, kind_label):
+    """A formatter that keeps the default line and only words it: register_record_formatter(key, worded(...))."""
+    return lambda idx, today: default_item(idx, action=action, kind_label=kind_label)
+
+
 class RecordsProvider:
     """Open records of any type on core.RecordBase whose ball is in this person's court."""
     kind, label = 'record', 'RFIs and records'
@@ -122,14 +167,7 @@ class RecordsProvider:
                 if item is not None:
                     out.append(item)
                 continue
-            responded = idx.status == 'RESPONDED'
-            out.append(Item(
-                kind=idx.record_type.split('.')[-1], title=idx.title, url=idx.url, ref=idx.ref, project=idx.project,
-                due=idx.due_date, status_label=idx.status_label, tone='info' if responded else 'accent',
-                action='Accept the answer or reopen it' if responded else 'Answer it',
-                kind_label='RFIs' if idx.record_type == 'rfis.rfi' else idx.record_type.split('.')[-1].upper(),
-                key=f'idx:{idx.pk}',
-            ))
+            out.append(default_item(idx))
         return out
 
 

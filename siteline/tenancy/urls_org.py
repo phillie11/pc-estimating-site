@@ -5,16 +5,20 @@ from billing import views as billing
 from changes import urls as changes_urls
 from closeout import urls as closeout_urls
 from costs import urls as costs_urls
+from cvr import urls as cvr_urls
 from delivery import views as delivery
 from diary import urls as diary_urls
 from directory import views as directory
 from documents import urls as documents_urls
 from levelling import urls as levelling_urls
+from meetings import urls as meetings_urls
 from payments import urls as payments_urls
 from procurement import urls as procurement_urls
+from projects import programme_views
 from quality import urls as quality_urls
 from projects import views as projects
 from rfis import views as rfis
+from safety import urls as safety_urls
 from subpayments import urls as subpayments_urls
 from tenders import views as tenders
 from variations import views as variations
@@ -64,6 +68,11 @@ urlpatterns = [
 
     path(P + 'programme/', projects.programme, name='programme'),
     path(P + 'programme/<int:activity_id>/', projects.activity_edit, name='activity_edit'),
+    # Programme > Look-ahead and Import from MS Project (projects/programme_views.py)
+    path(P + 'programme/look-ahead/', programme_views.lookahead, name='programme_lookahead'),
+    path(P + 'programme/import/', programme_views.programme_import, name='programme_import'),
+    path(P + 'programme/import/<int:import_id>/', programme_views.programme_import_preview,
+         name='programme_import_preview'),
 
     path(P + 'tasks/', projects.task_list, name='task_list'),
     path(P + 'tasks/<int:task_id>/update/', projects.task_update, name='task_update'),
@@ -122,14 +131,23 @@ urlpatterns = [
     # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)
     *diary_urls.project_patterns(P),
     *diary_urls.org_patterns,
+    # Safety tab: incidents and near misses, CDM register, site sign-in (safety/urls.py)
+    *safety_urls.project_patterns(P),
+    *safety_urls.org_patterns,
     # Commercial > Costs and Settings > Cost control (costs/urls.py)
     *costs_urls.project_patterns(P),
     *costs_urls.org_patterns,
     # Commercial > Sub payments, Decisions > Payments for subs, CIS and default terms (subpayments/urls.py)
     *subpayments_urls.project_patterns(P),
     *subpayments_urls.org_patterns,
+    # Commercial > CVR, Cashflow and Dayworks, the company CVR, Settings > Commercial reporting (cvr/urls.py)
+    *cvr_urls.project_patterns(P),
+    *cvr_urls.org_patterns,
     # Sub quotes > Level quotes on a bid (levelling/urls.py)
     *levelling_urls.project_patterns(P),
+    # Meetings tab: minutes, actions and agenda templates (meetings/urls.py)
+    *meetings_urls.project_patterns(P),
+    *meetings_urls.org_patterns,
     # Close-out tab and the client's "Defects and handover" (closeout/urls.py)
     *closeout_urls.project_patterns(P),
     *closeout_urls.org_patterns,

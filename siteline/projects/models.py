@@ -389,13 +389,30 @@ class Activity(TenantModel):
     is_shared = models.BooleanField('Visible to project collaborators', default=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
+    # Release 3: look-ahead filters, the subcontractor's own lines in the portal, and MS Project import
+    subcontractor = models.ForeignKey('directory.Subcontractor', null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name='programme_activities', verbose_name='Subcontractor',
+                                      help_text='They see this line in their look-ahead in the portal.')
+    trade = models.ForeignKey('directory.Trade', null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name='+', help_text='For filtering the look-ahead by trade.')
+    source_uid = models.PositiveIntegerField('MS Project task ID', null=True, blank=True, editable=False,
+                                             help_text='The unique ID of the task this line was imported from.')
+    wbs = models.CharField('WBS', max_length=40, blank=True, editable=False)
+    outline_level = models.PositiveSmallIntegerField(default=1, editable=False)
+    is_summary = models.BooleanField('Summary (heading) line', default=False, editable=False)
 
     class Meta:
         ordering = ['start', 'finish', 'pk']
         verbose_name_plural = 'activities'
+        # A re-import updates the line with the same MS Project unique ID (NULLs never clash: hand-added lines)
+        constraints = [models.UniqueConstraint(fields=['project', 'source_uid'], name='activity_one_per_source_uid')]
 
     def __str__(self):
         return self.name
+
+    @property
+    def who(self):
+        return self.responsible or (self.subcontractor.company_name if self.subcontractor_id else '')
 
     @property
     def duration_days(self):
@@ -417,6 +434,38 @@ class Activity(TenantModel):
         if self.after.is_milestone:
             return self.start < self.after.finish
         return self.start <= self.after.finish
+
+
+class ProgrammeImport(TenantModel):
+    """
+    One MS Project XML upload: read and kept here for the preview, then applied (or discarded).
+    The file itself isn't stored, only what was read from it (projects/mspdi.py), so nothing has to
+    be served back. `result` says what applying it did: {'created': n, 'updated': n, 'removed': n}.
+    """
+    PREVIEW, APPLIED, DISCARDED = 'PREVIEW', 'APPLIED', 'DISCARDED'
+    STATUS_CHOICES = [(PREVIEW, 'Waiting for you to check'), (APPLIED, 'Applied'), (DISCARDED, 'Discarded')]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='programme_imports')
+    file_name = models.CharField(max_length=200)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PREVIEW)
+    tasks = models.JSONField(default=list)
+    warnings = models.JSONField(default=list)
+    result = models.JSONField(default=dict, blank=True)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    applied_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-uploaded_at', '-pk']
+
+    def __str__(self):
+        return f'{self.file_name} ({self.get_status_display()})'
+
+    @property
+    def status_tone(self):
+        return {self.PREVIEW: 'warn', self.APPLIED: 'good', self.DISCARDED: 'muted'}[self.status]
 
 
 class Issue(TenantModel):

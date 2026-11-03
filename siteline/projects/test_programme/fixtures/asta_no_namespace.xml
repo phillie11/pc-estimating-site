@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The same format written without the default namespace, as some exporters do. Date-only start and finish. -->
+<Project>
+  <Tasks>
+    <Task><UID>101</UID><ID>1</ID><Name>Mobilise</Name><OutlineLevel>1</OutlineLevel><Milestone>true</Milestone>
+      <Start>2026-11-02</Start><Finish>2026-11-02</Finish></Task>
+    <Task><UID>102</UID><ID>2</ID><Name>Backwards dates</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-11-10T08:00:00</Start><Finish>2026-11-03T17:00:00</Finish><PercentComplete>250</PercentComplete></Task>
+    <Task><UID>102</UID><ID>3</ID><Name>Duplicate UID</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-11-10T08:00:00</Start><Finish>2026-11-12T17:00:00</Finish></Task>
+  </Tasks>
+</Project>

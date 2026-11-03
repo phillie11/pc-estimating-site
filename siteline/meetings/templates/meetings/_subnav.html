@@ -1,0 +1,1 @@
+{% if meetings_nav %}<nav class="subtabs mtg" aria-label="Meetings">{% for code, label, url in meetings_nav %}<a class="chip{% if code == meetings_sub %} on{% endif %}" href="{{ url }}"{% if code == meetings_sub %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>{% endif %}

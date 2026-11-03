@@ -561,6 +561,226 @@ tr.dim td { color: var(--ink-3); }
 .lv-exc-form select, .lv-exc-form input { min-height: 44px; width: auto; }
 .lv-rates input[inputmode] { min-height: 44px; width: 8rem; }
 .lv-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+
+/* CVR, cashflow and dayworks (cvr/). Own prefixes (cvr-, cf-, dw-, sig-), existing tokens only. */
+.cvr-kpis .kpi { flex: 1 1 200px; }
+.cvr-note { margin: 0; }
+.cvr-title { margin: 0 0 4px; }
+.cvr-start-row { align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.cvr-start-row .field { min-width: 220px; }
+.cvr-start-row select, .cvr-filters select, .cvr-filters input { min-height: 44px; }
+.cvr-actions .card-body { display: flex; flex-wrap: wrap; gap: 16px; }
+.cvr-action { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; max-width: 420px; }
+.cvr-action p { margin: 0; }
+.cvr-filters { align-items: center; gap: 8px; flex-wrap: wrap; }
+.cvr-table th[scope="row"], .cf-table th[scope="row"] { font-weight: 500; text-align: left; text-transform: none;
+  letter-spacing: normal; font-size: 13.5px; color: var(--ink); white-space: normal; }
+.cvr-table th[scope="row"] .sub { font-weight: 400; color: var(--ink-3); }
+.cvr-table tr.total th, .cvr-table tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
+.banner.cvr-info { background: var(--info-bg); color: var(--info); }
+.banner.cvr-good { background: var(--good-bg); color: var(--good); }
+.banner.cvr-warn { background: var(--warn-bg); color: var(--warn); }
+.banner.cvr-info a, .banner.cvr-good a, .banner.cvr-warn a { color: inherit; }
+.cvr-move.up { color: var(--good); }
+.cvr-move.down { color: var(--bad); }
+.cvr-pre { white-space: pre-wrap; }
+.cvr-how summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+/* The cashflow chart: inline SVG drawn on the server. Money in var(--info), money out var(--warn): a pair that
+   passes the colour-blind checks. Forecast months are paler with a dashed edge, right of the Today marker. */
+.cf-chart-wrap { width: 100%; overflow: hidden; }
+.cf-chart { width: 100%; height: auto; display: block; font-family: var(--font); }
+.cf-chart .grid { stroke: var(--line); stroke-width: 1; }
+.cf-chart .zero { stroke: var(--ink-3); stroke-width: 1.5; }
+.cf-chart .tick { fill: var(--ink-3); font-size: 11px; }
+.cf-chart .bar.in { fill: var(--info); }
+.cf-chart .bar.out { fill: var(--warn); }
+.cf-chart .fc .bar { fill-opacity: .4; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.cf-chart .fc .bar.in { stroke: var(--info); }
+.cf-chart .fc .bar.out { stroke: var(--warn); }
+.cf-chart .hit { fill: transparent; }
+.cf-chart .col:hover .hit { fill: var(--paper-2); fill-opacity: .6; }
+.cf-chart .cum { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.cf-chart .today { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 4 3; }
+.cf-chart .today-label { fill: var(--ink); font-size: 11px; font-weight: 600; text-anchor: middle; }
+.cf-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; padding: 0; margin: 0 0 8px; }
+.cf-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.cf-legend .sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.cf-legend .sw.in { background: var(--info); }
+.cf-legend .sw.out { background: var(--warn); }
+.cf-legend .sw.line { height: 2px; background: var(--ink); }
+.cf-legend .sw.fc { background: var(--info); opacity: .4; outline: 1.5px dashed var(--info); }
+.cf-table tr.current th, .cf-table tr.current td { background: var(--paper); }
+/* Dayworks: one-handed on a phone */
+.dw-card { max-width: 760px; }
+.dw-card .btn, .dw-card input, .dw-card select, .cvr-start .btn { min-height: 44px; }
+.dw-next { border-left: 4px solid var(--info); }
+.dw-table tr.group th { background: var(--paper); text-align: left; }
+.dw-table tr.sub-total td { color: var(--ink-2); font-size: 13px; }
+.dw-table tfoot th { text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--ink); text-align: left; }
+.dw-rate-sub { display: none; }
+.dw-photos { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 12px; }
+.dw-photos li { display: flex; flex-direction: column; gap: 4px; width: 160px; }
+.dw-photos img { width: 160px; height: 120px; object-fit: cover; border-radius: var(--r); border: 1px solid var(--line); }
+.dw-signed { margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.dw-signed img { max-width: 100%; height: auto; }
+.sig-pad { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.sig-canvas { width: 100%; max-width: 600px; aspect-ratio: 600 / 220; height: auto; border: 2px solid var(--line-2);
+  border-radius: var(--r); background: var(--card); touch-action: none; cursor: crosshair; }
+.sig-field .label { display: block; font-weight: 600; margin-bottom: 6px; }
+/* A screen-reader-only header (absolutely positioned) must stay inside its scrolling table, or it widens the page */
+.cvr-touch .table-wrap { position: relative; }
+.cvr-touch input:not([type=checkbox]):not([type=radio]):not([type=hidden]), .cvr-touch select { min-height: 44px; }
+.cvr-touch .linkbtn { min-height: 44px; display: inline-flex; align-items: center; }
+@media (max-width: 600px) {
+  /* On a phone: the month and its movement; last month's column and who added an adjustment are on wider screens */
+  .cvr-table tr > :nth-child(3), .cvr-adj tr > :nth-child(4) { display: none; }
+  /* Daywork lines: the rate goes under the hours, so the amount stays on screen */
+  .dw-table .dw-rate { display: none; }
+  .dw-table th, .dw-table td { padding-left: 8px; padding-right: 8px; }
+  .dw-table td.num { white-space: nowrap; }
+  .dw-rate-sub { display: block; }
+  .cvr-action { max-width: none; width: 100%; }
+  .cvr-action .btn { width: 100%; justify-content: center; }
+}
+/* Programme look-ahead and meetings (projects/programme_views.py, meetings/). Phone first: touch targets in .mtg are at least 44px. */
+.mtg .btn, .mtg button, .mtg select, .mtg input:not([type=checkbox]):not([type=radio]), .mtg textarea,
+.mtg .chip { min-height: 44px; }
+.mtg input[type=checkbox], .mtg input[type=radio] { width: 22px; height: 22px; }
+.mtg input, .mtg select, .mtg textarea { font-size: 16px; } /* 16px stops iOS zooming the page */
+.mtg input[type=file] { padding: 10px 0; }
+.mtg .chip { display: inline-flex; align-items: center; }
+.mtg .checks label, .mtg .radios label { min-height: 44px; display: flex; align-items: center; gap: 10px; margin: 0; font-weight: 500; }
+.mtg .radios { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+
+.mtg-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0 0 1rem; }
+.mtg-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.mtg-people li { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.mtg-item { border-top: 1px solid var(--line); padding: 12px 0; }
+.mtg-item:first-child { border-top: 0; }
+.mtg-item h3 { font-size: 1rem; margin: 0 0 6px; }
+.mtg-item .minutes { white-space: pre-wrap; margin: 0 0 6px; }
+.mtg-item textarea { width: 100%; min-height: 88px; }
+.mtg-actions { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
+.mtg-action { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: #fff; }
+.mtg-action .head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; justify-content: space-between; }
+.mtg-action .what { white-space: pre-wrap; margin: 4px 0; }
+.mtg-action form.upd { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-top: 8px; }
+.mtg-action form.upd label { flex: 1 1 160px; margin: 0; }
+.mtg-action form.upd textarea { min-height: 44px; }
+.mtg-sticky { position: sticky; bottom: 0; background: var(--paper, #fff); padding: 10px 0; border-top: 1px solid var(--line); align-items: center;
+  display: flex; flex-wrap: wrap; gap: 8px; z-index: 2; }
+.mtg-print, .la-print-head { display: none; }
+
+@media (max-width: 560px) {
+  .mtg .form-actions .btn, .mtg-sticky .btn { flex: 1 1 100%; }
+}
+
+/* Programme look-ahead grid (projects/lookahead.html) and summary lines on the chart */
+.g-summary { font-weight: 700; }
+.la-grid { border-collapse: separate; border-spacing: 0; }
+/* Cells hold the .sr-only text, so it is placed inside the scrolling table, not out past the page edge */
+.la-grid th, .la-grid td { position: relative; }
+.la-grid th.la-what { text-align: left; min-width: 240px; max-width: 360px; position: sticky; left: 0; background: #fff; z-index: 1;
+  font-weight: 500; vertical-align: top; }
+.la-grid th.la-what .rowlink { font-weight: 600; }
+.la-grid tbody th.la-what { text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--ink); }
+.la-grid tbody th.la-what .sub { display: block; color: var(--ink-3); font-size: 12px; margin: 2px 0 4px; }
+.la-grid .la-week { text-align: center; font-size: 12px; white-space: nowrap; border-left: 1px solid var(--line-2); }
+.la-grid .la-day { text-align: center; font-size: 12px; padding: 4px 0; width: 24px; min-width: 24px; }
+.la-grid .la-day abbr { text-decoration: none; }
+.la-grid .la-today { box-shadow: inset 0 -3px 0 var(--accent); }
+.la-cell { width: 24px; min-width: 24px; padding: 0; border-left: 1px solid var(--line); }
+.la-cell.on { background: color-mix(in srgb, var(--accent) 40%, white); }
+.la-cell.on.ms { background: var(--ink); }
+.la-cell.on.late { background: color-mix(in srgb, var(--bad, #b42318) 45%, white); }
+@media (max-width: 560px) { .la-grid th.la-what { min-width: 170px; } }
+@media print {
+  .mtg-print, .la-print-head { display: block; }
+  .mtg-noprint, .mtg-sticky { display: none !important; }
+  .mtg-action { break-inside: avoid; border-color: #999; }
+  .la-grid th.la-what { position: static; }
+  .la-cell.on { background: #bbb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+/* Safety (safety/): the Safety tab, the printed QR poster, the fire roll call and the public sign-in page.
+   Site-mode parts (.touch, .tap-grid, .day-nav, .photo-grid, .file-pick) come from diary/diary.css. */
+.sf-pre { white-space: pre-wrap; }
+.sf-hint { color: var(--warn); }
+.sf-gaps { margin: 0; padding-left: 1.2em; }
+.sf-gaps li { margin: 4px 0; }
+.sf-gaps a { min-height: 32px; display: inline-flex; align-items: center; }
+.sf-incident-head h2 { margin: 0 0 4px; overflow-wrap: anywhere; }
+.sf-next { border-left: 3px solid var(--accent); margin-bottom: 1rem; }
+.sf-next form { margin-top: 8px; }
+.sf-incident .list li { align-items: center; flex-wrap: wrap; }
+.sf-incident .list li form { margin: 0; display: flex; gap: 6px; align-items: center; }
+.sf-incident .linkbtn, .sf-log .linkbtn { min-height: 44px; display: inline-flex; align-items: center; }
+.site-mode .sub, .touch .sub { display: block; font-size: 12.5px; color: var(--ink-3); }
+@media (max-width: 560px) { .sf-incident .list li .grow { flex-basis: 100%; } }
+.sf-table { position: relative; } /* keeps the sr-only column header inside the scrolling table on a phone */
+.sf-missing-roles .row { gap: 8px; flex-wrap: wrap; }
+.sf-gaps-card { border-left: 3px solid var(--warn); margin-bottom: 1rem; }
+.card h3.sf-group { margin: 0; padding: 12px 16px 4px; }
+.sf-onsite-count { margin: 0 0 12px; font-size: 1.05rem; }
+.sf-big { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 4px; }
+.sf-link { background: var(--paper-2); padding: 10px 12px; border-radius: var(--r); overflow-wrap: anywhere; }
+.sf-yes-no { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+.sf-yes-no legend { font-weight: 600; font-size: 13.5px; margin-bottom: 6px; padding: 0; }
+.sf-yes-no-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sf-yes-no .sf-choice { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; margin: 0; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: var(--r); background: var(--card); font-weight: 600; }
+.sf-yes-no .sf-choice:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.sf-yes-no .sf-choice input { width: 24px; height: 24px; margin: 0; flex: none; }
+.sf-sticky { position: sticky; bottom: 0; background: var(--paper); padding: 10px 0; z-index: 2; }
+.sf-poster-preview { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 560px) { .sf-poster-preview { grid-template-columns: minmax(0, 1fr); } .sf-qr-box { max-width: 220px; } }
+.sf-qr { display: block; width: 100%; height: auto; background: var(--card); }
+.sf-poster-page, .sf-roll-call-page, .sf-signin-page { background: var(--card); }
+.sf-signin-page { --accent-ink: var(--ink); } /* no company on this page: the ink ui.readable_ink picks for the default accent */
+.sf-rc-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.sf-poster-tools { padding: 16px; justify-content: center; }
+.sf-poster { max-width: 720px; margin: 0 auto; padding: 16px 24px 32px; text-align: center; }
+.sf-poster-kicker, .sf-signin-kicker { text-transform: uppercase; letter-spacing: .1em; font-weight: 700; margin: 0; }
+.sf-signin-kicker { font-size: 12px; color: var(--ink-3); }
+.sf-poster h1 { font-size: clamp(2rem, 7vw, 3.4rem); margin: 6px 0; line-height: 1.05; }
+.sf-poster-site { font-size: clamp(1.2rem, 4vw, 1.8rem); font-weight: 600; margin: 0 0 18px; overflow-wrap: anywhere; }
+.sf-poster-qr { width: min(80vw, 420px); margin: 0 auto 18px; }
+.sf-poster-steps { text-align: left; max-width: 520px; margin: 0 auto 16px; font-size: 1.15rem; line-height: 1.5; }
+.sf-poster-why { font-weight: 700; font-size: 1.1rem; max-width: 520px; margin: 0 auto 12px; }
+.sf-poster-link { color: var(--ink-2); overflow-wrap: anywhere; }
+.sf-poster-link span { font-family: var(--mono); }
+.sf-roll-call { max-width: 760px; margin: 0 auto; padding: 16px; }
+.sf-rc-site { font-size: 1.2rem; font-weight: 600; margin: 2px 0 8px; overflow-wrap: anywhere; }
+.sf-rc-tally { font-weight: 700; display: block; margin-top: 4px; }
+.sf-rc-offline { background: var(--warn-bg); color: var(--warn); padding: 10px 12px; border-radius: var(--r); font-weight: 600; }
+.sf-rc-saved { color: var(--good); }
+.sf-rc-group h2 { border-bottom: 2px solid var(--ink); padding-bottom: 4px; margin: 18px 0 4px; }
+.sf-rc-group h2 span { font-weight: 400; color: var(--ink-3); }
+.sf-rc-group ul { list-style: none; margin: 0; padding: 0; }
+.sf-rc-group li label { display: flex; align-items: center; gap: 12px; min-height: 48px; border-bottom: 1px solid var(--line);
+  padding: 4px 2px; font-size: 1.05rem; cursor: pointer; }
+.sf-rc-group input[type=checkbox] { width: 28px; height: 28px; flex: none; margin: 0; }
+.sf-rc-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.sf-rc-in { color: var(--ink-3); font-size: .9rem; white-space: nowrap; }
+.sf-rc-group li label:has(input:checked) .sf-rc-name { text-decoration: line-through; text-decoration-thickness: 2px; }
+.sf-rc-empty { font-size: 1.1rem; padding: 16px 0; }
+.sf-rc-foot { margin-top: 20px; color: var(--ink-2); }
+.sf-signin { max-width: 440px; margin: 0 auto; padding: 28px 16px 40px; }
+.sf-signin h1 { margin: 4px 0 18px; overflow-wrap: anywhere; }
+.sf-signin .field { margin-bottom: 14px; }
+.sf-signin input[type=text] { min-height: 48px; font-size: 16px; }
+.sf-big-btn { min-height: 56px; font-size: 17px; margin: 8px 0; }
+.sf-signin-state { border-radius: var(--r); padding: 14px 16px; margin-bottom: 12px; background: var(--good-bg); }
+.sf-signin-state p { margin: 0; }
+.sf-signin-big { font-size: 1.25rem; font-weight: 700; color: var(--good); }
+.sf-signin-note { color: var(--ink-2); }
+.sf-signin-small { font-size: 12.5px; color: var(--ink-3); margin-top: 28px; }
+@media print {
+  .sf-no-print { display: none !important; }
+  .sf-poster { padding-top: 0; }
+  .sf-poster-qr { width: 110mm; }
+  .sf-rc-group li label { min-height: 0; padding: 6px 2px; break-inside: avoid; }
+  .sf-rc-group input[type=checkbox] { width: 18px; height: 18px; }
+}
 /* ---------- Close-out (closeout/) ---------- */
 .co-page .table-wrap { position: relative; } /* keeps sr-only labels in a scrolled table from widening the page */
 .closeout-nav .chip { min-height: 44px; display: inline-flex; align-items: center; }
