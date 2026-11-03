@@ -621,8 +621,9 @@ def programme(request, org_slug, pk):
             messages.success(request, f'Added {a.name}.')
             return redirect('programme', org_slug=org_slug, pk=pk)
     activities = list(_visible_activities(request, project))
+    from .programme_views import hide_who, programme_nav  # Chart, Look-ahead, Import (Release 3)
+    hide_who(request, activities)
     chart = gantt.build(activities, today=timezone.localdate())
-    from .programme_views import programme_nav  # Chart, Look-ahead, Import (Release 3)
     summary = None
     if activities:
         summary = {
