@@ -247,7 +247,9 @@ def compile_om(comp):
                         left_out.append((sec.title, original or title, dict(HandoverItem.STATE_CHOICES)[state]))
                         continue
                     base, ext = os.path.splitext(original or os.path.basename(fieldfile.name))
-                    path = f'{folder}/{n:02d}-{m:02d} {_safe_name(base)}{ext.lower()[:10]}'
+                    # The extension is typed data too: letters and digits only, so no "\..\" can ride on it
+                    ext = re.sub(r'[^a-z0-9]', '', ext.lower())[:9]
+                    path = f'{folder}/{n:02d}-{m:02d} {_safe_name(base)}{"." + ext if ext else ""}'
                     h = hashlib.sha256()
                     with fieldfile.open('rb') as src, zf.open(path, 'w', force_zip64=True) as dst:
                         for chunk in iter(lambda: src.read(CHUNK), b''):

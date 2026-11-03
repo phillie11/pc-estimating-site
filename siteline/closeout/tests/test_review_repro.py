@@ -118,6 +118,31 @@ class ReservedSectionNameTests(CloseoutTestBase):
         self.assertEqual(self.fresh(s).name, 'Bar')
 
 
+@override_settings(MEDIA_ROOT=MEDIA)
+class ZipEntryNameTests(CloseoutTestBase):
+    """Only the base of a file name was cleaned; the extension went into the zip entry as typed."""
+
+    def test_no_backslash_or_dot_dot_in_any_zip_entry(self):
+        import io
+        import zipfile
+        from ..models import OMDocument, OMSection
+        with org_context(self.org_a):
+            sec = OMSection.objects.create(project=self.pa, title='H&S file')
+            # splitext keeps everything after the last dot: "\x:y" went into the entry name untouched
+            for original in ('notes.\\x:y', 'plain.PDF', 'noext'):
+                OMDocument.objects.create(section=sec, title=original, file=pdf('x.pdf'), original_name=original)
+            comp = services.start_compilation(self.pa, self.pat)
+            with comp.file.open('rb') as fh:
+                names = zipfile.ZipFile(io.BytesIO(fh.read())).namelist()
+        self.assertEqual(len(names), 4, names)
+        for name in names:
+            self.assertNotIn('\\', name)
+            self.assertNotIn(':', name)
+            self.assertNotIn('..', name.split('/'))
+        self.assertTrue(any(n.endswith(' plain.pdf') for n in names), names)
+        self.assertTrue(any(n.endswith(' noext') for n in names), names)
+
+
 class ContractSyncTests(CloseoutTestBase):
     """MainContract.practical_completion_on and the whole-works PC date stay in step both ways."""
 
