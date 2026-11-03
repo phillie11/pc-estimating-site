@@ -367,6 +367,10 @@ class Command(BaseCommand):
             from procurement.demo import seed as seed_procurement
             seed_procurement(leeds=leeds, pm=pm, sub_user=subu, make_user=user, demo_pdf=demo_pdf)
 
+            # Quality: inspections, permits to work and fire-stopping on Leeds and Salford (quality/demo.py)
+            from quality.demo import seed as seed_quality
+            seed_quality(leeds=leeds, pm=pm, owner=owner)
+
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')
             due = kings.quotes_due

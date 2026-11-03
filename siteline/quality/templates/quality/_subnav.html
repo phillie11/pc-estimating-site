@@ -1,0 +1,1 @@
+{% if quality_nav %}<nav class="filters q-subnav" aria-label="Quality">{% for code, label, url in quality_nav %}<a class="chip{% if code == quality_sub %} on{% endif %}" href="{{ url }}"{% if code == quality_sub %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}<a class="chip" href="{% url 'quality_templates' org.slug %}">Checklist library</a></nav>{% endif %}
