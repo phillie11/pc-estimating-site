@@ -21,6 +21,7 @@ which is the same rule as the pages the items link to (visible_projects, deliver
 nothing needs filtering afterwards.
 """
 from django.db.models import CharField, DateField, DateTimeField, F, Q, Value
+from django.db.models.functions import Cast
 from django.urls import reverse
 from django.utils import timezone
 
@@ -35,7 +36,9 @@ COLUMNS = ('row', 'pk', 'parent', 'project_id', 'ref', 'title', 'text', 'd1', 'd
 
 
 def _v(value, field):
-    return Value(value, output_field=field)
+    # CAST, not a bare literal: PostgreSQL types a UNION column from its first branches, and two untyped NULLs
+    # (or '') there become text, which it then refuses to match against a real date column in a later branch.
+    return Cast(Value(value), output_field=field)
 
 
 def _branch(qs, row, parent, project, ref, title, text, d1, d2, at):
