@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'levelling',
     'quality',
     'viewer',
+    'closeout',
     'help',
 ]
 

@@ -55,6 +55,9 @@ class QueryCountsDontGrowTests(TestCase):
             ('sub', u('project_detail', pk)), ('sub', u('subpay_list', pk)), ('sub', u('document_list', pk)),
             ('sub', u('needs_me')),
             ('client', u('project_detail', pk)), ('client', u('needs_me')), ('client', u('application_list', pk)),
+            # Close-out (closeout/)
+            ('pm', u('closeout_overview', pk)), ('pm', u('closeout_defects', pk)), ('pm', u('closeout_om', pk)),
+            ('pm', u('closeout_packs', pk)), ('pm', u('closeout_certificates', pk)), ('client', u('closeout_client', pk)),
             # Quality (quality/): the three registers and the busiest record pages
             ('pm', u('inspection_list', pk) + '?status=all'), ('pm', u('permit_list', pk) + '?status=all'),
             ('pm', u('penetration_list', pk)), *self._quality_pages(built, job, u),

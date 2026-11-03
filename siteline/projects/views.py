@@ -32,8 +32,8 @@ from .models import Activity, Comment, Issue, Project, ProjectInvite, ProjectMem
 
 def use_section(request, section):
     """Remember which side of the business a staff member is working in, for the sidebar."""
-    if is_internal(request) and section in request.membership.sections:
-        request.session['section'] = section
+    if is_internal(request) and section in request.membership.sections and request.session.get('section') != section:
+        request.session['section'] = section  # only when it changes: a save is three queries on every page
     return section
 
 
@@ -137,6 +137,10 @@ def project_context(request, project, tab, **extra):
         ('documents', 'Documents', url('document_list'), None),
         ('team', 'Team', url('project_team'), None),
     ]
+    from closeout.access import tab_for as closeout_tab  # staff: Close-out; client side: Defects and handover
+    closeout = closeout_tab(request, project)
+    if closeout:
+        tabs.append(closeout)
     return {**base, **arrange(request, project, tabs, tab)}
 
 
