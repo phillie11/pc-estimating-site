@@ -1,0 +1,8 @@
+{% load ui %}{% comment %}
+Paging, 50 to a page, keeping every filter. The same markup as partials/pager.html on the usability
+branch; switch to that partial once it is on main.
+{% endcomment %}{% if page.has_other_pages %}<nav class="filters pager q-pager" aria-label="Pages">
+  <span class="small dim">{{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>
+  {% if page.has_previous %}<a class="chip" href="{% qs page=page.previous_page_number %}">Previous</a>{% endif %}
+  {% if page.has_next %}<a class="chip" href="{% qs page=page.next_page_number %}">Next</a>{% endif %}
+</nav>{% endif %}

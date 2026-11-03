@@ -18,7 +18,8 @@ from tenancy.context import close_request_memo, open_request_memo, org_context
 from tenancy.models import Membership
 
 SMALL, LARGE = 4, 12
-VOLUMES = dict(rfis_per_job=4, diary_per_job=4, docs_per_job=4, apps_per_job=4, subapps_per_job=4, actuals_per_job=6)
+VOLUMES = dict(rfis_per_job=4, diary_per_job=4, docs_per_job=4, apps_per_job=4, subapps_per_job=4, actuals_per_job=6,
+               quality_per_job=(4, 4, 6))
 
 # Queries for the Needs me count by the bell (every page) and for whole pages, at most
 BADGE_CEILING = 30
@@ -56,7 +57,25 @@ class QueryCountsDontGrowTests(TestCase):
             ('sub', u('project_detail', pk)), ('sub', u('subpay_list', pk)), ('sub', u('document_list', pk)),
             ('sub', u('needs_me')),
             ('client', u('project_detail', pk)), ('client', u('needs_me')), ('client', u('application_list', pk)),
+            # Close-out (closeout/)
+            ('pm', u('closeout_overview', pk)), ('pm', u('closeout_defects', pk)), ('pm', u('closeout_om', pk)),
+            ('pm', u('closeout_packs', pk)), ('pm', u('closeout_certificates', pk)), ('client', u('closeout_client', pk)),
+            # Quality (quality/): the three registers and the busiest record pages
+            ('pm', u('inspection_list', pk) + '?status=all'), ('pm', u('permit_list', pk) + '?status=all'),
+            ('pm', u('penetration_list', pk)), *self._quality_pages(built, job, u),
+            # Global search (help/search.py): common letters, so every source finds something
+            ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
+            ('client', u('search') + '?q=an'),
         ]
+
+    def _quality_pages(self, built, job, u):
+        from quality.models import Inspection, Penetration, Permit
+        with org_context(built.org):
+            ins = Inspection.objects.filter(project=job, status=Inspection.IN_PROGRESS).order_by('pk').first()
+            ptw = Permit.objects.filter(project=job).order_by('pk').first()
+            pen = Penetration.objects.filter(project=job).order_by('pk').first()
+        return [('pm', u('inspection_detail', job.pk, ins.pk)), ('pm', u('permit_detail', job.pk, ptw.pk)),
+                ('pm', u('penetration_detail', job.pk, pen.pk))]
 
     def _count(self, user, url):
         c = Client()

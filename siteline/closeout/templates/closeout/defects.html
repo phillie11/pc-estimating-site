@@ -1,0 +1,33 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' page=None %}">{% icon 'download' %} Export CSV</a><a class="btn primary" href="{% url 'closeout_defect_new' org.slug project.pk %}">{% icon 'plus' %} Report a defect</a>{% endblock %}
+{% block project_content %}<div class="co-page">
+{% include "closeout/_subnav.html" %}
+<nav class="filters" aria-label="Show">
+  <a class="chip {% if filters.status == 'open' and not filters.who and not filters.q %}on{% endif %}" href="?">Open</a>
+  <a class="chip {% if filters.status == 'unassigned' %}on{% endif %}" href="?status=unassigned">To give out</a>
+  <a class="chip {% if filters.status == 'READY' %}on{% endif %}" href="?status=READY">Fixed: to check</a>
+  <a class="chip {% if filters.who == 'client' %}on{% endif %}" href="?who=client&amp;status={{ filters.status }}">From the client</a>
+  <a class="chip {% if filters.status == 'all' %}on{% endif %}" href="?status=all">Everything</a>
+</nav>
+<form method="get" class="search filters" role="search">
+  <input type="search" name="q" value="{{ filters.q }}" placeholder="What or where" aria-label="Search defects" style="min-height:44px">
+  <input type="hidden" name="status" value="{{ filters.status }}">{% if filters.who %}<input type="hidden" name="who" value="{{ filters.who }}">{% endif %}
+  <button class="btn sm" style="min-height:44px">Search</button>
+</form>
+<div class="card">{% if page.object_list %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Defect</th><th>Reported</th><th>Being fixed by</th><th>Fix by</th><th>Status</th></tr></thead><tbody>
+{% for i in page %}<tr><td class="ref nowrap">{{ i.reference }}</td>
+  <td><a class="rowlink" href="{% url 'issue_detail' org.slug project.pk i.pk %}">{{ i.title }}</a><span class="sub">{{ i.location|default:"" }}</span></td>
+  <td class="small nowrap">{{ i.created_at|date:"j M" }}<span class="sub">{% if i.from_client %}by the client{% else %}by us{% endif %}</span></td>
+  <td class="small">{% if i.assignee %}{{ i.assignee.full_name }}{% else %}<a href="{% url 'issue_edit' org.slug project.pk i.pk %}">Give it to someone<span class="sr-only"> ({{ i.reference }})</span></a>{% endif %}</td>
+  <td class="small nowrap{% if i.is_overdue %} overdue{% endif %}">{{ i.due_date|date:"j M"|default:"—" }}</td>
+  <td>{% status_badge i.label i.tone %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% if page.has_other_pages %}<nav class="filters card-body" aria-label="Pages">
+  <span class="small dim">{{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>
+  {% if page.has_previous %}<a class="chip" href="{% qs page=page.previous_page_number %}">Previous</a>{% endif %}
+  {% if page.has_next %}<a class="chip" href="{% qs page=page.next_page_number %}">Next</a>{% endif %}
+</nav>{% endif %}
+{% elif total %}{% include "partials/empty_state.html" with title="Nothing matches" message="No defects match these filters." cta_url="?status=all" cta_label="Show every defect" cta_plain=True %}
+{% else %}{% url 'closeout_defect_new' org.slug project.pk as add_url %}{% include "partials/empty_state.html" with title="No defects yet" message="Defects are faults found after practical completion. The client can report them from their portal, and snags raised after practical completion land here too. Give each one to whoever will fix it; they mark it fixed and you check it." cta_url=add_url cta_label="Report a defect" %}{% endif %}</div>
+<p class="small dim">{% if pc_date %}Practical completion of the whole works: {{ pc_date|date:"j M Y" }}. Snags raised from then on are logged as defects.{% else %}Practical completion has not been recorded yet. <a href="{% url 'closeout_section' org.slug project.pk 'whole' %}">Record it</a> and snags raised after it are logged as defects.{% endif %} Fixing and checking works as for any snag.</p>
+</div>{% endblock %}

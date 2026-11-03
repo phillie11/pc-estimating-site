@@ -1,0 +1,17 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}<div class="co-page">
+{% include "closeout/_subnav.html" %}
+<div class="grid split">
+  <div class="card"><div class="card-head"><h2>{{ words.completion }}: {{ section.name }}</h2></div><div class="card-body">
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}
+      <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'closeout_overview' org.slug project.pk %}">Cancel</a></div>
+    </form>
+    {% if section.pk and not section.is_whole_works %}<form method="post" style="margin-top:12px" data-confirm="Remove the section {{ section.name }}? Its dates go; defects and documents stay.">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn danger">Remove this section</button></form>{% endif %}
+  </div></div>
+  <div class="card"><div class="card-head"><h2>What happens next</h2></div><div class="card-body small">
+    <p>Once the date is in, the end of the {{ words.defects_period }} is worked out from it{% if contract.defects_period_months %} ({{ contract.defects_period_months }} months on this contract){% endif %}{% if section.is_whole_works %}, and snags raised from then on are logged as defects{% endif %}.</p>
+    {% if section.is_whole_works and contract %}<p>This date is also saved on the contract as the {{ words.completion }} date, so applications after it hold the reduced retention.</p>{% endif %}
+    <p style="margin:0">{% badge 'Advisory' 'warn' %} When the defects have been put right and the certificate of making good (or defects certificate) is issued, come back and add that date. The reminder then comes off <em>Needs me</em>. {{ advisory }}</p>
+  </div></div>
+</div>
+</div>{% endblock %}

@@ -1,4 +1,3 @@
-import csv
 from decimal import Decimal
 
 from django.contrib import messages
@@ -8,6 +7,7 @@ from django.db.models import Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
+from core import exports
 from contracts.commercial import commercial_context
 from core.exceptions import InvalidTransition, RecordConflict
 from core.workflow import apply_transition
@@ -55,7 +55,7 @@ def variation_list(request, org_slug, pk):
     if request.GET.get('export') == 'csv':
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = f'attachment; filename="{project.reference}-variations.csv"'
-        w = csv.writer(resp)
+        w = exports.writer(resp)
         w.writerow(['Ref', 'Title', 'Cause', 'Status', 'Quoted', 'Approved', 'Time impact (days)', 'At risk',
                     'Client ref', 'Submitted', 'Decided', 'Decided by', 'EOT requested (days)', 'EOT granted (days)',
                     'Quotation due'])

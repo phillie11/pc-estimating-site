@@ -1,0 +1,14 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}O&amp;M manual contents{% endblock %}
+{% block content %}<div class="co-page">
+<div class="page-head"><div><h1>O&amp;M manual contents</h1><p class="dim" style="margin:4px 0 0">The sections every job's O&amp;M manual starts with. Each job can then add, change or drop sections of its own.</p></div></div>
+<form method="post">{% csrf_token %}{{ formset.management_form }}
+{% if formset.non_form_errors %}<ul class="errorlist">{% for e in formset.non_form_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+{% for form in formset %}<div class="card"><div class="card-body">
+  {% for h in form.hidden_fields %}{{ h }}{% endfor %}
+  <div class="form-grid">{% for field in form.visible_fields %}{% if field.name != 'DELETE' %}{% include "partials/field.html" %}{% endif %}{% endfor %}</div>
+  {% if form.instance.pk %}<div class="check" style="min-height:44px">{{ form.DELETE }} <label for="{{ form.DELETE.id_for_label }}" style="margin:0;font-weight:500">Remove this section</label></div>{% else %}<p class="small dim" style="margin:0">Fill this in to add a section.</p>{% endif %}
+</div></div>{% endfor %}
+<div class="form-actions"><button class="btn primary">Save the contents list</button></div>
+</form>
+</div>{% endblock %}

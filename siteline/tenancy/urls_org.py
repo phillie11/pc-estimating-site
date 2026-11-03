@@ -3,6 +3,7 @@ from django.urls import include, path
 from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
+from closeout import urls as closeout_urls
 from costs import urls as costs_urls
 from delivery import views as delivery
 from diary import urls as diary_urls
@@ -11,6 +12,7 @@ from documents import urls as documents_urls
 from levelling import urls as levelling_urls
 from payments import urls as payments_urls
 from procurement import urls as procurement_urls
+from quality import urls as quality_urls
 from projects import views as projects
 from rfis import views as rfis
 from safety import urls as safety_urls
@@ -132,5 +134,12 @@ urlpatterns = [
     *subpayments_urls.org_patterns,
     # Sub quotes > Level quotes on a bid (levelling/urls.py)
     *levelling_urls.project_patterns(P),
+    # Close-out tab and the client's "Defects and handover" (closeout/urls.py)
+    *closeout_urls.project_patterns(P),
+    *closeout_urls.org_patterns,
+    # Quality tab: inspections, permits to work, fire-stopping; Settings > Checklists (quality/urls.py)
+    *quality_urls.project_patterns(P),
+    *quality_urls.org_patterns,
+    path('', include('help.urls')),  # global search, help topics, getting-started checklist (help/)
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

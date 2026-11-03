@@ -43,6 +43,7 @@ class SeedDemoPinsTests(TestCase):
                 pdf = self.client.get(cfg['pdf_url'])
                 self.assertEqual(pdf.status_code, 200, email)
                 self.assertTrue(b''.join(pdf.streaming_content).startswith(b'%PDF-'))
-            self.assertEqual(seen['pm@demo.test'], ['IS-001', 'IS-002', 'IS-003', 'RFI-001'])
+            # Staff also see the fire-stopping penetration pinned there (quality/demo.py); externals never do
+            self.assertEqual(seen['pm@demo.test'], ['FS-001', 'IS-001', 'IS-002', 'IS-003', 'RFI-001'])
             self.assertEqual(seen['sub@demo.test'], ['IS-001', 'RFI-001'])
             self.assertEqual(seen['client@demo.test'], ['RFI-001'])

@@ -5,27 +5,11 @@ documents.pdf.markup, so it is printed, never parsed as markup.
 """
 import csv
 import io
-import re
 
 from django.utils import timezone
 
+from core.exports import FORMULA_STARTS, NUMBER, safe  # noqa: F401  (moved to core; kept importable here)
 from documents.pdf import markup
-
-FORMULA_STARTS = ('=', '+', '-', '@', '\t', '\r', '\n')
-NUMBER = re.compile(r'-?\d+(\.\d+)?%?')
-
-
-def safe(value):
-    """Text a spreadsheet won't run as a formula, even after leading spaces. Money goes out as plain 2dp text."""
-    if value is None:
-        return ''
-    if not isinstance(value, str):
-        return str(value)
-    if NUMBER.fullmatch(value):  # a plain number such as -120.00 or -1.5% is data, not a formula
-        return value
-    if value[:1] in FORMULA_STARTS or value.lstrip()[:1] in FORMULA_STARTS:
-        return "'" + value
-    return value
 
 
 def money(v):

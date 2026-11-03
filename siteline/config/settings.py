@@ -74,7 +74,10 @@ INSTALLED_APPS = [
     'costs',
     'subpayments',
     'levelling',
+    'quality',
     'viewer',
+    'closeout',
+    'help',
 ]
 
 MIDDLEWARE = [

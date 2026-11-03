@@ -1,0 +1,22 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if inspections %}<a class="btn" href="{% qs export='csv' page='' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% if not project.is_archived %}<a class="btn primary" href="{% url 'inspection_create' org.slug project.pk %}">{% icon 'plus' %} Start an inspection</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<nav class="filters q-chips" aria-label="Show inspections">{% for code, label, n in filters %}<a class="chip{% if code == status %} on{% endif %}" href="{% qs status=code page='' %}"{% if code == status %} aria-current="true"{% endif %}>{{ label }} <span class="n">{{ n }}</span></a>{% endfor %}</nav>
+{% if counts.all > 20 or q %}<form class="search filters" method="get" role="search"><input type="hidden" name="status" value="{{ status }}"><label class="sr-only" for="q-ins">Search inspections</label><input id="q-ins" type="search" name="q" value="{{ q }}" placeholder="Area, checklist or ref"><button class="btn">Search</button>{% if q %}<a class="btn ghost" href="{% qs q='' page='' %}">Clear</a>{% endif %}</form>{% endif %}
+<div class="card">
+{% if inspections %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Inspection</th><th>Status</th><th class="num">Checks</th><th>Inspector</th><th>Inspect by</th></tr></thead>
+  <tbody>{% for i in inspections %}<tr>
+    <td><a class="rowlink" href="{{ i.get_absolute_url }}"><span class="ref">{{ i.ref }}</span> {{ i.title }}</a>{% if i.package %}<span class="sub">{{ i.package.subcontractor }}</span>{% endif %}</td>
+    <td>{% status_badge i %}</td>
+    <td class="num nowrap">{{ i.n_done }} of {{ i.n_items }}{% if i.n_fail %}<span class="sub bad">{{ i.n_fail }} failed</span>{% endif %}</td>
+    <td class="small">{% if i.ball_in_court_user %}{{ i.ball_in_court_user.full_name }}{% else %}<span class="dim">Finished</span>{% endif %}</td>
+    <td class="small nowrap{% if i.is_overdue %} overdue{% endif %}">{{ i.due_date|date:"D j M"|default:"—" }}{% if i.is_overdue %}<span class="sub">Overdue</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% include "quality/_pager.html" %}
+{% elif q or counts.all %}{% include "partials/empty_state.html" with title="No inspections match" message="Nothing matches this filter. Show every inspection on the job instead." cta_url="?status=all" cta_label="Show all inspections" cta_plain=True left=True %}
+{% elif project.is_archived %}{% include "partials/empty_state.html" with title="No inspections" message="No inspections were recorded on this job. It is archived, so it is read only." left=True %}
+{% else %}{% url 'inspection_create' org.slug project.pk as new_url %}{% include "partials/empty_state.html" with title="No inspections yet" message="Run a checklist on an area of the job from your phone: pass, fail or N/A for each check, with photos. A failed check raises a snag in one tap." cta_url=new_url cta_label="Start an inspection" left=True %}{% endif %}
+</div>
+{% endblock %}

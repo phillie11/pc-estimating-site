@@ -1,0 +1,56 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% url 'permit_print' org.slug project.pk permit.pk %}">Print permit</a>{% if 'withdraw' in transitions and permit.status == 'REQUESTED' %}<a class="btn" href="{% url 'permit_edit' org.slug project.pk permit.pk %}">Change</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<div class="q-site q-touch">
+{% if permit.state == 'expired' %}<div class="banner q-bad">This permit ran out at {{ permit.expires_at|date:"H:i \o\n D j M" }}. Work under it must stop. Close it, or ask for a new permit if work carries on.</div>
+{% elif permit.state == 'expiring' %}<div class="banner">This permit runs out at {{ permit.expires_at|date:"H:i \o\n D j M" }}. Close it when the work is done, or ask for a new one.</div>
+{% elif permit.state == 'requested' %}<div class="banner">Waiting for approval. Work must not start until this permit is approved.</div>{% endif %}
+
+<div class="card"><div class="card-head"><h2><span class="ref">{{ permit.ref }}</span> {{ permit.type_label }}</h2>{% status_badge permit.state_label permit.status_tone %}</div><div class="card-body">
+  <dl class="dl">
+    <dt>Work</dt><dd>{{ permit.title }}</dd>
+    <dt>Where</dt><dd>{{ permit.location }}</dd>
+    <dt>Who</dt><dd>{{ permit.who|default:"Our own people" }}</dd>
+    <dt>Valid</dt><dd>{{ permit.starts_at|date:"D j M Y, H:i" }} to {{ permit.expires_at|date:"D j M Y, H:i" }}</dd>
+    {% if permit.method_notes %}<dt>Notes</dt><dd class="q-pre">{{ permit.method_notes }}</dd>{% endif %}
+    <dt>Asked for by</dt><dd>{{ permit.created_by.full_name|default:"—" }}, {{ permit.created_at|date:"j M H:i" }}</dd>
+    {% if permit.status == 'REQUESTED' %}<dt>To approve</dt><dd>{{ permit.ball_in_court_user.full_name|default:"The project manager" }}</dd>{% endif %}
+    {% if permit.approved_by %}<dt>Approved by</dt><dd>{{ permit.approved_by.full_name }}, {{ permit.approved_at|date:"j M H:i" }}</dd>{% endif %}
+    {% if permit.status == 'REFUSED' %}<dt>Refused</dt><dd class="q-pre">{{ permit.refusal_reason }}</dd>{% endif %}
+    {% if permit.closed_at %}<dt>Closed by</dt><dd>{{ permit.closed_by.full_name|default:"—" }}, {{ permit.closed_at|date:"j M H:i" }}{% if permit.fire_watch_minutes %} · fire watch {{ permit.fire_watch_minutes }} minutes{% endif %}{% if permit.close_note %}<span class="sub q-pre">{{ permit.close_note }}</span>{% endif %}</dd>{% endif %}
+  </dl>
+</div></div>
+
+{% if 'approve' in transitions %}<div class="card"><div class="card-head"><h2>Check and approve</h2></div><div class="card-body">
+  <form method="post" action="{% url 'permit_action' org.slug project.pk permit.pk %}">{% csrf_token %}<input type="hidden" name="action" value="approve">
+    <fieldset class="q-checklist"><legend>Confirm each precaution is in place</legend>
+      {% for c in approve_form.precautions %}<label class="q-tick">{{ c.tag }} <span>{{ c.choice_label }}</span></label>{% endfor %}
+    </fieldset>
+    {% if permit.is_hot_works %}<p class="small">After hot works stop, someone keeps a fire watch for <strong>{{ fire_watch_minutes }} minutes</strong> before the permit is closed.</p>{% endif %}
+    <div class="field"><label for="id_extra">Extra precautions or conditions</label>{{ approve_form.extra }}</div>
+    <div class="form-actions"><button class="btn primary block" data-confirm="Approve {{ permit.ref }}? Work can then start at {{ permit.starts_at|date:'H:i \o\n D j M' }}, and {{ permit.created_by.full_name|default:'the person who asked' }} will be told.">Approve permit</button></div>
+  </form>
+  <details class="q-more"><summary>Refuse it instead</summary>
+    <form method="post" action="{% url 'permit_action' org.slug project.pk permit.pk %}">{% csrf_token %}<input type="hidden" name="action" value="refuse">
+      <div class="field"><label for="id_reason">Why it is refused</label>{{ refuse_form.reason }}</div>
+      <div class="form-actions"><button class="btn danger" data-confirm="Refuse {{ permit.ref }}? The person who asked will be told why. It can't be approved afterwards; they ask for a new one.">Refuse permit</button></div>
+    </form>
+  </details>
+</div></div>
+{% elif permit.status == 'REQUESTED' %}<div class="card"><div class="card-head"><h2>Precautions to be checked</h2></div>{% if permit.created_by_id == request.user.pk %}<p class="card-body small">You asked for this permit, so someone else must approve it: {{ permit.ball_in_court_user.full_name|default:"an owner or admin" }}.</p>{% endif %}<ul class="list">{% for text, ok in precautions %}<li>{{ text }}</li>{% endfor %}</ul></div>
+{% elif permit.status != 'REFUSED' and permit.status != 'WITHDRAWN' %}<div class="card"><div class="card-head"><h2>Precautions confirmed</h2></div><ul class="list">{% for text, ok in precautions %}<li>{% if ok %}{% badge 'In place' 'good' %}{% else %}{% badge 'Not confirmed' 'warn' %}{% endif %} <span class="grow">{{ text }}</span></li>{% endfor %}{% if permit.extra_precautions %}<li><strong>Also:</strong> <span class="grow q-pre">{{ permit.extra_precautions }}</span></li>{% endif %}</ul></div>{% endif %}
+
+{% if 'close' in transitions %}<div class="card"><div class="card-head"><h2>Close the permit</h2></div><div class="card-body">
+  <form method="post" action="{% url 'permit_action' org.slug project.pk permit.pk %}">{% csrf_token %}<input type="hidden" name="action" value="close">
+    <label class="q-tick">{{ close_form.safe }} <span>{{ close_form.safe.label }}</span></label>
+    {% if close_form.fire_watch %}<label class="q-tick">{{ close_form.fire_watch }} <span>{{ close_form.fire_watch.label }}</span></label>{% endif %}
+    <div class="field"><label for="id_note">Note</label>{{ close_form.note }}</div>
+    <div class="form-actions"><button class="btn{% if 'approve' not in transitions %} primary{% endif %} block" data-confirm="Close {{ permit.ref }}? Work under it must not restart without a new permit.">Close permit</button></div>
+  </form>
+</div></div>{% endif %}
+
+{% if 'withdraw' in transitions and permit.can_withdraw %}<form method="post" action="{% url 'permit_action' org.slug project.pk permit.pk %}" data-confirm="Withdraw {{ permit.ref }}? It can't be used again, and stays on the register as withdrawn.">{% csrf_token %}<input type="hidden" name="action" value="withdraw"><button class="btn danger">Withdraw permit</button></form>{% endif %}
+<p class="small dim">{% badge 'Advisory' 'warn' %} {{ advisory }} A permit to work supports your safe system of work and RAMS; it doesn't replace them.</p>
+</div>
+{% endblock %}

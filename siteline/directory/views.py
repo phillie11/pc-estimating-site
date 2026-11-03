@@ -1,4 +1,3 @@
-import csv
 from datetime import timedelta
 
 from django.contrib import messages
@@ -10,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core import exports
 from projects.access import get_project, posted_id
 from projects.models import ProjectMember
 from projects.views import project_context
@@ -60,7 +60,7 @@ def sub_list(request, org_slug):
     if request.GET.get('export') == 'csv':
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = 'attachment; filename="subcontractors.csv"'
-        w = csv.writer(resp)
+        w = exports.writer(resp)
         w.writerow(['Company', 'Trades', 'Status', 'Contact', 'Email', 'Phone', 'Regions', 'Region notes', 'Rating',
                     'PL expiry', 'EL expiry', 'Accreditations'])
         for s in qs:

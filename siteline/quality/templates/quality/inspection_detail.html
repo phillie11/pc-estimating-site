@@ -1,0 +1,58 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<a class="btn" href="{% url 'inspection_list' org.slug project.pk %}">All inspections</a>{% endblock %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<div class="q-site q-touch">
+<div class="card"><div class="card-head"><h2><span class="ref">{{ ins.ref }}</span> {{ ins.title }}</h2>{% status_badge ins %}</div><div class="card-body">
+  <dl class="dl">
+    {% if ins.area %}<dt>Area</dt><dd>{{ ins.area }}</dd>{% endif %}
+    <dt>Whose work</dt><dd>{% if ins.package %}{{ ins.package.subcontractor }}{% else %}Our own, or not one subcontractor{% endif %}</dd>
+    {% if ins.status == 'IN_PROGRESS' %}<dt>Inspector</dt><dd>{{ ins.ball_in_court_user.full_name|default:"Not set" }}{% if ins.due_date %}, by {{ ins.due_date|date:"D j M" }}{% if ins.is_overdue %} {% badge 'Overdue' 'bad' %}{% endif %}{% endif %}</dd>
+    {% else %}{% if ins.completed_at %}<dt>Finished</dt><dd>{{ ins.completed_at|date:"D j M Y, H:i" }} by {{ ins.completed_by.full_name|default:"someone" }}</dd>{% endif %}{% endif %}
+    <dt>Progress</dt><dd><strong>{{ done }} of {{ total }}</strong> checked{% if fails %} · <span class="bad">{{ fails }} failed</span>{% endif %}</dd>
+    {% if ins.notes and not editable %}<dt>Notes</dt><dd class="q-pre">{{ ins.notes }}</dd>{% endif %}
+  </dl>
+  {% if total %}<div class="q-progress" role="progressbar" aria-label="Checks answered" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ done }}"><span style="width:{% widthratio done total 100 %}%"></span></div>{% endif %}
+</div></div>
+
+<ol class="q-checks">
+{% for item in items %}<li class="card q-check q-{{ item.result|lower|default:'todo' }}" id="check-{{ item.pk }}">
+  <div class="card-head"><h3><span class="q-num">{{ forloop.counter }}.</span> {{ item.text }}</h3>{% badge item.result_label item.result_tone %}</div>
+  <div class="card-body">
+  {% if item.photos.all %}<ul class="q-thumbs">{% for ph in item.photos.all %}<li><a href="{{ ph.display_url }}"><img src="{{ ph.thumb_url }}" alt="Photo for check {{ forloop.parentloop.counter }}" loading="lazy" width="96" height="96"></a>{% if editable %}<form method="post" action="{% url 'quality_photo_remove' org.slug project.pk ph.pk %}" data-confirm="Remove this photo?">{% csrf_token %}<button class="linkbtn" aria-label="Remove this photo">Remove</button></form>{% endif %}</li>{% endfor %}</ul>{% endif %}
+  {% if editable %}
+  <form method="post" action="{% url 'inspection_item' org.slug project.pk ins.pk item.pk %}" enctype="multipart/form-data" class="q-answer">{% csrf_token %}
+    <div class="q-results" role="group" aria-label="Result for check {{ forloop.counter }}">
+      <button class="btn q-res q-res-pass{% if item.result == 'PASS' %} on{% endif %}" name="result" value="PASS"{% if item.result == 'PASS' %} aria-pressed="true"{% endif %}>Pass</button>
+      <button class="btn q-res q-res-fail{% if item.result == 'FAIL' %} on{% endif %}" name="result" value="FAIL"{% if item.result == 'FAIL' %} aria-pressed="true"{% endif %}>Fail</button>
+      <button class="btn q-res q-res-na{% if item.result == 'NA' %} on{% endif %}" name="result" value="NA"{% if item.result == 'NA' %} aria-pressed="true"{% endif %}>N/A</button>
+    </div>
+    <details class="q-more"{% if item.note or item.result == 'FAIL' %} open{% endif %}><summary>Note or photo</summary>
+      <div class="field"><label for="note-{{ item.pk }}">Note</label><textarea id="note-{{ item.pk }}" name="note" rows="2" placeholder="What did you find?">{{ item.note }}</textarea></div>
+      <div class="field q-file"><label for="photo-{{ item.pk }}">Add a photo</label><input id="photo-{{ item.pk }}" type="file" name="photo" accept="image/*" capture="environment"></div>
+      <button class="btn" name="result" value="">Save note and photo</button>
+    </details>
+  </form>
+  {% elif item.note %}<p class="q-pre small">{{ item.note }}</p>{% endif %}
+  {% if item.result == 'FAIL' %}<div class="q-snag">{% if item.snag %}<a class="btn" href="{% url 'issue_detail' org.slug project.pk item.snag.pk %}">Snag <span class="ref">{{ item.snag.reference }}</span></a> {% status_badge item.snag %}{% elif not project.is_archived %}<form method="post" action="{% url 'inspection_snag' org.slug project.pk ins.pk item.pk %}">{% csrf_token %}<button class="btn">Raise a snag for this</button></form><span class="small dim">{% if ins.package %}It goes to {{ ins.package.subcontractor }}.{% else %}You can assign it on the snag.{% endif %}</span>{% endif %}</div>{% endif %}
+  {% if item.answered_by and item.result %}<p class="small dim q-who">{{ item.answered_by.full_name }}, {{ item.answered_at|date:"j M H:i" }}</p>{% endif %}
+  </div>
+</li>{% empty %}<li class="card">{% include "partials/empty_state.html" with title="This inspection has no checks" message="Its checklist was empty. Cancel it and start another from a checklist with checks on it." left=True %}</li>{% endfor %}
+</ol>
+
+{% if editable %}<div class="card"><div class="card-head"><h2>Finish the inspection</h2></div><div class="card-body">
+  {% if outcome %}<p>All {{ total }} checks answered. It will be recorded as <strong>{% if outcome == 'PASSED' %}passed{% else %}failed ({{ fails }} failed){% endif %}</strong>.</p>
+  {% else %}<p class="small dim">{{ total|add:0 }} checks; {{ done }} answered. Mark every check pass, fail or N/A to finish.</p>{% endif %}
+  <form method="post" action="{% url 'inspection_action' org.slug project.pk ins.pk %}">{% csrf_token %}<input type="hidden" name="action" value="finish">
+    <div class="field"><label for="id_notes">General notes</label>{{ finish_form.notes }}</div>
+    <div class="form-actions"><button class="btn primary block"{% if not outcome %} disabled aria-disabled="true"{% endif %} data-confirm="Finish {{ ins.ref }}? The results are then fixed; only the project manager can reopen it.">Finish inspection</button></div>
+  </form>
+  {% if 'cancel' in transitions %}<form method="post" action="{% url 'inspection_action' org.slug project.pk ins.pk %}" data-confirm="Cancel {{ ins.ref }}? It stays on the register as cancelled.">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button class="btn danger">Cancel this inspection</button></form>{% endif %}
+</div></div>
+{% elif 'reopen' in transitions %}<div class="card"><div class="card-head"><h2>Reopen</h2></div><div class="card-body">
+  <form method="post" action="{% url 'inspection_action' org.slug project.pk ins.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reopen">
+    <div class="field"><label for="id_reason">Why it needs reopening</label>{{ reason_form.reason }}</div>
+    <div class="form-actions"><button class="btn">Reopen inspection</button></div></form>
+</div></div>{% endif %}
+</div>
+{% endblock %}

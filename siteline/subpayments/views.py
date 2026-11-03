@@ -4,7 +4,6 @@ payments; an appointed subcontractor sees their own under Decisions -> Payments.
 view goes through get_project() and subpayments.access. Company pages (default terms, CIS
 details, the CIS monthly summary) are owners' and admins'.
 """
-import csv
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -16,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from core import exports
 from contracts.commercial import commercial_context
 from core.exceptions import InvalidTransition, RecordConflict
 from core.workflow import apply_transition
@@ -51,12 +51,6 @@ def _ctx(request, project, who, **extra):
     if who == STAFF:
         return commercial_context(request, project, 'subpayments', staff=True, read_only=project.is_archived, **extra)
     return project_context(request, project, 'subpayments', staff=False, read_only=project.is_archived, **extra)
-
-
-def _safe(value):
-    """A CSV cell a spreadsheet won't run as a formula."""
-    s = str(value)
-    return "'" + s if s[:1] in ('=', '+', '-', '@', '\t', '\r') else s
 
 
 def _form_key(request):
@@ -492,15 +486,15 @@ def subpay_cis(request, org_slug):
     if request.GET.get('export') == 'csv':
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = f'attachment; filename="cis-{month.key}-not-a-submission.csv"'
-        w = csv.writer(resp)
-        w.writerow([_safe(f'CIS figures, {month.label}. {rules.NOT_A_RETURN}')])
+        w = exports.writer(resp)
+        w.writerow([f'CIS figures, {month.label}. {rules.NOT_A_RETURN}'])
         w.writerow(['Subcontractor', 'UTR', 'Verification number (when paid)', 'CIS status (when paid)',
                     'Total paid (excluding VAT)', 'Cost of materials', 'CIS deducted', 'Payments', 'Note'])
         for r in rows:
             statuses = ', '.join(sorted(rules.CIS_SHORT.get(s, s) for s in r['statuses']))
             note = (f'Adjustment: payment from {", ".join(sorted(r["months"]))} reversed this month. The earlier '
                     'return may need amending.') if r['adjustment'] else ''
-            w.writerow([_safe(r['sub'].company_name), _safe(r['tax'].utr), _safe(r['number']), statuses,
+            w.writerow([r['sub'].company_name, r['tax'].utr, r['number'], statuses,
                         r['gross'], r['materials'], r['cis'], r['count'], note])
         w.writerow(['Total', '', '', '', totals['gross'], totals['materials'], totals['cis'], '', ''])
         return resp

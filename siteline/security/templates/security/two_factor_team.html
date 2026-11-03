@@ -4,7 +4,7 @@
 <div class="page-head"><div><h1>Two-factor sign-in</h1>
   <p class="dim" style="margin:4px 0 0">Owners and admins must sign in with a code from their phone as well as their password. Everyone else can turn it on from Your account.</p></div>
   <a class="btn" href="{% url 'team' org.slug %}">Back to Team</a></div>
-<div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Role</th><th>Two-factor</th><th></th></tr></thead><tbody>
+<div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Role</th><th>Two-factor</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
   {% for m in members %}<tr>
     <td><strong>{{ m.user.full_name }}</strong><span class="sub">{{ m.user.email }}</span></td>
     <td>{{ m.get_role_display }}</td>

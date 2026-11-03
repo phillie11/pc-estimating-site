@@ -1,0 +1,7 @@
+{% extends "app.html" %}{% load help_tags %}
+{% block title %}Help: {{ topic.title }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'help_index' org.slug %}">Help</a></div><h1>{{ topic.title }}</h1></div></div>
+<div class="card" style="max-width:760px"><div class="card-body help-body">{% help_body topic 2 %}</div></div>
+<p style="margin-top:1rem"><a class="btn ghost" href="{% url 'help_index' org.slug %}">All help topics</a></p>
+{% endblock %}
