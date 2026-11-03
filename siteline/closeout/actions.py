@@ -16,7 +16,7 @@ it, "Snags to inspect" for the PM), and O&M information to send is a submittal, 
 repeated here. Externals always get [].
 """
 from django.db.models import CharField, DateField, ExpressionWrapper, F, IntegerField, OuterRef, Subquery, Value
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, NullIf
 from django.urls import reverse
 from django.utils import timezone
 
@@ -54,7 +54,8 @@ def _rows(request):
                                                     made_good_on__isnull=True).annotate(
             kind=Value(SECTION, output_field=CharField()), rid=F('pk'), pid=F('project_id'),
             day=ExpressionWrapper(F('pc_date'), output_field=DateField()),
-            n=Coalesce('defects_period_months', months, output_field=IntegerField()),
+            n=Coalesce(NullIf('defects_period_months', Value(0)), months,  # 0 = use the contract's, as on the page
+                        output_field=IntegerField()),
             text=Coalesce('name', Value(''), output_field=CharField()), where=Value('', output_field=CharField()),
         ).values_list('kind', 'rid', 'pid', 'day', 'n', 'text', 'where').order_by()
         client_side = ProjectMember.objects.filter(project_id__in=list(jobs), role__in=CLIENT_ROLES).values('user_id')

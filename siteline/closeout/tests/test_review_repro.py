@@ -16,7 +16,7 @@ from projects.models import Document, DocumentRevision
 from tenancy.context import org_context
 
 from .. import goldenthread, rules, services
-from ..models import HandoverItem, HandoverPack
+from ..models import CompletionSection, HandoverItem, HandoverPack
 from .base import CloseoutTestBase, pdf
 from .test_closeout import kinds
 
@@ -141,6 +141,20 @@ class ZipEntryNameTests(CloseoutTestBase):
             self.assertNotIn('..', name.split('/'))
         self.assertTrue(any(n.endswith(' plain.pdf') for n in names), names)
         self.assertTrue(any(n.endswith(' noext') for n in names), names)
+
+
+class ZeroMonthsTests(CloseoutTestBase):
+    """A section's period of 0 meant "use the contract's" on the page but "no period" on Needs me."""
+
+    def test_page_and_needs_me_agree(self):
+        today = timezone.localdate()
+        s = self.section(pc=rules.add_months(today, -6) + timedelta(days=10), defects_period_months=0)
+        with org_context(self.org_a):
+            self.pa.manager = self.pat
+            self.pa.save()
+            s = CompletionSection.objects.get(pk=s.pk)
+            self.assertEqual(s.status_label, 'Defects period ends soon')  # the contract's 6 months
+        self.assertEqual(len(kinds(self, self.pat, 'defects_end')), 1)
 
 
 class ContractSyncTests(CloseoutTestBase):
