@@ -1,0 +1,30 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block project_actions %}{% if meetings %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}<a class="btn primary" href="{% url 'meeting_create' org.slug project.pk %}">{% icon 'plus' %} New meeting</a>{% endblock %}
+{% block project_content %}
+{% include "meetings/_subnav.html" %}
+{% if counts.open %}<p class="small">{% url 'meeting_actions' org.slug project.pk as actions_url %}<a href="{{ actions_url }}">{{ counts.open }} open action{{ counts.open|pluralize }}</a>{% if counts.overdue %}, <a class="bad" href="{{ actions_url }}?show=overdue">{{ counts.overdue }} overdue</a>{% endif %}.</p>{% endif %}
+
+<div class="mtg">
+<nav class="filters" aria-label="Kind of meeting"><a class="chip{% if not filters.kind %} on{% endif %}" href="{% qs kind='' page='' %}"{% if not filters.kind %} aria-current="true"{% endif %}>Every kind</a>{% for v, l in kinds %}<a class="chip{% if filters.kind == v %} on{% endif %}" href="{% qs kind=v page='' %}"{% if filters.kind == v %} aria-current="true"{% endif %}>{{ l }}</a>{% endfor %}</nav>
+<nav class="filters" aria-label="Status"><a class="chip{% if not filters.status %} on{% endif %}" href="{% qs status='' page='' %}"{% if not filters.status %} aria-current="true"{% endif %}>Any status</a>{% for v, l in statuses %}<a class="chip{% if filters.status == v %} on{% endif %}" href="{% qs status=v page='' %}"{% if filters.status == v %} aria-current="true"{% endif %}>{{ l }}</a>{% endfor %}</nav>
+<form class="search filters" method="get">{% if filters.kind %}<input type="hidden" name="kind" value="{{ filters.kind }}">{% endif %}{% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+  <input type="search" name="q" value="{{ filters.q }}" aria-label="Search meetings by title, ref or place" placeholder="Title, ref or place"><button class="btn">Search</button>{% if filtered %}<a class="btn ghost" href="?">Clear</a>{% endif %}
+</form>
+</div>
+
+<div class="card">
+{% if meetings %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Meeting</th><th>Date</th><th>Chaired by</th><th class="num">Actions</th><th>Status</th></tr></thead>
+  <tbody>{% for m in meetings %}<tr>
+    <td><a class="rowlink" href="{{ m.get_absolute_url }}">{{ m.title }}</a><span class="sub"><span class="ref">{{ m.ref }}</span>{% if m.location %} · {{ m.location }}{% endif %}</span></td>
+    <td class="small nowrap">{{ m.held_on|date:"D j M Y" }}{% if m.starts_at %}<span class="sub">{{ m.starts_at }}</span>{% endif %}</td>
+    <td class="small">{{ m.chair.full_name|default:"—" }}</td>
+    <td class="num">{{ m.n_actions }}{% if m.n_open %}<span class="sub">{{ m.n_open }} open</span>{% endif %}</td>
+    <td>{% status_badge m %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% include "meetings/_pager.html" with prev_label="Newer" next_label="Older" %}
+{% elif filtered %}{% include "partials/empty_state.html" with title="No meetings match" message="Nothing matches these filters. Clear them to see every meeting." cta_url="?" cta_label="Clear filters" cta_plain=True %}
+{% else %}{% url 'meeting_create' org.slug project.pk as new_url %}{% include "partials/empty_state.html" with title="No meetings yet" message="Plan a site progress meeting, client meeting or pre-start. The agenda is filled in for you; write the minutes and actions as you go, then issue them to everyone with one button." cta_url=new_url cta_label="Plan the first meeting" %}{% endif %}
+</div>
+{% if is_org_admin %}<p class="small dim">The standard agendas are set for the whole company under <a href="{% url 'meeting_agendas' org.slug %}">Meeting agendas</a>.</p>{% endif %}
+{% endblock %}

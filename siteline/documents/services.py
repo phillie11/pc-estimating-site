@@ -156,15 +156,11 @@ def issue(actor, transmittal):
         people = [p for r in recipients for p in r.people()]
         notify.alert(people, f'{transmittal.reference} {transmittal.get_purpose_display().lower()}: {transmittal.title}',
                      transmittal.get_absolute_url(), project=transmittal.project, actor=actor, org=transmittal.organization)
-        external = any(r.subcontractor_id or not _is_staff(r.user, transmittal) for r in recipients)
+        # Staff only on the project feed: a transmittal is for its recipients, and anyone else on the project would
+        # see its title and a link they can't open. Recipients are told by the alert above and see it on Needs me.
         log_activity(actor, 'issued', f'{transmittal.reference} {transmittal.title}', project=transmittal.project,
-                     url=transmittal.get_absolute_url(), internal_only=not external)
+                     url=transmittal.get_absolute_url(), internal_only=True)
     return transmittal
-
-
-def _is_staff(user, record):
-    from core.access import is_staff
-    return user is not None and is_staff(user, record.organization_id)
 
 
 def _set_ball(transmittal):

@@ -16,7 +16,7 @@
 </div>
 
 {% if not total.bids %}
-<div class="card" style="margin-bottom:1.25rem"><div class="empty"><h3>No results in this period yet</h3><p>Figures appear as bids are marked Won or Lost on the <a href="{% url 'pipeline' org.slug %}">pipeline board</a> or the project page. Add sector, value and lead source to each bid to get the breakdowns.</p></div></div>
+<div class="card" style="margin-bottom:1.25rem"><div class="empty"><h2>No results in this period yet</h2><p>Figures appear as bids are marked Won or Lost on the <a href="{% url 'pipeline' org.slug %}">pipeline board</a> or the project page. Add sector, value and lead source to each bid to get the breakdowns.</p></div></div>
 {% endif %}
 
 <div class="card" style="margin-bottom:1.25rem">

@@ -1,0 +1,16 @@
+{% extends "project_base.html" %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+<div class="card"><div class="card-head"><h2>{% if current %}Upload a new version of the construction phase plan{% else %}Upload the construction phase plan{% endif %}</h2></div><div class="card-body">
+  {% if current %}<p class="small dim" style="margin-top:0">This becomes version {{ current.version|add:1 }}. Version {{ current.version }} is kept and marked superseded.</p>{% endif %}
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    <div class="field full file-pick{% if form.file.errors %} has-error{% endif %}"><label for="{{ form.file.id_for_label }}">{{ form.file.label }} <span class="dim">*</span></label>{{ form.file }}<div class="help">A PDF or Word document.</div>{% for e in form.file.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>
+    {% include "partials/field.html" with field=form.note full=True %}
+    <div class="form-actions"><button class="btn primary">Upload plan</button><a class="btn ghost" href="{% url 'cdm_register' org.slug project.pk %}#plan">Cancel</a></div>
+  </form>
+</div></div>
+</div>
+{% endblock %}

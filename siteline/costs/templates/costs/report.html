@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}{% if data.has_costs %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a>{% endif %}{% if not read_only %}{% if has_budget %}<a class="btn" href="{% url 'cost_actual_create' org.slug project.pk %}">{% icon 'plus' %} Actual cost</a>{% else %}<a class="btn primary" href="{% url 'cost_budget_setup' org.slug project.pk %}">{% icon 'plus' %} Set the budget</a>{% endif %}{% endif %}{% endblock %}
+{% block project_actions %}{% if data.has_costs %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% if not read_only %}{% if has_budget %}<a class="btn" href="{% url 'cost_actual_create' org.slug project.pk %}">{% icon 'plus' %} Actual cost</a>{% else %}<a class="btn primary" href="{% url 'cost_budget_setup' org.slug project.pk %}">{% icon 'plus' %} Set the budget</a>{% endif %}{% endif %}{% endblock %}
 {% block project_content %}
 {% include "costs/_nav.html" %}
 <div class="kpis">
@@ -24,7 +24,7 @@
   <td class="num">{{ r.forecast|money:currency }}{% if r.override %}<span class="sub">set by hand</span>{% endif %}</td>
   <td class="num{% if r.overspent %} overdue{% endif %}">{{ r.variance|money:currency }}</td>
   <td>{% if r.overspent %}{% badge 'Overspent' 'bad' %}{% elif r.committed > r.budget %}{% badge 'Over-committed' 'warn' %}{% elif r.budget and r.committed < r.budget %}{% badge 'To buy' 'info' %}{% else %}{% badge 'On budget' 'good' %}{% endif %}</td></tr>{% endfor %}
-</tbody>{% if not filtered %}<tfoot><tr><th>Total</th><th class="num">{{ data.total.budget|money:currency }}</th><th class="num">{{ data.total.committed|money:currency }}</th><th class="num">{{ data.total.actual|money:currency }}</th><th class="num">{{ data.total.forecast|money:currency }}</th><th class="num{% if data.total.overspent %} overdue{% endif %}">{{ data.total.variance|money:currency }}</th><th></th></tr></tfoot>{% endif %}</table></div>
+</tbody>{% if not filtered %}<tfoot><tr><th>Total</th><th class="num">{{ data.total.budget|money:currency }}</th><th class="num">{{ data.total.committed|money:currency }}</th><th class="num">{{ data.total.actual|money:currency }}</th><th class="num">{{ data.total.forecast|money:currency }}</th><th class="num{% if data.total.overspent %} overdue{% endif %}">{{ data.total.variance|money:currency }}</th><td></td></tr></tfoot>{% endif %}</table></div>
 {% else %}{% include "partials/empty_state.html" with title="No cost codes match" message="Nothing is overspent or in this group right now." cta_url="?" cta_label="Show all codes" cta_plain=1 %}{% endif %}</div>
 <p class="small dim">Forecast final cost is the larger of budget, committed and actual to date, unless set by hand below. Variance is budget less forecast: a negative figure is a forecast overspend. Every figure comes from the <a href="{% url 'cost_ledger' org.slug project.pk %}">cost ledger</a>.</p>
 

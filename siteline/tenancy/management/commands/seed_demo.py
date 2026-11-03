@@ -366,10 +366,24 @@ class Command(BaseCommand):
             # Site diary: the last 10 working days on Leeds, with placeholder photos (diary/demo.py)
             from diary.demo import seed as seed_diary
             seed_diary(leeds=leeds, pm=pm)
+            # Safety: incidents (one RIDDOR to report), CDM registers and today's site sign-in (safety/demo.py)
+            from safety.demo import seed as seed_safety
+            seed_safety(leeds=leeds, pm=pm, sub_user=subu, demo_pdf=demo_pdf)
 
             # Procurement schedule and submittals on Leeds and Salford (procurement/demo.py)
             from procurement.demo import seed as seed_procurement
             seed_procurement(leeds=leeds, pm=pm, sub_user=subu, make_user=user, demo_pdf=demo_pdf)
+            # Close-out: bar handed over, client defects, O&M manual and a handover pack (closeout/demo.py)
+            from closeout.demo import seed as seed_closeout
+            seed_closeout(leeds=leeds, pm=pm, client=client, sub_user=subu, demo_pdf=demo_pdf)
+
+            # Quality: inspections, permits to work and fire-stopping on Leeds and Salford (quality/demo.py)
+            from quality.demo import seed as seed_quality
+            seed_quality(leeds=leeds, pm=pm, owner=owner)
+
+            # Programme look-ahead lines for subs, Salford imported from MS Project XML, and meetings (meetings/demo.py)
+            from meetings.demo import seed as seed_meetings
+            seed_meetings(leeds=leeds, pm=pm, owner=owner, client=client, sub_user=subu)
 
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')

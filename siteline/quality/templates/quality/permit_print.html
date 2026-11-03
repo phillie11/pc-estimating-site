@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% load ui static %}
+{% block title %}{{ permit.ref }} {{ permit.type_label }} permit{% endblock %}
+{% block body_class %}q-print-page{% endblock %}
+{% block body %}
+<main class="q-sheet">
+  <div class="q-noprint q-sheet-bar"><a class="btn ghost" href="{{ permit.get_absolute_url }}">Back to the permit</a><button type="button" class="btn primary" data-print>Print</button></div>
+  <header class="q-sheet-head">
+    <div><p class="small dim">{{ org.name }} · {{ project.reference }} {{ project.name }}</p>
+      <h1>Permit to work: {{ permit.type_label }}</h1></div>
+    <div class="q-sheet-ref"><span class="ref">{{ permit.ref }}</span><br>{% status_badge permit.state_label permit.status_tone %}</div>
+  </header>
+  {% if permit.status == 'REQUESTED' %}<p class="q-stamp">NOT APPROVED: work must not start under this permit.</p>
+  {% elif permit.status == 'REFUSED' or permit.status == 'WITHDRAWN' %}<p class="q-stamp">{{ permit.get_status_display|upper }}: this permit is not valid.</p>
+  {% elif permit.state == 'expired' %}<p class="q-stamp">EXPIRED {{ permit.expires_at|date:"H:i D j M" }}: work under this permit must stop.</p>{% endif %}
+  <section><h2>The work</h2>
+    <table class="q-sheet-table"><tbody>
+      <tr><th scope="row">Work</th><td>{{ permit.title }}</td></tr>
+      <tr><th scope="row">Where</th><td>{{ permit.location }}</td></tr>
+      <tr><th scope="row">Person in charge</th><td>{{ permit.who|default:"Our own people" }}</td></tr>
+      <tr><th scope="row">Valid from</th><td>{{ permit.starts_at|date:"D j M Y, H:i" }}</td></tr>
+      <tr><th scope="row">Runs out</th><td><strong>{{ permit.expires_at|date:"D j M Y, H:i" }}</strong></td></tr>
+      {% if permit.method_notes %}<tr><th scope="row">Notes</th><td class="q-pre">{{ permit.method_notes }}</td></tr>{% endif %}
+    </tbody></table>
+  </section>
+  <section><h2>Precautions</h2>
+    <ul class="q-sheet-checks">{% for text, ok in precautions %}<li><span class="q-box" aria-hidden="true">{% if ok %}✓{% endif %}</span> {{ text }}{% if not ok %} <span class="sr-only">(not confirmed)</span>{% endif %}</li>{% endfor %}</ul>
+    {% if permit.extra_precautions %}<p><strong>Also:</strong> <span class="q-pre">{{ permit.extra_precautions }}</span></p>{% endif %}
+    {% if permit.is_hot_works %}<p><strong>Fire watch:</strong> keep watch for {{ fire_watch_minutes }} minutes after hot works stop, before closing this permit.</p>{% endif %}
+  </section>
+  <section class="q-sign"><h2>Signatures</h2>
+    <table class="q-sheet-table"><thead><tr><th scope="col">Step</th><th scope="col">Name</th><th scope="col">Signature</th><th scope="col">Date and time</th></tr></thead><tbody>
+      <tr><th scope="row">Issued by (authorised person)</th><td>{{ permit.approved_by.full_name|default:"" }}</td><td></td><td>{{ permit.approved_at|date:"j M Y H:i"|default:"" }}</td></tr>
+      <tr><th scope="row">Received by (person in charge of the work)</th><td>{{ permit.holder }}</td><td></td><td></td></tr>
+      {% if permit.is_hot_works %}<tr><th scope="row">Fire watch completed</th><td></td><td></td><td></td></tr>{% endif %}
+      <tr><th scope="row">Work finished, area left safe, permit closed</th><td>{{ permit.closed_by.full_name|default:"" }}</td><td></td><td>{{ permit.closed_at|date:"j M Y H:i"|default:"" }}</td></tr>
+    </tbody></table>
+  </section>
+  <p class="small dim">Printed {{ now|date:"j M Y H:i" }}. The live permit is on Siteline: if this sheet and Siteline disagree, Siteline is right. Advisory: {{ advisory|lower }} A permit to work supports your safe system of work and RAMS; it doesn't replace them.</p>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{% static 'quality/print.js' %}" defer></script>{% endblock %}

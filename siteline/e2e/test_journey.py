@@ -465,6 +465,20 @@ class JourneyTest(TestCase):
             self.assertNotIn(secret, page)
         # Staff still see the bidder joining
         self.assertIn('Cal Cheap joined the project', text(self.get('pm', self.u('activity'))))
+        # Safety: the job started without a construction phase plan, so it is on the PM's Needs me until uploaded
+        _, items = self.needs('pm')
+        self.assertIn(('safety', 'CDM'), items)
+        self.post('pm', self.pu('phase_plan_upload'), {
+            'file': SimpleUploadedFile('cpp.pdf', b'%PDF-1.4 plan', content_type='application/pdf')})
+        _, items = self.needs('pm')
+        self.assertNotIn(('safety', 'CDM'), items)
+        # The appointed sub signs in on site from the QR poster with one tap, but can't open the Safety tab
+        poster = text(self.get('pm', self.pu('safety_poster')))
+        signin = re.search(r'/sign-in/[\w-]+/', poster).group(0)
+        self.assertIn('Sign in as', text(self.get('sub', signin)))
+        self.post('sub', signin, {'me': '1'})
+        self.assertIn('Oak & Ash Joinery', text(self.get('pm', self.pu('safety_on_site'))))
+        self.get('sub', self.pu('safety_home'), status=403)
 
     # 5 -----------------------------------------------------------------
 

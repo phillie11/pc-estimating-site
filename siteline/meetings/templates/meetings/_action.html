@@ -1,0 +1,13 @@
+{% load ui %}<li class="mtg-action" id="action-{{ a.pk }}">
+  <div class="head"><strong class="ref">{{ a.reference }}</strong><span>{% status_badge a.status_label a.status_tone %}</span></div>
+  <p class="what">{{ a.title }}</p>
+  <div class="small dim">{{ a.who }}{% if a.due_date %} · due {{ a.due_date|date:"D j M Y" }}{% else %} · no due date{% endif %}{% if show_meeting %} · from {{ a.meeting.title }}{% endif %}</div>
+  {% if a.update %}<div class="small" style="margin-top:4px"><strong>Latest:</strong> {{ a.update }}</div>{% endif %}
+  {% if can_update %}<form method="post" class="upd mtg-noprint" action="{% url 'meeting_action_update' org.slug project.pk a.pk %}">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <label class="small">Status <select name="status">{% if is_internal %}{% for v, l in update_form.fields.status.choices %}<option value="{{ v }}"{% if v == a.status %} selected{% endif %}>{{ l }}</option>{% endfor %}{% else %}<option value="OPEN"{% if a.status == 'OPEN' %} selected{% endif %}>Still to do</option><option value="DONE"{% if a.status == 'DONE' %} selected{% endif %}>Done</option>{% endif %}</select></label>
+    <label class="small">Update <textarea name="update" rows="1" placeholder="What's happened">{{ a.update }}</textarea></label>
+    <button class="btn sm">Save</button>
+  </form>{% endif %}
+  {% if can_remove %}<form method="post" class="mtg-noprint" style="margin-top:6px" data-confirm="Remove action {{ a.reference }}? It was added by mistake and nobody has been told yet.">{% csrf_token %}<input type="hidden" name="action" value="remove_action"><input type="hidden" name="action_id" value="{{ a.pk }}"><button class="linkbtn small">Remove</button></form>{% endif %}
+</li>

@@ -1,0 +1,46 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<script src="{% static 'meetings/meetings.js' %}" defer></script>{% endblock %}
+{% block project_actions %}{% if rows %}<button type="button" class="btn" data-print>Print</button>{% if is_internal %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endif %}{% endblock %}
+{% block project_content %}
+{% include "projects/_programme_nav.html" %}
+<div class="print-only la-print-head"><strong>{{ project.name }}: {{ weeks }}-week look-ahead</strong>, {{ start|date:"D j M" }} to {{ end|date:"D j M Y" }}{% if filtered %} (filtered){% endif %}. Printed {{ printed|date:"j M Y H:i" }}.</div>
+
+<div class="card mtg">
+  <div class="card-head">
+    <h2>{% if is_sub %}Your work in the next {{ weeks }} weeks{% else %}{{ weeks }}-week look-ahead{% endif %}</h2>
+    <span class="small dim">{{ start|date:"D j M" }} to {{ end|date:"D j M Y" }}</span>
+  </div>
+  <div class="card-body">
+    <nav class="filters" aria-label="How many weeks">{% for n in week_choices %}<a class="chip{% if n == weeks %} on{% endif %}" href="{% qs weeks=n page='' %}"{% if n == weeks %} aria-current="true"{% endif %}>{{ n }} weeks</a>{% endfor %}</nav>
+    {% if trades or subs and not is_sub %}<form method="get" class="filters"><input type="hidden" name="weeks" value="{{ weeks }}">
+      {% if trades %}<label class="small">Trade <select name="trade"><option value="">Every trade</option>{% for t in trades %}<option value="{{ t.pk }}"{% if filters.trade == t.pk|stringformat:"s" %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>{% endif %}
+      {% if subs and not is_sub %}<label class="small">Subcontractor <select name="sub"><option value="">Everyone</option>{% for s in subs %}<option value="{{ s.pk }}"{% if filters.sub == s.pk|stringformat:"s" %} selected{% endif %}>{{ s.company_name }}</option>{% endfor %}</select></label>{% endif %}
+      <button class="btn">Filter</button>{% if filtered %}<a class="btn ghost" href="?weeks={{ weeks }}">Clear</a>{% endif %}
+    </form>{% endif %}
+  </div>
+  {% if rows %}
+  <div class="table-wrap"><table class="t la-grid">
+    <caption class="sr-only">Programme lines planned from {{ start|date:"j M" }} to {{ end|date:"j M Y" }}, with a column for each working day</caption>
+    <thead>
+      <tr><th rowspan="2" scope="col" class="la-what">Activity</th>{% for monday, days in grid %}<th colspan="{{ days|length }}" scope="colgroup" class="la-week">w/c {{ monday|date:"j M" }}</th>{% endfor %}</tr>
+      <tr>{% for monday, days in grid %}{% for d in days %}<th scope="col" class="la-day{% if d == today %} la-today{% endif %}"><abbr title="{{ d|date:'l j F' }}">{{ d|date:"D"|slice:":1" }}</abbr><span class="sr-only"> {{ d|date:"j M" }}</span></th>{% endfor %}{% endfor %}</tr>
+    </thead>
+    <tbody>{% for ln in rows %}{% with a=ln.activity %}<tr>
+      <th scope="row" class="la-what">
+        {% if is_internal %}<a class="rowlink" href="{% url 'activity_edit' org.slug project.pk a.pk %}">{{ a.name }}</a>{% else %}{{ a.name }}{% endif %}
+        <span class="sub">{% if a.is_milestone %}{{ a.start|date:"D j M" }}{% else %}{{ a.start|date:"D j M" }} to {{ a.finish|date:"D j M" }}{% endif %}{% if a.who and not is_sub %} · {{ a.who }}{% endif %}{% if a.progress %} · {{ a.progress }}% done{% endif %}</span>
+        {% if ln.behind %}{% badge 'Behind' 'bad' %}{% elif a.is_milestone %}{% badge 'Milestone' 'info' %}{% elif not ln.starts_in_window %}{% badge 'Under way' 'accent' %}{% endif %}{% if is_internal and not a.is_shared %} {% badge 'Internal' 'muted' %}{% endif %}
+      </th>
+      {% for on in ln.cells %}<td class="la-cell{% if on %} on{% if a.is_milestone %} ms{% endif %}{% if ln.behind %} late{% endif %}{% endif %}">{% if on %}<span class="sr-only">planned</span>{% endif %}</td>{% endfor %}
+    </tr>{% endwith %}{% endfor %}</tbody>
+  </table></div>
+  <div class="card-body">{% include "meetings/_pager.html" %}</div>
+  {% elif filtered %}{% include "partials/empty_state.html" with title="Nothing for this filter" message="No lines for that trade or subcontractor in these weeks. Clear the filter to see everything." cta_url="?" cta_label="Clear the filter" cta_plain=True %}
+  {% elif not has_programme %}
+    {% if is_internal %}{% url 'programme_import' org.slug project.pk as import_url %}{% include "partials/empty_state.html" with title="No programme yet" message="The look-ahead is drawn from the programme. Import it from Microsoft Project or Asta, or add activities on the chart page." cta_url=import_url cta_label="Import from MS Project" %}
+    {% elif is_sub %}{% include "partials/empty_state.html" with title="Nothing planned for you yet" message="When the site team puts your work on the programme, your next few weeks show here." %}
+    {% else %}{% include "partials/empty_state.html" with title="No programme shared yet" message="The contractor hasn't shared a programme for this project yet." %}{% endif %}
+  {% else %}{% include "partials/empty_state.html" with title="Nothing planned in these weeks" message="Every line in this window is complete, or nothing starts until later. Try a longer look-ahead." cta_url="?weeks=4" cta_label="Show 4 weeks" cta_plain=True %}{% endif %}
+</div>
+<p class="small dim">Lines that aren't 100% done and fall in these weeks, plus any that should already have finished (marked Behind). Weekends aren't shown in the grid.{% if is_sub %} You see the lines the site team has given to your company.{% endif %}</p>
+{% endblock %}

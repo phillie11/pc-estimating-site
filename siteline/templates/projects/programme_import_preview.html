@@ -1,0 +1,54 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "projects/_programme_nav.html" %}
+<div class="card mtg" style="max-width:1000px">
+  <div class="card-head"><h2>Check before importing: {{ imp.file_name }}</h2>{% status_badge imp %}</div>
+  <div class="card-body">
+  {% if not plan %}
+    <p>{% if imp.status == 'APPLIED' %}This file was applied {{ imp.applied_at|date:"j M Y, H:i" }}{% if imp.applied_by %} by {{ imp.applied_by.full_name }}{% endif %}: {{ imp.result.created }} added, {{ imp.result.updated }} changed, {{ imp.result.removed }} removed.{% else %}This file was discarded. Nothing on the programme changed.{% endif %}</p>
+    <div class="form-actions"><a class="btn primary" href="{% url 'programme' org.slug project.pk %}">See the programme</a><a class="btn ghost" href="{% url 'programme_import' org.slug project.pk %}">Import another file</a></div>
+  {% else %}
+    <div class="kpis">
+      <div class="kpi"><div class="label">New lines</div><div class="value">{{ plan.new|length }}</div><div class="note">will be added</div></div>
+      <div class="kpi"><div class="label">Changed</div><div class="value">{{ plan.changed|length }}</div><div class="note">already here, updated from the file</div></div>
+      <div class="kpi"><div class="label">No change</div><div class="value">{{ plan.same }}</div><div class="note">already up to date</div></div>
+      <div class="kpi"><div class="label">Not in this file</div><div class="value">{{ plan.missing|length }}</div><div class="note">from an earlier import</div></div>
+    </div>
+    {% if imp.warnings %}<div class="banner" role="status"><strong>Worth knowing:</strong><ul class="small">{% for w in imp.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+
+    {% if plan.new %}<h3>New lines</h3>
+    <div class="table-wrap"><table class="t">
+      <thead><tr><th>Activity</th><th>Who</th><th>Start</th><th>Finish</th><th class="num">% done</th></tr></thead>
+      <tbody>{% for t in plan.new|slice:":200" %}<tr>
+        <td>{% if t.wbs %}<span class="dim mono">{{ t.wbs }}</span> {% endif %}{% if t.summary %}<strong>{{ t.name }}</strong>{% else %}{{ t.name }}{% endif %}{% if t.milestone %} {% badge 'Milestone' 'info' %}{% endif %}</td>
+        <td class="small">{{ t.who|default:"—" }}</td>
+        <td class="small nowrap">{{ t.start|date:"D j M Y" }}</td><td class="small nowrap">{{ t.finish|date:"D j M Y" }}</td><td class="num">{{ t.progress }}</td>
+      </tr>{% endfor %}</tbody></table></div>
+    {% if plan.new|length > 200 %}<p class="small dim">And {{ plan.new|length|add:"-200" }} more.</p>{% endif %}
+    {% endif %}
+
+    {% if plan.changed %}<h3>Changed lines</h3>
+    <div class="table-wrap"><table class="t">
+      <thead><tr><th>Activity</th><th>What changes</th><th>Dates now</th><th>Dates in the file</th></tr></thead>
+      <tbody>{% for a, t, diffs in plan.changed|slice:":200" %}<tr>
+        <td>{{ t.name }}{% if a.name != t.name %}<span class="sub">was “{{ a.name }}”</span>{% endif %}</td>
+        <td class="small">{{ diffs|join:", " }}</td>
+        <td class="small nowrap">{{ a.start|date:"j M" }} to {{ a.finish|date:"j M Y" }}</td>
+        <td class="small nowrap">{{ t.start|date:"j M" }} to {{ t.finish|date:"j M Y" }}</td>
+      </tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+
+    <form method="post" class="stack" style="margin-top:1rem" data-confirm="Apply {{ imp.file_name }} to the programme? {{ plan.new|length }} line{{ plan.new|length|pluralize }} will be added and {{ plan.changed|length }} changed{% if plan.missing %}, and any you ticked to remove will be removed{% endif %}. Collaborators see shared lines straight away.">{% csrf_token %}<input type="hidden" name="action" value="apply">
+      {% if plan.missing %}<h3>Not in this file</h3>
+      <p class="small">{{ plan.missing|length }} line{{ plan.missing|length|pluralize }} came from an earlier import but {{ plan.missing|length|pluralize:"isn't,aren't" }} in this file: {% for a in plan.missing|slice:":10" %}{{ a.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if plan.missing|length > 10 %} and {{ plan.missing|length|add:"-10" }} more{% endif %}. They stay on the programme unless you tick this:</p>
+      <div class="check"><input type="checkbox" name="remove_missing" value="1" id="remove_missing"> <label for="remove_missing" style="margin:0;font-weight:500">Remove them from the programme</label></div>
+      {% endif %}
+      {% if not plan.new and not plan.changed and not plan.missing %}<p>Everything in this file is already on the programme. Applying it changes nothing.</p>{% endif %}
+      <p class="small dim">Applying updates the chart and look-ahead straight away. New lines are shared with collaborators, as lines you add by hand are; you can hide any of them afterwards.</p>
+      <div class="form-actions"><button class="btn primary">Apply to the programme</button></div>
+    </form>
+    <form method="post" data-confirm="Discard {{ imp.file_name }}? Nothing on the programme changes; upload it again to import it later.">{% csrf_token %}<input type="hidden" name="action" value="discard"><button class="btn ghost">Discard this file</button></form>
+  {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a class="btn primary" href="{% url 'submittal_create' org.slug project.pk %}">{% icon 'plus' %} Ask for a submittal</a>{% endblock %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a><a class="btn primary" href="{% url 'submittal_create' org.slug project.pk %}">{% icon 'plus' %} Ask for a submittal</a>{% endblock %}
 {% block project_content %}
 {% include "procurement/_subnav.html" %}
 {% if not reviewer %}<div class="banner">Nobody would review submittals on this job: there is no project manager and no active owner or admin. <a href="{% url 'procurement_settings' org.slug project.pk %}">Choose a reviewer</a> or set the project manager.</div>{% endif %}

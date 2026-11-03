@@ -1,0 +1,22 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "meetings/_subnav.html" %}
+<div class="mtg">
+<nav class="filters" aria-label="Which actions">{% for v, l in show_choices %}<a class="chip{% if filters.show == v %} on{% endif %}" href="{% qs show=v page='' %}"{% if filters.show == v %} aria-current="true"{% endif %}>{{ l }}</a>{% endfor %}</nav>
+<form class="filters" method="get"><input type="hidden" name="show" value="{{ filters.show }}">
+  {% if owners %}<label class="small">Who <select name="owner"><option value="">Anyone</option>{% for u in owners %}<option value="{{ u.pk }}"{% if filters.owner == u.pk|stringformat:"s" %} selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select></label>{% endif %}
+  <input type="search" name="q" value="{{ filters.q }}" aria-label="Search the actions" placeholder="Words in the action">
+  <button class="btn">Search</button>{% if filtered %}<a class="btn ghost" href="?">Clear</a>{% endif %}
+</form>
+
+<div class="card">
+  <div class="card-body">
+  {% if actions %}<ul class="mtg-actions">{% for a in actions %}{% include "meetings/_action.html" with show_meeting=True can_update=True %}{% endfor %}</ul>
+  {% include "meetings/_pager.html" %}
+  {% elif filtered %}{% include "partials/empty_state.html" with title="No actions match" message="Nothing matches these filters. Show the open actions instead." cta_url="?" cta_label="Show open actions" cta_plain=True left=True %}
+  {% else %}{% url 'meeting_list' org.slug project.pk as list_url %}{% include "partials/empty_state.html" with title="No open actions" message="Actions agreed in meetings show here until they're done, with who has them and when they're due." cta_url=list_url cta_label="Go to meetings" cta_plain=True left=True %}{% endif %}
+  </div>
+</div>
+</div>
+{% endblock %}

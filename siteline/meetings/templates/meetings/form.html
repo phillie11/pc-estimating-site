@@ -1,0 +1,32 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block project_content %}
+{% include "meetings/_subnav.html" %}
+<div class="card mtg" style="max-width:820px">
+  <div class="card-head"><h2>Plan a meeting</h2></div>
+  <div class="card-body">
+    <p class="small dim">Only the kind of meeting and the date are needed. The agenda comes from your company's standard one, and actions still open from the last meeting of the same kind are brought forward.</p>
+    <form method="post">{% csrf_token %}
+      {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      <fieldset class="field{% if form.kind.errors %} has-error{% endif %}" style="border:0;padding:0;margin:0 0 1rem">
+        <legend style="font-weight:600;margin-bottom:6px">{{ form.kind.label }}</legend>
+        <div class="radios">{% for c in form.kind %}<label>{{ c.tag }} {{ c.choice_label }}</label>{% endfor %}</div>
+        {% for e in form.kind.errors %}<div class="err">{{ e }}</div>{% endfor %}
+      </fieldset>
+      <div class="form-grid">
+        {% include "partials/field.html" with field=form.held_on %}
+        {% include "partials/field.html" with field=form.starts_at %}
+        {% include "partials/field.html" with field=form.location full=True %}
+      </div>
+      <fieldset class="field" style="border:0;padding:0;margin:1rem 0">
+        <legend style="font-weight:600;margin-bottom:6px">{{ form.attendees.label }}</legend>
+        {% if groups %}{% for label, rows in groups %}<div class="small dim" style="margin-top:6px">{{ label }}</div>
+          <div class="checks">{% for c in form.attendees %}{% for u, note in rows %}{% if u.pk|stringformat:"s" == c.data.value|stringformat:"s" %}<label>{{ c.tag }} {{ c.choice_label }}</label>{% endif %}{% endfor %}{% endfor %}</div>
+        {% endfor %}{% else %}<p class="small dim">Nobody is on this job's team or portal yet. Add people under Team, or list them below.</p>{% endif %}
+        <div class="help">{{ form.attendees.help_text }}</div>
+      </fieldset>
+      <div class="form-grid">{% include "partials/field.html" with field=form.others full=True %}</div>
+      <div class="form-actions"><button class="btn primary">Set up the meeting</button><a class="btn ghost" href="{% url 'meeting_list' org.slug project.pk %}">Cancel</a></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

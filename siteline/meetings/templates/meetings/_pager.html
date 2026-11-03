@@ -1,0 +1,8 @@
+{% load ui %}{% comment %}
+The same markup as Stream F's templates/partials/pager.html (docs/ux.md section 5). Once that is on main,
+swap these includes for {% include "partials/pager.html" %}.
+{% endcomment %}{% if page.has_other_pages %}<nav class="filters pager" aria-label="Pages">
+  <span class="small dim">{{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>
+  {% if page.has_previous %}<a class="chip" href="{% qs page=page.previous_page_number %}">{{ prev_label|default:"Previous" }}</a>{% endif %}
+  {% if page.has_next %}<a class="chip" href="{% qs page=page.next_page_number %}">{{ next_label|default:"Next" }}</a>{% endif %}
+</nav>{% endif %}

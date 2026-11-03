@@ -120,25 +120,54 @@ def _priority(value):
     return PRIORITY_HIGH if value in ('HIGH', 'URGENT') else PRIORITY_NORMAL
 
 
+# record_type -> fn(idx, today) returning an Item, or None to leave the row off Needs me. Lets a record
+# type word its own items from the one index query below instead of running a query of its own behind
+# the badge on every page (quality/actions.py). Register from AppConfig.ready().
+RECORD_FORMATTERS = {}
+
+
+def register_record_formatter(record_type, fn):
+    RECORD_FORMATTERS[record_type] = fn
+
+
+def default_item(idx, action=None, kind_label=None):
+    """The Needs me line for a record index row; a formatter can call this and change only the wording."""
+    responded = idx.status == 'RESPONDED'
+    return Item(
+        kind=idx.record_type.split('.')[-1], title=idx.title, url=idx.url, ref=idx.ref, project=idx.project,
+        due=idx.due_date, status_label=idx.status_label, tone='info' if responded else 'accent',
+        action=action or ('Accept the answer or reopen it' if responded else 'Answer it'),
+        kind_label=kind_label or ('RFIs' if idx.record_type == 'rfis.rfi' else idx.record_type.split('.')[-1].upper()),
+        key=f'idx:{idx.pk}',
+    )
+
+
+def worded(action, kind_label):
+    """A formatter that keeps the default line and only words it: register_record_formatter(key, worded(...))."""
+    return lambda idx, today: default_item(idx, action=action, kind_label=kind_label)
+
+
 class RecordsProvider:
     """Open records of any type on core.RecordBase whose ball is in this person's court."""
     kind, label = 'record', 'RFIs and records'
 
     def items(self, request):
+        from django.utils import timezone
+
         from core.access import needs_me
 
         from . import registry
         qs = needs_me(request).exclude(record_type__in=registry.covered_record_types())
         out = []
+        today = timezone.localdate()
         for idx in qs.select_related('project'):
-            responded = idx.status == 'RESPONDED'
-            out.append(Item(
-                kind=idx.record_type.split('.')[-1], title=idx.title, url=idx.url, ref=idx.ref, project=idx.project,
-                due=idx.due_date, status_label=idx.status_label, tone='info' if responded else 'accent',
-                action='Accept the answer or reopen it' if responded else 'Answer it',
-                kind_label='RFIs' if idx.record_type == 'rfis.rfi' else idx.record_type.split('.')[-1].upper(),
-                key=f'idx:{idx.pk}',
-            ))
+            formatter = RECORD_FORMATTERS.get(idx.record_type)
+            if formatter is not None:
+                item = formatter(idx, today)
+                if item is not None:
+                    out.append(item)
+                continue
+            out.append(default_item(idx))
         return out
 
 

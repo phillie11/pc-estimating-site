@@ -1,0 +1,11 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<div class="card q-narrow q-touch"><div class="card-head"><h2>Start an inspection</h2></div><div class="card-body">
+  <p class="small dim">Choose the checklist and where you are. The checks are copied in, so you can go down them on your phone: pass, fail or N/A, with a note and a photo.</p>
+  <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+    <div class="form-actions"><button class="btn primary block">Start inspection</button><a class="btn ghost" href="{% url 'inspection_list' org.slug project.pk %}">Cancel</a></div>
+  </form>
+  <p class="small dim">Need a different checklist? <a href="{% url 'quality_templates' org.slug %}">Edit the checklist library</a>.</p>
+</div></div>
+{% endblock %}

@@ -1,0 +1,15 @@
+Hi {{ user.get_short_name }},
+
+{% if corrected %}Corrected minutes have been issued{% else %}The minutes have been issued{% endif %} for {{ meeting.title }} ({{ meeting.ref }}).
+Project: {{ project.name }}{% if actor %}
+From: {{ actor.full_name }}{% endif %}
+{% if actions %}
+Your actions:{% for a in actions %}
+  - {{ a.reference }}: {{ a.title|truncatechars:160 }}{% if a.due_date %} (due {{ a.due_date|date:"D j M Y" }}){% endif %}{% endfor %}
+{% endif %}
+Read them in the {{ org.name }} portal:
+{{ link }}
+
+Please reply in the portal rather than to this email, so everything stays in one place.
+
+— {{ PRODUCT_NAME }}

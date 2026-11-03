@@ -41,7 +41,7 @@
       <a href="{% url 'team' org.slug %}" class="{% if u == 'team' %}on{% endif %}">{% icon 'team' %} Team</a>
       <a href="{% url 'activity' org.slug %}" class="{% if u == 'activity' %}on{% endif %}">{% icon 'activity' %} Activity</a>
       {% if is_org_admin %}
-      <a href="{% url 'org_settings' org.slug %}" class="{% if u == 'org_settings' %}on{% endif %}">{% icon 'settings' %} Settings</a>
+      <a href="{% url 'org_settings' org.slug %}" class="{% if u == 'org_settings' or u == 'tender_settings' or u == 'cost_settings' or u == 'cost_code_edit' or u == 'subpay_settings' or u == 'subpay_tax_list' or u == 'subpay_tax' or u == 'subpay_cis' or u == 'diary_settings' %}on{% endif %}">{% icon 'settings' %} Settings</a>
       <a href="{% url 'billing' org.slug %}" class="{% if u == 'billing' %}on{% endif %}">{% icon 'billing' %} Billing</a>
       {% endif %}
     </nav>
@@ -61,6 +61,7 @@
     </div>
   </aside>
   <main class="main">
+    {% include "partials/utilbar.html" %}
     {% if org.access_state == 'ok' and org.subscription_status == 'past_due' and is_org_admin %}<div class="banner">Your last payment failed. Update your card to keep the workspace open. <a href="{% url 'billing_portal' org.slug %}">Update billing</a></div>{% endif %}
     {% include "partials/messages.html" %}
     {% block content %}{% endblock %}

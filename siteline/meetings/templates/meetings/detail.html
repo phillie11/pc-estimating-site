@@ -1,0 +1,102 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<script src="{% static 'meetings/meetings.js' %}" defer></script>{% endblock %}
+{% block project_actions %}<button type="button" class="btn" data-print>Print</button>{% if editable %}<a class="btn" href="{% url 'meeting_edit' org.slug project.pk meeting.pk %}">Edit details and people</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "meetings/_subnav.html" %}
+<div class="mtg">
+<div class="card">
+  <div class="card-head"><h2>{{ meeting.title }}</h2>{% status_badge meeting %}</div>
+  <div class="card-body">
+    <div class="mtg-meta small">
+      <span class="mono">{{ meeting.ref }}</span>
+      <span>{{ meeting.get_kind_display }}</span>
+      <span>{{ meeting.held_on|date:"l j F Y" }}{% if meeting.starts_at %}, {{ meeting.starts_at }}{% endif %}</span>
+      {% if meeting.location %}<span>{{ meeting.location }}</span>{% endif %}
+      {% if meeting.chair %}<span>Chaired by {{ meeting.chair.full_name }}</span>{% endif %}
+      {% if meeting.issued_at %}<span>{% if meeting.issue_count > 1 %}Corrected minutes issued{% else %}Minutes issued{% endif %} {{ meeting.issued_at|date:"j M Y, H:i" }}{% if meeting.issued_by %} by {{ meeting.issued_by.full_name }}{% endif %}</span>{% endif %}
+    </div>
+    {% if editable %}<p class="small dim mtg-noprint">Write the minutes under each heading and add actions as you go. Nothing is sent until you press <strong>Issue the minutes</strong> at the bottom.</p>{% endif %}
+    {% if meeting.kind == 'PROGRESS' or meeting.kind == 'PRESTART' %}<p class="small mtg-noprint"><a href="{% url 'programme_lookahead' org.slug project.pk %}?weeks=2">Open the 2-week look-ahead</a> for the programme item.</p>{% endif %}
+  </div>
+</div>
+
+{% if brought %}
+<div class="card" id="brought-forward">
+  <div class="card-head"><h2>Actions brought forward</h2><span class="small dim">open when this meeting was set up</span></div>
+  <div class="card-body"><ul class="mtg-actions">{% for a in brought %}{% include "meetings/_action.html" with show_meeting=True can_update=is_internal %}{% endfor %}</ul></div>
+</div>
+{% endif %}
+
+{% if editable %}
+<form method="post" id="minutes">{% csrf_token %}<input type="hidden" name="action" value="minutes"><input type="hidden" name="version" value="{{ meeting.version }}">
+<div class="card">
+  <div class="card-head"><h2>Who was there</h2></div>
+  <div class="card-body">
+    {% if attendees %}<ul class="mtg-people">{% for p in attendees %}<li><input type="checkbox" name="present" value="{{ p.pk }}" id="present-{{ p.pk }}"{% if p.present %} checked{% endif %}> <label for="present-{{ p.pk }}" style="margin:0;font-weight:500">{{ p.display_name }}{% if p.company %} <span class="dim">· {{ p.company }}</span>{% endif %}</label></li>{% endfor %}</ul>
+    <p class="small dim">Untick anyone who sent apologies. Everyone listed with a login still gets the minutes.</p>
+    {% else %}<p class="small dim">Nobody is listed yet. <a href="{% url 'meeting_edit' org.slug project.pk meeting.pk %}">Add people</a>.</p>{% endif %}
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Minutes</h2></div>
+  <div class="card-body">
+    {% for item in items %}<div class="mtg-item">
+      <h3><label for="item-{{ item.pk }}">{{ forloop.counter }}. {{ item.heading }}</label></h3>
+      <textarea name="item-{{ item.pk }}" id="item-{{ item.pk }}" rows="3" placeholder="What was said or agreed">{{ item.minutes }}</textarea>
+      {% if item.actions.all %}<ul class="small" style="margin:6px 0 0">{% for a in item.actions.all %}<li><a href="#action-{{ a.pk }}">{{ a.reference }}</a> {{ a.title|truncatechars:90 }} · {{ a.who }}</li>{% endfor %}</ul>{% endif %}
+    </div>{% endfor %}
+    <div class="mtg-item"><h3><label for="notes">General notes</label></h3><textarea name="notes" id="notes" rows="3">{{ meeting.notes }}</textarea></div>
+  </div>
+</div>
+<div class="mtg-sticky"><button class="btn">Save the minutes</button><span class="small dim">Saved minutes stay here until you issue them.</span></div>
+</form>
+{% endif %}
+
+{# Read-only minutes: the page for issued minutes and externals; printed in place of the form while editing #}
+<div{% if editable %} class="mtg-print"{% endif %}>
+<div class="card">
+  <div class="card-head"><h2>Who was there</h2></div>
+  <div class="card-body">
+    {% if attendees %}<ul class="mtg-people">{% for p in attendees %}<li>{{ p.display_name }}{% if p.company %} <span class="dim">· {{ p.company }}</span>{% endif %}{% if not p.present %} {% badge 'Apologies' 'muted' %}{% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="dim">Nobody listed.</p>{% endif %}
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Minutes</h2></div>
+  <div class="card-body">
+    {% for item in items %}<div class="mtg-item"><h3>{{ forloop.counter }}. {{ item.heading }}</h3>
+      {% if item.minutes %}<p class="minutes">{{ item.minutes }}</p>{% else %}<p class="dim small">Nothing recorded.</p>{% endif %}
+      {% if item.actions.all %}<ul class="small" style="margin:0">{% for a in item.actions.all %}<li><strong>Action {{ a.reference }}:</strong> {{ a.title }} · {{ a.who }}{% if a.due_date %} · by {{ a.due_date|date:"j M Y" }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+    </div>{% endfor %}
+    {% if meeting.notes %}<div class="mtg-item"><h3>General notes</h3><p class="minutes">{{ meeting.notes }}</p></div>{% endif %}
+  </div>
+</div>
+</div>
+
+<div class="card" id="actions">
+  <div class="card-head"><h2>Actions from this meeting</h2><span class="small dim">{{ raised|length }}</span></div>
+  <div class="card-body">
+    {% if raised %}<ul class="mtg-actions">{% for a in raised %}{% include "meetings/_action.html" with can_update=is_internal can_remove=editable %}{% endfor %}</ul>
+    {% else %}<p class="small dim">No actions yet.{% if editable %} Add one below: what needs doing, who by and when.{% endif %}</p>{% endif %}
+    {% if action_form %}
+    <form method="post" id="add-action" class="mtg-noprint" style="margin-top:1rem">{% csrf_token %}<input type="hidden" name="action" value="add_action">
+      <h3 style="font-size:1rem">Add an action</h3>
+      {% with form=action_form %}{% include "partials/form_fields.html" %}{% endwith %}
+      <div class="form-actions"><button class="btn">{% icon 'plus' %} Add action</button></div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if buttons %}
+<div class="card mtg-noprint">
+  <div class="card-body">
+    {% if meeting.is_planned %}<p class="small">{% if recipients %}Issuing emails a link to the minutes to {{ recipients }} {{ recipients|pluralize:"person,people" }} (everyone listed with a login, and anyone given an action), and puts each action on its owner's Needs me.{% else %}Nobody listed has a login, so issuing records the minutes without emailing anyone.{% endif %} You can correct them afterwards and issue them again.</p>{% endif %}
+    <div class="form-actions">{% for name, label, tone in buttons %}
+      <form method="post" class="inline"{% if name == 'issue' %} data-confirm="Issue the minutes and email the link to {{ recipients }} {{ recipients|pluralize:'person,people' }}?"{% elif name == 'cancel' %} data-confirm="Cancel this meeting? Its actions stay open."{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="{{ name }}"><button class="btn {{ tone }}">{{ label }}</button></form>
+    {% endfor %}</div>
+  </div>
+</div>
+{% endif %}
+</div>
+{% endblock %}

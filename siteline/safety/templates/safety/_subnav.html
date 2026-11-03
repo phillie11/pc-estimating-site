@@ -1,0 +1,8 @@
+<nav class="subtabs touch" aria-label="Safety">
+  {% url 'safety_home' org.slug project.pk as u %}<a class="chip{% if sub == 'home' %} on{% endif %}" href="{{ u }}"{% if sub == 'home' %} aria-current="page"{% endif %}>Safety</a>
+  {% url 'incident_list' org.slug project.pk as u %}<a class="chip{% if sub == 'incidents' %} on{% endif %}" href="{{ u }}"{% if sub == 'incidents' %} aria-current="page"{% endif %}>Incidents</a>
+  {% url 'safety_on_site' org.slug project.pk as u %}<a class="chip{% if sub == 'on_site' %} on{% endif %}" href="{{ u }}"{% if sub == 'on_site' %} aria-current="page"{% endif %}>On site now</a>
+  {% url 'safety_sign_in_log' org.slug project.pk as u %}<a class="chip{% if sub == 'log' %} on{% endif %}" href="{{ u }}"{% if sub == 'log' %} aria-current="page"{% endif %}>Sign-in log</a>
+  {% url 'cdm_register' org.slug project.pk as u %}<a class="chip{% if sub == 'cdm' %} on{% endif %}" href="{{ u }}"{% if sub == 'cdm' %} aria-current="page"{% endif %}>CDM</a>
+  {% url 'safety_poster' org.slug project.pk as u %}<a class="chip{% if sub == 'poster' %} on{% endif %}" href="{{ u }}"{% if sub == 'poster' %} aria-current="page"{% endif %}>QR poster</a>
+</nav>

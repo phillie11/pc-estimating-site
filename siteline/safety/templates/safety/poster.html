@@ -1,0 +1,25 @@
+{% extends "project_base.html" %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_actions %}<a class="btn primary" href="?print=1">Print the poster</a>{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+  <div class="card"><div class="card-body sf-poster-preview">
+    <div class="sf-qr-box">{{ qr_svg|safe }}</div>
+    <div>
+      <h2 style="margin-top:0">Site sign-in poster</h2>
+      <p>Print it and put it up at the site entrance. Everyone scans it with their phone camera to sign in and out: one tap for anyone with an account in your company, name and company for visitors. No app to install.</p>
+      <p class="small dim">The page it opens shows only the job's name. It is rate-limited, and only works while the job is won or live.</p>
+      <div class="form-actions"><a class="btn" href="{% url 'safety_on_site' org.slug project.pk %}">See who is on site</a></div>
+    </div>
+  </div></div>
+
+  <div class="card"><div class="card-head"><h2>Poster link</h2></div><div class="card-body">
+    <p class="small" style="margin-top:0">For a site induction email or a sign at the gate. Anyone with this link can sign in to this site, so share it only with people coming on site.</p>
+    <p class="mono wrap-any sf-link">{{ signin_url }}</p>
+    {% if gate.replaced_at %}<p class="small dim">Last replaced {{ gate.replaced_at|date:"j M Y H:i" }}{% if gate.replaced_by %} by {{ gate.replaced_by.full_name }}{% endif %}.</p>{% endif %}
+    {% if can_replace %}<form method="post" action="{% url 'safety_poster_replace' org.slug project.pk %}" data-confirm="Make a new QR code? Every poster already printed for this job will stop working, and visitors signed in on their phones will need the site team to sign them out.">{% csrf_token %}
+      <button class="btn">Make a new QR code</button> <span class="small dim">If a poster or the link got out to people who shouldn't have it. Old posters stop working.</span></form>{% endif %}
+  </div></div>
+</div>
+{% endblock %}

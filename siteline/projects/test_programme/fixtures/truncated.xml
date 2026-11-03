@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Tasks>
+    <Task><UID>1</UID><Name>Strip out</Name><Start>2026-11-02T08:00:00</Start><Finish>2026-11-06T17:00:00</Finish></Task>
+    <Task><UID>2</UID><Name>Partitions</Name><Start>2026-11-09T08:0

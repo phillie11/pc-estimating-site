@@ -1,0 +1,15 @@
+{% extends "project_base.html" %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+<div class="card"><div class="card-head"><h2>Add a photo</h2><span class="ref">{{ incident.ref }}</span></div><div class="card-body">
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    <div class="field full file-pick{% if form.photo.errors %} has-error{% endif %}"><label for="{{ form.photo.id_for_label }}">Photo <span class="dim">*</span></label>{{ form.photo }}{% for e in form.photo.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>
+    {% include "partials/field.html" with field=form.caption full=True %}
+    <div class="form-actions"><button class="btn primary block">Add photo</button><a class="btn ghost" href="{{ incident.get_absolute_url }}#photos">Cancel</a></div>
+  </form>
+</div></div>
+</div>
+{% endblock %}

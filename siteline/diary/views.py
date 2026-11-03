@@ -3,7 +3,6 @@ Site diary views. Every project view goes through diary.access.diary_project() (
 plus "staff on the job"), except the photo file view, which also lets a client open photos
 marked "share with client". Files are only handed out through projects.files.serve().
 """
-import csv
 import datetime
 from decimal import Decimal
 
@@ -18,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core import exports
 from contracts.models import MainContract
 from core.exceptions import InvalidTransition, RecordConflict
 from core.models import AuditEntry
@@ -347,14 +347,14 @@ def delays(request, org_slug, pk):
     if request.GET.get('export') == 'csv':
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = f'attachment; filename="{project.reference}-delays.csv"'
-        w = csv.writer(resp)
+        w = exports.writer(resp)
         w.writerow(['Date', 'Diary ref', 'Cause', 'Hours lost', 'What happened', 'Trades affected', 'Logged by',
                     'Logged at'])
         for d in rows:
-            w.writerow([_csv_safe(v) for v in (
+            w.writerow((
                 d.entry.entry_date.isoformat(), d.entry.ref, d.get_cause_display(), d.hours_lost, d.description,
                 d.trades_affected, d.created_by.full_name if d.created_by else '',
-                timezone.localtime(d.created_at).strftime('%Y-%m-%d %H:%M'))])
+                timezone.localtime(d.created_at).strftime('%Y-%m-%d %H:%M')))
         return resp
     by_cause = rows.values('cause').annotate(h=Sum('hours_lost')).order_by('-h')
     labels = dict(DelayLine.CAUSE_CHOICES)
@@ -363,19 +363,6 @@ def delays(request, org_slug, pk):
         by_cause=[(labels.get(r['cause'], r['cause']), r['h']) for r in by_cause],
         causes=DelayLine.CAUSE_CHOICES, filters={'from': start, 'to': end, 'cause': cause},
         filtered=any([start, end, cause])))
-
-
-FORMULA_STARTS = ('=', '+', '-', '@', '\t', '\r', '\n')
-
-
-def _csv_safe(value):
-    """Stop a spreadsheet treating text as a formula, even after leading spaces. Numbers and dates pass as they are."""
-    if isinstance(value, (int, Decimal)):
-        return value
-    text = str(value or '')
-    if text[:1] in FORMULA_STARTS or text.lstrip()[:1] in FORMULA_STARTS:
-        return "'" + text
-    return text
 
 
 # --- photos --------------------------------------------------------------------------

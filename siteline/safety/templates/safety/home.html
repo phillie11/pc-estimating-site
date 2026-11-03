@@ -1,0 +1,30 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="site-mode touch">
+  <div class="tap-grid">
+    <a class="tap primary" href="{% url 'incident_report' org.slug project.pk %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.5"/></svg>Report an incident or near miss</a>
+    <a class="tap" href="{% url 'safety_on_site' org.slug project.pk %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="7" r="3.5"/><path d="M2 21v-1a6 6 0 0 1 12 0v1M16 4a3.5 3.5 0 0 1 0 7M22 21v-1a6 6 0 0 0-4-5.6"/></svg>On site now: {{ on_site }}</a>
+    <a class="tap" href="{% url 'safety_manual_sign_in' org.slug project.pk %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Sign someone in</a>
+    <a class="tap warn" href="{% url 'safety_roll_call' org.slug project.pk %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 2c3 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-5 3-7 1 2 2 3 3 3 0-2-1-4 0-7z"/></svg>Fire roll call</a>
+    <a class="tap" href="{% url 'safety_poster' org.slug project.pk %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM18 18h3v3h-3z"/></svg>QR sign-in poster</a>
+    <a class="tap" href="{% url 'cdm_register' org.slug project.pk %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h8"/></svg>CDM register</a>
+  </div>
+
+  <div class="stack">
+    {% if counts.riddor %}<div class="banner bad-banner"><span><strong>{{ counts.riddor }} incident{{ counts.riddor|pluralize }} to report to HSE under RIDDOR.</strong> <a href="{% url 'incident_list' org.slug project.pk %}?riddor=1">Show {{ counts.riddor|pluralize:"it,them" }}</a></span></div>{% endif %}
+
+    <div class="card"><div class="card-head"><h2>Incidents and near misses</h2><a class="btn sm" href="{% url 'incident_list' org.slug project.pk %}">See all{% if counts.open %} · {{ counts.open }} open{% endif %}</a></div>
+      {% if recent %}<ul class="list">{% for i in recent %}<li><span class="grow"><a href="{{ i.get_absolute_url }}"><span class="ref">{{ i.ref }}</span> {{ i.title }}</a><span class="sub">{{ i.get_kind_display }} · {{ i.occurred_at|date:"D j M, H:i" }} · {{ i.location }}</span></span>{% status_badge i %}</li>{% endfor %}</ul>
+      {% else %}{% include "partials/empty_state.html" with title="No incidents or near misses reported" message="Anything that hurt someone, or nearly did, is reported with the button above, straight from a phone. It takes under a minute, and near misses are how accidents get prevented." left=True %}{% endif %}
+    </div>
+
+    <div class="card"><div class="card-head"><h2>CDM register</h2><a class="btn sm" href="{% url 'cdm_register' org.slug project.pk %}">Open</a></div><div class="card-body">
+      {% if gaps %}<p class="small dim" style="margin-top:0">Still to do:</p><ul class="sf-gaps">{% for msg, anchor in gaps %}<li><a href="{% url 'cdm_register' org.slug project.pk %}#{{ anchor }}">{{ msg }}</a></li>{% endfor %}</ul>
+      {% else %}<p style="margin:0">{% badge 'Complete' 'good' %} Duty holders, the construction phase plan and the HSE notification are all recorded.</p>{% endif %}
+    </div></div>
+    {% if is_admin %}<p class="small dim">Owners and admins: every job's incidents are in the <a href="{% url 'company_incidents' org.slug %}">company incident register</a>.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}
