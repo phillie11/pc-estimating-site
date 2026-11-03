@@ -32,9 +32,9 @@ from django.db.models import Sum
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import VIS_INTERNAL, RecordBase
+from core.models import VIS_INTERNAL, RecordBase, RecordManager
 from costs.models import AppendOnlyModel
-from tenancy.models import TenantModel
+from tenancy.models import TenantManager, TenantModel, TenantQuerySet
 
 from . import rules
 
@@ -82,6 +82,31 @@ class CommercialSettings(TenantModel):
 # The monthly CVR
 # ---------------------------------------------------------------------------
 
+# A redaction (core.models.redact) rewrites a record's title with a straight update; nothing else may
+# touch a signed-off month that way.
+REDACTION_FIELDS = {'title', 'version'}
+
+
+class _SignedOffLocked:
+    """queryset.update() refuses rows that are signed off, as CVRPeriod.save() does."""
+
+    def update(self, **kwargs):
+        if not set(kwargs) <= REDACTION_FIELDS and self.filter(status=CVRPeriod.SIGNED_OFF).exists():
+            raise PermissionError('A signed-off CVR is locked. Put any correction in a later month as an '
+                                  'adjustment.')
+        return super().update(**kwargs)
+
+    update.alters_data = True
+
+
+class CVRQuerySet(_SignedOffLocked, TenantQuerySet):
+    pass
+
+
+class CVRAllQuerySet(_SignedOffLocked, models.QuerySet):
+    pass
+
+
 class CVRPeriod(RecordBase):
     DRAFT, SUBMITTED, SIGNED_OFF = 'DRAFT', 'SUBMITTED', 'SIGNED_OFF'
     STATUS_CHOICES = [(DRAFT, 'Being prepared'), (SUBMITTED, 'Waiting for sign-off'), (SIGNED_OFF, 'Signed off')]
@@ -117,6 +142,10 @@ class CVRPeriod(RecordBase):
     signed_off_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                       related_name='+', editable=False)
 
+    objects = RecordManager.from_queryset(CVRQuerySet)()
+    with_deleted = TenantManager.from_queryset(CVRQuerySet)()
+    all_objects = models.Manager.from_queryset(CVRAllQuerySet)()
+
     class Meta(RecordBase.Meta):
         ordering = ['-month']
         verbose_name = 'monthly CVR'
@@ -131,8 +160,15 @@ class CVRPeriod(RecordBase):
         obj._stored_status = obj.status
         return obj
 
+    def refresh_from_db(self, *args, **kwargs):
+        super().refresh_from_db(*args, **kwargs)
+        self._stored_status = self.status
+
     def save(self, *args, **kwargs):
-        if getattr(self, '_stored_status', None) == self.SIGNED_OFF:
+        # The copy's own memory of its status, and the row itself: a copy read before someone else signed
+        # it off must not write over the signed-off month
+        if getattr(self, '_stored_status', None) == self.SIGNED_OFF or (
+                self.pk and type(self).all_objects.filter(pk=self.pk, status=self.SIGNED_OFF).exists()):
             raise PermissionError(f'{self.reference} is signed off, so it is locked. Put any correction in a later '
                                   'month as an adjustment.')
         self.visibility = VIS_INTERNAL
@@ -192,6 +228,12 @@ class CVRAdjustment(AppendOnlyModel):
 
     def __str__(self):
         return f'{self.get_kind_display()} {self.amount}'
+
+    def save(self, *args, **kwargs):
+        # The month's row, not a copy that may be stale: only a month being prepared takes adjustments
+        if not CVRPeriod.all_objects.filter(pk=self.period_id, status=CVRPeriod.DRAFT).exists():
+            raise PermissionError('Adjustments are fixed once a CVR is submitted, and for good once it is signed off.')
+        super().save(*args, **kwargs)
 
     @property
     def short_kind(self):
