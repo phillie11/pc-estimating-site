@@ -145,9 +145,9 @@ def live_figures_months(projects, months, periods=None):
     if not ids:
         return out
 
-    def by_month(field, extra=None):
+    def by_month(field, condition=None):
         """Conditional sums of `field`, one per month's end, named m0, m1..."""
-        return {f'm{i}': Sum(field, filter=(extra(e) if extra else Q())) for i, e in enumerate(ends)}
+        return {f'm{i}': Sum(field, filter=(condition(e) if condition else Q())) for i, e in enumerate(ends)}
 
     # Payments: the latest counted application made up to each month's end, certified and paid to date
     apps = list(Application.objects.filter(project_id__in=ids, status__in=Application.COUNTED,
