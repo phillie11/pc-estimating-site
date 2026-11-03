@@ -20,7 +20,7 @@ from django.db.models.deletion import Collector
 from django.test import override_settings
 from django.utils import timezone
 
-from core.exceptions import InvalidTransition
+from core.exceptions import InvalidTransition, TransitionForbidden
 from core.workflow import apply_transition
 from tenancy.context import org_context
 
@@ -181,3 +181,44 @@ class DeleteGuardTests(QualityTestBase):
             with mock.patch.object(connection.features, 'can_defer_constraint_checks', False):
                 self.org_a.delete()  # what MySQL does: the slow path would null item/penetration first
         self.assertFalse(QualityPhoto.all_objects.exists())
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class NoSelfApprovalTests(QualityTestBase):
+    """
+    PENDING OWNER DECISION: whoever asked for a permit must not approve (or refuse) it themselves. It goes
+    to the PM, or to an owner or admin when the PM asked for it.
+    """
+    ticked = {'action': 'approve', 'precautions': rules.precautions_for(rules.HOT_WORKS)}
+
+    def test_pm_cant_approve_their_own_permit_and_it_goes_to_an_admin(self):
+        self.login(self.pat)
+        start = timezone.localtime() + datetime.timedelta(hours=1)
+        self.client.post(self.purl('permit_create'), {
+            'permit_type': rules.HOT_WORKS, 'title': 'Weld bracket', 'location': 'Bar',
+            'starts_at': start.strftime('%Y-%m-%dT%H:%M'),
+            'expires_at': (start + datetime.timedelta(hours=4)).strftime('%Y-%m-%dT%H:%M')})
+        with org_context(self.org_a):
+            p = Permit.objects.get()
+        self.assertEqual(p.created_by, self.pat)
+        self.assertIn(p.ball_in_court_user, (self.alice, self.adam))
+        r = self.client.get(p.get_absolute_url())
+        self.assertNotContains(r, 'value="approve"')
+        self.assertContains(r, 'someone else must approve it')
+        r = self.client.post(self.purl('permit_action', p.pk), self.ticked)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.fresh(p).status, rules.REQUESTED)
+        self.login(self.adam)
+        self.client.post(self.purl('permit_action', p.pk), self.ticked)
+        p = self.fresh(p)
+        self.assertEqual((p.status, p.approved_by), (rules.APPROVED, self.adam))
+
+    def test_admin_cant_approve_or_refuse_their_own_permit(self):
+        p = self.permit(actor=self.adam)
+        with org_context(self.org_a):
+            with self.assertRaises(TransitionForbidden):
+                apply_transition(p, 'approve', self.adam, precautions=rules.precautions_for(p.permit_type))
+            with self.assertRaises(TransitionForbidden):
+                apply_transition(self.fresh(p), 'refuse', self.adam, reason='Not today')
+            apply_transition(self.fresh(p), 'approve', self.pat, precautions=rules.precautions_for(p.permit_type))
+        self.assertEqual(self.fresh(p).status, rules.APPROVED)
