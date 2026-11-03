@@ -99,7 +99,8 @@ class RoleTests(QualityTestBase):
             self.pa.archive(self.alice)
         self.login(self.alice)
         self.assertEqual(self.client.get(self.purl('inspection_list')).status_code, 200)
-        self.assertNotContains(self.client.get(self.purl('inspection_list')), 'Start an inspection')
+        # The create link, not its wording: the page's help panel describes starting one too
+        self.assertNotContains(self.client.get(self.purl('inspection_list')), self.purl('inspection_create'))
         for url, data in self.posts():
             self.assertEqual(self.client.post(url, data).status_code, 403, url)
         self.assertEqual(self.client.post(self.purl('permit_create'), {}).status_code, 403)
