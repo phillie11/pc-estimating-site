@@ -248,6 +248,9 @@ def company_cvr(request, org_slug):
     month = _month_param(request.GET.get('month', ''), rules.add_months(today, -1))
     month = min(month, rules.month_start(today))
     projects = list(cost_projects(request).filter(archived_at__isnull=True).order_by('name'))
+    if not projects and not request.membership.is_admin:
+        # Owners, admins and staff who run a job (its PM or QS) only: estimators and site staff are refused
+        raise PermissionDenied('The company CVR is for owners, admins and the staff who run jobs.')
     q = request.GET.get('q', '').strip()
     if q:
         projects = [p for p in projects if q.lower() in p.name.lower() or q.lower() in (p.reference or '').lower()]

@@ -72,8 +72,9 @@ class AccessTests(CVRTestBase):
         self.login(self.pat)
         r = self.client.get(url + f'?month={self.m1:%Y-%m}')
         self.assertContains(r, 'Alpha job')
-        self.login(self.stan)  # doesn't run any job: nothing listed
-        self.assertNotContains(self.client.get(url + f'?month={self.m1:%Y-%m}'), 'Alpha job')
+        # Staff who run no job (site staff, estimators) are refused (review: it opened empty for them)
+        self.assertEqual(self.status_for(self.stan, url), 403)
+        self.assertEqual(self.status_for(self.eve, url), 403)
 
     def test_settings_are_admins_only(self):
         url = self.url('cvr_settings')
