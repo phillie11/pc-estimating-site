@@ -21,7 +21,7 @@ jobs:
   test:
     name: Tests (${{ matrix.db }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40  # the suite outgrew 20 on MySQL in Release 3
     strategy:
       fail-fast: false
       matrix:
