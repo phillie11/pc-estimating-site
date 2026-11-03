@@ -242,7 +242,8 @@ class DayworkFlowTests(CVRTestBase):
         with org_context(self.org_a):
             joiner = self.pa.daywork_rates.get(name='Joiner')
         self.login(self.stan)
-        self.assertNotContains(self.client.get(self.detail(sheet)), 'Get it signed')  # nothing to sign yet
+        # nothing to sign yet: no link to the signing page (its wording also appears in the help panel)
+        self.assertNotContains(self.client.get(self.detail(sheet)), self.url('daywork_sign', self.pa.pk, sheet.pk))
         lines = [
             {'line-kind': 'LABOUR', 'line-rate': joiner.pk, 'line-quantity': '8'},
             {'line-kind': 'LABOUR', 'line-description': 'Labourer', 'line-quantity': '7.5', 'line-unit_rate': '28.33'},
@@ -259,7 +260,7 @@ class DayworkFlowTests(CVRTestBase):
         self.assertContains(r, 'Enter the rate, or choose one from the list')
         page = self.client.get(self.detail(sheet))
         self.assertContains(page, '£1,105.28')
-        self.assertContains(page, 'Get it signed')
+        self.assertContains(page, self.url('daywork_sign', self.pa.pk, sheet.pk))
         self.assertContains(page, 'capture="environment"')
         # A photo through the normal upload path
         r = self.client.post(self.detail(sheet), {'action': 'add_photo', 'photo-caption': 'Before',
