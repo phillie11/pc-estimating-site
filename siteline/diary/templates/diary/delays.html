@@ -1,6 +1,6 @@
 {% extends "project_base.html" %}{% load ui static %}
 {% block head %}<link rel="stylesheet" href="{% static 'diary/diary.css' %}">{% endblock %}
-{% block project_actions %}{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Download CSV</a>{% endif %}{% endblock %}
+{% block project_actions %}{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% include "diary/_subnav.html" with sub='delays' %}
 <p class="small dim">Every delay logged in the site diary, newest first. Keep this up to date: it is the day-by-day record behind any extension of time claim. Internal only.</p>

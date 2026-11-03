@@ -370,6 +370,10 @@ class Command(BaseCommand):
             from closeout.demo import seed as seed_closeout
             seed_closeout(leeds=leeds, pm=pm, client=client, sub_user=subu, demo_pdf=demo_pdf)
 
+            # Quality: inspections, permits to work and fire-stopping on Leeds and Salford (quality/demo.py)
+            from quality.demo import seed as seed_quality
+            seed_quality(leeds=leeds, pm=pm, owner=owner)
+
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')
             due = kings.quotes_due

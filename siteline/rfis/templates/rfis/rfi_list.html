@@ -15,5 +15,5 @@
   <td class="small">{{ r.ball_in_court_user|default:"—" }}</td>
   <td class="small nowrap {% if r.is_overdue %}overdue{% endif %}">{{ r.due_date|date:"j M"|default:"—" }}</td>
   <td>{% badge r.get_status_display r.status_tone %}</td><td class="num mono">{{ r.days_open }}</td></tr>{% endfor %}
-</tbody></table></div>{% else %}<div class="empty"><h3>No RFIs here</h3><p>Raise one and set who has the ball. They'll be emailed and see it in their portal.</p></div>{% endif %}</div>
+</tbody></table></div>{% else %}<div class="empty"><h2>No RFIs here</h2><p>Raise one and set who has the ball. They'll be emailed and see it in their portal.</p></div>{% endif %}</div>
 {% endblock %}

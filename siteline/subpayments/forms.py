@@ -160,6 +160,7 @@ class NoticeForm(StyledForm):
                                       'differently and why.')
 
     def __init__(self, *args, application=None, kind='payment_notice', **kwargs):
+        kwargs.setdefault('auto_id', 'payless_%s' if kind == 'pay_less' else 'id_%s')  # unique ids on one page
         super().__init__(*args, **kwargs)
         self.application, self.kind = application, kind
         if kind == 'pay_less':
@@ -179,6 +180,7 @@ class MaterialsForm(StyledForm):
     reason = forms.CharField(label='Why', max_length=300, help_text='For example: invoices show £3,200 of materials.')
 
     def __init__(self, *args, application=None, **kwargs):
+        kwargs.setdefault('auto_id', 'materials_%s')  # unique ids on the application page
         super().__init__(*args, **kwargs)
         self.application = application
 
@@ -200,6 +202,7 @@ class PaymentForm(OneTimeFormMixin, StyledForm):
     reference = forms.CharField(label='Payment reference', required=False, max_length=120)
 
     def __init__(self, *args, application=None, **kwargs):
+        kwargs.setdefault('auto_id', 'payment_%s')  # unique ids on the application page
         super().__init__(*args, **kwargs)
         self.application = application
         self.initial.setdefault('paid_on', timezone.localdate())

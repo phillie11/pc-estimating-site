@@ -44,7 +44,7 @@
   {% elif pay_less_late and not app.pay_less_on %}<div class="card"><div class="card-head"><h2>Pay less notice</h2>{% badge 'Deadline passed' 'muted' %}</div><div class="card-body small"><p>{{ pay_less_refusal }}</p></div></div>{% endif %}
 
   <div class="card" id="payments"><div class="card-head"><h2>{% if staff %}Payments made{% else %}Payments to you{% endif %}</h2></div><div class="card-body">
-    {% if payments %}<div class="table-wrap"><table class="t"><thead><tr><th>Paid</th><th class="num">Gross</th><th class="num">Materials</th><th class="num">CIS</th><th class="num">VAT</th><th class="num">Net</th><th></th></tr></thead><tbody>
+    {% if payments %}<div class="table-wrap"><table class="t"><thead><tr><th>Paid</th><th class="num">Gross</th><th class="num">Materials</th><th class="num">CIS</th><th class="num">VAT</th><th class="num">Net</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
     {% for p in payments %}<tr{% if p.is_reversed %} class="dim"{% endif %}><td class="nowrap">{{ p.paid_on|date:"j M Y" }}{% if p.reference %}<span class="sub">{{ p.reference }}</span>{% endif %}{% if p.is_reversed %}<span class="sub">{% badge 'Reversed' 'muted' %} {{ p.reversal_reason }}</span>{% endif %}</td>
       <td class="num">{{ p.gross|money_exact:currency }}</td><td class="num">{{ p.materials|money_exact:currency }}</td><td class="num">{{ p.cis_deduction|money_exact:currency }}<span class="sub">{{ p.cis_rate|floatformat:"-2" }}%</span></td>
       <td class="num">{% if p.reverse_charge %}RC{% else %}{{ p.vat|money_exact:currency }}{% endif %}</td><td class="num"><strong>{{ p.net|money_exact:currency }}</strong></td>

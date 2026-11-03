@@ -1,6 +1,6 @@
 {% extends "project_base.html" %}{% load ui %}
 {% block title %}Level quotes: {{ trade }} · {{ project.name }}{% endblock %}
-{% block project_actions %}<a class="btn" href="{% url 'levelling_csv' org.slug project.pk trade.pk %}">{% icon 'download' %} CSV</a><a class="btn" href="{% url 'levelling_pdf' org.slug project.pk trade.pk %}">{% icon 'download' %} PDF summary</a>{% endblock %}
+{% block project_actions %}<a class="btn" href="{% url 'levelling_csv' org.slug project.pk trade.pk %}">{% icon 'download' %} Export CSV</a><a class="btn" href="{% url 'levelling_pdf' org.slug project.pk trade.pk %}">{% icon 'download' %} PDF summary</a>{% endblock %}
 {% block project_content %}<div class="lv-page">
 <div class="lv-head">
   <div class="crumbs small"><a href="{% url 'package_list' org.slug project.pk %}">Sub quotes</a> / <a href="{% url 'levelling_index' org.slug project.pk %}">Levelling</a></div>
@@ -47,7 +47,7 @@
 <div class="card" id="lines">
   <div class="card-head"><h2>Scope lines</h2><span class="small dim">{{ view.lines|length }} line{{ view.lines|length|pluralize }} · blank cells are missing items</span></div>
   {% if view.lines %}<div class="table-wrap"><table class="t lv-grid"><thead><tr><th>Ref</th><th>Description</th><th class="num">Qty</th>
-    {% for c in view.columns %}<th class="num">{{ c.package.subcontractor }}{% if editable %}<span class="sub"><a href="{% url 'levelling_rates' org.slug project.pk trade.pk c.package.pk %}">Enter prices</a></span>{% endif %}</th>{% endfor %}{% if editable %}<th></th>{% endif %}</tr></thead><tbody>
+    {% for c in view.columns %}<th class="num">{{ c.package.subcontractor }}{% if editable %}<span class="sub"><a href="{% url 'levelling_rates' org.slug project.pk trade.pk c.package.pk %}">Enter prices</a></span>{% endif %}</th>{% endfor %}{% if editable %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead><tbody>
   {% for row in view.lines %}<tr>
     <td class="mono small nowrap">{{ row.line.ref|default:"—" }}</td>
     <td style="min-width:180px">{{ row.line.description }}</td>

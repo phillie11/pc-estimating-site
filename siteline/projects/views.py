@@ -1,4 +1,3 @@
-import csv
 import json
 from decimal import Decimal
 
@@ -13,6 +12,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from core import exports
 from tenancy import notify
 from tenancy.models import log_activity
 from tenancy.permissions import admin_required, estimating_required, internal_required
@@ -126,8 +126,11 @@ def project_context(request, project, tab, **extra):
         tabs.append(procurement_tab)
     if internal:
         from diary.access import can_use_diary  # site diary: the PM, the project team, owners and admins
-        if can_use_diary(request, project):
+        on_job = can_use_diary(request, project)
+        if on_job:
             tabs.append(('diary', 'Diary', url('diary_register'), None))
+            # Quality (inspections, permits, fire-stopping) has the same rule: quality.access.can_use_quality
+            tabs.append(('quality', 'Quality', url('inspection_list'), None))
     tabs += [
         ('issues', 'Snags & issues', url('issue_list'), badges['issues']),
         ('tasks', 'Tasks', url('task_list'), badges['tasks']),
@@ -216,7 +219,7 @@ def project_list(request, org_slug, section=None):
     if request.GET.get('export') == 'csv' and is_internal(request):
         resp = HttpResponse(content_type='text/csv')
         resp['Content-Disposition'] = 'attachment; filename="projects.csv"'
-        w = csv.writer(resp)
+        w = exports.writer(resp)
         w.writerow(['Ref', 'Name', 'Client', 'Stage', 'Sector', 'Value', 'Probability', 'Tender due', 'Start', 'Completion', 'Lead'])
         for p in qs:
             w.writerow([p.reference, p.name, p.client_name, p.get_stage_display(), p.get_sector_display(), _money(p.value),

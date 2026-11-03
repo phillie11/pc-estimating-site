@@ -57,7 +57,7 @@
   <form method="dialog">
     <h3 id="dv-dialog-title">Pin a snag or RFI here</h3>
     <p class="small dim" data-where></p>
-    <div class="dv-new">{% if config.new_snag_url %}<a class="btn primary" data-new="{{ config.new_snag_url }}" href="{{ config.new_snag_url }}">New snag</a>{% endif %}<a class="btn{% if not config.new_snag_url %} primary{% endif %}" data-new="{{ config.new_rfi_url }}" href="{{ config.new_rfi_url }}">New RFI</a></div>
+    <div class="dv-new">{% if config.new_snag_url %}<a class="btn primary" data-new="{{ config.new_snag_url }}" href="{{ config.new_snag_url }}">New snag</a>{% endif %}<a class="btn{% if not config.new_snag_url %} primary{% endif %}" data-new="{{ config.new_rfi_url }}" href="{{ config.new_rfi_url }}">New RFI</a>{% if config.new_firestop_url %}<a class="btn" data-new="{{ config.new_firestop_url }}" href="{{ config.new_firestop_url }}">New fire-stopping</a>{% endif %}</div>
     {% if config.choices %}<label class="dv-existing">Or pin one that's already raised
       <select data-existing><option value="">Choose…</option>{% regroup config.choices by group as groups %}{% for g in groups %}<optgroup label="{{ g.grouper }}">{% for c in g.list %}<option value="{{ c.value }}">{{ c.label }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
     <p class="small dim">Already pinned on this drawing? It moves here.</p>{% endif %}

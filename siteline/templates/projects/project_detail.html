@@ -3,7 +3,7 @@
   <form method="post" action="{% url 'project_stage' org.slug project.pk %}" class="row">{% csrf_token %}
     <select name="stage" data-autosubmit style="width:auto" aria-label="Stage">{% for v, l in stage_choices %}<option value="{{ v }}" {% if v == project.stage %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></form>
   {% if project.is_pipeline and membership.can_estimate %}<a class="btn primary" href="{% url 'project_handover' org.slug project.pk %}">Won: hand over</a>{% endif %}
-  <a class="btn" href="{% url 'project_edit' org.slug project.pk %}">Edit</a>{% endif %}{% endblock %}
+  <a class="btn" href="{% url 'project_edit' org.slug project.pk %}">Edit project</a>{% endif %}{% endblock %}
 {% block project_content %}
 {% if is_internal and project.needs_handover %}<div class="banner">No project manager on this job yet. <a href="{% url 'project_handover' org.slug project.pk %}">Assign one</a></div>{% endif %}
 {% if not tender %}{% load diary %}{% diary_overview %}{% endif %}

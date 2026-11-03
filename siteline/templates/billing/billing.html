@@ -13,7 +13,7 @@
 <div class="kpi"><div class="label">Active projects</div><div class="value">{{ project_count }}<span class="dim" style="font-size:1rem"> / {{ org.plan_config.max_active_projects|default:"∞" }}</span></div></div></div>
 <div class="prices">{% for p in plans %}
   <div class="price{% if p.code == org.plan and org.subscription_status != 'trial' %} current{% endif %}">
-    <h3>{{ p.name }}</h3><div class="amt">{{ p.price_label }}<span class="dim" style="font-size:1rem;font-weight:500">/{{ p.interval }} + VAT</span></div>
+    <h2>{{ p.name }}</h2><div class="amt">{{ p.price_label }}<span class="dim" style="font-size:1rem;font-weight:500">/{{ p.interval }} + VAT</span></div>
     <p class="dim">{{ p.blurb }}</p>
     <ul><li>{{ p.max_staff }} staff seats</li><li>{% if p.max_active_projects %}{{ p.max_active_projects }} active projects{% else %}Unlimited projects{% endif %}</li><li>Unlimited clients &amp; subcontractors</li></ul>
     {% if p.code == org.plan and subscribed %}<span class="btn block" aria-disabled="true">Current plan</span>

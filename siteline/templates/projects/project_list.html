@@ -3,11 +3,11 @@
 {% block content %}
 <div class="page-head">
   <div>{% if is_internal %}<div class="eyebrow">{% if list_section == 'estimating' %}Estimating{% else %}Projects{% endif %}</div>{% endif %}<h1>{% if list_section == 'estimating' %}Bids{% else %}Projects{% endif %}</h1></div>
-  <div class="row">{% if is_internal %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a href="{% url 'project_create' org.slug %}{% if list_section == 'estimating' %}?stage=LEAD{% else %}?stage=LIVE{% endif %}" class="btn primary">{% icon 'plus' %} {% if list_section == 'estimating' %}New bid{% else %}New project{% endif %}</a>{% endif %}</div></div>
+  <div class="row">{% if is_internal %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a><a href="{% url 'project_create' org.slug %}{% if list_section == 'estimating' %}?stage=LEAD{% else %}?stage=LIVE{% endif %}" class="btn primary">{% icon 'plus' %} {% if list_section == 'estimating' %}New bid{% else %}New project{% endif %}</a>{% endif %}</div></div>
 <div class="filters">
   {% for code, stages in groups.items %}<a class="chip {% if view == code %}on{% endif %}" href="?view={{ code }}">{% if code == 'open' %}Open bids{% elif code == 'submitted' %}Submitted{% elif code == 'lost' %}Lost &amp; declined{% elif code == 'live' %}Won &amp; live{% elif code == 'complete' %}Complete{% elif code == 'active' %}Active{% elif code == 'closed' %}Closed{% elif code == 'archived' %}Archived{% else %}All{% endif %}</a>{% endfor %}
   <span class="spacer"></span>
-  <form class="search" method="get"><input type="hidden" name="view" value="{{ view }}"><input type="search" name="q" value="{{ q }}" placeholder="Search name, client, address"></form>
+  <form class="search" method="get"><input type="hidden" name="view" value="{{ view }}"><input type="search" name="q" value="{{ q }}" placeholder="Search name, client, address" aria-label="Search {% if list_section == 'estimating' %}bids{% else %}projects{% endif %}"></form>
 </div>
 {% if narrowed %}<div class="filters"><span class="chip on">Only {% if list_section == 'estimating' %}bids{% else %}jobs{% endif %} {{ narrowed|join:", " }}</span><a class="small" href="?view={{ view }}">Show all</a></div>{% endif %}
 <div class="card">{% if projects %}<div class="table-wrap"><table class="t">
@@ -19,5 +19,5 @@
     {% if is_internal %}<td class="small">{% if list_section == 'estimating' %}{{ p.owner|default:"—" }}{% else %}{{ p.manager|default:"—" }}{% endif %}</td><td class="num">{{ p.value|money:currency }}</td>{% endif %}
     <td class="small nowrap">{% if p.is_pipeline and p.tender_due %}<span class="{% if p.tender_overdue %}overdue{% endif %}">Return {{ p.tender_due|date:"j M" }}</span>{% elif p.start_date %}Start {{ p.start_date|date:"j M Y" }}{% if p.completion_date %}<span class="sub">PC {{ p.completion_date|date:"j M Y" }}</span>{% endif %}{% elif p.decided_at %}Decided {{ p.decided_at|date:"j M Y" }}{% else %}<span class="dim">—</span>{% endif %}</td>
   </tr>{% endfor %}</tbody></table></div>
-  {% else %}<div class="empty"><h3>Nothing here</h3>{% if narrowed %}<p>No {% if list_section == 'estimating' %}bids{% else %}jobs{% endif %} {{ narrowed|join:", " }} right now. <a href="?view={{ view }}">Show all</a></p>{% endif %}{% if is_internal %}<p>{% if list_section == 'estimating' %}Add a lead or tender to start pricing.{% else %}Won bids appear here once estimating hands them over. You can also add a live job directly.{% endif %}</p>{% endif %}</div>{% endif %}</div>
+  {% else %}<div class="empty"><h2>Nothing here</h2>{% if narrowed %}<p>No {% if list_section == 'estimating' %}bids{% else %}jobs{% endif %} {{ narrowed|join:", " }} right now. <a href="?view={{ view }}">Show all</a></p>{% endif %}{% if is_internal %}<p>{% if list_section == 'estimating' %}Add a lead or tender to start pricing.{% else %}Won bids appear here once estimating hands them over. You can also add a live job directly.{% endif %}</p>{% endif %}</div>{% endif %}</div>
 {% endblock %}

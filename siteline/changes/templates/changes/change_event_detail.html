@@ -18,12 +18,12 @@
     </div></div>{% elif not contract %}<div class="card"><div class="card-body small"><a href="{% url 'contract_edit' org.slug project.pk %}">Set up the contract</a> to see the notice clocks for this change event.</div></div>{% endif %}
 
     <div class="card"><div class="card-head"><h2>Estimate</h2></div>
-      {% if ce.lines.all %}<div class="table-wrap"><table class="t"><thead><tr><th>Line</th><th>Trade / package</th><th class="num">Cost</th><th class="num">Revenue</th><th></th></tr></thead><tbody>
+      {% if ce.lines.all %}<div class="table-wrap"><table class="t"><thead><tr><th>Line</th><th>Trade / package</th><th class="num">Cost</th><th class="num">Revenue</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
       {% for line in ce.lines.all %}<tr><td>{{ line.description }}</td><td class="small">{% if line.package %}{{ line.package.subcontractor }}{% elif line.trade %}{{ line.trade }}{% else %}—{% endif %}</td>
         <td class="num">{% if line.kind == 'COST' %}{{ line.amount|money:currency }}{% endif %}</td><td class="num">{% if line.kind == 'REVENUE' %}{{ line.amount|money:currency }}{% endif %}</td>
         <td><form method="post" data-confirm="Remove this line?">{% csrf_token %}<input type="hidden" name="action" value="delete_line"><input type="hidden" name="line" value="{{ line.pk }}"><button class="btn sm ghost" style="min-height:44px" aria-label="Remove {{ line.description }}">Remove</button></form></td></tr>{% endfor %}
       <tr><td colspan="2"><strong>Total</strong> (margin {{ ce.margin|money:currency }})</td><td class="num"><strong>{{ ce.cost_total|money:currency }}</strong></td><td class="num"><strong>{{ ce.revenue_total|money:currency }}</strong></td><td></td></tr>
-      </tbody></table></div>{% else %}<div class="empty"><h3>Not priced yet</h3><p>Add what it will cost us (labour, subcontractors, materials) and what we'll recover from the client. The revenue becomes the value of the client {{ vocab.change }}.</p></div>{% endif %}
+      </tbody></table></div>{% else %}<div class="empty"><h2>Not priced yet</h2><p>Add what it will cost us (labour, subcontractors, materials) and what we'll recover from the client. The revenue becomes the value of the client {{ vocab.change }}.</p></div>{% endif %}
       <div class="card-body"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_line">{% with form=line_form %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn">Add line</button></div></form></div>
     </div>
     {% include "partials/comments.html" %}

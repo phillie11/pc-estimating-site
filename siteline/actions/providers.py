@@ -92,17 +92,36 @@ def _priority(value):
     return PRIORITY_HIGH if value in ('HIGH', 'URGENT') else PRIORITY_NORMAL
 
 
+# record_type -> fn(idx, today) returning an Item, or None to leave the row off Needs me. Lets a record
+# type word its own items from the one index query below instead of running a query of its own behind
+# the badge on every page (quality/actions.py). Register from AppConfig.ready().
+RECORD_FORMATTERS = {}
+
+
+def register_record_formatter(record_type, fn):
+    RECORD_FORMATTERS[record_type] = fn
+
+
 class RecordsProvider:
     """Open records of any type on core.RecordBase whose ball is in this person's court."""
     kind, label = 'record', 'RFIs and records'
 
     def items(self, request):
+        from django.utils import timezone
+
         from core.access import needs_me
 
         from . import registry
         qs = needs_me(request).exclude(record_type__in=registry.covered_record_types())
         out = []
+        today = timezone.localdate()
         for idx in qs.select_related('project'):
+            formatter = RECORD_FORMATTERS.get(idx.record_type)
+            if formatter is not None:
+                item = formatter(idx, today)
+                if item is not None:
+                    out.append(item)
+                continue
             responded = idx.status == 'RESPONDED'
             out.append(Item(
                 kind=idx.record_type.split('.')[-1], title=idx.title, url=idx.url, ref=idx.ref, project=idx.project,

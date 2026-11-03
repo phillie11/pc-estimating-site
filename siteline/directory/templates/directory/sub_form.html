@@ -7,7 +7,7 @@
 </div></div>
 {% if sub and is_org_admin and not sub.is_archived %}{% if has_records %}
 <div class="card" style="max-width:900px;margin-top:1.25rem"><div class="card-body">
-  <h3>Archive subcontractor</h3><p class="dim small">Takes them out of the supply chain list and tender invitations. Their quotes, RAMS, variations and history stay on every project, and owners and admins can restore them.</p>
+  <h2>Archive subcontractor</h2><p class="dim small">Takes them out of the supply chain list and tender invitations. Their quotes, RAMS, variations and history stay on every project, and owners and admins can restore them.</p>
   <form method="post" action="{% url 'sub_archive' org.slug sub.pk %}" data-confirm="Archive {{ sub.company_name }}?">{% csrf_token %}<input type="hidden" name="action" value="archive"><button class="btn">Archive</button></form>
 </div></div>{% else %}
 <div class="card" style="max-width:900px;margin-top:1.25rem;border-color:#EDBDB7"><div class="card-body">

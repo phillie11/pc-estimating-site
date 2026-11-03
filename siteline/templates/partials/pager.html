@@ -1,0 +1,9 @@
+{% load ui %}{% comment %}
+Paging for a long list, 50 to a page. Keeps every filter in the query string.
+  page = Paginator(qs, 50).get_page(request.GET.get('page'))
+  {% include "partials/pager.html" %}            (uses `page`; pass prev_label / next_label to rename)
+{% endcomment %}{% if page.has_other_pages %}<nav class="filters pager" aria-label="Pages">
+  <span class="small dim">{{ page.start_index }} to {{ page.end_index }} of {{ page.paginator.count }}</span>
+  {% if page.has_previous %}<a class="chip" href="{% qs page=page.previous_page_number %}">{{ prev_label|default:"Previous" }}</a>{% endif %}
+  {% if page.has_next %}<a class="chip" href="{% qs page=page.next_page_number %}">{{ next_label|default:"Next" }}</a>{% endif %}
+</nav>{% endif %}

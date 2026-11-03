@@ -34,6 +34,7 @@
 </header>
 {% endwith %}
 <main class="main portal-main">
+  {% include "partials/utilbar.html" %}
   {% include "partials/messages.html" %}
   {% block content %}{% endblock %}
 </main>
