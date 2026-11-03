@@ -5,11 +5,13 @@ import csv
 import io
 from decimal import Decimal
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from changes.tests.base import CommercialTestBase
 from core.exports import safe, safe_row
+from accounts.models import User
+from accounts.views import create_organization
 from tenancy.context import org_context
 from variations.models import Variation
 
@@ -62,3 +64,26 @@ class VariationCsvDecidedByTests(CommercialTestBase):
         header, row = rows[0], rows[1]
         self.assertEqual(row[header.index('Decided by')][:1], "'")
         self.assertEqual(row[header.index('Quoted')], '-120.00')  # numbers are not corrupted
+
+
+class OldTransmittalFeedMigrationTests(TestCase):
+    """documents.0002 makes existing transmittal 'issued' feed entries staff only, and nothing else."""
+
+    def test_old_entries_become_staff_only(self):
+        from importlib import import_module
+
+        from django.apps import apps as django_apps
+
+        from tenancy.models import ActivityEvent
+        mig = import_module('documents.migrations.0002_hide_old_transmittal_feed_entries')
+        owner = User.objects.create_user(email='mig@r.test', password='Mig-Pass-2026x', full_name='Mig')
+        org = create_organization('Mig Fitout', owner)
+        with org_context(org):
+            tr = ActivityEvent.objects.create(organization=org, actor=owner, verb='issued', target='TR-001 x',
+                                              url=f'/{org.slug}/projects/1/transmittals/1/', internal_only=False)
+            tender = ActivityEvent.objects.create(organization=org, actor=owner, verb='issued', target='ADD-001',
+                                                  url=f'/{org.slug}/projects/1/tender/', internal_only=False)
+        mig.hide(django_apps, None)
+        with org_context(org):
+            self.assertTrue(ActivityEvent.objects.get(pk=tr.pk).internal_only)
+            self.assertFalse(ActivityEvent.objects.get(pk=tender.pk).internal_only)
