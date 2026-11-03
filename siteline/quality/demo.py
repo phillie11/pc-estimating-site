@@ -78,8 +78,8 @@ def _sub_user(project, package):
 def _permit(project, kind, title, location, asked_by, start, hours, holder='', package=None, notes=''):
     p = Permit(project=project, permit_type=kind, title=title, location=location, holder=holder, package=package,
                starts_at=start, expires_at=start + datetime.timedelta(hours=hours), method_notes=notes)
-    from .workflow import approver_for
-    p.ball_in_court_user = approver_for(project)
+    from .workflow import permit_approver_for
+    p.ball_in_court_user = permit_approver_for(project, asked_by)
     p.save(actor=asked_by)
     return p
 
@@ -149,7 +149,7 @@ def seed(*, leeds, pm, owner):
     p1 = _permit(leeds, rules.HOT_WORKS, 'Weld steel brackets for the bar canopy', 'Bar, above the back bar',
                  pm, (now - datetime.timedelta(days=2)).replace(hour=8, minute=0), 8, holder='Site welder',
                  package=joinery)
-    _approve(p1, pm)
+    _approve(p1, owner)  # never by whoever asked for it
     apply_transition(p1, 'close', pm, note='Fire watch kept', remark='Area checked at 16:30, all clear.',
                      fire_watch_minutes=60)
     tomorrow = (now + datetime.timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)

@@ -38,7 +38,7 @@
     </form>
   </details>
 </div></div>
-{% elif permit.status == 'REQUESTED' %}<div class="card"><div class="card-head"><h2>Precautions to be checked</h2></div><ul class="list">{% for text, ok in precautions %}<li>{{ text }}</li>{% endfor %}</ul></div>
+{% elif permit.status == 'REQUESTED' %}<div class="card"><div class="card-head"><h2>Precautions to be checked</h2></div>{% if permit.created_by_id == request.user.pk %}<p class="card-body small">You asked for this permit, so someone else must approve it: {{ permit.ball_in_court_user.full_name|default:"an owner or admin" }}.</p>{% endif %}<ul class="list">{% for text, ok in precautions %}<li>{{ text }}</li>{% endfor %}</ul></div>
 {% elif permit.status != 'REFUSED' and permit.status != 'WITHDRAWN' %}<div class="card"><div class="card-head"><h2>Precautions confirmed</h2></div><ul class="list">{% for text, ok in precautions %}<li>{% if ok %}{% badge 'In place' 'good' %}{% else %}{% badge 'Not confirmed' 'warn' %}{% endif %} <span class="grow">{{ text }}</span></li>{% endfor %}{% if permit.extra_precautions %}<li><strong>Also:</strong> <span class="grow q-pre">{{ permit.extra_precautions }}</span></li>{% endif %}</ul></div>{% endif %}
 
 {% if 'close' in transitions %}<div class="card"><div class="card-head"><h2>Close the permit</h2></div><div class="card-body">

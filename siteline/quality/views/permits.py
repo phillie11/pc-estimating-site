@@ -18,7 +18,7 @@ from .. import rules
 from ..access import quality_project
 from ..forms import ApproveForm, CloseForm, PermitForm, ReasonForm
 from ..models import Permit, QualitySettings
-from ..workflow import approver_for
+from ..workflow import permit_approver_for
 from .common import csv_response, ctx, first_error, page_of
 
 
@@ -90,14 +90,15 @@ def permit_create(request, org_slug, pk):
     if request.method == 'POST' and form.is_valid():
         permit = form.save(commit=False)
         permit.project = project
-        permit.ball_in_court_user = approver_for(project)
+        permit.ball_in_court_user = permit_approver_for(project, request.user)
         permit.save(actor=request.user)
         _tell_approver(request, permit)
         log_activity(request, 'asked for a permit to work', f'{permit.ref} {permit.title}', project=project,
                      url=permit.get_absolute_url(), internal_only=True)
         approver = permit.ball_in_court_user
-        if approver is None or approver.pk == request.user.pk:
-            messages.success(request, f'{permit.ref} asked for. Check the precautions below, then approve it.')
+        if approver is None:
+            messages.warning(request, f'{permit.ref} asked for, but there is no one else to approve it. Ask an owner '
+                                      'or admin to approve it. Work must not start until it is approved.')
         else:
             messages.success(request, f'{permit.ref} sent to {approver.full_name} to approve. Work must not start '
                                       'until it is approved.')

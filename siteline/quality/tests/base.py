@@ -80,8 +80,8 @@ class QualityTestBase(CommercialTestBase):
         with org_context(org):
             p = Permit(project=project or self.pa, permit_type=kind, title=kw.pop('title', 'Weld brackets'),
                        location='Bar', starts_at=start, expires_at=start + datetime.timedelta(hours=hours), **kw)
-            from ..workflow import approver_for
-            p.ball_in_court_user = approver_for(p.project)
+            from ..workflow import permit_approver_for
+            p.ball_in_court_user = permit_approver_for(p.project, actor or self.sam)
             p.save(actor=actor or self.sam)
             return p
 

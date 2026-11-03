@@ -8,7 +8,7 @@ Hot works, working at height, isolations and confined spaces need a permit befor
 
 **To ask for one:** choose *Ask for a permit*, pick the type, and say what the work is, where, and when it starts and finishes. The project manager is told.
 
-**To approve:** the project manager or an admin opens it, ticks each precaution once it is in place, and approves it. If a precaution can't be met, refuse it and say why.
+**To approve:** the project manager or an admin opens it, ticks each precaution once it is in place, and approves it. If a precaution can't be met, refuse it and say why. Nobody approves a permit they asked for themselves: the project manager's own permits go to an owner or admin.
 
 **While it runs:** it shows as *Active*, then *Expiring soon* near the end, then *Expired*. On the day it runs out it is on the Needs me of whoever asked for it.
 

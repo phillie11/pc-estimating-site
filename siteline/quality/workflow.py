@@ -13,6 +13,8 @@ Inspections (INS-)
 Permits to work (PTW-)
   REQUESTED --approve--> APPROVED       the PM or an admin, confirming every precaution for the type
             --refuse--> REFUSED         the PM or an admin, with a reason
+                                        Never the person who asked for it: a PM's own permit goes to
+                                        an owner or admin (pending owner decision)
   APPROVED  --close--> CLOSED           anyone on the job: work finished and the area left safe
                                         (hot works: the fire watch done)
   REQUESTED / APPROVED --withdraw--> WITHDRAWN   approved: only before work starts (after that, close it)
@@ -50,6 +52,21 @@ def approver_for(project):
         return project.manager
     admin = Membership.objects.filter(organization_id=project.organization_id, role__in=Membership.ADMIN_ROLES,
                                       is_active=True, user__is_active=True).select_related('user').order_by('pk').first()
+    return admin.user if admin else None
+
+
+def permit_approver_for(project, requester):
+    """
+    Who approves a permit: never the person who asked for it (pending owner decision). The project
+    manager, else the first owner or admin who isn't the requester; None if there is no one else.
+    """
+    from tenancy.models import Membership
+    requester_id = getattr(requester, 'pk', None)
+    if _active_staff(project.manager, project) and project.manager_id != requester_id:
+        return project.manager
+    admin = Membership.objects.filter(organization_id=project.organization_id, role__in=Membership.ADMIN_ROLES,
+                                      is_active=True, user__is_active=True).exclude(user_id=requester_id) \
+        .select_related('user').order_by('pk').first()
     return admin.user if admin else None
 
 
@@ -94,6 +111,9 @@ INSPECTION_AUDIT_FIELDS = ('template', 'area', 'package', 'notes', 'completed_at
 # --- permits ---------------------------------------------------------------------------
 
 def may_approve(record, user):
+    """The PM or an owner or admin, and never whoever asked for it (pending owner decision)."""
+    if record.created_by_id is not None and record.created_by_id == getattr(user, 'pk', None):
+        return False
     return can_approve_permit(user, record.project)
 
 
