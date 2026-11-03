@@ -14,11 +14,15 @@ to the end of the job. All excluding VAT. The rules (also in cvr/rules.py and th
                         2. the rest of the forecast final account (final account less the latest
                            application's gross value), spread over the months to the end of the
                            programme by the work the programme has left in each month (evenly to the
-                           completion date if there is no programme), less retention, received in the
-                           month of each month's final date for payment under the contract's terms;
+                           completion date if there is no programme), less the retention added on it
+                           (retention on the cumulative gross after the month less that before it, so
+                           the months add up exactly), received in the month of each month's final date
+                           for payment under the contract's terms;
                         3. retention: the share released at practical completion, then the rest at the
                            end of the defects period, each received at the final date for payment
-                           after it (advisory: check your contract).
+                           after it (advisory: check your contract). Retention is worked out as each
+                           application does, on the cumulative gross at the stage each date is at, so
+                           2. and 3. add up to the rest of the final account exactly.
   Out, forecast         1. what we still owe subcontractors on applications we have: what we pay
                            less what we have paid, in the month of its final date for payment;
                         2. the rest of the forecast final cost (less cost to date and 1.), spread like
@@ -171,30 +175,41 @@ def build(project, today):
         weights = rules.even_weights(work_months, min(today, work_months[0]), finish)
     remaining_value = max(final_account - value_to_date, ZERO)
     retention_pct = (contract.retention_percent or ZERO) if contract else ZERO
+    released_pct = contract.retention_released_at_pc_percent if contract else Decimal('50')
     val_day = (contract.valuation_day if contract and contract.valuation_day else 31)
     from contracts.presets import valuation_date_in
-    for m, v in zip(work_months, rules.spread(remaining_value, weights)):
-        if not v:
-            continue
-        cycle = pay_rules.payment_cycle(valuation_date_in(m.year, m.month, val_day), terms)
-        at(_month(_not_before(cycle.final_date, today))).in_forecast += rules.less_retention(v, retention_pct)
 
-    # Retention released at completion and at the end of the defects period
-    if retention_pct and final_account > 0:
-        pc = (contract.practical_completion_on if contract else None) or project.completion_date or finish
-        released_pct = contract.retention_released_at_pc_percent if contract else Decimal('50')
-        full = pay_rules.retention_held(final_account, retention_pct, released_pct, pay_rules.STAGE_BEFORE_PC)
-        after_pc = pay_rules.retention_held(final_account, retention_pct, released_pct, pay_rules.STAGE_AFTER_PC)
-        end = pay_rules.defects_end(pc, contract.defects_period_months if contract else None)
-        for when, amount in ((pc, full - after_pc), (end, after_pc)):
-            if when is None or not amount:
-                continue
-            if when < today and when == pc and contract and contract.practical_completion_on:
-                continue  # already certified: the applications since then hold the reduced retention
-            paid_on = pay_rules.payment_cycle(when, terms).final_date
-            at(_month(_not_before(paid_on, today))).in_forecast += amount
-        if end is None:
-            notes.append('No defects period is set on the contract, so the last of the retention is not forecast.')
+    pc = ((contract.practical_completion_on if contract else None) or project.completion_date or finish) \
+        if retention_pct else None
+    defects_months = contract.defects_period_months if contract else None
+    end = pay_rules.defects_end(pc, defects_months)
+
+    # Each future valuation and each retention release is worked out the way an application is: retention
+    # held on the cumulative gross at the stage that date is at (before completion, after it, after the
+    # defects period), and what is paid is the change in (gross less retention) since the last one. So the
+    # retention taken off each month, released at completion and at the end of defects all come from one
+    # running figure: nothing is lost to rounding month by month or counted twice, and once the defects
+    # period ends the whole final account has come in.
+    events = [(valuation_date_in(m.year, m.month, val_day), v) for m, v in
+              zip(work_months, rules.spread(remaining_value, weights))]
+    if pc is not None and final_account > 0:
+        events.append((pc, None))
+        if end is not None:
+            events.append((end, None))
+    gross = value_to_date
+    held = pennies(latest.retention) if latest else ZERO
+    for when, v in sorted(events, key=lambda e: (e[0], e[1] is None)):
+        gross += v or ZERO
+        now_held = pay_rules.retention_held(gross, retention_pct, released_pct,
+                                            pay_rules.retention_stage(when, pc, defects_months))
+        net = (v or ZERO) - (now_held - held)
+        held = now_held
+        if not net:
+            continue
+        paid_on = pay_rules.payment_cycle(when, terms).final_date
+        at(_month(_not_before(paid_on, today))).in_forecast += net
+    if retention_pct and final_account > 0 and end is None:
+        notes.append('No defects period is set on the contract, so the last of the retention is not forecast.')
 
     remaining_cost = max(final_cost - cost_to_date - owed_out, ZERO)
     defaults = sub_settings(project.organization, create=False)
