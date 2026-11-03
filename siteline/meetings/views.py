@@ -142,7 +142,10 @@ def meeting_detail(request, org_slug, pk, meeting_id):
     items = list(meeting.items.prefetch_related(
         Prefetch('actions', queryset=MeetingAction.objects.select_related('owner', 'meeting'))))
     raised = list(meeting.actions.select_related('owner', 'item'))
-    brought = list(meeting.brought_forward.select_related('owner', 'meeting').order_by('meeting__held_on', 'number'))
+    brought = meeting.brought_forward.select_related('owner', 'meeting').order_by('meeting__held_on', 'number')
+    if not internal:  # externals: only actions from minutes that were issued, never a draft's
+        brought = brought.filter(meeting__status=Meeting.STATUS_ISSUED)
+    brought = list(brought)
     attendees = list(meeting.attendees.select_related('user'))
     ctx = {'meeting': meeting, 'items': items, 'raised': raised, 'general': [a for a in raised if a.item_id is None],
            'brought': brought, 'attendees': attendees, 'editable': internal and meeting.is_planned,
@@ -152,8 +155,7 @@ def meeting_detail(request, org_slug, pk, meeting_id):
             action_form=ActionForm(meeting=meeting, prefix='act') if meeting.is_planned else None,
             buttons=[(t.name, *TRANSITION_BUTTONS.get(t.name, (t.label, '')))
                      for t in available_transitions(meeting, request.user)],
-            # Only counted here, so who is staff doesn't matter (staff_ids=set() saves the query)
-            recipients=len([1 for p, _, _ in services.recipients(meeting, attendees, raised + brought, staff_ids=set())
+            recipients=len([1 for p, _, _ in services.recipients(meeting, attendees, raised + brought)
                             if p.pk != request.user.pk]),
             update_form=ActionUpdateForm())
     return render(request, 'meetings/detail.html', _ctx(request, project, 'meetings', **ctx))
@@ -240,6 +242,10 @@ def meeting_edit(request, org_slug, pk, meeting_id):
     project = meetings_project(request, pk)
     require_internal(request)
     meeting = _meeting(request, project, meeting_id)
+    if not meeting.is_planned:  # issued (or cancelled) minutes change only through "Correct the minutes"
+        messages.error(request, 'These minutes have been issued. Choose "Correct the minutes" to change them.'
+                       if meeting.is_issued else 'This meeting is cancelled. Reinstate it to change it.')
+        return redirect(meeting)
     current = [a.user for a in meeting.attendees.select_related('user') if a.user_id]
     groups = services.people(project, also=current + [request.user])
     form = MeetingDetailsForm(request.POST or None, instance=meeting, project=project)

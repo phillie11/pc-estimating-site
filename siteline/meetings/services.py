@@ -118,16 +118,19 @@ def recipients(meeting, attendees=None, actions=None, staff_ids=None):
         if a.owner_id and a.is_open:
             by_owner.setdefault(a.owner_id, []).append(a)
     out, seen = [], set()
+    # Only people who can still open the job: active staff, or someone on it now (not a tendering sub)
+    allowed = _staff_ids(meeting) if staff_ids is None else set(staff_ids)
+    staff_ids = allowed.copy()
+    allowed |= set(ProjectMember.objects.filter(project_id=pid, role__in=EXTERNAL_ROLES)
+                   .values_list('user_id', flat=True))
     for att in attendees:
-        if att.user_id and att.user.is_active and att.user_id not in seen:
+        if att.user_id and att.user.is_active and att.user_id not in seen and att.user_id in allowed:
             seen.add(att.user_id)
             out.append((att.user, detail, by_owner.get(att.user_id, [])))
     for owner_id, owned in by_owner.items():
-        if owner_id in seen or not owned[0].owner.is_active:
+        if owner_id in seen or not owned[0].owner.is_active or owner_id not in allowed:
             continue
         seen.add(owner_id)
-        if staff_ids is None:
-            staff_ids = _staff_ids(meeting)
         # Someone not at the meeting sees their own actions; staff can open the minutes themselves
         out.append((owned[0].owner, detail if owner_id in staff_ids else mine, owned))
     return out
