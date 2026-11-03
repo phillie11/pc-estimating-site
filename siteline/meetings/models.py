@@ -83,7 +83,7 @@ class Meeting(RecordBase):
     STATUS_CHOICES = [(STATUS_PLANNED, 'Minutes not issued'), (STATUS_ISSUED, 'Minutes issued'),
                       (STATUS_CANCELLED, 'Cancelled')]
 
-    # How the Needs me page words it for the chair (actions.providers.RecordsProvider)
+    # How the Needs me page words it for the chair (registered as a record formatter in apps.py)
     NEEDS_ME_ACTION = 'Finish the minutes and issue them'
     NEEDS_ME_LABEL = 'Minutes to issue'
 
@@ -187,7 +187,7 @@ class MeetingAction(RecordBase):
     """
     OPEN, DONE, DROPPED = 'OPEN', 'DONE', 'DROPPED'
     STATUS_CHOICES = [(OPEN, 'Open'), (DONE, 'Done'), (DROPPED, 'No longer needed')]
-    # How the Needs me page words it (actions.providers.RecordsProvider)
+    # How the Needs me page words it (registered as a record formatter in apps.py)
     NEEDS_ME_ACTION = 'Do it, then mark it done'
     NEEDS_ME_LABEL = 'Meeting actions'
 
