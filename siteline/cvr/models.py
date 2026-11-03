@@ -309,7 +309,29 @@ class DayworkSheet(RecordBase):
         return rules.daywork_price([(ln.kind, ln.quantity, ln.unit_rate) for ln in lines], self.percentages())
 
 
-class DayworkLine(TenantModel):
+def _sheet_open(sheet_id):
+    """The sheet's lines and photos can change: it is still being written (read from the row, not a copy)."""
+    status = DayworkSheet.all_objects.filter(pk=sheet_id).values_list('status', flat=True).first()
+    return status in DayworkSheet.EDITABLE
+
+
+class FixedOnceSigned:
+    """Lines and photos are fixed once the sheet is signed, sent or cancelled: save() and delete() refuse."""
+
+    def _check_open(self):
+        if not _sheet_open(self.sheet_id):
+            raise PermissionError('The daywork sheet is signed or sent on, so its lines and photos are fixed.')
+
+    def save(self, *args, **kwargs):
+        self._check_open()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._check_open()
+        return super().delete(*args, **kwargs)
+
+
+class DayworkLine(FixedOnceSigned, TenantModel):
     KIND_CHOICES = [(rules.LABOUR, 'Labour'), (rules.PLANT, 'Plant'), (rules.MATERIALS, 'Materials')]
     UNITS = {rules.LABOUR: 'hours', rules.PLANT: 'hours'}
 
@@ -334,7 +356,7 @@ class DayworkLine(TenantModel):
         return rules.line_amount(self.quantity, self.unit_rate)
 
 
-class DayworkPhoto(TenantModel):
+class DayworkPhoto(FixedOnceSigned, TenantModel):
     sheet = models.ForeignKey(DayworkSheet, on_delete=models.CASCADE, related_name='photos')
     image = models.FileField(upload_to=upload_daywork_photo)
     thumbnail = models.FileField(upload_to=upload_daywork_photo, blank=True)

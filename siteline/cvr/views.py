@@ -402,11 +402,28 @@ def daywork_edit(request, org_slug, pk, sheet_id):
                                                                        sheet=sheet))
 
 
+def _fixed(sheet):
+    return services.CVRError(f'{sheet.reference} is {sheet.get_status_display().lower()}, so its lines and photos '
+                             'are fixed.')
+
+
+def _lock_open(sheet):
+    """
+    In the caller's transaction: lock the sheet's row and check it is still being written, so a line or
+    photo can't land on a sheet someone signed after this page read it.
+    """
+    status = DayworkSheet.objects.select_for_update().filter(pk=sheet.pk).values_list('status', flat=True).first()
+    if status not in DayworkSheet.EDITABLE:
+        raise _fixed(sheet)
+
+
 def _touch(sheet, actor, action, note):
     try:
         sheet.save(actor=actor, audit_action=action, audit_note=str(note)[:255])
     except RecordConflict:
         sheet = DayworkSheet.objects.get(pk=sheet.pk)
+        if not sheet.is_editable:  # signed meanwhile: the caller's transaction rolls the change back
+            raise _fixed(sheet)
         sheet.save(actor=actor, audit_action=action, audit_note=str(note)[:255])
 
 
@@ -445,12 +462,12 @@ def daywork_detail(request, org_slug, pk, sheet_id):
         action = request.POST.get('action')
         try:
             if action in ('add_line', 'delete_line', 'add_photo', 'delete_photo') and not sheet.is_editable:
-                raise services.CVRError(f'{sheet.reference} is {sheet.get_status_display().lower()}, so its lines and '
-                                        'photos are fixed.')
+                raise _fixed(sheet)
             if action == 'add_line':
                 line_form = LineForm(request.POST, project=project, prefix='line')
                 if line_form.is_valid():
                     with transaction.atomic():
+                        _lock_open(sheet)
                         line = line_form.save(commit=False)
                         line.organization_id, line.sheet, line.created_by = sheet.organization_id, sheet, request.user
                         line.unit_rate = line_form.cleaned_data['unit_rate']
@@ -465,6 +482,7 @@ def daywork_detail(request, org_slug, pk, sheet_id):
             elif action == 'delete_line':
                 line = get_object_or_404(DayworkLine, sheet=sheet, pk=posted_id(request, 'line'))
                 with transaction.atomic():
+                    _lock_open(sheet)
                     note = f'Removed {line.get_kind_display().lower()}: {line.description}'
                     line.delete()
                     _touch(sheet, request.user, 'priced', note)
@@ -472,15 +490,19 @@ def daywork_detail(request, org_slug, pk, sheet_id):
             elif action == 'add_photo':
                 photo_form = PhotoForm(request.POST, request.FILES, prefix='photo')
                 if photo_form.is_valid():
-                    _store_photo(sheet, photo_form.cleaned_data['photo'], photo_form.cleaned_data['caption'],
-                                 request.user)
-                    _touch(sheet, request.user, 'photo', 'Photo added')
+                    with transaction.atomic():
+                        _lock_open(sheet)
+                        _store_photo(sheet, photo_form.cleaned_data['photo'], photo_form.cleaned_data['caption'],
+                                     request.user)
+                        _touch(sheet, request.user, 'photo', 'Photo added')
                     messages.success(request, 'Photo added.')
                     return redirect(sheet)
             elif action == 'delete_photo':
                 photo = get_object_or_404(DayworkPhoto, sheet=sheet, pk=posted_id(request, 'photo'))
-                photo.delete()
-                _touch(sheet, request.user, 'photo', 'Photo removed')
+                with transaction.atomic():
+                    _lock_open(sheet)
+                    photo.delete()
+                    _touch(sheet, request.user, 'photo', 'Photo removed')
                 return redirect(sheet)
             elif action == 'send':
                 send_form = SendForm(request.POST, change_events=live_ces, prefix='send')
@@ -531,6 +553,10 @@ def daywork_sign(request, org_slug, pk, sheet_id):
                              signer=d['name'].strip(), role=d['role'])
         except InvalidTransition as e:
             form.add_error(None, str(e))
+        except RecordConflict:
+            messages.error(request, f'{sheet.reference} was changed by someone else while it was being signed. Check '
+                                    'the lines with them and sign again.')
+            return redirect('daywork_sign', org_slug=org_slug, pk=pk, sheet_id=sheet.pk)
         else:
             log_activity(request, 'recorded the signature on', sheet.reference, project=project,
                          url=sheet.get_absolute_url(), internal_only=True)
@@ -538,6 +564,7 @@ def daywork_sign(request, org_slug, pk, sheet_id):
                                       'change register so it is valued.')
             return redirect(sheet)
     lines = list(sheet.lines.all())
+    services.refresh_terms(sheet)  # what it will be signed at (workflow._sign)
     return render(request, 'cvr/daywork_sign.html', commercial_context(
         request, project, 'dayworks', sheet=sheet, form=form, lines=lines, price=sheet.price(lines)))
 

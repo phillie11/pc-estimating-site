@@ -79,6 +79,12 @@ def _sign(sheet, user, signature=None, signer='', role='', **params):
         raise InvalidTransition('Add at least one line of labour, plant or materials before it is signed.')
     if not signature or not signer:
         raise InvalidTransition('The signature and the name of the person signing are both needed.')
+    # Signed at the job's percentage additions as they stand now (what the sheet showed while it was written
+    # and on the signing page); from here on the sheet keeps them
+    # (status is already SIGNED here, so services.refresh_terms() would skip it)
+    from .services import terms_for
+    terms = terms_for(sheet.project)
+    sheet.labour_pct, sheet.materials_pct, sheet.plant_pct = terms.labour_pct, terms.materials_pct, terms.plant_pct
     sheet.signature.save(signature.name, signature, save=False)
     sheet.signed_by_name, sheet.signed_by_role = signer[:150], role
     sheet.signed_at, sheet.signature_recorded_by = timezone.now(), user
