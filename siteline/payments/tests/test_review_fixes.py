@@ -3,7 +3,7 @@ The fixes from the independent review (payments/tests/test_review_repro.py holds
 reproductions): submit order, withdraw, settling after a notice, overpayments, reversal, variations by
 date, the consultant contract administrator, and certified and paid excluding VAT.
 """
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.utils import timezone
@@ -153,9 +153,13 @@ class VariationsByDateTests(PaymentsTestBase):
 
     def test_only_those_approved_by_the_valuation_date(self):
         valuation = T - timedelta(days=10)
-        self.vo('1000', timezone.now() - timedelta(days=20))   # before: in
-        self.vo('2000', timezone.now() - timedelta(days=10))   # on the valuation date: in
-        self.vo('4000', timezone.now() - timedelta(days=5))    # after: next time
+        # Midday on London dates: decided_at is compared as a London date, so an instant built from
+        # the UTC clock late in the evening (or across a clock change) can land on the next day.
+        def days_ago(n):
+            return timezone.make_aware(datetime.combine(T - timedelta(days=n), time(12)))
+        self.vo('1000', days_ago(20))   # before: in
+        self.vo('2000', days_ago(10))   # on the valuation date: in
+        self.vo('4000', days_ago(5))    # after: next time
         a = self.make(valuation=valuation)
         self.assertEqual(a.variations_value, Decimal('3000.00'))
 
