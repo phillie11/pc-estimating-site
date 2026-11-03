@@ -92,6 +92,26 @@ def _end_of(month):
     return rules.month_end(month)
 
 
+def certified_at(app, day, today):
+    """
+    The application's notified sum if it was certified by `day` (a month's end), as payments.summary counts
+    it today: a payment or pay less notice given, paid in full, or standing as notified by default. For a
+    month that has ended, only notices and payment by its last day count, and the default only once its
+    deadline had passed by then: a notice given next month belongs to next month's figures.
+    """
+    from payments import rules as pay_rules
+    if day >= today:
+        return app.notified_sum if app.is_certified else ZERO
+    notice_on = app.payment_notice_on if app.payment_notice_on and app.payment_notice_on <= day else None
+    less_on = app.pay_less_on if app.pay_less_on and app.pay_less_on <= day else None
+    paid = app.paid_in_full_on is not None and app.paid_in_full_on <= day
+    if not (notice_on or less_on or paid or pay_rules.stands_as_notified(day, app.payment_notice_by, notice_on)):
+        return ZERO
+    return pay_rules.notified_sum(app.amount_due, app.payment_notice_amount if notice_on else None, notice_on,
+                                  app.payment_notice_by, app.pay_less_amount if less_on else None, less_on,
+                                  app.pay_less_by)[0]
+
+
 def live_figures(projects, month, periods=None):
     """
     {project_id: Figures} worked out from the sources as at the month's end, for many jobs in a fixed
@@ -113,6 +133,8 @@ def live_figures_months(projects, months, periods=None):
     from payments.rules import ex_vat
     from variations.models import Variation
 
+    from django.utils import timezone
+    today = timezone.localdate()
     months = sorted({rules.month_start(m) for m in months})
     ends = [_end_of(m) for m in months]
     last = max(ends)
@@ -140,8 +162,7 @@ def live_figures_months(projects, months, periods=None):
                 continue
             f = out[m][a.project_id]
             f.has_activity = True
-            if a.is_certified:
-                f.certified_to_date += a.notified_sum
+            f.certified_to_date += certified_at(a, e, today)
             f.paid_to_date += ex_vat((paid.get(a.pk) or {}).get(f'm{i}') or ZERO, a.vat_rate, a.reverse_charge)
             key = (a.valuation_date, a.number)
             if a.project_id not in latest or key > latest[a.project_id][0]:
