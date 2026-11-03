@@ -323,7 +323,8 @@ class SiteTeamTests(SafetyTestBase):
         r = self.client.get(self.u('safety_poster', self.pa.pk))
         self.assertContains(r, g.token)
         self.assertContains(r, '<svg')
-        self.assertNotContains(r, 'Make a new QR code')  # site team can print, only the PM or an admin replaces
+        # site team can print, only the PM or an admin replaces (the form, not its wording: the help panel names it)
+        self.assertNotContains(r, self.u('safety_poster_replace', self.pa.pk))
         printed = self.client.get(self.u('safety_poster', self.pa.pk) + '?print=1')
         self.assertContains(printed, 'Sign in and out here')
         self.assertContains(printed, 'class="sf-qr"')
