@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'documents',
     'procurement',
     'diary',
+    'safety',
     'jobs',
     'actions',
     'payments',
@@ -73,8 +74,11 @@ INSTALLED_APPS = [
     'costs',
     'subpayments',
     'levelling',
+    'quality',
     'viewer',
     'meetings',
+    'closeout',
+    'help',
 ]
 
 MIDDLEWARE = [

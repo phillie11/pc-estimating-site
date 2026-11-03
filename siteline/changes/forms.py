@@ -17,7 +17,7 @@ class EarlyWarningForm(RecordFormMixin, StyledModelForm):
         model = EarlyWarning
         fields = ['title', 'description', 'raised_by_side', 'risk_cost', 'risk_time', 'risk_quality', 'mitigation',
                   'meeting_date', 'ball_in_court_user', 'due_date']
-        labels = {'title': 'Early warning', 'ball_in_court_user': 'Owner', 'due_date': 'Review by'}
+        labels = {'title': 'What is the risk? (a short title)', 'ball_in_court_user': 'Owner', 'due_date': 'Review by'}
         help_texts = {'ball_in_court_user': 'Who on our side is dealing with it. It shows in their "Needs me".'}
 
     def __init__(self, *args, project=None, vocab=None, **kwargs):
@@ -37,7 +37,7 @@ class ChangeEventForm(RecordFormMixin, StyledModelForm):
         fields = ['title', 'origin', 'source_rfi', 'source_early_warning', 'description', 'time_impact_days',
                   'ball_in_court_user', 'aware_on', 'notified_on', 'quotation_instructed_on', 'quotation_submitted_on',
                   'reply_received_on', 'failure_notified_on', 'delay_notice_given_on']
-        labels = {'title': 'Change event', 'ball_in_court_user': 'Owner'}
+        labels = {'title': 'What changed? (a short title)', 'ball_in_court_user': 'Owner'}
         help_texts = {'ball_in_court_user': 'Who on our side is pricing and chasing it. It shows in their "Needs me".'}
 
     def __init__(self, *args, project=None, contract=None, vocab=None, **kwargs):

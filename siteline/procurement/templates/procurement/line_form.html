@@ -4,7 +4,7 @@
 <div class="grid split">
   <div class="card"><div class="card-head"><h2>{% if line %}{{ line.title }}{% else %}Add to the procurement schedule{% endif %}</h2>{% if line %}{% status_badge line %}{% endif %}</div><div class="card-body">
     <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
-      <div class="form-actions"><button class="btn primary">{% if line %}Save{% else %}Add line{% endif %}</button><a class="btn" href="{% url 'procurement_schedule' org.slug project.pk %}">Cancel</a></div>
+      <div class="form-actions"><button class="btn primary">{% if line %}Save{% else %}Add line{% endif %}</button><a class="btn ghost" href="{% url 'procurement_schedule' org.slug project.pk %}">Cancel</a></div>
     </form>
   </div></div>
   <div class="stack">

@@ -17,7 +17,8 @@ MAX_STAFF_TABS = 8
 # The order tabs earn a place in the row; anything not listed goes after these
 # 'commercial' (contract, change register, client variations) replaced the staff 'variations' tab
 STAFF_ORDER = ('overview', 'programme', 'documents', 'rfis', 'commercial', 'variations', 'subvariations', 'rams', 'procurement', 'diary', 'issues',
-               'tender', 'packages', 'tasks', 'team', 'meetings')
+               'tender', 'packages', 'tasks', 'team', 'quality',
+               'closeout', 'safety', 'meetings')
 # Estimating keeps its own order: the tender comes first on a bid
 BID_ORDER = ('overview', 'tender', 'packages', 'documents', 'team')
 
@@ -33,7 +34,7 @@ EXTERNAL_GROUPS = (
     ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'payments', 'subpayments', 'subvariations', 'rams', 'submittals', 'tasks', 'meetings')),
     ('documents', 'Documents', ('documents',)),
     ('programme', 'Programme', ('programme',)),
-    ('snags', 'Snags', ('issues',)),
+    ('snags', 'Snags', ('issues', 'closeout')),
 )
 EXTERNAL_LABELS = {
     'decisions': 'Waiting on you',
@@ -48,6 +49,7 @@ EXTERNAL_LABELS = {
     'tasks': 'Your tasks',
     'meetings': 'Meetings',
     'issues': 'Your snags',
+    'closeout': 'Defects and handover',
 }
 
 

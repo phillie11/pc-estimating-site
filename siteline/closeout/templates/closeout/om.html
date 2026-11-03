@@ -1,0 +1,41 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if sections %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a><a class="btn" href="{% url 'closeout_om_section_new' org.slug project.pk %}">{% icon 'plus' %} Add a section</a>{% endif %}{% endblock %}
+{% block project_content %}<div class="co-page">
+{% include "closeout/_subnav.html" %}
+{% if not sections %}
+<div class="card">{% include "partials/empty_state.html" with title="No O&M manual set up yet" message="Start from your company's contents list: one section per trade, each matched to the subcontractor appointed for it. Then ask each one for their O&M information through their portal, and put the manual together in one download." %}
+  <form method="post" class="empty" style="padding-top:0">{% csrf_token %}<input type="hidden" name="action" value="setup"><button class="btn primary">Set up the O&amp;M manual</button></form>
+  {% if is_org_admin %}<p class="small dim card-body" style="text-align:center">The contents list is your company's own. <a href="{% url 'closeout_om_template' org.slug %}">Change it</a>.</p>{% endif %}
+</div>
+{% else %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Sections complete</div><div class="value">{{ done }} of {{ live }}</div></div>
+  <div class="kpi"><div class="label">Waiting for subcontractors</div><div class="value">{{ outstanding }}</div></div>
+  <div class="kpi"><div class="label">Latest manual</div><div class="value">{% if compilations %}Version {{ compilations.0.number }}{% else %}Not yet{% endif %}</div></div>
+</div>
+<div class="card"><div class="card-head"><h2>Contents</h2></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Section</th><th>Supplied by</th><th>Asked for</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+{% for s in sections %}<tr id="om-{{ s.pk }}"{% if s.not_needed %} class="dim"{% endif %}>
+  <td><a class="rowlink" href="{% url 'closeout_om_section' org.slug project.pk s.pk %}">{{ s.title }}</a>{% if s.docs %}<span class="sub">{% for d in s.docs %}<a href="{% url 'closeout_om_document' org.slug project.pk d.pk %}">{{ d.title }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>
+  <td class="small">{% if s.package %}{{ s.package.subcontractor }}{% else %}Us{% endif %}</td>
+  <td class="small">{% for x in s.submittals %}<a href="{{ x.get_absolute_url }}">{{ x.ref }}</a> {{ x.get_status_display }}{% if x.is_open and x.due_date %}<span class="sub{% if x.is_overdue %} overdue{% endif %}">Due {{ x.due_date|date:"j M" }}</span>{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="dim">—</span>{% endfor %}</td>
+  <td>{% status_badge s.state.0 s.state.1 %}</td>
+  <td class="nowrap">{% if not s.not_needed %}{% if s.package and not s.outstanding %}<a class="btn sm" href="{% url 'closeout_om_request' org.slug project.pk s.pk %}">{% if s.submittals %}Ask again{% else %}Ask for it{% endif %}<span class="sr-only"> ({{ s.title }})</span></a>{% endif %} <a class="btn sm" href="{% url 'closeout_om_upload' org.slug project.pk s.pk %}">Add a file<span class="sr-only"> to {{ s.title }}</span></a>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="card-body small dim"><p style="margin:0">Subcontractors upload their O&amp;M information in their portal, and you give it A, B or C as any submittal. Only accepted information (A or B) and files you add yourself go into the manual.</p></div>
+</div>
+
+<div class="card"><div class="card-head"><h2>Put the manual together</h2>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="compile"><button class="btn primary">Compile the manual now</button></form></div>
+<div class="card-body small dim"><p style="margin:0">One download (a zip file) with a folder per section and a contents PDF listing every file with its checksum. Files still being virus-checked are left out and listed.</p></div>
+{% if compilations %}<div class="table-wrap"><table class="t"><thead><tr><th>Version</th><th>Made</th><th>Files</th><th>Status</th><th>Client</th></tr></thead><tbody>
+{% for c in compilations %}<tr><td>{% if c.status == 'READY' %}<a href="{% url 'closeout_om_download' org.slug project.pk c.pk %}">Version {{ c.number }}</a><span class="sub">{{ c.size|filesize }}</span>{% else %}Version {{ c.number }}{% endif %}</td>
+  <td class="small">{{ c.created_at|date:"j M Y H:i" }}<span class="sub">{{ c.created_by.full_name }}</span></td>
+  <td class="small">{{ c.file_count }}{% if c.left_out %}<span class="sub">{{ c.left_out|length }} left out</span>{% endif %}</td>
+  <td>{% status_badge c %}</td>
+  <td>{% if c.status == 'READY' %}<form method="post">{% csrf_token %}<input type="hidden" name="compilation" value="{{ c.pk }}">{% if c.shared_with_client %}<input type="hidden" name="action" value="unshare"><button class="btn sm">Stop sharing<span class="sr-only"> version {{ c.number }}</span></button>{% else %}<input type="hidden" name="action" value="share"><button class="btn sm" data-confirm="Share O&amp;M manual version {{ c.number }} with the client? The client and consultants on this job are told and can download it.">Share with the client<span class="sr-only"> (version {{ c.number }})</span></button>{% endif %}</form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% endif %}
+</div>
+{% if is_org_admin %}<p class="small dim">New jobs start from your company's <a href="{% url 'closeout_om_template' org.slug %}">O&amp;M contents list</a>.</p>{% endif %}
+{% endif %}
+</div>{% endblock %}

@@ -19,6 +19,7 @@ from documents.access import annotate, visible_documents, visible_ids
 from documents.views import docs_context
 from projects.access import get_project, is_internal
 from projects.files import serve
+from quality import pins as quality_pins
 from tenancy.models import log_activity
 
 from . import pins as pinlib
@@ -57,6 +58,7 @@ def drawing_viewer(request, org_slug, pk, doc_id, rev_id):
     can_pin = not project.is_archived and not rev.is_withdrawn
     rev_seen = visible_revision_ids(request, project)
     pins = [pinlib.describe(request, project, p, rev=rev, seen=rev_seen) for p in visible_pins(request, project, doc)]
+    pins += quality_pins.viewer_pins(request, project, doc, rev)
     choices = []
     if can_pin:
         issues = visible_issues(request, project).order_by('-number')[:200]
@@ -77,6 +79,8 @@ def drawing_viewer(request, org_slug, pk, doc_id, rev_id):
         'new_snag_url': reverse('issue_create', args=[org_slug, project.pk]) if can_pin and can_raise_snag(
             request) else '',
         'new_rfi_url': reverse('rfi_create', args=[org_slug, project.pk]) if can_pin else '',
+        # Fire-stopping penetrations (quality/pins.py): shown with the pins, and "New fire-stopping" for staff
+        'new_firestop_url': quality_pins.new_url(request, project) if can_pin else '',
         'choices': choices,
     }
     return render(request, 'viewer/viewer.html', docs_context(

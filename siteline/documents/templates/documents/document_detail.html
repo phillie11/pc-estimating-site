@@ -14,7 +14,7 @@
       {% if parts %}<dl class="parts">{% for label, value in parts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
       <p class="small dim" style="margin:8px 0 0">{{ doc.get_category_display }}{% if doc.discipline %} · {{ doc.discipline }}{% endif %}{% if doc.sheet_size %} · {{ doc.sheet_size }}{% endif %}{% if doc.scale %} · {{ doc.scale }}{% endif %}{% if doc.folder %} · {{ doc.folder }}{% endif %}</p>
     </div>
-    <div class="table-wrap"><table class="t"><thead><tr><th>Rev</th><th>Suit.</th><th>Status</th><th>File</th><th>Uploaded</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table class="t"><thead><tr><th>Rev</th><th>Suit.</th><th>Status</th><th>File</th><th>Uploaded</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
     {% for r in revisions %}<tr>
       <td class="mono"><a href="{% url 'revision_detail' org.slug project.pk doc.pk r.pk %}">{{ r.revision }}</a>{% if r.pk == current.pk %} <span class="badge good plain">Current</span>{% endif %}</td>
       <td class="mono">{{ r.suitability|default:"—" }}</td>

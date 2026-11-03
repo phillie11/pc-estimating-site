@@ -3,6 +3,7 @@ from django.urls import include, path
 from actions import views as actions
 from billing import views as billing
 from changes import urls as changes_urls
+from closeout import urls as closeout_urls
 from costs import urls as costs_urls
 from delivery import views as delivery
 from diary import urls as diary_urls
@@ -13,8 +14,10 @@ from meetings import urls as meetings_urls
 from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import programme_views
+from quality import urls as quality_urls
 from projects import views as projects
 from rfis import views as rfis
+from safety import urls as safety_urls
 from subpayments import urls as subpayments_urls
 from tenders import views as tenders
 from variations import views as variations
@@ -127,6 +130,9 @@ urlpatterns = [
     # Diary tab: site diary, photos, delays, "Today on site" (diary/urls.py)
     *diary_urls.project_patterns(P),
     *diary_urls.org_patterns,
+    # Safety tab: incidents and near misses, CDM register, site sign-in (safety/urls.py)
+    *safety_urls.project_patterns(P),
+    *safety_urls.org_patterns,
     # Commercial > Costs and Settings > Cost control (costs/urls.py)
     *costs_urls.project_patterns(P),
     *costs_urls.org_patterns,
@@ -138,5 +144,12 @@ urlpatterns = [
     # Meetings tab: minutes, actions and agenda templates (meetings/urls.py)
     *meetings_urls.project_patterns(P),
     *meetings_urls.org_patterns,
+    # Close-out tab and the client's "Defects and handover" (closeout/urls.py)
+    *closeout_urls.project_patterns(P),
+    *closeout_urls.org_patterns,
+    # Quality tab: inspections, permits to work, fire-stopping; Settings > Checklists (quality/urls.py)
+    *quality_urls.project_patterns(P),
+    *quality_urls.org_patterns,
+    path('', include('help.urls')),  # global search, help topics, getting-started checklist (help/)
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

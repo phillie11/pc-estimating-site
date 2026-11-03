@@ -18,7 +18,7 @@
   {% include "tenders/_coverage_rows.html" %}
 </div>
 {% empty %}
-<div class="card"><div class="empty"><h3>{% if show == 'thin' %}No thin trades{% else %}No open tenders out to subcontractors{% endif %}</h3>
+<div class="card"><div class="empty"><h2>{% if show == 'thin' %}No thin trades{% else %}No open tenders out to subcontractors{% endif %}</h2>
   <p>{% if show == 'thin' %}Every trade out to tender has at least {{ target }} quote{{ target|pluralize }} in. <a href="{% qs show=None %}">Show all trades</a>.{% elif lead %}This bid lead has no trades out to subcontractors. <a href="{% url 'tender_coverage' org.slug %}">Show everyone's</a>.{% else %}Trades appear here once you invite subcontractors to price a lead or tender, from its <strong>Sub quotes</strong> tab. See the <a href="{% url 'pipeline' org.slug %}">pipeline</a>.{% endif %}</p></div></div>
 {% endfor %}
 {% endblock %}

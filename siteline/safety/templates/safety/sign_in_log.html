@@ -1,0 +1,34 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_actions %}{% if rows %}<a class="btn" href="{% qs export='csv' page=None %}">{% icon 'download' %} Export CSV</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "safety/_subnav.html" %}
+<div class="touch">
+  {% if single_day %}<div class="day-nav">
+    <a class="btn" href="?date={{ prev_day|date:'Y-m-d' }}" aria-label="Previous day">‹</a>
+    <h2>{% if day == today %}Today, {% endif %}{{ day|date:"D j M Y" }}</h2>
+    {% if next_day %}<a class="btn" href="?date={{ next_day|date:'Y-m-d' }}" aria-label="Next day">›</a>{% else %}<span class="btn ghost" aria-hidden="true">&nbsp;</span>{% endif %}
+  </div>{% endif %}
+  <form method="get" class="filters" role="search" aria-label="Filter the sign-in log">
+    <label class="small">Search <input type="search" name="q" value="{{ filters.q }}" placeholder="Name or company"></label>
+    <label class="small">From <input type="date" name="from" value="{{ filters.from|date:'Y-m-d' }}"></label>
+    <label class="small">To <input type="date" name="to" value="{{ filters.to|date:'Y-m-d' }}"></label>
+    <label class="small">Who <select name="kind"><option value="">Everyone</option>{% for k, label in kinds %}<option value="{{ k }}"{% if filters.kind == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <button class="btn sm">Filter</button><a class="btn ghost sm" href="?">Today</a>
+  </form>
+</div>
+<div class="card sf-log">
+{% if rows %}<div class="table-wrap"><table class="t">
+  <thead><tr><th>Name</th><th>Who</th><th>In</th><th>Out</th><th class="num">Hours</th></tr></thead>
+  <tbody>{% for a in rows %}<tr>
+    <td><strong>{{ a.name }}</strong>{% if a.company %}<span class="sub">{{ a.company }}</span>{% endif %}</td>
+    <td class="small">{{ a.get_kind_display }}{% if a.method == 'MANUAL' %}<span class="sub">Signed in by {{ a.signed_in_by.full_name|default:"the site team" }}</span>{% endif %}</td>
+    <td class="small nowrap">{% if not single_day %}{{ a.signed_in_at|date:"j M" }} {% endif %}{{ a.signed_in_at|date:"H:i" }}</td>
+    <td class="small nowrap">{% if a.signed_out_at %}{{ a.signed_out_at|date:"H:i" }}{% if a.signed_out_by %}<span class="sub">by {{ a.signed_out_by.full_name }}</span>{% endif %}{% elif a.signed_in_at < since %}{% status_badge "No sign-out recorded" "warn" %}{% else %}{% status_badge "On site" "good" %} <form method="post" action="{% url 'safety_sign_out' org.slug project.pk a.pk %}" class="inline" data-confirm="Sign {{ a.name }} out? They will drop off the fire roll call.">{% csrf_token %}<input type="hidden" name="next" value="log"><button class="linkbtn" aria-label="Sign out {{ a.name }}">Sign out</button></form>{% endif %}</td>
+    <td class="num">{% if a.signed_out_at %}{{ a.hours_on_site }}{% else %}—{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% include "safety/_pager.html" %}
+{% elif filters.q or filters.kind %}{% include "partials/empty_state.html" with title="Nobody matches" message="Nobody signed in matches that search. Clear it to see everyone for these dates." cta_url="?" cta_label="Show everyone today" cta_plain=True %}
+{% else %}{% url 'safety_poster' org.slug project.pk as poster_url %}{% include "partials/empty_state.html" with title="Nobody signed in" message="No one signed in on these dates. People sign in by scanning the QR poster at the site entrance." cta_url=poster_url cta_label="Print the QR poster" cta_plain=True %}{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+{% include "quality/_subnav.html" %}
+<div class="card q-narrow q-touch"><div class="card-head"><h2>{% if penetration %}Change {{ penetration.ref }}{% else %}Add a penetration{% endif %}</h2></div><div class="card-body">
+  {% if pending_pin %}<p class="banner">It will be pinned on drawing <strong>{{ pending_pin.label }}</strong>, page {{ pending_pin.page }}.</p>{% endif %}
+  {% if not penetration %}<p class="small dim">Only where it is is needed now. Add the product, installer and photos as you go.</p>{% endif %}
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}
+    <div class="form-actions"><button class="btn primary block">{% if penetration %}Save{% else %}Add penetration{% endif %}</button><a class="btn ghost" href="{% if penetration %}{{ penetration.get_absolute_url }}{% else %}{% url 'penetration_list' org.slug project.pk %}{% endif %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}
