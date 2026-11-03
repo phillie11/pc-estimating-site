@@ -13,6 +13,15 @@ DOC_ACCEPT = '.pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx,.xls,.xlsx,.zip,image/
 PHOTO_ACCEPT = 'image/*'
 
 
+RESERVED_MESSAGE = ('"Whole of the works" is the completion of the whole job. Record it on the Overview, '
+                    'or give this section its own name, e.g. "Ground floor bar".')
+
+
+def _reserved(name):
+    """The whole-works row's name: a section with it would block recording whole-works PC (name is unique)."""
+    return name.strip().casefold() == CompletionSection.WHOLE_WORKS.casefold()
+
+
 def _check_file(f):
     if f and hasattr(f, 'size'):
         validate_upload(f)
@@ -48,7 +57,9 @@ class CompletionForm(StyledModelForm):
         elif made_good and pc and made_good < pc:
             self.add_error('made_good_on', 'This is before practical completion. Check the date on the certificate.')
         name = data.get('name')
-        if name and CompletionSection.objects.filter(project=self.instance.project, name__iexact=name) \
+        if name and not self.instance.is_whole_works and _reserved(name):
+            self.add_error('name', RESERVED_MESSAGE)
+        elif name and CompletionSection.objects.filter(project=self.instance.project, name__iexact=name) \
                 .exclude(pk=self.instance.pk).exists():
             self.add_error('name', 'There is already a section with this name on this job.')
         return data
@@ -70,6 +81,8 @@ class SectionAddForm(StyledModelForm):
         name = (self.cleaned_data.get('name') or '').strip()
         if not name:
             raise ValidationError('Give the section a name.')
+        if _reserved(name):
+            raise ValidationError(RESERVED_MESSAGE)
         if CompletionSection.objects.filter(project=self.project, name__iexact=name).exists():
             raise ValidationError('There is already a section with this name on this job.')
         return name

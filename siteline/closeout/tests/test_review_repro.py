@@ -96,6 +96,28 @@ class FireStoppingRegisterHookTests(CloseoutTestBase):
             self.assertEqual(goldenthread.quality_items(self.pa), [])
 
 
+class ReservedSectionNameTests(CloseoutTestBase):
+    """A section called "Whole of the works" took the whole-works row's unique name, so PC could never be recorded."""
+
+    def test_whole_works_pc_can_still_be_recorded(self):
+        self.login(self.pat)
+        r = self.client.post(self.url('closeout_section_add', self.pa.pk), {'name': 'Whole of the works'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'give this section its own name')
+        r = self.client.post(self.url('closeout_section', self.pa.pk, 'whole'), {'pc_date': '2026-06-01'})
+        self.assertEqual(r.status_code, 302)
+        with org_context(self.org_a):
+            self.assertEqual(MainContract.objects.get(pk=self.contract.pk).practical_completion_on, date(2026, 6, 1))
+
+    def test_renaming_a_section_to_it_is_refused(self):
+        s = self.section(whole=False, name='Bar')
+        self.login(self.pat)
+        r = self.client.post(self.url('closeout_section', self.pa.pk, str(s.pk)),
+                             {'name': 'whole of the works', 'pc_date': '2026-06-01'})
+        self.assertContains(r, 'give this section its own name')
+        self.assertEqual(self.fresh(s).name, 'Bar')
+
+
 class ContractSyncTests(CloseoutTestBase):
     """MainContract.practical_completion_on and the whole-works PC date stay in step both ways."""
 
