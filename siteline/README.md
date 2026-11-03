@@ -154,7 +154,16 @@ Anything waiting on a person is listed through one registry, `actions` ("Needs m
 - **Hooks for apps on other branches.** `actions/providers.py` `HOOKS` plugs in `tenders.actions.coverage_alerts(request)` (staff), `changes.actions.items(request)` and `documents.models.pending_acknowledgements(user)` (externals) by dotted path. Each lists nothing until its module exists; results (Items, dicts or model rows) on projects outside `portal_projects` are dropped.
 - **Dashboards.** Every number on the estimating and projects dashboards links to the list behind it, using the filters in `actions/filters.py` (`/projects/?view=live&attention=rams`, `/bids/?view=open&due=14`, `?mine=1`; `/rfis/?status=open&scope=live&overdue=1`), so the number and the list always agree.
 - **Layouts.** `templates/app.html` picks `layouts/staff.html` (sidebar) or `layouts/portal.html` (top bar with a project switcher, no sidebar) for external collaborators. Externals get at most five project tabs (Overview, Decisions, Documents, Programme, Snags); the registers under each (RFIs, Variations, *Your variations*, *Your RAMS*, tasks, who's who) show as a second row. On the overview they see *What's changed since your last visit*, from `actions.ProjectVisit` (one row per `ProjectMember`). Staff get at most eight tabs on a live job: seven in the row and a *More* menu; tab order and labels are in `actions/tabs.py`.
-- **Screen parts.** `templates/partials/status_badge.html` (or `{% status_badge obj %}`), `empty_state.html`, `register_table.html` and `decision_panel.html`. Staff can see them all at `/<org>/_ui/`.
+- **Screen parts.** `templates/partials/status_badge.html` (or `{% status_badge obj %}`), `empty_state.html`, `register_table.html`, `decision_panel.html` and `pager.html`. Staff can see them all at `/<org>/_ui/`. The house rules for screens (button order, wording, errors, empty states, confirmations, phones) are in [docs/ux.md](docs/ux.md).
+
+## Search, help and getting started
+
+All in `help/`.
+
+- **Search.** The box at the top of every signed-in page (press `/`) finds projects, RFIs, client variations, drawings and documents, subcontractors and people by reference (`RFI-7`, `VO 3`, `P-0012`, a drawing number) or title. Each source in `help/search.py` applies the same rule as the page its results open (sections and archived projects for staff, shared records and the client/consultant rule for externals, only their tender for a tendering subcontractor), with a fixed number of queries.
+- **Help.** The **?** beside the search box opens a short panel for the page. Topics are markdown files in `help/content/`; the front matter names the pages (URL names) and, optionally, the reader (`who: staff` or `external`). Edit them freely: the small renderer in `help/topics.py` escapes everything and needs no extra package. `/<org>/help/` lists them all.
+- **Getting started.** Owners and admins of a new company see a five-step checklist on their dashboard (logo and colour, team, cost codes, first project, a subcontractor). Steps tick themselves from the company's data; *Hide this checklist* records `help.OnboardingState`.
+- **CSV exports** all go through `core.exports` (`writer()`, `csv_response()`, `safe()`), which stops a spreadsheet running any cell as a formula, even after leading spaces.
 
 ## Background jobs and email
 

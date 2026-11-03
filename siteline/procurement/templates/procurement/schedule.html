@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui %}
-{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} CSV</a><a class="btn primary" href="{% url 'procurement_line_create' org.slug project.pk %}">{% icon 'plus' %} Add line</a>{% endblock %}
+{% block project_actions %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a><a class="btn primary" href="{% url 'procurement_line_create' org.slug project.pk %}">{% icon 'plus' %} Add line</a>{% endblock %}
 {% block project_content %}
 {% include "procurement/_subnav.html" %}
 <div class="kpis">

@@ -4,7 +4,7 @@
 {% include "costs/_nav.html" %}
 {% if to_commit %}
 <div class="card"><div class="card-head"><h2>Appointed packages to commit</h2><span class="small dim">{{ to_commit|length }} waiting</span></div>
-<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Package</th><th class="num">Order value</th><th>Cost code</th><th></th></tr></thead><tbody>
+<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Package</th><th class="num">Order value</th><th>Cost code</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
 {% for p, guess, value, basis in to_commit %}<tr><td><strong>{{ p.subcontractor }}</strong><span class="sub">{{ p.trade|default:"Package" }}</span></td>
   <td class="num">{% if value %}<strong>{{ value|money_exact:currency }}</strong>{% if basis == basis_levelled %}<span class="sub">Levelled total{% if p.quote_value is not None %} · quoted {{ p.quote_value|money_exact:currency }}{% endif %}</span>{% else %}<span class="sub">Quoted value: no levelled total</span>{% endif %}{% else %}—{% endif %}</td>
   <td colspan="2"><form method="post" action="{% url 'cost_commit_package' org.slug project.pk %}" class="row commit-form">{% csrf_token %}<input type="hidden" name="package" value="{{ p.pk }}">
@@ -15,7 +15,7 @@
 {% endif %}
 {% if sv_waiting %}
 <div class="card"><div class="card-head"><h2>Approved sub variations to add</h2></div>
-<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Sub variation</th><th>Order</th><th class="num">Approved</th><th></th></tr></thead><tbody>
+<div class="table-wrap"><table class="t cost-table"><thead><tr><th>Sub variation</th><th>Order</th><th class="num">Approved</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
 {% for sv in sv_waiting %}<tr><td><span class="mono">{{ sv.reference }}</span> {{ sv.title }}<span class="sub">{{ sv.subcontractor }}</span></td><td class="mono">{{ sv.package.commitment.ref }}</td><td class="num">{{ sv.approved_value|money_exact:currency }}</td>
   <td><form method="post" action="{{ sv.package.commitment.get_absolute_url }}">{% csrf_token %}<input type="hidden" name="action" value="add_sv"><input type="hidden" name="sub_variation" value="{{ sv.pk }}"><button class="btn sm" style="min-height:44px">Add to order</button></form></td></tr>{% endfor %}
 </tbody></table></div></div>

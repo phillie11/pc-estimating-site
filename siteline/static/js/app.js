@@ -151,4 +151,69 @@
     var visible = wrap.clientWidth - (label ? label.offsetWidth : 0);
     wrap.scrollLeft = Math.max(0, today.offsetLeft - visible / 3);
   });
+
+  // On a phone, a filter form with three or more drop-downs folds them behind "More filters" (search stays),
+  // unless one is already in use. Without JavaScript every filter simply shows, as on a desktop.
+  if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) {
+    document.querySelectorAll('main form[method=get], main form[method=GET]').forEach(function (form) {
+      var selects = form.querySelectorAll('select');
+      if (selects.length < 3) return;
+      var used = Array.prototype.some.call(selects, function (s) { return s.value !== ''; });
+      if (used) return;
+      form.classList.add('filters-folded');
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn filter-toggle';
+      b.setAttribute('aria-expanded', 'false');
+      b.textContent = 'More filters (' + selects.length + ')';
+      b.addEventListener('click', function () {
+        var folded = form.classList.toggle('filters-folded');
+        b.setAttribute('aria-expanded', folded ? 'false' : 'true');
+        b.textContent = folded ? 'More filters (' + selects.length + ')' : 'Fewer filters';
+      });
+      form.appendChild(b);
+    });
+  }
+
+  // Global search: "/" anywhere outside a text box jumps to the search box in the top bar
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    var box = document.querySelector('[data-search-box]');
+    if (!box) return;
+    e.preventDefault();
+    box.focus();
+    box.select();
+  });
+
+  // Help: the ? opens this page's help in a panel; without <dialog> support it opens the help page instead
+  document.addEventListener('click', function (e) {
+    var open = e.target.closest('[data-help-open]');
+    if (open) {
+      var panel = document.getElementById(open.getAttribute('data-help-open'));
+      if (panel && typeof panel.showModal === 'function') {
+        e.preventDefault();
+        panel.showModal();
+        var close = panel.querySelector('[data-help-close]');
+        if (close) close.focus();
+      }
+      return;
+    }
+    if (e.target.closest('[data-help-close]')) {
+      var dlg = e.target.closest('dialog');
+      if (dlg) dlg.close();
+      return;
+    }
+    // A click on the backdrop (outside the panel's box) closes it
+    if (e.target.tagName === 'DIALOG' && e.target.classList.contains('help-panel')) {
+      var r = e.target.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.target.close();
+    }
+  });
+  document.querySelectorAll('dialog.help-panel').forEach(function (dlg) {
+    dlg.addEventListener('close', function () {
+      var btn = document.querySelector('[data-help-open="' + dlg.id + '"]');
+      if (btn) btn.focus();
+    });
+  });
 })();

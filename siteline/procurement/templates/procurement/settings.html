@@ -4,7 +4,7 @@
 <div class="grid split">
   <div class="card"><div class="card-head"><h2>Submittal periods on this job</h2></div><div class="card-body">
     <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
-      <div class="form-actions"><button class="btn primary">Save</button><a class="btn" href="{% url 'submittal_list' org.slug project.pk %}">Cancel</a></div>
+      <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'submittal_list' org.slug project.pk %}">Cancel</a></div>
     </form>
   </div></div>
   <div class="card"><div class="card-head"><h2>What these do</h2></div><div class="card-body small">

@@ -54,6 +54,9 @@ class QueryCountsDontGrowTests(TestCase):
             ('sub', u('project_detail', pk)), ('sub', u('subpay_list', pk)), ('sub', u('document_list', pk)),
             ('sub', u('needs_me')),
             ('client', u('project_detail', pk)), ('client', u('needs_me')), ('client', u('application_list', pk)),
+            # Global search (help/search.py): common letters, so every source finds something
+            ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
+            ('client', u('search') + '?q=an'),
         ]
 
     def _count(self, user, url):

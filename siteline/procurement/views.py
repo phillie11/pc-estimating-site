@@ -3,7 +3,6 @@ The Procurement tab (staff: Schedule | Submittals) and the submittals pages subc
 designers see under Decisions. Every view fetches the project with get_project() and asks
 procurement.access what this person may see.
 """
-import csv
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
@@ -14,6 +13,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from core import exports
 from core.exceptions import InvalidTransition, RecordConflict
 from directory.models import Package
 from projects.access import get_project, posted_id
@@ -40,19 +40,13 @@ def _context(request, project, sub, **extra):
     return project_context(request, project, 'submittals', **extra)
 
 
-def _csv_cell(value):
-    """Spreadsheet-safe text: a leading = + - @ would otherwise run as a formula in Excel."""
-    text = '' if value is None else str(value)
-    return "'" + text if text[:1] in ('=', '+', '-', '@', '\t', '\r') else text
-
-
 def _csv(filename, header, rows):
     resp = HttpResponse(content_type='text/csv')
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
-    w = csv.writer(resp)
+    w = exports.writer(resp)
     w.writerow(header)
     for row in rows:
-        w.writerow([_csv_cell(v) for v in row])
+        w.writerow(row)
     return resp
 
 

@@ -3,7 +3,6 @@ Documents tab: the drawing register, document and revision pages, bulk upload,
 transmittals and the project's naming settings. Every view fetches the project with
 projects.access.get_project(); externals only ever get what documents.access lets them see.
 """
-import csv
 from collections import defaultdict
 
 from django.contrib import messages
@@ -15,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from core import exports
 from core.exceptions import InvalidTransition, RecordConflict
 from core.workflow import apply_transition
 from projects.access import get_project, is_internal, posted_id, require_internal
@@ -130,7 +130,7 @@ def document_list(request, org_slug, pk):
 def _register_csv(project, rows):
     resp = HttpResponse(content_type='text/csv')
     resp['Content-Disposition'] = f'attachment; filename="{project.reference}-drawing-register.csv"'
-    w = csv.writer(resp)
+    w = exports.writer(resp)
     w.writerow(['Number', 'Title', 'Category', 'Discipline', 'Project', 'Originator', 'Volume', 'Level', 'Type', 'Role',
                 'Number part', 'Revision', 'Suitability', 'Status', 'Date', 'Pages', 'Sheet size', 'Scale', 'Folder',
                 'Naming'])

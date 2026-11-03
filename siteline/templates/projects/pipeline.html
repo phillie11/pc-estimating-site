@@ -5,7 +5,7 @@
   <a href="{% url 'project_create' org.slug %}" class="btn primary">{% icon 'plus' %} New lead</a></div>
 <div class="board" data-board data-currency="{{ currency }}">
   {% for col in columns %}<section class="col" data-stage="{{ col.code }}">
-    <div class="col-head"><h3>{{ col.label }} <span class="dim mono" data-count>{{ col.items|length }}</span></h3><span class="total" data-total>{{ col.total|money:currency }}</span></div>
+    <div class="col-head"><h2>{{ col.label }} <span class="dim mono" data-count>{{ col.items|length }}</span></h2><span class="total" data-total>{{ col.total|money:currency }}</span></div>
     <div class="col-items" style="flex:1">
     {% for p in col.items %}<div class="bcard" draggable="true" data-id="{{ p.pk }}" data-value="{{ p.value|default:0|stringformat:'s' }}" data-stage-url="{% url 'project_stage' org.slug p.pk %}">
       <div class="t1"><a class="bcard-link" href="{{ p.get_absolute_url }}">{{ p.name }}</a></div>
