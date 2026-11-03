@@ -144,7 +144,8 @@ def quality_items(project):
     if register is None:
         return []
     header, rows = register(project)
-    return [_register_csv(header, rows)]
+    rows = list(rows)
+    return [_register_csv(header, rows)] if rows else []  # nothing recorded: no empty register in the pack
 
 
 def _register_csv(header, rows):

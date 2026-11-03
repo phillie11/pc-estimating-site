@@ -531,11 +531,15 @@ class PackTests(CloseoutTestBase):
         gate.assert_called_once()
 
     def test_quality_is_optional(self):
-        self.assertFalse(goldenthread.quality_installed())
+        with mock.patch('closeout.goldenthread.quality_installed', return_value=False):
+            with org_context(self.org_a):
+                self.assertEqual(goldenthread.quality_items(self.pa), [])
+            self.login(self.pat)
+            self.assertContains(self.client.get(self.url('closeout_packs', self.pa.pk)), "isn't switched on here yet")
+
+    def test_no_fire_stopping_recorded_adds_no_register(self):
         with org_context(self.org_a):
             self.assertEqual(goldenthread.quality_items(self.pa), [])
-        self.login(self.pat)
-        self.assertContains(self.client.get(self.url('closeout_packs', self.pa.pk)), "isn't switched on here yet")
 
     def test_om_and_completion_certificates_go_in(self):
         with org_context(self.org_a):
