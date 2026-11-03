@@ -68,9 +68,17 @@ def _job_annotations(request):
         module, _, name = path.rpartition('.')
         try:
             fn = getattr(importlib.import_module(module), name)
-        except (ModuleNotFoundError, AttributeError):
+        except ModuleNotFoundError as e:
+            if e.name and (module == e.name or module.startswith(e.name + '.')):
+                continue  # that app hasn't been merged yet (as HookProvider.resolve)
+            raise  # a broken import inside the app is a bug, not a missing app
+        except AttributeError:
             continue
-        out.update(fn(request))
+        flags = fn(request)
+        clash = set(flags) & set(out)
+        if clash:
+            raise ValueError(f'{path} adds job flags another app already adds: {", ".join(sorted(clash))}')
+        out.update(flags)
     return out
 
 
