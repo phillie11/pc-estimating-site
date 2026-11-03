@@ -64,13 +64,6 @@ class QueryCountsDontGrowTests(TestCase):
             ('pm', u('meeting_actions', pk) + '?show=all'), ('pm', u('meeting_detail', pk, self._meeting(built, job))),
             ('sub', u('programme_lookahead', pk)), ('sub', u('meeting_list', pk)),
             ('client', u('programme_lookahead', pk)), ('client', u('meeting_list', pk)),
-        ]
-
-    def _meeting(self, built, job):
-        """The job's latest issued meeting (the one with the most brought forward)."""
-        from meetings.models import Meeting
-        with org_context(built.org):
-            return Meeting.objects.filter(project=job, status=Meeting.STATUS_ISSUED).order_by('-held_on').first().pk
             # Close-out (closeout/)
             ('pm', u('closeout_overview', pk)), ('pm', u('closeout_defects', pk)), ('pm', u('closeout_om', pk)),
             ('pm', u('closeout_packs', pk)), ('pm', u('closeout_certificates', pk)), ('client', u('closeout_client', pk)),
@@ -81,6 +74,12 @@ class QueryCountsDontGrowTests(TestCase):
             ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
             ('client', u('search') + '?q=an'),
         ]
+
+    def _meeting(self, built, job):
+        """The job's latest issued meeting (the one with the most brought forward)."""
+        from meetings.models import Meeting
+        with org_context(built.org):
+            return Meeting.objects.filter(project=job, status=Meeting.STATUS_ISSUED).order_by('-held_on').first().pk
 
     def _quality_pages(self, built, job, u):
         from quality.models import Inspection, Penetration, Permit
