@@ -133,7 +133,14 @@ class RateForm(StyledModelForm):
         widgets = {'rate': forms.TextInput(attrs=MONEY_ATTRS)}
 
 
-def validate_picture(f, label='photo'):
+PHOTO_MAX_PIXELS = 40_000_000
+# A signature pad is a few hundred pixels across and a phone photo of a signed paper sheet about 12 million;
+# anything bigger is refused before it is decoded (a blank 40-million-pixel PNG is 170 KB to upload and
+# over 600 MB to decode and check for marks)
+SIGNATURE_MAX_PIXELS = 16_000_000
+
+
+def validate_picture(f, label='photo', max_pixels=PHOTO_MAX_PIXELS):
     """Allowed type and size (projects.files), then a picture Pillow can open fully."""
     validate_upload(f)
     from PIL import Image
@@ -142,7 +149,7 @@ def validate_picture(f, label='photo'):
         img = Image.open(f)
         if img.format not in ('PNG', 'JPEG', 'MPO', 'WEBP', 'GIF'):
             raise ValidationError(f'The {label} must be a PNG, JPEG, WebP or GIF picture.')
-        if img.width * img.height > 40_000_000:
+        if img.width * img.height > max_pixels:
             raise ValidationError(f'The {label} is too large a picture.')
         img.load()
     except ValidationError:
@@ -157,6 +164,8 @@ def validate_picture(f, label='photo'):
 def is_blank(img):
     """True if the picture has no marks: a signature pad that was never written on."""
     from PIL import Image, ImageOps
+    img = img.convert('RGBA') if img.mode in ('P', '1') else img.copy()  # resized smoothly, not nearest pixel
+    img.thumbnail((1200, 1200))  # marks survive the reduction; the copies below stay small
     if img.mode in ('RGBA', 'LA', 'PA') or 'transparency' in img.info:
         background = Image.new('RGB', img.size, (255, 255, 255))
         rgba = img.convert('RGBA')
@@ -188,7 +197,7 @@ class SignatureForm(StyledForm):
 
     def clean_signature(self):
         f = self.cleaned_data['signature']
-        img = validate_picture(f, 'signature')
+        img = validate_picture(f, 'signature', max_pixels=SIGNATURE_MAX_PIXELS)
         if is_blank(img):
             raise ValidationError('The signature box is empty. Ask them to sign in the box, then press Save.')
         return f
