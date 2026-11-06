@@ -10,7 +10,7 @@ Pillow==13.0.0
 # Two-factor set-up QR codes, drawn on the server (pure Python, no dependencies)
 segno==1.6.6
 # PDF drawing register and transmittal issue sheets (ReportLab, BSD)
-reportlab==5.0.1
+reportlab==5.1.0
 # Quote levelling: reading scope workbooks (.xlsx), read-only and data-only (MIT)
 openpyxl==3.1.5
 # openpyxl parses workbook XML with defusedxml when it is installed: no entities, no external DTDs (PSF)
