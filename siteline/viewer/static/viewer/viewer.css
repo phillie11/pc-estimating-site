@@ -69,7 +69,7 @@
 .dv-tools .btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
 .dv-toolset { flex-wrap: wrap; }
 .dv-colour { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
-.dv-colour select { min-height: 44px; font: inherit; font-weight: 400; }
+.dv-colour select { min-height: 44px; min-width: 6.5em; font: inherit; font-weight: 400; }
 .dv-save { color: var(--ink-2); min-width: 6em; }
 .dv-save.error { color: var(--bad); font-weight: 600; }
 .dv-layers .list li { gap: 8px; }
