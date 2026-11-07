@@ -280,6 +280,8 @@ def build(spec, cached=True, stale=None, typed=None):
         for c, v in zip('BCDEFGH', row):
             if v not in (None, ''):
                 cl[f'{c}{8 + i}'] = v
+                if isinstance(v, str) and v.startswith('='):
+                    cl[f'{c}{8 + i}'].data_type = 's'  # typed text that looks like a formula, as a hostile cell would be
     ins = wb.create_sheet('Instructions', 3)
     ins['B2'] = 'HOW TO USE'
 

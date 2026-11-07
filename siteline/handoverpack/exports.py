@@ -8,7 +8,7 @@ through core.exports.safe() first, as the CSV exports do: a value starting = + -
 leading apostrophe and never runs as a formula. Numbers are written as numbers.
 """
 import io
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -40,10 +40,6 @@ def _n(v):
     if isinstance(v, Decimal):
         return float(v)
     return v
-
-
-def _m(v):
-    return None if v is None else float(Decimal(v).quantize(Decimal('0.01'), ROUND_HALF_UP))
 
 
 class Sheet:
@@ -78,7 +74,7 @@ class Sheet:
             if isinstance(v, Formula):  # written here, never from anyone's typing
                 value = str(v)
             elif isinstance(v, (Decimal, int, float)) and not isinstance(v, bool) and kind != 'text':
-                value = _m(v) if kind == 'money' else _n(v)
+                value = _n(v)  # unrounded, so a SUM total is the exact sum; shown to the penny
             else:
                 value = txt(v) if v not in (None, '') else None
             c = self.ws.cell(self.row, i, value)
