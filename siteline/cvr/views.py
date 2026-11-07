@@ -25,7 +25,7 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required, internal_required
 
 from . import cashflow as cashflow_rules
-from . import chart, figures, rules, services
+from . import chart, figures, portal, rules, services
 from .access import can_set_rates, cvr_project, daywork_project, prepares_cvr
 from .forms import (AdjustmentForm, CommentaryForm, LineForm, PhotoForm, RateForm, ReverseForm, SendForm,
                     SettingsForm, SheetForm, SignatureForm, StartForm, TermsForm)
@@ -68,13 +68,17 @@ def _previous_figures(project, month):
     return _with_previous(project, None, month)[1]
 
 
-def _with_previous(project, period, month):
-    """(this month's figures, last month's or None), the live ones worked out together."""
+def _with_previous(project, period, month, with_drift=False):
+    """
+    (this month's figures, last month's or None), the live ones worked out together. With `with_drift`, a
+    third: a submitted or signed-off month's figures worked out live now (no adjustments), for
+    figures.drift(), in the same queries.
+    """
     prev_month = rules.add_months(month, -1)
     prev = CVRPeriod.objects.filter(project=project, month=prev_month).first()
     want = {}
-    if period is not None and not period.is_frozen:
-        want[period.month] = {project.pk: period}
+    if period is not None and (not period.is_frozen or with_drift):
+        want[period.month] = {project.pk: period} if not period.is_frozen else {}
     if prev is not None and not prev.is_frozen:
         want[prev_month] = {project.pk: prev}
     elif prev is None and prev_month >= services.first_month(project):
@@ -87,6 +91,9 @@ def _with_previous(project, period, month):
         previous = figures.frozen_figures(prev)
     else:
         previous = live[prev_month][project.pk] if prev_month in live else None
+    if with_drift:
+        now = live[period.month][project.pk] if period is not None and period.is_frozen else None
+        return current, previous, now
     return current, previous
 
 
@@ -136,7 +143,7 @@ def cvr_list(request, org_slug, pk):
 
 
 def _period_ctx(request, project, period, **extra):
-    current, previous = _with_previous(project, period, period.month)
+    current, previous, live_now = _with_previous(project, period, period.month, with_drift=True)
     adjustments = list(CVRAdjustment.objects.filter(period=period).select_related('created_by'))
     reversed_ids = {a.reverses_id for a in adjustments if a.reverses_id}
     for a in adjustments:
@@ -157,7 +164,7 @@ def _period_ctx(request, project, period, **extra):
     return commercial_context(
         request, project, 'cvr', period=period, f=current, budget_after=budget_after, previous=previous, move=current.movement(previous),
         adjustments=adjustments, transitions=available_transitions(period, request.user),
-        can_prepare=True, drift=figures.drift(period, project),
+        can_prepare=True, drift=figures.drift(period, project, now=live_now),
         has_previous=services.previous_period(period) is not None, sources=sources,
         month_ended=rules.has_ended(period.month, timezone.localdate()), advisory=rules.ADVISORY, **extra)
 
@@ -165,7 +172,8 @@ def _period_ctx(request, project, period, **extra):
 @internal_required
 def cvr_period(request, org_slug, pk, period_id):
     project = cvr_project(request, pk)
-    period = get_object_or_404(CVRPeriod, project=project, pk=period_id)
+    period = get_object_or_404(CVRPeriod.objects.select_related('submitted_by', 'signed_off_by'), project=project,
+                               pk=period_id)
     adj_form = AdjustmentForm(prefix='adj')
     commentary_form = CommentaryForm(instance=period, prefix='c')
     if request.method == 'POST':
@@ -332,8 +340,8 @@ def cashflow(request, org_slug, pk):
 # ---------------------------------------------------------------------------
 
 def _sheet(project, sheet_id):
-    return get_object_or_404(DayworkSheet.objects.select_related('created_by', 'change_event'), project=project,
-                             pk=sheet_id)
+    return get_object_or_404(DayworkSheet.objects.select_related('created_by', 'change_event', 'sign_requested_from'),
+                             project=project, pk=sheet_id)
 
 
 DW_FILTERS = [('', 'All'), ('open', 'To do'), (DayworkSheet.DRAFT, 'Not signed yet'), (DayworkSheet.SIGNED, 'Signed'),
@@ -441,12 +449,15 @@ def _store_photo(sheet, f, caption, user):
     photo.image.save(os.path.basename(f.name), f, save=False)
     f.seek(0)
     img = ImageOps.exif_transpose(Image.open(f))
-    img.thumbnail((480, 480))
     if img.mode != 'RGB':
         img = img.convert('RGB')
-    buf = io.BytesIO()
-    img.save(buf, 'JPEG', quality=80)
-    photo.thumbnail.save('thumb.jpg', ContentFile(buf.getvalue()), save=False)
+    # Re-encoded copies carry no EXIF (location, device), so the client portal never needs the original
+    for field, size, name in ((photo.display, 1600, 'display.jpg'), (photo.thumbnail, 480, 'thumb.jpg')):
+        copy = img.copy()
+        copy.thumbnail((size, size))
+        buf = io.BytesIO()
+        copy.save(buf, 'JPEG', quality=82)
+        field.save(name, ContentFile(buf.getvalue()), save=False)
     photo.save()
     return photo
 
@@ -520,6 +531,20 @@ def daywork_detail(request, org_slug, pk, sheet_id):
                                                f'{sheet.reference} added to {ce.reference}') +
                                      '. Its revenue and cost lines are priced from the sheet.')
                     return redirect(ce)
+            elif action == 'ask_client':
+                chosen = request.POST.get('signer', '')
+                signer = portal.client_side(project).filter(pk=int(chosen)).first() \
+                    if chosen.isdigit() and chosen.isascii() else None
+                portal.ask(sheet, request.user, signer)
+                log_activity(request, 'asked the client to sign', sheet.reference, project=project,
+                             url=sheet.get_absolute_url(), internal_only=True)
+                messages.success(request, f'{sheet.reference} sent to {signer.full_name} to sign in their portal. It '
+                                          'is on their Needs me; you\'ll be told when they sign.')
+                return redirect(sheet)
+            elif action == 'stop_asking':
+                portal.stop_asking(sheet, request.user)
+                messages.success(request, f'{sheet.reference} is no longer waiting for a signature in the portal.')
+                return redirect(sheet)
             elif action == 'cancel':
                 apply_transition(sheet, 'cancel', request.user, note=request.POST.get('note', '')[:255])
                 messages.success(request, f'{sheet.reference} cancelled. It stays on the register.')
@@ -537,7 +562,7 @@ def daywork_detail(request, org_slug, pk, sheet_id):
         request, project, 'dayworks', sheet=sheet, lines=lines, groups=groups, price=price, line_form=line_form,
         photo_form=photo_form, send_form=send_form, photos=list(sheet.photos.all()), kind=kind,
         rates=list(DayworkRate.objects.filter(project=project, is_active=True)),
-        can_set_rates=can_set_rates(request, project),
+        can_set_rates=can_set_rates(request, project), signers=list(portal.client_side(project)),
         transitions={t.name for t in available_transitions(sheet, request.user)}))
 
 

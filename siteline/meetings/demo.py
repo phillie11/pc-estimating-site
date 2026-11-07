@@ -7,7 +7,9 @@ packages exist.
       subcontractor sees their own lines in the portal look-ahead) and trades; four meetings:
         MTG-001 pre-start with the joinery subcontractor (issued, actions done)
         MTG-002 site progress meeting (issued): an action for the subcontractor, one overdue for the PM
-        MTG-003 client meeting (issued): the client has an action due in 3 days (their Needs me)
+        MTG-003 client meeting (issued): the client has an action due in 3 days (their Needs me); its last
+                heading, "Our commercial position", is internal only (the company's client meeting
+                agenda carries it), so the client never sees it or the PM's action under it
         MTG-004 site progress meeting yesterday, minutes started but not issued (the PM's Needs me),
                 with MTG-002's open actions brought forward
   Salford Quays (project 4): the programme imported from a Microsoft Project XML file (in the import
@@ -28,7 +30,7 @@ from projects import programme_import
 from projects.models import Activity, Project, ProjectMember
 
 from . import services
-from .models import CLIENT, PRESTART, PROGRESS, MeetingAction
+from .models import CLIENT, PRESTART, PROGRESS, AgendaTemplate, MeetingAction
 
 
 def _link_programme(project):
@@ -138,11 +140,21 @@ def seed(*, leeds, pm, owner, client, sub_user, today=None):
             due=today - timedelta(days=7), done=True, update='Ordered, delivery in week 6.')
     _issue(prog1, pm)
 
+    # The client meeting agenda ends with a heading only our team sees ("Internal:" in the template)
+    template = AgendaTemplate.for_org(leeds.organization)[CLIENT]
+    template.items = template.items.rstrip() + '\nInternal: Our commercial position'
+    template.save()
     client_mtg = _meeting(leeds, pm, CLIENT, 7, [pm, owner, client], today, location="Client's office", minutes=[
         (3, 'On programme overall. Kitchen extract running a few days behind; no effect on completion yet.'),
         (4, 'The bar back veneer needs deciding this week to hold the joinery programme.')])
+    client_items = list(client_mtg.items.all())
+    client_items[-1].minutes = ('Kitchen extract delay is the M&E sub\'s; hold their next payment discussion until '
+                                'the revised programme is in. Veneer change likely a variation in our favour.')
+    client_items[-1].save(update_fields=['minutes'])
     _action(client_mtg, 'Confirm the bar back veneer: smoked eucalyptus or walnut', owner=client,
-            due=today + timedelta(days=3), item=list(client_mtg.items.all())[4])
+            due=today + timedelta(days=3), item=client_items[4])
+    _action(client_mtg, 'Price the veneer change before the client decides', owner=pm, due=today + timedelta(days=2),
+            item=client_items[-1])
     _issue(client_mtg, pm)
 
     # Yesterday's progress meeting: minutes started, not issued yet (on the PM's Needs me), actions brought forward

@@ -185,6 +185,23 @@ def _json_value(value):
     return value
 
 
+_AUDIT_ATTNAMES = {}
+
+
+def _audit_attnames(model):
+    """
+    [(field name, attname)] of a record type's audit fields. Worked out once per registration: every record
+    loaded takes a snapshot of these (from_db), and a page listing thousands of them (the company cash
+    position report reads every application) spent a fifth of its time looking the fields up again.
+    """
+    record_type = get_record_type(model)
+    key = (model, id(record_type))
+    names = _AUDIT_ATTNAMES.get(key)
+    if names is None:
+        names = _AUDIT_ATTNAMES[key] = [(n, model._meta.get_field(n).attname) for n in record_type.audit_fields]
+    return names
+
+
 class RecordBase(TenantModel):
     """
     Subclass for every numbered, per-project register row. Then register it (core.registry)
@@ -261,12 +278,8 @@ class RecordBase(TenantModel):
     # --- audit snapshot -------------------------------------------------------
     def _audit_values(self):
         deferred = self.get_deferred_fields()
-        values = {}
-        for name in get_record_type(self).audit_fields:
-            f = self._meta.get_field(name)
-            if f.attname not in deferred:
-                values[name] = _json_value(getattr(self, f.attname))
-        return values
+        return {name: _json_value(getattr(self, attname)) for name, attname in _audit_attnames(type(self))
+                if attname not in deferred}
 
     @classmethod
     def from_db(cls, db, field_names, values):

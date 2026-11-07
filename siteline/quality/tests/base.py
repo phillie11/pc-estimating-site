@@ -10,11 +10,8 @@ and helpers that make records through the models.
 """
 import datetime
 import io
-import shutil
-import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from django.utils import timezone
 from PIL import Image
 
@@ -28,12 +25,6 @@ from .. import rules
 from ..library import ensure_library
 from ..models import ChecklistTemplate, Inspection, InspectionItem, Penetration, Permit
 
-MEDIA = tempfile.mkdtemp()
-
-
-def tearDownModule():  # imported into each test module
-    shutil.rmtree(MEDIA, ignore_errors=True)
-
 
 def jpeg(name='photo.jpg', size=(64, 48), colour='#808080'):
     buf = io.BytesIO()
@@ -41,7 +32,6 @@ def jpeg(name='photo.jpg', size=(64, 48), colour='#808080'):
     return SimpleUploadedFile(name, buf.getvalue(), content_type='image/jpeg')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class QualityTestBase(CommercialTestBase):
     def setUp(self):
         super().setUp()

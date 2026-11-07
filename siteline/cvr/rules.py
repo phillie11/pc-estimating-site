@@ -69,6 +69,18 @@ def month_label(day):
     return f'{day:%B %Y}'
 
 
+def months_without_sign_off(first_month, month, signed_off):
+    """
+    The months from the job's first CVR up to (not including) `month` that have no signed-off CVR, earliest
+    first. `signed_off` is the months whose CVR is signed off. A month can't be signed off while this
+    isn't empty (CommercialSettings.cvr_every_month, on by default; pending owner decision).
+    """
+    if first_month is None or month_start(first_month) >= month_start(month):
+        return []
+    done = {month_start(m) for m in signed_off}
+    return [m for m in months_between(first_month, add_months(month, -1)) if m not in done]
+
+
 def has_ended(month, today):
     """A CVR month can be submitted once its last day has passed."""
     return month_end(month) < today

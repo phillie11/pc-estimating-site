@@ -606,3 +606,16 @@ def _client_label(issue):
     if issue.assignee_id:
         return 'Being fixed', 'accent'
     return 'Reported', 'warn'
+
+
+@admin_required
+def closeout_settings(request, org_slug):
+    """The company's close-out targets (CloseoutSettings)."""
+    from .forms import CloseoutSettingsForm
+    from .models import CloseoutSettings
+    form = CloseoutSettingsForm(request.POST or None, instance=CloseoutSettings.for_org(request.org))
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Close-out settings saved. Defects already reported use the new target too.')
+        return redirect('closeout_settings', org_slug)
+    return render(request, 'closeout/settings.html', {'form': form})

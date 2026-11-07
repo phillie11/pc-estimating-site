@@ -1,6 +1,6 @@
 ---
 title: Drawings and documents
-pages: document_list document_detail revision_detail drawing_viewer
+pages: document_list document_detail revision_detail
 who: external
 order: 32
 ---
@@ -10,3 +10,4 @@ The drawings and documents issued to you.
 - **View** opens a drawing in the browser. Pinch or use the buttons to zoom.
 - If a transmittal is waiting, open it and acknowledge it so the site team knows you have it.
 - You can upload documents, such as your RAMS, from the register.
+- Search the register by number or title, and by the words inside a PDF where the document page says they can be searched. A scanned drawing is only found by its number and title.

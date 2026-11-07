@@ -95,3 +95,49 @@ class DrawingPin(TenantModel):
     @property
     def record(self):
         return self.issue if self.issue_id else self.rfi
+
+
+class MarkupLayer(TenantModel):
+    """
+    One person's mark-up on one revision of a drawing: pen, lines, arrows, boxes, clouds, notes and
+    measurements, stored as vector shapes (viewer/markup.py) with positions as fractions of the page.
+    It is never baked into the PDF, so a layer drawn on rev P02 can be shown over rev C01.
+
+    Private to its owner until they share it: with the site team (our staff on the job), or, for
+    staff layers, also with every external who can open the revision it was drawn on. Who sees what
+    is decided in viewer.access.visible_layers.
+    """
+    PRIVATE, TEAM, EXTERNAL = 'PRIVATE', 'TEAM', 'EXTERNAL'
+    SHARE_CHOICES = [(PRIVATE, 'Only me'), (TEAM, 'The site team'),
+                     (EXTERNAL, 'The site team and everyone this drawing is shared with')]
+    SHARE_TONES = {PRIVATE: 'muted', TEAM: 'info', EXTERNAL: 'accent'}
+
+    project = models.ForeignKey('projects.Project', on_delete=models.CASCADE, related_name='markup_layers')
+    document = models.ForeignKey('projects.Document', on_delete=models.CASCADE, related_name='markup_layers')
+    revision = models.ForeignKey('projects.DocumentRevision', on_delete=models.CASCADE, related_name='markup_layers')
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    share = models.CharField(max_length=10, choices=SHARE_CHOICES, default=PRIVATE)
+    data = models.JSONField(default=dict, blank=True, help_text='Checked by viewer.markup.parse before saving.')
+    shape_count = models.PositiveIntegerField(default=0)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', 'pk']
+        constraints = [
+            models.UniqueConstraint(fields=['revision', 'owner'], name='viewer_markup_one_per_person_per_revision'),
+            models.CheckConstraint(condition=Q(share__in=['PRIVATE', 'TEAM', 'EXTERNAL']), name='viewer_markup_share'),
+        ]
+        indexes = [models.Index(fields=['document', 'share'])]
+
+    def __str__(self):
+        return f'Mark-up by {self.owner} on {self.revision}'
+
+    @property
+    def shapes(self):
+        return (self.data or {}).get('shapes') or []
+
+    @property
+    def share_tone(self):
+        return self.SHARE_TONES.get(self.share, 'muted')

@@ -1,0 +1,16 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if can_ask and not project.is_archived %}<a class="btn primary" href="{% url 'portal_permit_create' org.slug project.pk %}">{% icon 'plus' %} Ask for a permit</a>{% endif %}{% endblock %}
+{% block project_content %}
+<div class="q-site q-touch">
+<div class="card"><div class="card-head"><h2>Permits for your work</h2><span class="small dim">{{ live|length }} live</span></div>
+{% if live %}<ul class="list">{% for p in live %}<li style="flex-wrap:wrap;align-items:center"><span class="grow" style="flex-basis:12rem"><a class="rowlink" href="{% url 'portal_permit' org.slug project.pk p.pk %}"><span class="ref">{{ p.ref }}</span> {{ p.type_label }}: {{ p.title }}</a><br><span class="small dim">{{ p.location }} · {{ p.starts_at|date:"D j M H:i" }} to {{ p.expires_at|date:"D j M H:i" }}</span></span>{% status_badge p.state_label p.status_tone %}</li>{% endfor %}</ul>
+{% elif can_ask %}{% url 'portal_permit_create' org.slug project.pk as ask_url %}{% include "partials/empty_state.html" with title="No live permits" message="Hot works, working at height, isolations and confined spaces need a permit before work starts. Ask for one here and the site team approves it." cta_url=ask_url cta_label="Ask for a permit" left=True %}
+{% else %}{% include "partials/empty_state.html" with title="No permits" message="You can ask for permits here once you have a package on this job. Until then, ask the site team." left=True %}{% endif %}
+</div>
+{% if done %}<div class="card"><div class="card-head"><h2>Closed, refused or withdrawn</h2></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Permit</th><th>When</th><th>Status</th></tr></thead><tbody>
+{% for p in done %}<tr><td><a class="rowlink" href="{% url 'portal_permit' org.slug project.pk p.pk %}"><span class="ref">{{ p.ref }}</span> {{ p.type_label }}</a><span class="sub">{{ p.title }}</span></td><td class="small nowrap">{{ p.starts_at|date:"j M Y" }}</td><td>{% status_badge p.state_label p.status_tone %}</td></tr>{% endfor %}
+</tbody></table></div></div>{% endif %}
+<p class="small dim">{% badge 'Advisory' 'warn' %} A permit supports your safe system of work and RAMS; it doesn't replace them.</p>
+</div>
+{% endblock %}

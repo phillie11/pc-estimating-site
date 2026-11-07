@@ -2,9 +2,10 @@
 How a project's tabs are laid out. projects.views.project_context decides which tabs a
 person may see (`tabs`: code, label, url, count); this decides how they are shown.
 
-Staff: at most MAX_STAFF_TABS in the row. When there are more, the row holds the first
-MAX_STAFF_TABS - 1 in STAFF_ORDER and a "More" menu holds the rest, so the row never needs
-to scroll on a laptop.
+Staff on a won or live job: eight grouped tabs (STAFF_GROUPS), no "More" menu. A group with more
+than one register shows them as a second row of section links under the tab, so everything is at
+most two taps away. A bid keeps its short flat row (BID_ORDER). Any tab no group claims goes after
+the groups; only if that ever takes the row past MAX_STAFF_TABS does a "More" menu appear.
 
 External collaborators: at most five tabs (Overview, Decisions, Documents, Programme,
 Snags). Registers that live under one of them (RFIs, variations, RAMS, tasks, the team)
@@ -19,6 +20,24 @@ MAX_STAFF_TABS = 8
 STAFF_ORDER = ('overview', 'programme', 'documents', 'rfis', 'commercial', 'variations', 'subvariations', 'rams', 'procurement', 'diary', 'issues',
                'tender', 'packages', 'tasks', 'team', 'quality',
                'closeout', 'safety', 'meetings')
+# Staff groups on a won or live job: (code, label, member tab codes). The group's link is its first
+# member the person can see; its count is the members' counts added up.
+STAFF_GROUPS = (
+    ('overview', 'Overview', ('overview', 'team')),
+    ('programme', 'Programme', ('programme', 'meetings', 'tasks')),
+    ('documents', 'Documents', ('documents',)),
+    ('rfis', 'RFIs', ('rfis',)),
+    ('site', 'Site', ('diary', 'issues', 'quality', 'safety', 'rams')),
+    ('commercial', 'Commercial', ('commercial', 'subvariations')),
+    ('supply', 'Supply chain', ('packages', 'tender', 'procurement')),
+    ('closeout', 'Close-out', ('closeout',)),
+)
+# How a member is labelled in its group's section links, where its tab label would repeat the group
+STAFF_GROUP_MEMBER_LABELS = {
+    'overview': 'Summary',
+    'programme': 'Programme',
+    'commercial': 'Contract and money',
+}
 # Estimating keeps its own order: the tender comes first on a bid
 BID_ORDER = ('overview', 'tender', 'packages', 'documents', 'team')
 
@@ -31,10 +50,10 @@ STAFF_LABELS = {
 # External tab groups, in row order
 EXTERNAL_GROUPS = (
     ('overview', 'Overview', ('overview', 'team')),
-    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'payments', 'subpayments', 'subvariations', 'rams', 'submittals', 'tasks', 'meetings')),
+    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'payments', 'dayworks', 'subpayments', 'subvariations', 'rams', 'permits', 'nearmiss', 'submittals', 'tasks', 'meetings')),
     ('documents', 'Documents', ('documents',)),
     ('programme', 'Programme', ('programme',)),
-    ('snags', 'Snags', ('issues', 'closeout')),
+    ('snags', 'Snags', ('issues', 'firestopping', 'closeout')),
 )
 EXTERNAL_LABELS = {
     'decisions': 'Waiting on you',
@@ -50,6 +69,10 @@ EXTERNAL_LABELS = {
     'meetings': 'Meetings',
     'issues': 'Your snags',
     'closeout': 'Defects and handover',
+    'dayworks': 'Daywork sheets',
+    'permits': 'Your permits',
+    'nearmiss': 'Report a near miss',
+    'firestopping': 'Fire-stopping',
 }
 
 
@@ -68,8 +91,9 @@ def arrange(request, project, tabs, active):
 
 def _staff(tabs, active, project):
     tabs = [(code, STAFF_LABELS.get(code, label), url, n) for code, label, url, n in tabs]
-    order = BID_ORDER if project.section == 'estimating' else STAFF_ORDER
-    tabs = _ordered(tabs, order)
+    if project.section != 'estimating':
+        return _staff_grouped(tabs, active)
+    tabs = _ordered(tabs, BID_ORDER)
     row, more = tabs, []
     if len(tabs) > MAX_STAFF_TABS:
         row, more = tabs[:MAX_STAFF_TABS - 1], tabs[MAX_STAFF_TABS - 1:]
@@ -109,3 +133,27 @@ def _external(request, project, tabs, active):
     if active == 'overview':
         ctx['changes'] = visits.changes_since(request, project, since)
     return ctx
+
+
+def _staff_grouped(tabs, active):
+    by_code = {t[0]: t for t in tabs}
+    claimed = {c for _, _, members in STAFF_GROUPS for c in members}
+    row, subtabs, group_on = [], [], active
+    for group, label, members in STAFF_GROUPS:
+        present = [by_code[c] for c in members if c in by_code]
+        if not present:
+            continue
+        count = sum(t[3] or 0 for t in present) or None
+        row.append((group, label, present[0][2], count))
+        if active in members:
+            group_on = group
+            if len(present) > 1:
+                subtabs = [(c, STAFF_GROUP_MEMBER_LABELS.get(c, lbl), url, n) for c, lbl, url, n in present]
+    row += _ordered([t for t in tabs if t[0] not in claimed], STAFF_ORDER)
+    more = []
+    if len(row) > MAX_STAFF_TABS:
+        row, more = row[:MAX_STAFF_TABS - 1], row[MAX_STAFF_TABS - 1:]
+    on = next((t for t in more if t[0] == active), None)
+    return {'tabs': tabs, 'tab_row': row, 'tab_more': more, 'more_on': on,
+            'more_count': sum(n or 0 for _, _, _, n in more), 'tab_group': group_on, 'subtabs': subtabs,
+            'subtabs_grouped': True}

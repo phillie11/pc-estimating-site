@@ -1,0 +1,29 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Cash position{% endblock %}
+{% block content %}<div class="rp-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'reports_home' org.slug %}">Reports</a></div><h1>Cash position</h1>
+  <p class="small dim">Money in and out on every live job for {{ months.0|date:"F" }} and the next two months, taken from each job's cashflow forecast (Commercial → Cashflow). Received and paid so far, plus what is forecast. Excluding VAT.</p></div>
+  <div class="row">{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}</div></div>
+
+{% if rows %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Money in</div><div class="value">{{ grand.in|money:currency }}</div><div class="note">three months</div></div>
+  <div class="kpi"><div class="label">Money out</div><div class="value">{{ grand.out|money:currency }}</div><div class="note">three months</div></div>
+  <div class="kpi"><div class="label">Net</div><div class="value{% if grand.net < 0 %} bad{% endif %}">{{ grand.net|money:currency }}</div></div>
+</div>
+{% if graph %}<div class="card"><div class="card-head"><h2>Net cash by month</h2></div><div class="card-body">{% include "reports/_bars.html" with chart_id="rp-cash" chart_title="Net cash across all live jobs by month; the table below has every figure" %}</div></div>{% endif %}
+<div class="card"><div class="card-head"><h2>By job</h2></div><div class="table-wrap"><table class="t register rp-cash">
+  <caption class="sr-only">Money in, out and net by job and month</caption>
+  <thead><tr><th scope="col" rowspan="2">Job</th>{% for m in months %}<th scope="colgroup" colspan="3" class="num">{{ m|date:"M Y" }}</th>{% endfor %}<th scope="col" rowspan="2" class="num">Net, three months</th></tr>
+    <tr>{% for m in months %}<th scope="col" class="num">In</th><th scope="col" class="num">Out</th><th scope="col" class="num">Net</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><a class="rowlink" href="{% url 'cvr_cashflow' org.slug r.project.pk %}">{{ r.project.name }}</a><span class="sub ref">{{ r.project.reference }}</span></td>
+    {% for c in r.cells %}<td class="num">{{ c.in|money:currency }}</td><td class="num">{{ c.out|money:currency }}</td><td class="num{% if c.net < 0 %} overdue{% endif %}">{{ c.net|money:currency }}</td>{% endfor %}
+    <td class="num{% if r.net < 0 %} overdue{% endif %}"><strong>{{ r.net|money:currency }}</strong></td>
+  </tr>{% endfor %}</tbody>
+  <tfoot><tr><th scope="row">Total</th>{% for t in totals %}<td class="num">{{ t.in|money:currency }}</td><td class="num">{{ t.out|money:currency }}</td><td class="num">{{ t.net|money:currency }}</td>{% endfor %}<td class="num"><strong>{{ grand.net|money:currency }}</strong></td></tr></tfoot>
+</table></div></div>
+{% else %}<div class="card">{% url 'project_list' org.slug as jobs_url %}{% include "partials/empty_state.html" with title="No live jobs" message="This report adds up the cashflow of jobs that are won or live on site. Once a job is won its cashflow shows here." cta_url=jobs_url cta_label="Go to projects" %}</div>{% endif %}
+<p class="small dim">{% badge 'Advisory' 'warn' %} Forecasts follow each job's payment terms, programme and retention, as its Cashflow page explains. {{ advisory }}</p>
+</div>
+{% endblock %}

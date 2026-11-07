@@ -11,4 +11,6 @@ Incidents and near misses on this job, numbered INC-001, plus the CDM register a
 2. Say what happened and where. The time is filled in as now. Say whether anyone was hurt and take a photo if you can.
 3. Press **Send report**. The project manager is told straight away.
 
-The project manager then investigates, adds actions (each goes on its owner's Needs me) and closes it once the findings are written up. If it must be reported under RIDDOR, the deadline shows on the incident and on Needs me. RIDDOR rules are advisory: check with your safety adviser.
+Subcontractors can report near misses from their portal too; those come to the project manager the same way.
+
+The project manager then investigates (by the company's target, 7 days to start with: Settings, Safety), adds actions (each goes on its owner's Needs me) and closes it once the findings are written up. If it must be reported under RIDDOR, the deadline shows on the incident and on Needs me. RIDDOR rules are advisory: check with your safety adviser.

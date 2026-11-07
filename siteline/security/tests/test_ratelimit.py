@@ -9,6 +9,7 @@ from django.urls import reverse
 
 from security import ratelimit
 from security.ip import client_ip
+from security.testing import hold_rate_limit_clock
 
 from .base import SecurityTestBase, code_for
 
@@ -36,6 +37,10 @@ class LimiterTests(SecurityTestBase):
 
 
 class RouteLimitTests(SecurityTestBase):
+    def setUp(self):
+        super().setUp()
+        hold_rate_limit_clock(self)  # two requests a test expects to share a window always do
+
     def assert_limited(self, response):
         self.assertEqual(response.status_code, 429)
         self.assertTemplateUsed(response, 'security/429.html')

@@ -6,7 +6,7 @@
 <div class="site-mode touch sf-incident">
   <div class="sf-incident-head">
     <h2><span class="ref">{{ incident.ref }}</span> {{ incident.title }}</h2>
-    <p class="small dim">{% status_badge incident %} · {{ incident.get_kind_display }} · Reported by {{ incident.created_by.full_name|default:"someone" }}, {{ incident.created_at|date:"D j M, H:i" }}{% if incident.is_open and incident.ball_in_court_user %} · With {{ incident.ball_in_court_user.full_name }}{% if incident.due_date %}, investigation due {{ incident.due_date|date:"D j M" }}{% endif %}{% endif %}{% if incident.closed_at %} · Closed {{ incident.closed_at|date:"j M Y" }} by {{ incident.closed_by.full_name|default:"someone" }}{% endif %}</p>
+    <p class="small dim">{% status_badge incident %} · {{ incident.get_kind_display }} · Reported by {{ incident.created_by.full_name|default:"someone" }}{% if incident.reported_by_company %} ({{ incident.reported_by_company }}, through their portal){% endif %}, {{ incident.created_at|date:"D j M, H:i" }}{% if incident.is_open and incident.ball_in_court_user %} · With {{ incident.ball_in_court_user.full_name }}{% if incident.due_date %}, investigation due {{ incident.due_date|date:"D j M" }}{% endif %}{% endif %}{% if incident.closed_at %} · Closed {{ incident.closed_at|date:"j M Y" }} by {{ incident.closed_by.full_name|default:"someone" }}{% endif %}</p>
   </div>
 
   {% if incident.riddor_outstanding %}<div class="banner bad-banner"><span><strong>{{ incident.riddor_label.0 }}.</strong> {{ incident.riddor_guidance }} <a href="{% url 'incident_edit' org.slug project.pk incident.pk %}#riddor">Record when it was reported</a></span></div>{% endif %}

@@ -1,0 +1,37 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<p class="small"><a href="{% url 'portal_firestop' org.slug project.pk %}">← All your fire-stopping</a></p>
+<div class="q-site q-touch">
+{% if p.status == 'FAILED' %}<div class="banner q-bad">This seal failed inspection: {{ p.inspection_note }} Put it right, add a photo of the new seal, then mark it resealed.</div>
+{% elif p.status == 'SEALED' %}<div class="banner">With the site team to inspect and sign off.</div>{% endif %}
+<div class="card"><div class="card-head"><h2><span class="ref">{{ p.ref }}</span> {{ p.title }}</h2>{% status_badge p %}</div><div class="card-body">
+  <dl class="dl">
+    <dt>Where</dt><dd>{{ p.location }}</dd>
+    <dt>Through</dt><dd>{{ p.get_element_display }}{% if p.fire_rating %}, {{ p.get_fire_rating_display }} fire rating{% endif %}</dd>
+    <dt>What passes through</dt><dd>{% if p.service %}{{ p.get_service_display }}{% else %}<span class="dim">Not recorded</span>{% endif %}{% if p.size %}, {{ p.size }}{% endif %}</dd>
+    <dt>System or product</dt><dd>{{ p.system|default:"Not recorded yet" }}{% if p.detail_reference %}<span class="sub">Detail {{ p.detail_reference }}</span>{% endif %}</dd>
+    <dt>Installed by</dt><dd>{{ p.installed_by|default:"Not recorded yet" }}{% if p.installed_on %}, sealed {{ p.installed_on|date:"j M Y" }}{% endif %}</dd>
+    {% if p.status == 'SIGNED_OFF' %}<dt>Signed off</dt><dd>{{ p.inspected_at|date:"j M Y" }}</dd>{% endif %}
+  </dl>
+  {% if not p.system and p.status != 'SIGNED_OFF' %}<p class="small">The site team needs the system or product used before they can sign it off. Tell them, or put it in the notes when you record the next one.</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-head"><h2>Photos</h2><span class="small dim">{{ before|length }} before · {{ after|length }} after</span></div><div class="card-body">
+  <h3 class="q-sub">Before sealing</h3>
+  {% if before %}<ul class="q-thumbs">{% for ph in before %}<li><a href="{% url 'portal_quality_photo' org.slug project.pk ph.pk 'display' %}"><img src="{% url 'portal_quality_photo' org.slug project.pk ph.pk 'thumb' %}" alt="Before sealing, {{ ph.uploaded_at|date:'j M' }}" loading="lazy" width="96" height="96"></a></li>{% endfor %}</ul>{% else %}<p class="small dim">None yet.</p>{% endif %}
+  <h3 class="q-sub">The finished seal</h3>
+  {% if after %}<ul class="q-thumbs">{% for ph in after %}<li><a href="{% url 'portal_quality_photo' org.slug project.pk ph.pk 'display' %}"><img src="{% url 'portal_quality_photo' org.slug project.pk ph.pk 'thumb' %}" alt="Finished seal, {{ ph.uploaded_at|date:'j M' }}" loading="lazy" width="96" height="96"></a></li>{% endfor %}</ul>{% else %}<p class="small dim">None yet. The site team needs one to sign it off.</p>{% endif %}
+  {% if p.status == 'TO_SEAL' or p.status == 'FAILED' %}{% if not project.is_archived %}<form method="post" action="{% url 'portal_firestop_photo' org.slug project.pk p.pk %}" enctype="multipart/form-data" class="q-photo-form">{% csrf_token %}
+    <fieldset class="q-inline"><legend>This photo is</legend>{% for c in photo_form.stage %}<label class="q-tick">{{ c.tag }} <span>{{ c.choice_label }}</span></label>{% endfor %}</fieldset>
+    <div class="field q-file"><label for="id_photo">Photo</label><input id="id_photo" type="file" name="photo" accept="image/*" capture="environment" required></div>
+    <div class="form-actions"><button class="btn">Add photo</button></div>
+  </form>{% endif %}{% endif %}
+</div></div>
+
+{% if transitions %}<div class="card"><div class="card-head"><h2>Next step</h2></div><div class="card-body">
+  <form method="post" action="{% url 'portal_firestop_action' org.slug project.pk p.pk %}" data-confirm="Mark {{ p.ref }} {% if 'seal' in transitions %}sealed{% else %}resealed{% endif %}? The site team is told, and inspects it and signs it off.">{% csrf_token %}<input type="hidden" name="action" value="{% if 'seal' in transitions %}seal{% else %}reseal{% endif %}">
+    <p class="small">{% if after %}When the seal is finished, mark it {% if 'seal' in transitions %}sealed{% else %}resealed{% endif %}. The site team then inspects it.{% else %}Add a photo of the finished seal first.{% endif %}</p>
+    <div class="form-actions"><button class="btn primary block">{% if 'seal' in transitions %}Mark as sealed{% else %}Mark as resealed{% endif %}</button></div></form>
+</div></div>{% endif %}
+</div>
+{% endblock %}

@@ -7,6 +7,8 @@ An external person's open actions from minutes that have been issued, due on the
 linking to their "Meetings" page in the portal where their own actions are listed and can be marked
 done. Actions in minutes not yet issued wait until they are (that's when the owner is told).
 
+Actions under an agenda heading marked internal only never reach anyone here (access.SHARED_ACTIONS).
+
 Staff don't come through here: meetings and actions are on the record base, so the chair's "issue
 the minutes" and each owner's open actions reach Needs me through the record index (the ball is in
 their court), with no extra query behind the badge. Projects outside portal_projects are dropped by
@@ -18,6 +20,7 @@ from django.utils import timezone
 from actions.registry import PRIORITY_HIGH, PRIORITY_NORMAL, Item
 from projects.access import is_internal
 
+from .access import SHARED_ACTIONS
 from .models import Meeting, MeetingAction
 
 
@@ -28,7 +31,8 @@ def items(request):
     today = timezone.localdate()
     mine = MeetingAction.objects.filter(owner=request.user, status=MeetingAction.OPEN,
                                         meeting__status=Meeting.STATUS_ISSUED, meeting__deleted_at__isnull=True,
-                                        project__archived_at__isnull=True).select_related('meeting', 'project')
+                                        project__archived_at__isnull=True).filter(SHARED_ACTIONS) \
+        .select_related('meeting', 'project')
     return [Item(
         kind='meeting_action', ref=a.reference, title=a.title, project=a.project, due=a.due_date,
         url=reverse('meeting_list', args=[org, a.project_id]) + f'#action-{a.pk}',

@@ -7,7 +7,8 @@ from projects.files import validate_upload
 from projects.forms import StyledModelForm, style_widgets
 from projects.models import Issue
 
-from .models import Certificate, CompletionSection, HandoverPack, OMDocument, OMSection, OMTemplateSection
+from .models import (Certificate, CloseoutSettings, CompletionSection, HandoverPack, OMDocument, OMSection,
+                     OMTemplateSection)
 
 DOC_ACCEPT = '.pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx,.xls,.xlsx,.zip,image/*'
 PHOTO_ACCEPT = 'image/*'
@@ -185,3 +186,13 @@ class TemplateSectionForm(StyledModelForm):
 
 
 TemplateFormSet = forms.modelformset_factory(OMTemplateSection, form=TemplateSectionForm, extra=1, can_delete=True)
+
+
+class CloseoutSettingsForm(StyledModelForm):
+    class Meta:
+        model = CloseoutSettings
+        fields = ['defect_give_out_days']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['defect_give_out_days'].error_messages['max_value'] = 'Enter 20 working days or fewer.'

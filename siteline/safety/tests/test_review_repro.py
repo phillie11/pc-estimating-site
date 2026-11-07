@@ -8,6 +8,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
+from security.testing import hold_rate_limit_clock
 from tenancy.context import org_context
 
 from .. import rules
@@ -18,6 +19,7 @@ from .base import SafetyTestBase
 class PublicPageReviewTests(SafetyTestBase):
     def setUp(self):
         super().setUp()
+        hold_rate_limit_clock(self)  # 121 requests in one window, however slow the runner
         self.g = self.gate()
         self.path = reverse('site_signin', args=[self.g.token])
         self.out = reverse('site_signout', args=[self.g.token])

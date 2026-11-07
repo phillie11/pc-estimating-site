@@ -31,13 +31,14 @@ from projects.models import Project
 from projects.views import project_context
 from tenancy import notify
 from tenancy.models import log_activity
+from tenancy.permissions import admin_required
 
 from . import qr, rules
 from .access import can_see_company_register, is_pm_or_admin, safety_project
 from .forms import (ActionForm, CDMForm, DutyHolderForm, IncidentForm, ManualSignInForm, PhasePlanForm, PhotoForm,
-                    ReportForm)
-from .models import (CDMProfile, DutyHolder, Incident, IncidentAction, IncidentPhoto, PhasePlan, SiteAttendance,
-                     SiteGate, on_site_now)
+                    ReportForm, SettingsForm)
+from .models import (CDMProfile, DutyHolder, Incident, IncidentAction, IncidentPhoto, PhasePlan, SafetySettings,
+                     SiteAttendance, SiteGate, on_site_now)
 from .workflow import close_problems
 
 PHOTO_SIZES = ('thumb', 'display', 'original')
@@ -194,7 +195,8 @@ def incident_report(request, org_slug, pk):
         incident.project = project
         incident.kind = Incident.KIND_INJURY if incident.anyone_hurt else Incident.KIND_NEAR_MISS
         incident.ball_in_court_user = project.manager or request.user
-        incident.due_date = rules.investigation_due(timezone.localdate())
+        incident.due_date = rules.investigation_due(timezone.localdate(),
+                                                    SafetySettings.for_org(request.org).investigation_days)
         photo = None
         try:
             with transaction.atomic():
@@ -221,7 +223,8 @@ def incident_report(request, org_slug, pk):
 
 
 def _incident(project, incident_id):
-    return get_object_or_404(Incident.objects.select_related('created_by', 'ball_in_court_user', 'closed_by'),
+    return get_object_or_404(Incident.objects.select_related('created_by', 'ball_in_court_user', 'closed_by',
+                                                             'reported_by_company'),
                              project=project, pk=incident_id)
 
 
@@ -407,6 +410,20 @@ def company_incidents(request, org_slug):
     return render(request, 'safety/company_incidents.html', {
         'page': page, 'incidents': page.object_list, 'filters': filters, 'filtered': filtered, 'totals': totals,
         'year': year_start.year, 'projects': projects, 'kinds': Incident.KIND_CHOICES})
+
+
+# --- company settings (owners and admins) ---------------------------------------------------
+
+@admin_required
+def safety_settings(request, org_slug):
+    obj = SafetySettings.for_org(request.org)
+    form = SettingsForm(request.POST or None, instance=obj)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Safety settings saved. The investigation target applies to incidents reported from '
+                                  'now on; visitors\' sign-ins older than the time you set are deleted overnight.')
+        return redirect('safety_settings', org_slug=org_slug)
+    return render(request, 'safety/settings.html', {'form': form})
 
 
 # --- CDM register -----------------------------------------------------------------------------

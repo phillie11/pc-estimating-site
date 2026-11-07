@@ -255,4 +255,4 @@ class NoteForm(forms.Form):
 class SettingsForm(StyledModelForm):
     class Meta:
         model = QualitySettings
-        fields = ['permit_hours', 'expiry_warning_hours', 'fire_watch_minutes']
+        fields = ['permit_hours', 'expiry_warning_hours', 'fire_watch_minutes', 'fs_independent_sign_off']

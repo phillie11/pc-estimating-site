@@ -6,7 +6,7 @@
 <div class="grid split form-below">
   <div>
     <form class="filterbar" method="get" aria-label="Filter the register">
-      <input type="search" name="q" value="{{ f.q }}" placeholder="Search number, title or file" aria-label="Search the register">
+      <input type="search" name="q" value="{{ f.q }}" placeholder="Search number, title, file or words inside" aria-label="Search the register, including the words inside PDFs">
       {% if disciplines %}<select name="discipline" aria-label="Discipline"><option value="">All disciplines</option>{% for d in disciplines %}<option value="{{ d }}" {% if f.discipline|lower == d|lower %}selected{% endif %}>{{ d }}</option>{% endfor %}</select>{% endif %}
       {% if types %}<select name="type" aria-label="Type"><option value="">All types</option>{% for t, label in types %}<option value="{{ t }}" {% if f.type == t %}selected{% endif %}>{{ t }}{% if label %} – {{ label }}{% endif %}</option>{% endfor %}</select>{% endif %}
       <select name="status" aria-label="Status"><option value="">Any status</option>{% for v, l in statuses %}<option value="{{ v }}" {% if f.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
@@ -18,7 +18,7 @@
     <div class="card">{% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Number</th><th>Title</th><th>Rev</th><th>Suit.</th><th>Status</th><th>Date</th>{% if is_internal %}<th>Shared</th>{% endif %}<th><span class="sr-only">Actions</span></th></tr></thead><tbody>
       {% for d, cur in rows %}<tr>
         <td class="ref nowrap">{{ d.reference|default:"—" }}{% if is_internal and d.naming == 'UNPARSED' %}<span class="sub">{% badge 'Check number' 'warn' %}</span>{% endif %}</td>
-        <td class="doc-title"><a class="rowlink" href="{% url 'document_detail' org.slug project.pk d.pk %}">{{ d.title }}</a><span class="sub">{{ d.get_category_display }}{% if d.discipline %} · {{ d.discipline }}{% endif %}{% if d.folder %} · {{ d.folder }}{% endif %}</span></td>
+        <td class="doc-title"><a class="rowlink" href="{% url 'document_detail' org.slug project.pk d.pk %}">{{ d.title }}</a><span class="sub">{{ d.get_category_display }}{% if d.discipline %} · {{ d.discipline }}{% endif %}{% if d.folder %} · {{ d.folder }}{% endif %}{% if f.q and d.found_inside %} · <strong>found inside the file</strong>{% endif %}</span></td>
         <td class="mono">{{ cur.revision|default:"—" }}</td>
         <td class="mono">{{ cur.suitability|default:"—" }}</td>
         <td>{% if cur %}{% badge cur.shown_status cur.shown_tone %}{% endif %}</td>

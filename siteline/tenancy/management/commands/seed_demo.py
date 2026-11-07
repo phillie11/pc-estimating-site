@@ -385,6 +385,10 @@ class Command(BaseCommand):
             from meetings.demo import seed as seed_meetings
             seed_meetings(leeds=leeds, pm=pm, owner=owner, client=client, sub_user=subu)
 
+            # Settings > API: a Power BI token in use and a revoked one (api/demo.py)
+            from api.demo import seed as seed_api
+            seed_api(org=org, owner=owner)
+
             # Kingsway: a live subcontract tender run through the portal
             kings = Project.objects.get(name='Office CAT B, Kingsway')
             due = kings.quotes_due

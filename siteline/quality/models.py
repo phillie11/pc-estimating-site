@@ -18,8 +18,10 @@ Quality on a live job: inspections against checklists, permits to work and the f
   QualityPhoto        a photo on an inspection check or a penetration. Files are only served by
                       quality.views through projects.files.serve().
 
-Nothing here is shared with clients, consultants or subcontractors in this release (staff only;
-quality/access.py), so the record types are registered with external_roles=().
+Nothing here is shared with clients or consultants. An appointed subcontractor sees, in the portal,
+the permits on their own packages (and can ask for one) and the fire-stopping on their own packages
+(and can record it for sign-off): quality/portal.py, with its own access rules. The record index is
+never what serves them, so the record types are registered with external_roles=().
 """
 import datetime
 import os
@@ -55,6 +57,10 @@ class QualitySettings(TenantModel):
     fire_watch_minutes = models.PositiveSmallIntegerField(
         'Fire watch after hot works (minutes)', default=60, validators=[MinValueValidator(0), MaxValueValidator(480)],
         help_text='How long someone watches the area after hot works stop. Check your insurer\'s conditions.')
+    fs_independent_sign_off = models.BooleanField(
+        'Someone else signs off fire-stopping', default=True,
+        help_text='Whoever recorded a seal as done can\'t sign it off; another person on the job inspects it. '
+                  'Untick to let them sign off their own.')
     library_seeded = models.BooleanField(default=False, editable=False)
 
     class Meta(TenantModel.Meta):
@@ -324,6 +330,9 @@ class Penetration(RecordBase):
     pin_x = models.DecimalField(max_digits=7, decimal_places=6, null=True, blank=True)
     pin_y = models.DecimalField(max_digits=7, decimal_places=6, null=True, blank=True)
 
+    sealed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name='+', editable=False,
+                                  help_text='Who last marked it sealed or resealed.')
     inspected_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name='+', editable=False)
     inspected_at = models.DateTimeField(null=True, blank=True, editable=False)

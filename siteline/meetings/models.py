@@ -10,14 +10,19 @@ Meetings: site progress meetings, client meetings and pre-starts, their minutes 
                      meeting, so it is on their Needs me.
   Attendee           who was invited: a person with a login (staff or someone on the project), or
                      just a name and company. Present or sent apologies.
-  AgendaItem         one heading on the agenda, with the minutes written under it.
+  AgendaItem         one heading on the agenda, with the minutes written under it. A heading can be
+                     internal only (internal_only): it, its minutes and the actions under it are kept
+                     from clients, consultants and subcontractors on the minutes page, in their
+                     actions list, their Needs me and the minutes email (pending owner decision).
+                     Agenda templates carry it as an "Internal:" prefix on the line.
+  MeetingSettings    per company: how many days after a meeting the minutes are due (default 2).
   MeetingAction      (ACT-001) RecordBase: something someone must do, with an owner and a due date.
                      Open actions from earlier meetings of the same kind on the job are carried forward
                      into the next one (Meeting.brought_forward) until they're done. Once the minutes
                      are issued, an owner with a login has it on Needs me.
 """
 from django.conf import settings
-from django.core.validators import RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
@@ -25,7 +30,8 @@ from django.utils import timezone
 from core.models import VIS_INTERNAL, RecordBase
 from tenancy.models import TenantModel
 
-MINUTES_DUE_DAYS = 2  # the chair's Needs me: minutes due this many days after the meeting
+MINUTES_DUE_DAYS = 2  # the chair's Needs me: minutes due this many days after the meeting (MeetingSettings)
+INTERNAL_PREFIX = 'Internal:'  # an agenda template line starting with this is an internal-only heading
 HHMM = RegexValidator(r'^([01]\d|2[0-3]):[0-5]\d$', 'Enter a time like 09:30.')
 
 PROGRESS, CLIENT, PRESTART, OTHER = 'PROGRESS', 'CLIENT', 'PRESTART', 'OTHER'
@@ -51,6 +57,35 @@ DEFAULT_AGENDAS = {
 }
 
 
+def parse_agenda_line(line):
+    """'Internal: Commercial' -> ('Commercial', True); 'Programme' -> ('Programme', False)."""
+    text = line.strip()
+    if text[:len(INTERNAL_PREFIX)].lower() == INTERNAL_PREFIX.lower():
+        return text[len(INTERNAL_PREFIX):].strip(), True
+    return text, False
+
+
+class MeetingSettings(TenantModel):
+    """One row per company; with no row, the defaults below apply (pending owner decision)."""
+    minutes_due_days = models.PositiveSmallIntegerField(
+        'Minutes due (days after the meeting)', default=MINUTES_DUE_DAYS,
+        validators=[MinValueValidator(0), MaxValueValidator(14)],
+        help_text="The chair has the minutes on their Needs me until they are issued, due this many days after "
+                  'the meeting. 0 means the same day.')
+
+    class Meta(TenantModel.Meta):
+        constraints = [models.UniqueConstraint(fields=['organization'], name='meetings_one_settings_per_org')]
+        verbose_name_plural = 'meeting settings'
+
+    def __str__(self):
+        return 'Meeting settings'
+
+    @classmethod
+    def for_org(cls, org):
+        # Pinned to the organisation the caller already holds
+        return cls.all_objects.filter(organization_id=getattr(org, 'pk', org)).first() or cls(organization_id=getattr(org, 'pk', org))
+
+
 class AgendaTemplate(TenantModel):
     kind = models.CharField('Kind of meeting', max_length=10, choices=KIND_CHOICES)
     name = models.CharField(max_length=120)
@@ -66,7 +101,12 @@ class AgendaTemplate(TenantModel):
 
     @property
     def item_list(self):
-        return [line.strip() for line in self.items.splitlines() if line.strip()]
+        return [heading for heading, _ in self.item_rows]
+
+    @property
+    def item_rows(self):
+        """[(heading, internal_only)]: a line starting "Internal:" is a heading kept from people outside the company."""
+        return [parse_agenda_line(line) for line in self.items.splitlines() if line.strip()]
 
     @classmethod
     def for_org(cls, org):
@@ -140,9 +180,13 @@ class Meeting(RecordBase):
 
     @property
     def minutes_due(self):
-        """When the minutes are due: MINUTES_DUE_DAYS after the meeting (a house default)."""
+        """When the minutes are due: the company's MeetingSettings.minutes_due_days (default 2) after the meeting."""
         from datetime import timedelta
-        return self.held_on + timedelta(days=MINUTES_DUE_DAYS)
+        if getattr(self, '_minutes_due_days', None) is None:
+            from tenancy.context import get_current_org
+            org_id = self.organization_id or getattr(get_current_org(), 'pk', None)  # a new meeting: not set yet
+            self._minutes_due_days = MeetingSettings.for_org(org_id).minutes_due_days
+        return self.held_on + timedelta(days=self._minutes_due_days)
 
 
 class Attendee(TenantModel):
@@ -170,6 +214,9 @@ class AgendaItem(TenantModel):
     position = models.PositiveSmallIntegerField(default=0)
     heading = models.CharField(max_length=200)
     minutes = models.TextField(blank=True)
+    internal_only = models.BooleanField(
+        'Internal only', default=False,
+        help_text='Kept from clients, consultants and subcontractors: the heading, its minutes and its actions.')
 
     class Meta:
         ordering = ['position', 'pk']

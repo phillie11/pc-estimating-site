@@ -15,6 +15,11 @@ Everything here is advisory: check your contract.
                                  otherwise 10 working days from today.
   is_defect_phase(pc, raised)    A snag raised on or after the whole-works practical completion
                                  date is a defect.
+  give_out_by(reported, n)       A defect the client reports is due to be given to whoever will fix it
+                                 within `n` working days of the day it was reported (Monday to Friday,
+                                 not a bank holiday in the contract's region; the day it was reported
+                                 doesn't count). The company sets n (CloseoutSettings, default
+                                 DEFECT_GIVE_OUT_DAYS = 2; pending owner decision); 0 is the same day.
 """
 import calendar
 from datetime import date, timedelta
@@ -22,6 +27,7 @@ from datetime import date, timedelta
 from holidays.calendar import DEFAULT_REGION
 
 ADVISORY = 'Advisory: check your contract.'
+DEFECT_GIVE_OUT_DAYS = 2
 REMINDER_DAYS = 42
 OM_LEAD_DAYS = 14
 OM_MIN_WORKING_DAYS = 10
@@ -65,3 +71,12 @@ def om_due_default(today, completion, region=DEFAULT_REGION):
         if wanted >= floor:
             return wanted
     return floor
+
+
+def give_out_by(reported_on, working_days=DEFECT_GIVE_OUT_DAYS, region=DEFAULT_REGION):
+    """The date a client-reported defect should be given out by (see the module docstring)."""
+    from procurement.dates import add_working_days
+    if reported_on is None:
+        return None
+    return add_working_days(reported_on, DEFECT_GIVE_OUT_DAYS if working_days is None else working_days,
+                            region or DEFAULT_REGION)
