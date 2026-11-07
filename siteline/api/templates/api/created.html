@@ -8,7 +8,7 @@
   <input id="api-token-text" class="mono api-token" type="text" readonly value="{{ text }}" autocomplete="off" spellcheck="false">
   <p class="help">Select it and copy it into the system that needs it. Treat it like a password: don't email it or put it in a shared document.</p>
   <h2>Try it</h2>
-  <pre class="api-code"><code>curl -H "Authorization: Bearer {{ text }}" {{ api_base }}projects/</code></pre>
+  <pre class="api-code" tabindex="0" aria-label="Example call"><code>curl -H "Authorization: Bearer {{ text }}" {{ api_base }}projects/</code></pre>
   <p class="small dim">It can read: {{ token.scope_labels|join:"; " }}.{% if token.expires_at %} It stops working on {{ token.expires_at|date:"j M Y" }}.{% endif %}</p>
   <div class="form-actions"><a class="btn primary" href="{% url 'api_settings' org.slug %}">I've copied it</a><a class="btn" href="{% url 'api_docs' org.slug %}">How to use the API</a></div>
 </div></div>

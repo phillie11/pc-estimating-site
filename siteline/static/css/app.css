@@ -969,4 +969,11 @@ details.more-fields[open] > summary { margin-bottom: 10px; }
 .rp-chart .label, .rp-chart .val { fill: var(--ink); font-size: 12px; }
 .rp-chart .row:hover .bar { fill-opacity: .8; }
 .rp-cash th[scope="colgroup"] { text-align: center; }
-@media (max-width: 600px) { .api-facts { grid-template-columns: 1fr; } .api-facts dd { margin-bottom: 6px; } }
+.rp-page .search { flex-wrap: wrap; margin-bottom: 1rem; }
+.rp-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 1rem; }
+.rp-filters select { width: auto; max-width: 100%; }
+.rp-page .search input { min-width: 0; flex: 1 1 180px; }
+@media (max-width: 600px) {
+  .api-facts { grid-template-columns: 1fr; } .api-facts dd { margin-bottom: 6px; }
+  .api-page input:not([type=checkbox]):not([type=radio]), .api-page select, .rp-page input, .rp-page select { min-height: 44px; }
+}

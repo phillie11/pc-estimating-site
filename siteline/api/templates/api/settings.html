@@ -11,7 +11,7 @@
   <thead><tr><th scope="col">Name</th><th scope="col">Can read</th><th scope="col">Made</th><th scope="col">Last used</th><th scope="col">Stops working</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
   <tbody>{% for t in live %}<tr>
     <td><a class="rowlink" href="{% url 'api_token_detail' org.slug t.pk %}">{{ t.name }}</a><span class="sub ref">{{ t.prefix }}…</span></td>
-    <td class="small">{{ t.scope_labels|join:"; " }}</td>
+    <td class="small">{{ t.scope_short|join:", " }}</td>
     <td>{{ t.created_at|date:"j M Y" }}<span class="sub">{% if t.created_by %}{{ t.created_by.full_name }}{% else %}Someone who has left{% endif %}</span></td>
     <td>{% if t.last_used_at %}{{ t.last_used_at|date:"j M Y H:i" }}{% else %}<span class="dim">Not yet</span>{% endif %}</td>
     <td>{% if t.expires_at %}{{ t.expires_at|date:"j M Y" }}{% else %}<span class="dim">When revoked</span>{% endif %}</td>

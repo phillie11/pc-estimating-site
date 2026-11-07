@@ -5,7 +5,7 @@
   <p class="small dim">Everything past its date on live jobs today, {{ today|date:"j M Y" }}.</p></div>
   <div class="row">{% if total %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}</div></div>
 
-<nav class="filters" aria-label="Jump to">{% for s in sections %}<a class="chip" href="#{{ s.key }}">{{ s.title }} <strong>{{ s.count }}</strong></a>{% endfor %}</nav>
+<nav class="filters" aria-label="Jump to">{% for s in sections %}<a class="chip" href="#{{ s.key }}">{{ s.title }}: {{ s.count }}</a>{% endfor %}</nav>
 
 {% for s in sections %}<div class="card" id="{{ s.key }}"><div class="card-head"><h2>{{ s.title }} {% if s.count %}{% badge s.count 'bad' %}{% else %}{% badge 'None' 'good' %}{% endif %}</h2>{% if s.advisory %}{% badge 'Advisory' 'warn' %}{% endif %}</div>
 {% if s.items %}<div class="table-wrap"><table class="t register">

@@ -85,7 +85,18 @@ class MarginTests(ApiTestBase):
         with org_context(self.org_a):
             prev = last([self.pa], self.m1)[self.pa.pk]
         self.assertEqual(row['move'], cost['margin'] - prev.forecast_margin)
-        self.assertEqual(rep['total']['forecast_margin'], sum(r['f'].forecast_margin for r in rep['rows']))
+        self.assertEqual(rep['total']['forecast_margin'],
+                         sum(r['f'].forecast_margin for r in rep['rows'] if r['has_figures']))
+
+    def test_jobs_with_no_figures_are_not_in_the_totals(self):
+        with org_context(self.org_a):
+            Project.objects.create(name='Just won', stage=Project.STAGE_WON, value=D('500000'))
+            rep = data.portfolio_margin(figures.rules.month_start(self.today))
+        new = next(r for r in rep['rows'] if r['project'].name == 'Just won')
+        self.assertFalse(new['has_figures'])
+        self.assertEqual(rep['counted'], 1)
+        self.assertEqual(rep['total']['final_account'],
+                         next(r for r in rep['rows'] if r['project'].pk == self.pa.pk)['f'].final_account)
 
     def test_page_and_csv(self):
         self.login(self.alice)

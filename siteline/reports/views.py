@@ -49,7 +49,9 @@ def report_margin(request, org_slug):
             [r['project'].reference, r['project'].name, r['project'].manager.full_name if r['project'].manager else '',
              r['period'].get_status_display() if r['period'] else 'Not started', r['f'].value, r['f'].cost,
              r['f'].margin, r['f'].final_account, r['f'].final_cost, r['f'].forecast_margin,
-             r['f'].forecast_margin_pct, r['move']] for r in rows])
+             r['f'].forecast_margin_pct, r['move']] if r['has_figures'] else
+            [r['project'].reference, r['project'].name, r['project'].manager.full_name if r['project'].manager else '',
+             'No figures yet', '', '', '', r['f'].final_account, '', '', '', ''] for r in rows])
     with_figures = [r for r in rows if r['has_figures']]
     currency = request.org.currency_symbol
     from cvr.chart import short
@@ -58,7 +60,7 @@ def report_margin(request, org_slug):
                          + (f" ({r['f'].forecast_margin_pct}%)" if r['f'].forecast_margin_pct is not None else ''),
                          short(r['f'].forecast_margin).replace('£', currency)) for r in with_figures[:20]])
     return render(request, 'reports/margin.html', {
-        'month': month, 'rows': rows, 'total': rep['total'], 'graph': graph, 'charted': min(len(with_figures), 20),
+        'month': month, 'rows': rows, 'total': rep['total'], 'counted': rep['counted'], 'graph': graph, 'charted': min(len(with_figures), 20),
         'month_choices': [rules.add_months(rules.month_start(today), -i) for i in range(0, 25)],
         'advisory': ADVISORY})
 

@@ -65,12 +65,14 @@ def portfolio_margin(month, projects=None):
         rows.append({'project': p, 'period': periods.get(p.pk), 'f': f, 'move': moved,
                      'has_figures': f.has_activity or p.pk in periods})
     keys = ('value', 'cost', 'margin', 'final_account', 'final_cost', 'forecast_margin')
-    total = {k: sum((r['f'].derived[k] for r in rows), ZERO) for k in keys}
+    # A job with no application, cost, forecast or CVR yet would add its whole contract sum as margin: left out
+    counted = [r for r in rows if r['has_figures']]
+    total = {k: sum((r['f'].derived[k] for r in counted), ZERO) for k in keys}
     total['margin_pct'] = rules.percent_of(total['margin'], total['value'])
     total['forecast_margin_pct'] = rules.percent_of(total['forecast_margin'], total['final_account'])
-    moves = [r['move'] for r in rows if r['move'] is not None]
+    moves = [r['move'] for r in counted if r['move'] is not None]
     total['move'] = sum(moves, ZERO) if moves else None
-    return {'rows': rows, 'total': total, 'month': month}
+    return {'rows': rows, 'total': total, 'month': month, 'counted': len(counted)}
 
 
 # ---------------------------------------------------------------------------

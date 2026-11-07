@@ -34,6 +34,8 @@ SCOPE_CHOICES = [
     (SCOPE_SAFETY, 'Incidents'),
 ]
 SCOPE_LABELS = dict(SCOPE_CHOICES)
+SCOPE_SHORT = {SCOPE_PROJECTS: 'Projects', SCOPE_REGISTERS: 'Registers', SCOPE_DOCUMENTS: 'Documents',
+               SCOPE_SNAGS: 'Snags', SCOPE_COMMERCIAL: 'Money', SCOPE_SAFETY: 'Incidents'}
 ALWAYS = (SCOPE_PROJECTS,)
 # What a new token gets unless the owner or admin unticks it. Money and incidents are only for
 # owners, admins and each job's PM or QS on screen, so they have to be asked for.
@@ -84,6 +86,10 @@ class ApiToken(TenantModel):
     @property
     def scope_labels(self):
         return [label for code, label in SCOPE_CHOICES if code in self.scope_set]
+
+    @property
+    def scope_short(self):
+        return [SCOPE_SHORT[code] for code, _ in SCOPE_CHOICES if code in self.scope_set]
 
     @property
     def state(self):
