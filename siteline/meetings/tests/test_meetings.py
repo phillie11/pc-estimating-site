@@ -372,7 +372,7 @@ class AccessTests(MeetingTestBase):
         self.assertContains(self.client.get(decisions), self.url('meeting_list', self.pa.pk))
         self.client.logout()
         self.login(self.pat)
-        self.assertContains(self.client.get(overview), self.url('meeting_list', self.pa.pk))  # staff: under More
+        self.assertIn('meetings', [t[0] for t in self.client.get(overview).context['tabs']])  # grouped tabs: it sits one tap down, so check it is offered, not that its link is on this page
 
     def test_owners_update_their_own_actions_only(self):
         m = self.meeting(attendees=[self.pat])
