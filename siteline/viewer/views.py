@@ -9,6 +9,7 @@ log as the download button.
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
+from django.db.models import prefetch_related_objects
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
@@ -53,15 +54,18 @@ def drawing_viewer(request, org_slug, pk, doc_id, rev_id):
         raise Http404
     seen = visible_ids(request, project)
     annotate(request, [rev], seen)
-    current = rev.current_revision
+    # Every revision of the drawing in one query: the current one, and those this person may open (mark-ups, compare)
+    prefetch_related_objects([doc], 'revisions')
+    current = doc.current
+    current = current if current is not None and current.pk != rev.pk else None
+    revs = [r for r in doc.revisions.all() if (seen is None or r.pk in seen) and can_view(request, r)]
     if current is not None and seen is not None and current.pk not in seen:
         current = None  # not issued to them: don't name it
     current_viewable = current if current is not None and can_view(request, current) else None
 
     internal = is_internal(request)
     can_pin = not project.is_archived and not rev.is_withdrawn
-    rev_seen = visible_revision_ids(request, project)
-    pins = [pinlib.describe(request, project, p, rev=rev, seen=rev_seen) for p in visible_pins(request, project, doc)]
+    pins = [pinlib.describe(request, project, p, rev=rev, seen=seen) for p in visible_pins(request, project, doc)]
     pins += quality_pins.viewer_pins(request, project, doc, rev)
     choices = []
     if can_pin:
@@ -88,7 +92,6 @@ def drawing_viewer(request, org_slug, pk, doc_id, rev_id):
         'choices': choices,
     }
     # Mark-up layers: this person's own and those shared with them, on any revision they may open
-    revs = viewable_revisions(request, project, doc)
     layers = list(visible_layers(request, project, doc, revs))
     layers.sort(key=lambda la: (la.revision_id != rev.pk, la.owner_id != request.user.pk, -la.updated_at.timestamp()))
     mine = next((la for la in layers if la.owner_id == request.user.pk and la.revision_id == rev.pk), None)
