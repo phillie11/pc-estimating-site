@@ -37,6 +37,8 @@ DEMO_LOGINS = ('owner@demo.test', 'estimator@demo.test', 'pm@demo.test', 'client
 # login (an empty result is still a query on this database); this only excuses them from listing something.
 NOT_IN_DEMO = {
     'rams_revise': 'no demo RAMS has been sent back to a subcontractor to revise',
+    # e2e/test_journey.py phase 20 lists one: the sub's seal failed by the PM, on all three databases
+    'firestopping_sub': 'no demo fire-stopping recorded by a subcontractor has failed its inspection',
 }
 
 
