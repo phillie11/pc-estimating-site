@@ -70,7 +70,8 @@ def two_factor_verify(request):
     credentials = {'username': user.email}
     if not AxesProxyHandler.is_allowed(request, credentials):
         twofactor.clear_pending(request)
-        return get_lockout_response(request, credentials)
+        # By keyword: since django-axes 8.1 the second positional argument is original_response
+        return get_lockout_response(request, credentials=credentials)
 
     form = VerifyForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
