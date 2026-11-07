@@ -106,3 +106,17 @@ class RfiOverdueAgreesWithTheRfiTests(ApiTestBase):
         body = self.api(f'/api/v1/rfis/{rfi.pk}/', self.text_a).json()
         self.assertEqual(body['status'], RFI.STATUS_RESPONDED)
         self.assertFalse(body['overdue'])
+
+
+class DownloadLogAddressTests(ApiTestBase):
+    """The download log took its address from X-Real-IP whatever CLIENT_IP_HEADER says, so anyone could
+    write any address into the download log by sending that header; the API's own log ignored it."""
+
+    def test_download_log_uses_the_trusted_address(self):
+        url = reverse('api_document_download', args=[self.a['doc'].pk, self.a['rev'].pk])
+        resp = self.client.get(url, HTTP_AUTHORIZATION=f'Bearer {self.text_a}', HTTP_X_REAL_IP='198.51.100.66',
+                               REMOTE_ADDR='192.0.2.10')
+        self.assertEqual(resp.status_code, 200)
+        with org_context(self.org_a):
+            self.assertEqual(FileAccess.objects.get(path=self.a['rev'].file.name).ip, '192.0.2.10')
+            self.assertEqual(ApiAccess.objects.get(token=self.token_a).ip, '192.0.2.10')
