@@ -50,6 +50,7 @@ def easter_sunday(year):
     return date(year, month, day + 1)
 
 
+@lru_cache(maxsize=None)  # counted day by day for every payment date: a pure function of the year
 def good_friday(year):
     return easter_sunday(year) - timedelta(days=2)
 

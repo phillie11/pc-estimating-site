@@ -34,7 +34,7 @@ to the end of the job. All excluding VAT. The rules (also in cvr/rules.py and th
 from dataclasses import dataclass
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import F, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import TruncMonth
 
 from costs.money import pennies
@@ -86,17 +86,39 @@ def build(project, today):
     return build_many([project], today)[project.pk]
 
 
-def build_many(projects, today):
+def build_many(projects, today, months=None):
     """
     {project id: build(project, today)} for several jobs in a fixed number of queries, whatever the
-    number of jobs (the company cash position report runs every live job's forecast on one page).
+    number of jobs.
+
+    With `months` (first-of-month dates, consecutive), only those months are worked out: the result is
+    {project id: {'months': [Month, ...]}} with one Month for each of them, the same figures build()
+    gives for that month. The company cash position report shows three months of every live job, so it
+    reads only what those months need: the applications that are latest, still to be paid by then or
+    paid in them, receipts summed by month in the database (before the first month in one sum), and no
+    payment dates worked out for money that falls after the last month.
     """
     projects = list(projects)
-    loaded = _load(projects)
+    if months is not None:
+        months = list(months)
+        if months and months[0] > _month(today):
+            # Costs and receipts before the first month are read as one sum, which is only the cost to
+            # date while the first month is this month or earlier
+            raise ValueError('build_many: the months must start this month or earlier')
+        window = (months[0], rules.add_months(months[-1], 1)) if months else None
+    else:
+        window = None
+    loaded = _load(projects, today, window)
+    if months is not None:
+        out = {}
+        for p in projects:
+            flows = _build(p, today, loaded, window) if window else {}
+            out[p.pk] = {'months': [flows.get(m) or Month(month=m) for m in months]}
+        return out
     return {p.pk: _build(p, today, loaded) for p in projects}
 
 
-def _load(projects):
+def _load(projects, today, window=None):
     """Every row build() reads, for all these jobs at once: about ten queries."""
     from contracts.models import MainContract
     from costs.models import LedgerEntry
@@ -112,19 +134,60 @@ def _load(projects):
         # The same figures as the cost report and the commercial position (costs.report)
         'final_accounts': final_accounts(projects) if projects else {},
         'final_costs': forecast_costs(ids) if projects else {},
-        'apps': {pk: {} for pk in ids}, 'payments': {}, 'costs': {pk: [] for pk in ids},
+        'apps': {pk: {} for pk in ids}, 'payments': {}, 'costs': {pk: [] for pk in ids}, 'last_applied': {},
         'sub_apps': {pk: [] for pk in ids}, 'activities': {pk: [] for pk in ids}, 'sub_settings': {},
     }
-    for a in Application.objects.filter(project_id__in=ids, status__in=Application.COUNTED):
+    # Only the fields build() reads (the notified sum, what was paid, the value and retention to date)
+    notices = ('status', 'amount_due', 'payment_notice_amount', 'payment_notice_on', 'payment_notice_by',
+               'pay_less_amount', 'pay_less_on', 'pay_less_by', 'final_date')
+    counted = Application.objects.filter(project_id__in=ids, status__in=Application.COUNTED).only(
+        'project_id', 'number', 'valuation_date', 'gross_valuation', 'retention', 'vat_rate', 'reverse_charge', *notices)
+    # Receipts by application and month, summed in the database: the months are all build() reads of them
+    receipts = Payment.objects.filter(application__in=counted.values('pk'), reversed_at__isnull=True)
+    if window is None:
+        apps = counted
+    else:
+        first, end = window
+        receipts = receipts.filter(received_on__gte=first)
+        month_end = rules.month_end(today)
+        latest = Application.objects.filter(project_id=OuterRef('project_id'), status__in=Application.COUNTED,
+                                            valuation_date__lte=month_end).order_by('-valuation_date', '-number')
+        # The applications these months need: the latest one (the value to date and retention held), those
+        # still to be paid by the end of the last month, and those paid in (or after) the first month
+        apps = counted.annotate(latest_pk=Subquery(latest.values('pk')[:1])).filter(
+            Q(pk=F('latest_pk')) | Q(status__in=Application.AWAITING_PAYMENT, final_date__lt=end)
+            | Q(pk__in=receipts.values('application_id')))
+        for project_id, last in counted.order_by().values('project_id').annotate(d=Max('valuation_date')) \
+                .values_list('project_id', 'd'):
+            loaded['last_applied'][project_id] = last
+    for a in apps:
         loaded['apps'][a.project_id][a.pk] = a
     app_ids = [pk for apps in loaded['apps'].values() for pk in apps]
-    for app_id, received_on, amount in Payment.objects.filter(application__in=app_ids, reversed_at__isnull=True) \
-            .order_by('received_on', 'pk').values_list('application_id', 'received_on', 'amount'):
-        loaded['payments'].setdefault(app_id, []).append((received_on, amount))
-    for row in LedgerEntry.objects.filter(project_id__in=ids, kind=LedgerEntry.ACTUAL).annotate(m=TruncMonth('date')) \
-            .values('project_id', 'm').annotate(s=Sum('amount')).order_by('project_id', 'm'):
+    if window is not None:
+        # Everything received before the first month, as one sum in the month before it: only the running
+        # total going into the first month matters to it (and to what is still owed)
+        before = rules.add_months(window[0], -1)
+        for app_id, amount in Payment.objects.filter(application__in=app_ids, reversed_at__isnull=True,
+                                                     received_on__lt=window[0]).order_by() \
+                .values('application_id').annotate(s=Sum('amount')).values_list('application_id', 's'):
+            loaded['payments'].setdefault(app_id, []).append((before, amount))
+    for app_id, month, amount in receipts.annotate(m=TruncMonth('received_on')).order_by() \
+            .values('application_id', 'm').annotate(s=Sum('amount')).order_by('application_id', 'm') \
+            .values_list('application_id', 'm', 's'):
+        loaded['payments'].setdefault(app_id, []).append((month, amount))
+    costs = LedgerEntry.objects.filter(project_id__in=ids, kind=LedgerEntry.ACTUAL)
+    if window is not None:
+        # Before the first month only the cost to date needs them: one sum per job, in the month before it
+        before = rules.add_months(window[0], -1)
+        for project_id, total in costs.filter(date__lt=window[0]).order_by().values('project_id') \
+                .annotate(s=Sum('amount')).values_list('project_id', 's'):
+            loaded['costs'][project_id].append({'project_id': project_id, 'm': before, 's': total})
+        costs = costs.filter(date__gte=window[0])
+    for row in costs.annotate(m=TruncMonth('date')).values('project_id', 'm').annotate(s=Sum('amount')) \
+            .order_by('project_id', 'm'):
         loaded['costs'][row['project_id']].append(row)
-    for sa in SubApplication.objects.filter(project_id__in=ids, status__in=SubApplication.AWAITING).annotate(
+    for sa in SubApplication.objects.filter(project_id__in=ids, status__in=SubApplication.AWAITING) \
+            .only('project_id', 'discount_percent', *notices).annotate(
             paid=Sum('payments__gross', filter=Q(payments__reversed_at__isnull=True))):
         loaded['sub_apps'][sa.project_id].append(sa)
     for project_id, *row in Activity.objects.filter(project_id__in=ids).values_list(
@@ -136,7 +199,9 @@ def _load(projects):
     return loaded
 
 
-def _build(project, today, loaded):
+def _build(project, today, loaded, window=None):
+    """build() for one job from _load's rows. With a window (first month, month after the last), the
+    {month: Month} it has worked out, exact for the months in it (see build_many)."""
     from payments import rules as pay_rules
     from payments.models import Application
     from subpayments.rules import sub_cycle, sub_terms
@@ -204,7 +269,10 @@ def _build(project, today, loaded):
         finish = rules.add_months(today, 6)
         notes.append('The job has no completion date or programme, so the rest is spread over the next six months. '
                      'Add a completion date or a programme to sharpen it.')
-    last_applied = max((a.valuation_date for a in apps.values()), default=None)
+    if window is None:
+        last_applied = max((a.valuation_date for a in apps.values()), default=None)
+    else:
+        last_applied = loaded['last_applied'].get(project.pk)
     first_val = this_month if last_applied is None or _month(last_applied) < this_month \
         else rules.add_months(last_applied, 1)
     work_months = rules.months_between(first_val, max(finish, first_val))
@@ -244,8 +312,8 @@ def _build(project, today, loaded):
                                             pay_rules.retention_stage(when, pc, defects_months))
         net = (v or ZERO) - (now_held - held)
         held = now_held
-        if not net:
-            continue
+        if not net or (window and when >= window[1]):
+            continue  # a payment's final date is never before its valuation date: past the window
         paid_on = pay_rules.payment_cycle(when, terms).final_date
         at(_month(_not_before(paid_on, today))).in_forecast += net
     if retention_pct and final_account > 0 and end is None:
@@ -259,8 +327,14 @@ def _build(project, today, loaded):
     for m, v in zip(work_months, rules.spread(remaining_cost, weights)):
         if not v:
             continue
-        paid_on = sub_cycle(valuation_date_in(m.year, m.month, sub_day), sterms).final_date
+        valued = valuation_date_in(m.year, m.month, sub_day)
+        if window and valued >= window[1]:
+            continue
+        paid_on = sub_cycle(valued, sterms).final_date
         at(_month(_not_before(paid_on, today))).out_forecast += v
+
+    if window:
+        return flows
 
     # --- the months, in order, capped either side --------------------------------------------------------
     first = max(min(list(flows) + [this_month, _month(project.start_date or today)]),
