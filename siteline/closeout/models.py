@@ -44,6 +44,27 @@ def upload_closeout(instance, filename):
 # Practical completion and the defects period
 # ---------------------------------------------------------------------------
 
+class CloseoutSettings(TenantModel):
+    """One row per company; with no row, the defaults below apply (pending owner decision)."""
+    defect_give_out_days = models.PositiveSmallIntegerField(
+        'Give out client-reported defects within (working days)', default=rules.DEFECT_GIVE_OUT_DAYS,
+        validators=[MaxValueValidator(20)],
+        help_text='A defect the client reports is on the project manager\'s Needs me until it is given to whoever '
+                  'will fix it, due this many working days after it was reported. 0 means the same day.')
+
+    class Meta(TenantModel.Meta):
+        constraints = [models.UniqueConstraint(fields=['organization'], name='closeout_one_settings_per_org')]
+        verbose_name_plural = 'close-out settings'
+
+    def __str__(self):
+        return 'Close-out settings'
+
+    @classmethod
+    def for_org(cls, org):
+        # Pinned to the organisation the caller already holds
+        return cls.all_objects.filter(organization=org).first() or cls(organization=org)
+
+
 class CompletionSection(TenantModel):
     WHOLE_WORKS = 'Whole of the works'
 
