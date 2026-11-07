@@ -5,12 +5,10 @@ missing-entry "Needs me" rule (weekends, Saturday setting), the registers, PDF a
 mode markup, cross-company isolation and failing closed with no organisation.
 """
 import io
-import tempfile
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from django.utils import timezone
 from PIL import Image
 
@@ -26,8 +24,6 @@ from ..actions import items
 from ..models import DelayLine, DiaryEntry, DiarySettings, LabourLine, SitePhoto
 from ..photos import attach
 
-MEDIA = tempfile.mkdtemp(prefix='diary-tests-')
-
 
 def jpeg(name='site.jpg', size=(800, 600), colour='#888'):
     buf = io.BytesIO()
@@ -35,7 +31,6 @@ def jpeg(name='site.jpg', size=(800, 600), colour='#888'):
     return SimpleUploadedFile(name, buf.getvalue(), content_type='image/jpeg')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class DiaryTestBase(CommercialTestBase):
     def setUp(self):
         super().setUp()

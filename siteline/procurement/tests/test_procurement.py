@@ -25,14 +25,7 @@ from ..actions import OrderByProvider, SubmittalProvider
 from ..models import ProcurementSettings, ScheduleLine, Submittal, SubmittalFile, SubmittalForward, SubmittalRevision
 from .base import ProcurementTestBase, pdf
 
-MEDIA = tempfile.mkdtemp()
 
-
-def tearDownModule():
-    shutil.rmtree(MEDIA, ignore_errors=True)
-
-
-@override_settings(MEDIA_ROOT=MEDIA)
 class ScheduleLineTests(ProcurementTestBase):
     def test_dates_are_worked_out_on_save(self):
         line = self.line(required_on_site=date(2026, 6, 15), lead_time_weeks=6, approval_weeks=2)
@@ -110,7 +103,6 @@ class ScheduleLineTests(ProcurementTestBase):
         self.assertContains(self.client.get(self.url('procurement_schedule', self.pa.pk)), 'No procurement schedule yet')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class TransitionTests(ProcurementTestBase):
     def test_numbering_and_index(self):
         a, b = self.submittal(), self.submittal()
@@ -322,7 +314,6 @@ class TransitionTests(ProcurementTestBase):
         self.assertEqual(self.fresh(s).status, Submittal.REQUIRED)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class NeedsMeTests(ProcurementTestBase):
     def kinds_for(self, user, kind=None):
         req = self.request_for(user)
@@ -402,7 +393,6 @@ class NeedsMeTests(ProcurementTestBase):
         self.assertContains(r, 'Submittals')  # the sub-tab under Decisions
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class AccessTests(ProcurementTestBase):
     def setUp(self):
         super().setUp()
@@ -526,7 +516,6 @@ class AccessTests(ProcurementTestBase):
         self.assertEqual(self.fresh(self.mine).status, Submittal.SUBMITTED)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class TenancyTests(ProcurementTestBase):
     def test_another_company_gets_a_404(self):
         line = self.line()

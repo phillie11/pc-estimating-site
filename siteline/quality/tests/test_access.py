@@ -21,10 +21,9 @@ from .. import rules
 from ..models import (ChecklistTemplate, Inspection, InspectionItem, Penetration, Permit, QualityPhoto,
                       QualitySettings, TemplateItem)
 from ..pins import viewer_pins
-from .base import MEDIA, QualityTestBase, jpeg, tearDownModule  # noqa: F401
+from .base import QualityTestBase, jpeg
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class RoleTests(QualityTestBase):
     def setUp(self):
         super().setUp()
@@ -134,7 +133,6 @@ class RoleTests(QualityTestBase):
             self.assertFalse(kinds & {'inspection', 'permit', 'firestopping'}, user)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class TenancyTests(QualityTestBase):
     def test_another_company_gets_a_404(self):
         ins, items = self.inspection()

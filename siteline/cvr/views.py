@@ -68,13 +68,17 @@ def _previous_figures(project, month):
     return _with_previous(project, None, month)[1]
 
 
-def _with_previous(project, period, month):
-    """(this month's figures, last month's or None), the live ones worked out together."""
+def _with_previous(project, period, month, with_drift=False):
+    """
+    (this month's figures, last month's or None), the live ones worked out together. With `with_drift`, a
+    third: a submitted or signed-off month's figures worked out live now (no adjustments), for
+    figures.drift(), in the same queries.
+    """
     prev_month = rules.add_months(month, -1)
     prev = CVRPeriod.objects.filter(project=project, month=prev_month).first()
     want = {}
-    if period is not None and not period.is_frozen:
-        want[period.month] = {project.pk: period}
+    if period is not None and (not period.is_frozen or with_drift):
+        want[period.month] = {project.pk: period} if not period.is_frozen else {}
     if prev is not None and not prev.is_frozen:
         want[prev_month] = {project.pk: prev}
     elif prev is None and prev_month >= services.first_month(project):
@@ -87,6 +91,9 @@ def _with_previous(project, period, month):
         previous = figures.frozen_figures(prev)
     else:
         previous = live[prev_month][project.pk] if prev_month in live else None
+    if with_drift:
+        now = live[period.month][project.pk] if period is not None and period.is_frozen else None
+        return current, previous, now
     return current, previous
 
 
@@ -136,7 +143,7 @@ def cvr_list(request, org_slug, pk):
 
 
 def _period_ctx(request, project, period, **extra):
-    current, previous = _with_previous(project, period, period.month)
+    current, previous, live_now = _with_previous(project, period, period.month, with_drift=True)
     adjustments = list(CVRAdjustment.objects.filter(period=period).select_related('created_by'))
     reversed_ids = {a.reverses_id for a in adjustments if a.reverses_id}
     for a in adjustments:
@@ -157,7 +164,7 @@ def _period_ctx(request, project, period, **extra):
     return commercial_context(
         request, project, 'cvr', period=period, f=current, budget_after=budget_after, previous=previous, move=current.movement(previous),
         adjustments=adjustments, transitions=available_transitions(period, request.user),
-        can_prepare=True, drift=figures.drift(period, project),
+        can_prepare=True, drift=figures.drift(period, project, now=live_now),
         has_previous=services.previous_period(period) is not None, sources=sources,
         month_ended=rules.has_ended(period.month, timezone.localdate()), advisory=rules.ADVISORY, **extra)
 
@@ -165,7 +172,8 @@ def _period_ctx(request, project, period, **extra):
 @internal_required
 def cvr_period(request, org_slug, pk, period_id):
     project = cvr_project(request, pk)
-    period = get_object_or_404(CVRPeriod, project=project, pk=period_id)
+    period = get_object_or_404(CVRPeriod.objects.select_related('submitted_by', 'signed_off_by'), project=project,
+                               pk=period_id)
     adj_form = AdjustmentForm(prefix='adj')
     commentary_form = CommentaryForm(instance=period, prefix='c')
     if request.method == 'POST':

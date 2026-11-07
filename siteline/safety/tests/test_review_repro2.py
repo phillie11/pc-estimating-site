@@ -6,17 +6,15 @@ the first company's retention period. Inside unscoped() it deleted every company
 """
 import datetime
 
-from django.test import override_settings
 from django.utils import timezone
 
 from tenancy.context import org_context
 
 from ..models import SafetySettings, SiteAttendance
 from ..retention import purge_visitor_signins
-from .base import MEDIA, SafetyTestBase
+from .base import SafetyTestBase
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PurgeIsPinnedToItsCompanyTests(SafetyTestBase):
     def test_purge_for_one_company_never_touches_another(self):
         from projects.models import Project

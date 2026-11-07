@@ -13,6 +13,7 @@ from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from security.testing import hold_rate_limit_clock
 from tenancy import scale
 from tenancy.context import close_request_memo, open_request_memo, org_context
 from tenancy.models import Membership
@@ -27,6 +28,12 @@ PAGE_CEILING = 50
 
 
 class QueryCountsDontGrowTests(TestCase):
+    def setUp(self):
+        # The search and export pages count each request against a rate limit, and the first request of a new
+        # window takes extra queries (start the counter, clear finished ones). Held in one window, the small and
+        # big company's pages are measured alike however slowly the suite runs.
+        hold_rate_limit_clock(self)
+
     @classmethod
     def setUpTestData(cls):
         cls.small = scale.build('Small Fitout', jobs=SMALL, staff=6, subs=40, email_domain='small.test', **VOLUMES)
@@ -52,7 +59,7 @@ class QueryCountsDontGrowTests(TestCase):
             ('pm', u('needs_me')), ('pm', u('project_detail', pk)), ('pm', u('contract_detail', pk)),
             ('pm', u('cost_report', pk)), ('pm', u('application_list', pk)), ('pm', u('subpay_list', pk)),
             ('pm', u('cvr_list', pk)), ('pm', u('cvr_cashflow', pk)), ('pm', u('daywork_list', pk)),
-            ('owner', u('company_cvr')),
+            ('owner', u('company_cvr')), ('pm', u('cvr_period', pk, self._signed_off_cvr(built, job))),
             ('pm', u('diary_register', pk)), ('pm', u('document_list', pk)), ('pm', u('package_list', pk)),
             ('pm', u('safety_home', pk)), ('pm', u('incident_list', pk)), ('pm', u('safety_on_site', pk)),
             ('pm', u('safety_sign_in_log', pk)), ('owner', u('company_incidents')),
@@ -93,6 +100,12 @@ class QueryCountsDontGrowTests(TestCase):
         from meetings.models import Meeting
         with org_context(built.org):
             return Meeting.objects.filter(project=job, status=Meeting.STATUS_ISSUED).order_by('-held_on').first().pk
+
+    def _signed_off_cvr(self, built, job):
+        """The job's oldest CVR, signed off: its page also checks the month's figures for later changes."""
+        from cvr.models import CVRPeriod
+        with org_context(built.org):
+            return CVRPeriod.objects.filter(project=job, status=CVRPeriod.SIGNED_OFF).order_by('month').first().pk
 
     def _drawing_pages(self, built, job, u):
         """A shared drawing with two revisions, marked up by one person per job in the company (so more in the big one)."""

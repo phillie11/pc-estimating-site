@@ -283,16 +283,18 @@ def unfreeze(period):
         setattr(period, name, None)
 
 
-def drift(period, project=None):
+def drift(period, project=None, now=None):
     """
     For a signed-off month: how the source figures for that month differ now from what was signed
     off (a ledger entry dated in the month but posted later, a reversed payment). Those changes show
     in the next open month's to-date figures; this says how much. {figure: difference}, non-zero only.
+    `now` is the month's live figures without adjustments, if the caller has already worked them out.
     """
     if not period.is_frozen:
         return {}
     project = project or period.project
-    now = live_figures([project], period.month)[project.pk]
+    if now is None:
+        now = live_figures([project], period.month)[project.pk]
     out = {}
     then = frozen_figures(period)
     for name, label in (('value_to_date', 'value'), ('certified_to_date', 'certified'), ('paid_to_date', 'paid'),

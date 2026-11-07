@@ -26,16 +26,9 @@ from levelling.models import Adjustment, Exclusion, LevellingSheet, QuoteCell, S
 
 from .test_import import HEAD, csv_file, xlsx
 
-MEDIA = tempfile.mkdtemp()
 
-
-@override_settings(MEDIA_ROOT=MEDIA, RATELIMIT_ENABLED=False)
+@override_settings(RATELIMIT_ENABLED=False)
 class LevellingBase(Base):
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-        shutil.rmtree(MEDIA, ignore_errors=True)
-
     def setUp(self):
         super().setUp()
         now = timezone.now()

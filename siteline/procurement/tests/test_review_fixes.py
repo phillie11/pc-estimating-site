@@ -5,14 +5,12 @@ externals, L3 the consultant's neutral view, L4/L5 package choices, L6 reviewer 
 L7 two people submitting at once, L8 the overview link, L9 ordering with submittals in review,
 L10 recalculating when the contract's bank holiday region changes, and the forward migrations.
 """
-import shutil
-import tempfile
 from datetime import date
 from unittest import mock
 
 from django.db import IntegrityError, connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TransactionTestCase, override_settings
+from django.test import TransactionTestCase
 
 from changes.tests.base import make_user
 from contracts.models import MainContract
@@ -27,14 +25,7 @@ from ..models import ScheduleLine, Submittal, SubmittalFile, SubmittalForward
 from ..workflow import reviewer_for
 from .base import ProcurementTestBase, pdf
 
-MEDIA = tempfile.mkdtemp()
 
-
-def tearDownModule():
-    shutil.rmtree(MEDIA, ignore_errors=True)
-
-
-@override_settings(MEDIA_ROOT=MEDIA)
 class ForwardTwiceTests(ProcurementTestBase):
     """M1: the reviewer's repro, step by step."""
 
@@ -99,7 +90,6 @@ class ForwardTwiceTests(ProcurementTestBase):
         self.assertEqual(rows[1], ('', None))
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class ReviewFixTests(ProcurementTestBase):
     def test_l1_status_only_moves_forward_in_the_edit_form(self):
         line = self.line(status=ScheduleLine.APPROVED)

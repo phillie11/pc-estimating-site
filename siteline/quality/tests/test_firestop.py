@@ -4,7 +4,6 @@ before and after, sealing, sign-off (needs the system and an after photo), faili
 resealing, reopening (PM only), the CSV export, Needs me, and pins from the drawing viewer.
 """
 from django.core.files.base import ContentFile
-from django.test import override_settings
 
 from core.workflow import apply_transition
 from projects.models import Document, DocumentRevision
@@ -12,10 +11,9 @@ from tenancy.context import org_context
 
 from ..exports import HEADER, register
 from ..models import Penetration, QualityPhoto
-from .base import MEDIA, QualityTestBase, jpeg, tearDownModule  # noqa: F401
+from .base import QualityTestBase, jpeg
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class FirestopFlowTests(QualityTestBase):
     def test_empty_register_says_what_goes_here(self):
         self.login(self.pat)
@@ -144,7 +142,6 @@ class FirestopFlowTests(QualityTestBase):
         self.assertEqual(rows[0][0], 'FS-001')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class FirestopNeedsMeTests(QualityTestBase):
     def items(self, user):
         import actions
@@ -167,7 +164,6 @@ class FirestopNeedsMeTests(QualityTestBase):
             self.assertEqual(self.items(user), [])
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class ViewerPinTests(QualityTestBase):
     def setUp(self):
         super().setUp()
