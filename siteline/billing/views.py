@@ -41,6 +41,7 @@ def stripe_ready():
 
 def _client():
     stripe.api_key = settings.STRIPE_SECRET_KEY
+    stripe.api_version = settings.STRIPE_API_VERSION
     return stripe
 
 
@@ -196,7 +197,8 @@ def handle_event(event):
         org.save()
         if obj.get('subscription') and stripe_ready():
             try:
-                apply_subscription(org, _client().Subscription.retrieve(obj['subscription']))
+                # A StripeObject, not a dict since stripe-python 15: read it as the webhook's plain dicts
+                apply_subscription(org, _client().Subscription.retrieve(obj['subscription']).to_dict())
             except stripe.StripeError:
                 logger.exception('Could not fetch subscription after checkout')
     elif etype in ('customer.subscription.created', 'customer.subscription.updated',

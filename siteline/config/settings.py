@@ -259,12 +259,25 @@ if STORAGE_BUCKET:
         # Fail at start-up with a plain message, not a signing error deep inside boto on the first upload
         raise RuntimeError(f'STORAGE_BUCKET is set but {" and ".join(_missing)} {"are" if len(_missing) > 1 else "is"} empty in .env. '
                            'Add the siteline-app access key, or put # before STORAGE_BUCKET to keep files on disk.')
+    from urllib.parse import urlsplit
+
+    from botocore.config import Config as _BotoConfig
+
+    # Without an endpoint, use AWS's regional one (London by default), never the global one
+    _endpoint = env('STORAGE_ENDPOINT_URL') or f'https://s3.{STORAGE_REGION}.amazonaws.com'
+    _on_aws = (urlsplit(_endpoint).hostname or '').endswith('.amazonaws.com')
     STORAGES['default'] = {
         'BACKEND': 'storages.backends.s3.S3Storage',
         'OPTIONS': {
             'bucket_name': STORAGE_BUCKET,
-            # Without an endpoint, use AWS's regional one (London by default), never the global one
-            'endpoint_url': env('STORAGE_ENDPOINT_URL') or f'https://s3.{STORAGE_REGION}.amazonaws.com',
+            'endpoint_url': _endpoint,
+            # botocore 1.36+ sends a CRC32 checksum with every upload (aws-chunked with a trailer)
+            # and asks for one on every download. AWS S3 handles that; other S3-compatible services
+            # (Spaces, R2) may not, so for them only send checksums where the API requires one.
+            # A client_config replaces the one django-storages would build, hence signature_version.
+            'client_config': None if _on_aws else _BotoConfig(
+                signature_version='s3v4', request_checksum_calculation='when_required',
+                response_checksum_validation='when_required'),
             'region_name': STORAGE_REGION,
             'access_key': None if STORAGE_USE_IAM_ROLE else env('STORAGE_ACCESS_KEY'),
             'secret_key': None if STORAGE_USE_IAM_ROLE else env('STORAGE_SECRET_KEY'),
@@ -318,6 +331,11 @@ JOBS_EMAIL_BODY_DAYS = int(env('JOBS_EMAIL_BODY_DAYS', '7'))  # sent emails' bod
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', '')
 STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', '')
+# The Stripe API version billing/views.py is written against (the one stripe-python 11.4 pinned).
+# Each stripe-python major release moves its own default, so this is sent explicitly. Change it only
+# after checking billing against Stripe's API changelog; webhook payloads follow the version set on
+# the webhook endpoint in the Stripe Dashboard, not this.
+STRIPE_API_VERSION = '2024-12-18.acacia'
 TRIAL_DAYS = int(env('TRIAL_DAYS', '14'))
 # Days a workspace keeps working after a failed payment before it locks.
 PAYMENT_GRACE_DAYS = int(env('PAYMENT_GRACE_DAYS', '7'))

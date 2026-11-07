@@ -175,6 +175,10 @@ class LoginTests(SecurityTestBase):
         # Locked: even the right code, or the right password again, doesn't get in
         r = self.client.post(reverse('two_factor_verify'), {'code': code_for(device)})
         self.assertFalse(signed_in(self.client))
+        # That refusal is the view's own lockout check: axes' locked page, for this account
+        self.assertEqual(r.status_code, 429)
+        self.assertTemplateUsed(r, 'security/locked_out.html')
+        self.assertEqual(r.context['username'], self.staff.email)
         r = self.password_step(self.staff)
         self.assertEqual(r.status_code, 429)
         self.assertFalse(signed_in(self.client))
