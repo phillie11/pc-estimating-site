@@ -17,10 +17,14 @@ from .models import SafetySettings, SiteAttendance
 
 
 def due_for_purge(org, now=None):
-    """The visitor sign-ins in this company (the current organisation) that are past retention."""
+    """
+    The visitor sign-ins in `org` that are past retention. Pinned to `org` as well as to the current
+    organisation (which must be set: no context fails closed), so a caller in another company's context,
+    or inside unscoped(), never reaches another company's rows.
+    """
     months = SafetySettings.for_org(org).visitor_retention_months
     cutoff = rules.visitor_purge_cutoff(now or timezone.now(), months)
-    return SiteAttendance.objects.filter(kind=SiteAttendance.KIND_VISITOR, user__isnull=True,
+    return SiteAttendance.objects.filter(organization=org, kind=SiteAttendance.KIND_VISITOR, user__isnull=True,
                                          signed_in_at__lt=cutoff), cutoff
 
 
