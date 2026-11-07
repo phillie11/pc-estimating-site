@@ -4,6 +4,12 @@
  * scrolling, dragging with the mouse or with one finger. Tap and hold (or "Add pin", then tap)
  * to place a pin. Positions are fractions of the page (0 to 1), so they don't depend on zoom.
  *
+ * Mark-up layers: "Mark up" opens the drawing tools (pen, line, arrow, box, cloud, note, measure,
+ * eraser). While a tool is on, one finger or the mouse draws and two fingers still pinch to zoom.
+ * The person's own layer for this revision saves itself a moment after each shape; other layers
+ * shared with them are fetched when ticked in the list. Shapes are drawn by markup.js on a canvas
+ * over the page, never as HTML.
+ *
  * No inline script and no eval: the page passes its settings in a JSON block (json_script), and
  * pdf.js is told isEvalSupported: false, so the strict Content-Security-Policy holds.
  */
@@ -38,6 +44,12 @@ async function init() {
   const MAX_CANVAS_PIXELS = 4096 * 4096;  // phones run out of canvas memory above this
   let pdf = null, page = null, base = null, pageNum = 1, zoom = 1, renderTask = null, focusId = String(cfg.focus || '');
   let placing = false, tempPin = null, pendingPoint = null;
+  const ink = $('[data-ink]', root);
+  let mk = null, marking = false, tool = 'pen', drawingShape = null;
+  const mine = { id: cfg.mine ? cfg.mine.id : null, version: cfg.mine ? cfg.mine.version : 0,
+                 shapes: cfg.mine ? cfg.mine.shapes.slice() : [], shown: true };
+  const layers = {};
+  (cfg.layers || []).forEach(function (l) { if (!(l.mine && l.here)) layers[l.id] = { info: l, shapes: null, shown: false }; });
 
   // ---- load ---------------------------------------------------------------
   const pdfjs = await import(cfg.pdfjs);
@@ -49,6 +61,7 @@ async function init() {
   const data = new Uint8Array(await resp.arrayBuffer());
   pdf = await pdfjs.getDocument({ data: data, isEvalSupported: false, enableXfa: false,
                                   standardFontDataUrl: cfg.fonts }).promise;
+  mk = await import(cfg.markup_js);
   $('[data-pages]', root).textContent = pdf.numPages;
   const focusPin = cfg.pins.find(function (p) { return String(p.id) === focusId; });
   if (focusPin && focusPin.page <= pdf.numPages) pageNum = focusPin.page;
@@ -103,6 +116,13 @@ async function init() {
     stage.style.height = vp.height + 'px';
     canvas.replaceWith(c);
     canvas = c;
+    if (ink) {
+      ink.width = c.width;
+      ink.height = c.height;
+      ink.style.width = c.style.width;
+      ink.style.height = c.style.height;
+    }
+    drawInk();
     $('[data-zoom]', root).textContent = Math.abs(zoom - 1) < 0.01 ? 'Fit' : Math.round(zoom * 100) + '%';
     drawPins();
     if (keep) {
@@ -166,9 +186,13 @@ async function init() {
     else if (act === 'out') zoomTo(zoom / 1.25);
     else if (act === 'fit') { zoom = 1; render(); }
     else if (act === 'pin') setPlacing(!placing);
+    else if (act === 'markup') setMarking(!marking);
+    else if (act === 'markup-done') setMarking(false);
+    else if (act === 'undo') undo();
   });
 
   function setPlacing(on) {
+    if (on && marking) setMarking(false);
     placing = on;
     root.classList.toggle('placing', on);
     const b = $('[data-act=pin]', root);
@@ -201,7 +225,7 @@ async function init() {
   stage.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   stage.addEventListener('pointerdown', function (e) {
-    if (e.button !== 0 || e.target.closest('.dv-pin') || !e.isPrimary) return;
+    if (marking || e.button !== 0 || e.target.closest('.dv-pin') || !e.isPrimary) return;
     press = { x: e.clientX, y: e.clientY, sl: port.scrollLeft, st: port.scrollTop, type: e.pointerType,
               moved: false, timer: null };
     if (cfg.can_pin) {
@@ -239,6 +263,7 @@ async function init() {
 
   stage.addEventListener('click', function (e) {
     if (suppressClick) { suppressClick = false; e.preventDefault(); return; }
+    if (marking) { e.preventDefault(); return; }
     if (placing && !e.target.closest('.dv-pin')) {
       e.preventDefault();
       placeAt(e.clientX, e.clientY);
@@ -251,6 +276,7 @@ async function init() {
   port.addEventListener('touchstart', function (e) {
     if (e.touches.length !== 2) return;
     if (press) { clearTimeout(press.timer); press = null; }
+    if (drawingShape) { drawingShape = null; drawInk(); }
     const r = port.getBoundingClientRect();
     const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     pinch = { d0: dist(e.touches), ratio: 1, cx: mx - r.left, cy: my - r.top,
@@ -324,6 +350,319 @@ async function init() {
         link.disabled = false;
       }
     });
+  }
+
+  // ---- mark-up layers -------------------------------------------------------
+  const tools = $('[data-tools]', root);
+  const saveState = $('[data-save-state]', root);
+  const textDialog = $('[data-text-dialog]');
+  const scale = mk.parseScale(cfg.scale);
+  let saveTimer = null, saving = false, dirty = false;
+
+  function drawInk() {
+    if (!ink || !mk || !base) return;
+    const ctx = ink.getContext('2d');
+    const w = parseFloat(ink.style.width) || ink.width, h = parseFloat(ink.style.height) || ink.height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ink.width, ink.height);
+    ctx.setTransform(ink.width / w, 0, 0, ink.height / h, 0, 0);
+    Object.keys(layers).forEach(function (id) {
+      const l = layers[id];
+      if (l.shown && l.shapes) mk.drawShapes(ctx, l.shapes, pageNum, w, h);
+    });
+    if (mine.shown) mk.drawShapes(ctx, mine.shapes, pageNum, w, h);
+    if (drawingShape) mk.drawShapes(ctx, [drawingShape], pageNum, w, h);
+  }
+
+  function setMarking(on) {
+    if (!cfg.can_draw || !tools) return;
+    marking = on;
+    if (on && placing) setPlacing(false);
+    tools.hidden = !on;
+    root.classList.toggle('marking', on);
+    const b = $('[data-act=markup]', root);
+    if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (on && !mine.shown) setShown('mine', true);
+    if (!on) flushSave();
+  }
+
+  if (tools) tools.addEventListener('click', function (e) {
+    const b = e.target.closest('[data-tool]');
+    if (!b) return;
+    tool = b.dataset.tool;
+    tools.querySelectorAll('[data-tool]').forEach(function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+  });
+
+  function colour() { const sel = $('[data-colour]', root); return sel ? sel.value : 'red'; }
+
+  function pointAt(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    const x = (clientX - r.left) / r.width, y = (clientY - r.top) / r.height;
+    return [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))];
+  }
+
+  function onPage(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+  }
+
+  function round(pt) { return [Math.round(pt[0] * 1e5) / 1e5, Math.round(pt[1] * 1e5) / 1e5]; }
+
+  stage.addEventListener('pointerdown', function (e) {
+    if (!marking || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (!onPage(e.clientX, e.clientY)) return;
+    e.preventDefault();
+    const pt = round(pointAt(e.clientX, e.clientY));
+    if (tool === 'erase') { eraseAt(pt); return; }
+    if (tool === 'text') { addNote(pt); return; }
+    try { stage.setPointerCapture(e.pointerId); } catch (ex) { /* older browsers */ }
+    if (tool === 'pen') drawingShape = { t: 'pen', p: pageNum, c: colour(), w: 3, pts: [pt] };
+    else drawingShape = { t: tool, p: pageNum, c: colour(), w: 3, a: pt, b: pt };
+    drawInk();
+  });
+
+  stage.addEventListener('pointermove', function (e) {
+    if (!marking || !drawingShape || !e.isPrimary) return;
+    e.preventDefault();
+    const pt = round(pointAt(e.clientX, e.clientY));
+    if (drawingShape.t === 'pen') {
+      const last = drawingShape.pts[drawingShape.pts.length - 1];
+      const r = canvas.getBoundingClientRect();
+      if (Math.hypot((pt[0] - last[0]) * r.width, (pt[1] - last[1]) * r.height) < 2) return;
+      drawingShape.pts.push(pt);
+      if (drawingShape.pts.length >= 2000) finishShape();
+    } else {
+      drawingShape.b = pt;
+    }
+    drawInk();
+  });
+
+  stage.addEventListener('pointerup', function (e) { if (marking && drawingShape && e.isPrimary) finishShape(); });
+  stage.addEventListener('pointercancel', function () { drawingShape = null; drawInk(); });
+
+  async function finishShape() {
+    const s = drawingShape;
+    drawingShape = null;
+    if (!s) return;
+    if (s.t !== 'pen') {
+      const r = canvas.getBoundingClientRect();
+      if (Math.hypot((s.b[0] - s.a[0]) * r.width, (s.b[1] - s.a[1]) * r.height) < 6) { drawInk(); return; }
+    }
+    if (s.t === 'measure') {
+      const text = await askText('Measurement', 'Label for this measurement',
+                                 mk.measureLabel(s, base.width, base.height, scale),
+                                 scale ? 'Worked out from the drawing scale (' + cfg.scale + '). Check it against a dimension before relying on it.'
+                                       : 'This drawing has no scale set, so type the length you measured.');
+      if (text === null) { drawInk(); return; }
+      s.text = text;
+    }
+    addShape(s);
+  }
+
+  async function addNote(pt) {
+    const text = await askText('Add a note', 'Note', '', '');
+    if (!text) return;
+    addShape({ t: 'text', p: pageNum, c: colour(), s: 18, at: pt, text: text });
+  }
+
+  function addShape(s) {
+    if (mine.shapes.length >= 1000) { showSave('This layer is full (1,000 shapes). Remove some first.', true); drawInk(); return; }
+    mine.shapes.push(s);
+    drawInk();
+    scheduleSave();
+  }
+
+  function eraseAt(pt) {
+    const w = parseFloat(ink.style.width), h = parseFloat(ink.style.height);
+    let best = -1, bestD = 16;
+    mine.shapes.forEach(function (s, i) {
+      if (s.p !== pageNum) return;
+      const d = mk.distanceTo(s, pt[0], pt[1], w, h);
+      if (d <= bestD) { best = i; bestD = d; }
+    });
+    if (best < 0) { showSave('Tap on one of your own shapes to rub it out.'); return; }
+    mine.shapes.splice(best, 1);
+    drawInk();
+    scheduleSave();
+  }
+
+  function undo() {
+    if (!mine.shapes.length) { showSave('Nothing to undo.'); return; }
+    mine.shapes.pop();
+    drawInk();
+    scheduleSave();
+  }
+
+  function askText(title, labelText, value, hint) {
+    return new Promise(function (resolve) {
+      if (!textDialog || typeof textDialog.showModal !== 'function') {
+        const v = window.prompt(labelText, value);
+        resolve(v === null ? null : v.trim().slice(0, 300));
+        return;
+      }
+      $('[data-text-title]', textDialog).textContent = title;
+      $('[data-text-label]', textDialog).textContent = labelText;
+      $('[data-text-hint]', textDialog).textContent = hint;
+      const input = $('[data-text-input]', textDialog);
+      input.value = value || '';
+      textDialog.returnValue = '';
+      textDialog.addEventListener('close', function done() {
+        textDialog.removeEventListener('close', done);
+        resolve(textDialog.returnValue === 'ok' ? input.value.trim().slice(0, 300) : null);
+      });
+      textDialog.showModal();
+      input.focus();
+      input.select();
+    });
+  }
+
+  function showSave(text, isError) {
+    if (!saveState) return;
+    saveState.textContent = text;
+    saveState.classList.toggle('error', !!isError);
+  }
+
+  function scheduleSave() {
+    dirty = true;
+    showSave('Not saved yet…');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 700);
+  }
+
+  function flushSave() { if (dirty) { clearTimeout(saveTimer); save(); } }
+
+  function body() {
+    return new URLSearchParams({ csrfmiddlewaretoken: csrf, version: String(mine.version || 0),
+                                 data: JSON.stringify({ v: 1, shapes: mine.shapes }) });
+  }
+
+  async function save() {
+    if (saving) { saveTimer = setTimeout(save, 400); return; }
+    if (!dirty) return;
+    saving = true;
+    dirty = false;
+    showSave('Saving…');
+    try {
+      const r = await fetch(cfg.save_url, { method: 'POST', body: body(), credentials: 'same-origin',
+                                            headers: { 'X-CSRFToken': csrf, Accept: 'application/json' } });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok) {
+        showSave(j.error || 'Your mark-up could not be saved. Reload the page and try again.', true);
+        return;
+      }
+      const first = !mine.id;
+      mine.id = j.id;
+      mine.version = j.version;
+      showSave(dirty ? 'Not saved yet…' : 'Saved');
+      updateMineRow(j, first);
+    } catch (ex) {
+      dirty = true;
+      showSave('Not saved: no connection. It will try again when you draw.', true);
+    } finally {
+      saving = false;
+    }
+  }
+
+  window.addEventListener('pagehide', function () {
+    if (!dirty || !cfg.save_url) return;
+    try {
+      fetch(cfg.save_url, { method: 'POST', body: body(), credentials: 'same-origin', keepalive: true,
+                            headers: { 'X-CSRFToken': csrf, Accept: 'application/json' } });
+    } catch (ex) { /* the page is going anyway */ }
+  });
+
+  function updateMineRow(j, first) {
+    const row = $('[data-mine-row]');
+    if (!row) return;
+    const summary = $('[data-mine-summary]', row);
+    if (summary) summary.textContent = j.summary;
+    if (first) {
+      row.querySelectorAll('[data-needs-layer]').forEach(function (form) {
+        form.action = form.dataset.needsLayer.replace('/markups/0/', '/markups/' + j.id + '/');
+        form.hidden = false;
+      });
+    }
+  }
+
+  // Show / hide layers from the list
+  function setShown(id, on) {
+    if (id === 'mine') { mine.shown = on; drawInk(); syncBox(id, on); return; }
+    const l = layers[id];
+    if (!l) return;
+    l.shown = on;
+    syncBox(id, on);
+    if (on && !l.shapes) {
+      fetch(l.info.data_url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { if (!r.ok) throw new Error('not loaded'); return r.json(); })
+        .then(function (j) { l.shapes = j.shapes || []; drawInk(); })
+        .catch(function () {
+          l.shown = false;
+          syncBox(id, false);
+          window.alert('That mark-up could not be loaded. Reload the page and try again.');
+        });
+    } else {
+      drawInk();
+    }
+  }
+
+  function syncBox(id, on) {
+    const box = document.querySelector('[data-layer="' + id + '"]');
+    if (box) box.checked = on;
+  }
+
+  document.addEventListener('change', function (e) {
+    const box = e.target.closest('[data-layer]');
+    if (box) setShown(box.dataset.layer, box.checked);
+  });
+
+  // Layers ticked in the list when the page loads (those drawn on this revision)
+  document.querySelectorAll('[data-layer]').forEach(function (box) {
+    if (box.dataset.layer === 'mine') mine.shown = box.checked;
+    else if (box.checked) setShown(box.dataset.layer, true);
+  });
+  drawInk();
+
+  // ---- export: this page with the layers that are shown --------------------
+  document.querySelectorAll('.dv-export [data-act]').forEach(function (b) {
+    b.addEventListener('click', function () { exportPage(b.dataset.act, b); });
+  });
+
+  async function exportPage(kind, btn) {
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = 'Preparing…';
+    try {
+      flushSave();
+      let s = Math.min(3, Math.max(1, 2400 / base.width));
+      if (base.width * s * base.height * s > MAX_CANVAS_PIXELS) s = Math.sqrt(MAX_CANVAS_PIXELS / (base.width * base.height));
+      const vp = page.getViewport({ scale: s });
+      const c = document.createElement('canvas');
+      c.width = Math.floor(vp.width);
+      c.height = Math.floor(vp.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      Object.keys(layers).forEach(function (id) {
+        if (layers[id].shown && layers[id].shapes) mk.drawShapes(ctx, layers[id].shapes, pageNum, c.width, c.height);
+      });
+      if (mine.shown) mk.drawShapes(ctx, mine.shapes, pageNum, c.width, c.height);
+      const name = mk.safeName(cfg.name) + (pdf.numPages > 1 ? '-page-' + pageNum : '') + '-markup';
+      if (kind === 'png') {
+        const blob = await new Promise(function (resolve) { c.toBlob(resolve, 'image/png'); });
+        mk.download(blob, name + '.png');
+      } else {
+        mk.download(await mk.pdfFromCanvas(c, base.width, base.height), name + '.pdf');
+      }
+    } catch (ex) {
+      if (window.console) console.error(ex);
+      window.alert('The export could not be made on this device. Try another browser, or use Download for the plain drawing.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = old;
+    }
   }
 
   // ---- the list of pins under the drawing ----------------------------------

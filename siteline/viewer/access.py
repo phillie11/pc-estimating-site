@@ -23,7 +23,7 @@ from projects.access import is_internal
 from projects.models import DocumentRevision, Issue
 from rfis.models import RFI
 
-from .models import DrawingPin
+from .models import DrawingPin, MarkupLayer
 
 
 def is_pdf(rev):
@@ -104,3 +104,39 @@ def can_raise_snag(request):
 
 def visible_revision_ids(request, project):
     return None if is_internal(request) else set(visible_revisions(request, project).values_list('pk', flat=True))
+
+
+# ---------------------------------------------------------------------------
+# Mark-up layers
+# ---------------------------------------------------------------------------
+
+def visible_layers(request, project, doc, revisions=None):
+    """
+    Mark-up layers on this document this person may see. Never wider than the drawing itself: the
+    layer's own revision must be one they may open in the viewer (so a layer drawn on work in
+    progress or a withdrawn revision stays hidden from externals, even when shown over a newer one).
+
+      their own layers                      always (on revisions they may open)
+      staff                                 also layers shared with the site team or wider, by anyone
+      externals                             also staff layers shared with everyone the drawing is shared with
+    """
+    revs = revisions if revisions is not None else viewable_revisions(request, project, doc)
+    qs = MarkupLayer.objects.filter(project=project, document=doc, revision__in=[r.pk for r in revs])
+    mine = Q(owner=request.user)
+    if is_internal(request):
+        qs = qs.filter(mine | Q(share__in=(MarkupLayer.TEAM, MarkupLayer.EXTERNAL)))
+    else:
+        qs = qs.filter(mine | Q(share=MarkupLayer.EXTERNAL))
+    return qs.select_related('owner', 'revision')
+
+
+def can_mark_up(request, project, rev):
+    """May this person draw a layer of their own on this revision? Not on archived jobs or withdrawn revisions."""
+    return not project.is_archived and not rev.is_withdrawn and can_view(request, rev)
+
+
+def share_choices(request):
+    """Who an owner may share their layer with: only staff can share with externals."""
+    if is_internal(request):
+        return MarkupLayer.SHARE_CHOICES
+    return [(MarkupLayer.PRIVATE, 'Only me'), (MarkupLayer.TEAM, 'The site team')]
