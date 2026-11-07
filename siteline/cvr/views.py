@@ -441,12 +441,15 @@ def _store_photo(sheet, f, caption, user):
     photo.image.save(os.path.basename(f.name), f, save=False)
     f.seek(0)
     img = ImageOps.exif_transpose(Image.open(f))
-    img.thumbnail((480, 480))
     if img.mode != 'RGB':
         img = img.convert('RGB')
-    buf = io.BytesIO()
-    img.save(buf, 'JPEG', quality=80)
-    photo.thumbnail.save('thumb.jpg', ContentFile(buf.getvalue()), save=False)
+    # Re-encoded copies carry no EXIF (location, device), so the client portal never needs the original
+    for field, size, name in ((photo.display, 1600, 'display.jpg'), (photo.thumbnail, 480, 'thumb.jpg')):
+        copy = img.copy()
+        copy.thumbnail((size, size))
+        buf = io.BytesIO()
+        copy.save(buf, 'JPEG', quality=82)
+        field.save(name, ContentFile(buf.getvalue()), save=False)
     photo.save()
     return photo
 

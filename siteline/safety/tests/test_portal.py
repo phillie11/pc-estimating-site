@@ -195,6 +195,17 @@ class VisitorRetentionTests(Base):
         self.assertEqual(left, {new_visitor.pk, old_staff.pk, old_portal.pk})
         self.assertNotIn(old_visitor.pk, left)
 
+    def test_hand_entered_sign_ins_without_a_login_are_purged_too(self):
+        hand = self.attend(400, kind=SiteAttendance.KIND_COLLABORATOR, name='Kev from the joiners')
+        staff_hand = self.attend(400, kind=SiteAttendance.KIND_STAFF, name='Agency labourer')
+        kept = self.attend(400, kind=SiteAttendance.KIND_STAFF, user=self.pat, name='Pat PM')
+        call_command('purge_signins', stdout=io.StringIO())
+        with org_context(self.org_a):
+            left = set(SiteAttendance.objects.values_list('pk', flat=True))
+        self.assertNotIn(hand.pk, left)
+        self.assertNotIn(staff_hand.pk, left)
+        self.assertIn(kept.pk, left)
+
     def test_each_company_has_its_own_period_and_dry_run_deletes_nothing(self):
         a = self.attend(120)
         with org_context(self.org_b):

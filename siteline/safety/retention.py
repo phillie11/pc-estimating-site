@@ -24,7 +24,9 @@ def due_for_purge(org, now=None):
     """
     months = SafetySettings.for_org(org).visitor_retention_months
     cutoff = rules.visitor_purge_cutoff(now or timezone.now(), months)
-    return SiteAttendance.objects.filter(organization=org, kind=SiteAttendance.KIND_VISITOR, user__isnull=True,
+    # Everyone signed in without a login (QR visitors and people the site team signed in by hand), whatever
+    # kind they were recorded as: with no account, nothing else in Siteline holds their details
+    return SiteAttendance.objects.filter(organization=org, user__isnull=True,
                                          signed_in_at__lt=cutoff), cutoff
 
 

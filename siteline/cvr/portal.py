@@ -182,7 +182,11 @@ def daywork_photo(request, org_slug, pk, sheet_id, photo_id, size):
         raise Http404
     sheet = get_object_or_404(mine(request, project), pk=sheet_id)
     photo = get_object_or_404(DayworkPhoto, sheet=sheet, pk=photo_id)
-    field = photo.thumbnail if size == 'thumb' and photo.thumbnail else photo.image
+    # Never the original upload: it keeps the camera's location. Older photos without a display copy fall back
+    # to the thumbnail.
+    field = photo.thumbnail if size == 'thumb' else (photo.display or photo.thumbnail)
+    if not field:
+        raise Http404
     return serve(request, field, project=project, label=f'{sheet.reference} photo')
 
 

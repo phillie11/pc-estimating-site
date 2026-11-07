@@ -416,6 +416,8 @@ class DayworkPhoto(FixedOnceSigned, TenantModel):
     sheet = models.ForeignKey(DayworkSheet, on_delete=models.CASCADE, related_name='photos')
     image = models.FileField(upload_to=upload_daywork_photo)
     thumbnail = models.FileField(upload_to=upload_daywork_photo, blank=True)
+    # A re-encoded copy without the camera's data (location, device): what the client portal shows
+    display = models.FileField(upload_to=upload_daywork_photo, blank=True)
     original_name = models.CharField(max_length=255, blank=True)
     caption = models.CharField(max_length=200, blank=True)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
