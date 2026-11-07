@@ -458,30 +458,37 @@ class PortalLayoutTests(Base):
 
 
 class StaffTabTests(Base):
-    def test_live_job_row_is_capped_with_more_menu(self):
+    def test_live_job_has_eight_grouped_tabs_and_no_more_menu(self):
         self.login(self.a.owner)
         r = self.client.get(self.url('project_detail', self.a, self.a.job.pk))
         row, more = r.context['tab_row'], r.context['tab_more']
-        self.assertLessEqual(len(row) + (1 if more else 0), 8)
-        self.assertTrue(more)
-        codes = [t[0] for t in r.context['tabs']]
-        self.assertIn('rams', codes)
-        self.assertIn('subvariations', codes)
-        self.assertEqual({t[0] for t in row} | {t[0] for t in more}, set(codes))
-        self.assertContains(r, 'class="tabmore')
+        self.assertEqual(more, [])
+        self.assertNotContains(r, 'class="tabmore')
         self.assertContains(r, 'data-tabbar')
+        self.assertEqual([t[1] for t in row][:7],
+                         ['Overview', 'Programme', 'Documents', 'RFIs', 'Site', 'Commercial', 'Supply chain'])
+        self.assertLessEqual(len(row), 8)
+        # every tab the person can see is reachable: either it is a group, or a member of one in the row
+        from actions.tabs import STAFF_GROUPS
+        members = {c for g, _, ms in STAFF_GROUPS if g in {t[0] for t in row} for c in ms}
+        self.assertLessEqual({t[0] for t in r.context['tabs']}, members | {t[0] for t in row})
         labels = [t[1] for t in r.context['tabs']]
-        # Client variations now live under the Commercial tab (contracts/commercial.py)
-        self.assertIn('Commercial', labels)
         self.assertIn('Variations from subs', labels)
         self.assertNotIn('Variations to client', labels)
-        self.assertNotIn('Client variations', labels)
-        self.assertIn('commercial', [t[0] for t in row])
 
-    def test_tab_in_overflow_shows_as_current_on_more(self):
+    def test_a_grouped_register_shows_its_section_links(self):
         self.login(self.a.owner)
         r = self.client.get(self.url('task_list', self.a, self.a.job.pk))
-        self.assertEqual(r.context['more_on'][0], 'tasks')
+        self.assertEqual(r.context['tab_group'], 'programme')
+        self.assertIn('tasks', [t[0] for t in r.context['subtabs']])
+        self.assertContains(r, 'class="subtabs sections"')
+        self.assertContains(r, 'aria-current="page"')
+
+    def test_snags_sit_under_site(self):
+        self.login(self.a.owner)
+        r = self.client.get(self.url('issue_list', self.a, self.a.job.pk))
+        self.assertEqual(r.context['tab_group'], 'site')
+        self.assertEqual([t[1] for t in r.context['tab_row']][4], 'Site')
 
     def test_bid_tabs_unchanged(self):
         self.login(self.a.est)

@@ -81,8 +81,7 @@ class RoleTests(QualityTestBase):
 
     def test_externals_dont_get_the_tab(self):
         self.login(self.pat)
-        self.assertContains(self.client.get(self.url('project_detail', self.pa.pk)),
-                            self.purl('inspection_list'))
+        self.assertIn('quality', [t[0] for t in self.client.get(self.url('project_detail', self.pa.pk)).context['tabs']])  # grouped tabs: it sits one tap down, so check it is offered, not that its link is on this page
         for user in (self.carla, self.sid, self.connie):
             self.login(user)
             r = self.client.get(self.url('project_detail', self.pa.pk))
