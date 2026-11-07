@@ -943,6 +943,40 @@ details.more-fields[open] > summary { margin-bottom: 10px; }
 .onboard-steps .btn { flex: none; }
 @media (max-width: 600px) { .onboard-steps li { flex-wrap: wrap; } .onboard-steps .btn { margin-left: 38px; width: calc(100% - 38px); } }
 
+/* ---------- Settings > API and company reports (api/, reports/). Own prefixes (api-, rp-), existing tokens only. ---------- */
+.api-page .card, .rp-page .card { margin-bottom: 1.25rem; }
+.api-new, .api-created { max-width: 900px; }
+.api-token { width: 100%; font-size: 14px; padding: 10px 12px; min-height: 44px; }
+.api-code { background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; overflow-x: auto; font: 13px/1.5 var(--mono); white-space: pre; max-width: 100%; }
+.api-doc ul { margin: 0 0 12px; padding-left: 20px; }
+.api-doc li { margin: 4px 0; }
+.api-doc code, .api-path { overflow-wrap: anywhere; }
+.api-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.api-facts dt { color: var(--ink-3); }
+.api-facts dd { margin: 0; }
+.api-old > summary, .api-fields > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.api-fields > summary { padding: 0 16px; border-top: 1px solid var(--line); }
+.rp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 1.25rem; }
+.rp-card { display: block; padding: 16px; color: inherit; text-decoration: none; min-height: 44px; }
+.rp-card:hover, .rp-card:focus-visible { border-color: var(--accent); }
+.rp-card h2 { margin: 0 0 6px; font-size: 1.05rem; }
+.rp-card p { margin: 0; color: var(--ink-2); }
+.rp-chart-wrap { margin: 0; width: 100%; overflow: hidden; }
+.rp-chart { width: 100%; height: auto; display: block; font-family: var(--font); }
+.rp-chart .zero { stroke: var(--ink-3); stroke-width: 1; }
+.rp-chart .bar { fill: var(--info); }
+.rp-chart .bar.neg { fill: var(--bad); }
+.rp-chart .label, .rp-chart .val { fill: var(--ink); font-size: 12px; }
+.rp-chart .row:hover .bar { fill-opacity: .8; }
+.rp-cash th[scope="colgroup"] { text-align: center; }
+.rp-page .search { flex-wrap: wrap; margin-bottom: 1rem; }
+.rp-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 1rem; }
+.rp-filters select { width: auto; max-width: 100%; }
+.rp-page .search input { min-width: 0; flex: 1 1 180px; }
+@media (max-width: 600px) {
+  .api-facts { grid-template-columns: 1fr; } .api-facts dd { margin-bottom: 6px; }
+  .api-page input:not([type=checkbox]):not([type=radio]), .api-page select, .rp-page input, .rp-page select { min-height: 44px; }
+}
 /* Staff section links under a grouped tab (actions/tabs.py STAFF_GROUPS): underlined text links, so they read
    as the level between the tab row and a page's own chips */
 .subtabs.sections { gap: 2px 18px; border-bottom: 1px solid var(--line); margin: -.75rem 0 1rem; padding: 0 2px; }

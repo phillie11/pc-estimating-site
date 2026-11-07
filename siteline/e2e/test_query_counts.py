@@ -72,6 +72,17 @@ class QueryCountsDontGrowTests(TestCase):
             # Quality (quality/): the three registers and the busiest record pages
             ('pm', u('inspection_list', pk) + '?status=all'), ('pm', u('permit_list', pk) + '?status=all'),
             ('pm', u('penetration_list', pk)), *self._quality_pages(built, job, u),
+            # Company reports and Settings > API (reports/, api/). The cash position reads every live job's cashflow
+            # at once (cvr.cashflow.build_many)
+            ('owner', u('reports_home')), ('owner', u('report_margin')), ('owner', u('report_cash')),
+            ('owner', u('report_overdue')),
+            ('owner', u('report_safety')), ('owner', u('report_subcontractors')), ('owner', u('api_settings')),
+            ('owner', u('api_docs')),
+            # The sub's and client's portal pages for the wave 2 defaults (quality/portal.py, safety/portal.py,
+            # cvr/portal.py), and the busiest staff pages they changed
+            ('sub', u('portal_permits', pk)), ('sub', u('portal_firestop', pk)), ('sub', u('portal_near_miss', pk)),
+            ('sub', u('project_decisions', pk)), ('client', u('daywork_portal', pk)),
+            ('client', u('project_decisions', pk)),
             # Global search (help/search.py): common letters, so every source finds something
             ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
             ('client', u('search') + '?q=an'),
@@ -129,6 +140,28 @@ class QueryCountsDontGrowTests(TestCase):
                 large_n = self._count(large_people[role], large_url)
                 self.assertLessEqual(large_n, small_n, f'{role} {large_url}: {small_n} queries grew to {large_n}')
                 self.assertLessEqual(large_n, PAGE_CEILING, f'{role} {large_url}: {large_n} queries')
+
+    def _api_count(self, built, path):
+        from api import auth
+        from api.models import SCOPE_CHOICES
+        with org_context(built.org):
+            _, text = auth.create_token(built.org, built.owner, 'Counts', [c for c, _ in SCOPE_CHOICES])
+        c = Client()
+        c.get(path, HTTP_AUTHORIZATION=f'Bearer {text}')
+        with CaptureQueriesContext(connection) as ctx:
+            r = c.get(path, HTTP_AUTHORIZATION=f'Bearer {text}')
+        self.assertEqual(r.status_code, 200, path)
+        return len(ctx.captured_queries)
+
+    def test_api_lists_take_the_same_queries_in_a_company_three_times_the_size(self):
+        """Every API list endpoint (api/resources.py), a full page each, as the company grows."""
+        from api.resources import resources
+        for r in resources():
+            path = reverse(r.list_url_name()) + '?page_size=200'
+            with self.subTest(r.name):
+                small_n, large_n = self._api_count(self.small, path), self._api_count(self.large, path)
+                self.assertLessEqual(large_n, small_n, f'{path}: {small_n} queries grew to {large_n}')
+                self.assertLessEqual(large_n, PAGE_CEILING, f'{path}: {large_n} queries')
 
     def _badge(self, built, user):
         from actions import registry

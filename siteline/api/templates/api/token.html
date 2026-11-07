@@ -1,0 +1,25 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}{{ token.name }}{% endblock %}
+{% block content %}<div class="api-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / <a href="{% url 'api_settings' org.slug %}">API</a></div><h1>{{ token.name }}</h1>
+  <p class="small dim"><span class="ref">{{ token.prefix }}…</span> · {% if not token.maker_ok and token.is_live %}{% badge 'Stopped: its maker is no longer an owner or admin' 'bad' %}{% else %}{% with s=token.state %}{% badge s.0 s.1 %}{% endwith %}{% endif %}</p></div>
+  {% if token.is_live %}<div class="row"><form method="post" action="{% url 'api_token_revoke' org.slug token.pk %}" data-confirm="Revoke {{ token.name }}? Anything using it stops working straight away. This can't be undone: you would make a new token instead.">{% csrf_token %}<button class="btn danger">Revoke token</button></form></div>{% endif %}</div>
+
+<div class="card"><div class="card-body"><dl class="api-facts">
+  <dt>Can read</dt><dd>{{ token.scope_labels|join:"; " }}</dd>
+  <dt>Made</dt><dd>{{ token.created_at|date:"j M Y H:i" }}{% if token.created_by %} by {{ token.created_by.full_name }}{% endif %}</dd>
+  <dt>Last used</dt><dd>{% if token.last_used_at %}{{ token.last_used_at|date:"j M Y H:i" }}{% else %}Not yet{% endif %}</dd>
+  <dt>Stops working</dt><dd>{% if token.revoked_at %}Revoked {{ token.revoked_at|date:"j M Y H:i" }}{% if token.revoked_by %} by {{ token.revoked_by.full_name }}{% endif %}{% elif token.expires_at %}{{ token.expires_at|date:"j M Y" }}{% else %}When revoked{% endif %}</dd>
+</dl></div></div>
+
+<div class="card"><div class="card-head"><h2>Latest calls</h2></div>
+{% if calls %}<div class="table-wrap"><table class="t">
+  <caption class="sr-only">The latest 50 calls made with this token</caption>
+  <thead><tr><th scope="col">When</th><th scope="col">Asked for</th><th scope="col">Answer</th><th scope="col">From</th></tr></thead>
+  <tbody>{% for c in calls %}<tr><td>{{ c.at|date:"j M Y H:i:s" }}</td><td class="mono small api-path">{{ c.method }} {{ c.path }}</td><td>{% if c.status < 300 %}{% badge c.status 'good' %}{% elif c.status < 400 %}{% badge c.status 'info' %}{% else %}{% badge c.status 'bad' %}{% endif %}</td><td class="mono small">{{ c.ip|default:"" }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<div class="card-foot small dim">The latest 50 are shown. Calls are kept for {{ keep_days }} days.</div>
+{% else %}{% include "partials/empty_state.html" with title="No calls yet" message="Calls show here as soon as something uses the token." left=True %}{% endif %}
+</div>
+</div>
+{% endblock %}

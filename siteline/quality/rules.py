@@ -20,6 +20,8 @@ contractor's own safe system of work. Check with your safety adviser.
 
   Fire-stopping
     sign_off_problem()       why a penetration can't be signed off yet (None if it can)
+    own_seal_problem()       whoever recorded the seal can't sign it off, unless the company has
+                             turned that off (Settings > Quality, on by default; pending owner decision)
 """
 import datetime
 
@@ -171,4 +173,15 @@ def sign_off_problem(after_photos, system):
         return 'Record the fire-stopping system or product used before signing it off.'
     if after_photos < 1:
         return 'Add a photo of the finished seal ("after") before signing it off.'
+    return None
+
+
+def own_seal_problem(sealed_by_id, user_id, independent=True):
+    """
+    The person who marked a seal done (sealed or resealed) can't sign it off while the company wants an
+    independent inspection (QualitySettings.fs_independent_sign_off, on by default). None if they may.
+    """
+    if independent and sealed_by_id is not None and sealed_by_id == user_id:
+        return ('You recorded this seal, so someone else on the job inspects and signs it off. '
+                'It is on their Needs me.')
     return None

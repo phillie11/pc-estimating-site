@@ -1,0 +1,12 @@
+{% comment %}A bar chart from reports.chart.bars(): `graph`, plus `chart_title` (read out by screen readers). The table under it has every figure.{% endcomment %}<figure class="rp-chart-wrap">
+<svg class="rp-chart" viewBox="0 0 {{ graph.width }} {{ graph.height }}" role="img" aria-labelledby="{{ chart_id }}-t" preserveAspectRatio="xMinYMin meet">
+  <title id="{{ chart_id }}-t">{{ chart_title }}</title>
+  <line class="zero" x1="{{ graph.zero }}" x2="{{ graph.zero }}" y1="0" y2="{{ graph.height }}"></line>
+  {% for b in graph.rows %}<g class="row"><title>{{ b.tip }}</title>
+    <text class="label" x="{{ graph.label_x }}" y="{{ b.ty }}" text-anchor="end">{{ b.label|truncatechars:28 }}</text>
+    <rect class="bar{% if b.neg %} neg{% endif %}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ graph.row_h }}" rx="2"></rect>
+    <text class="val" x="{{ b.tx }}" y="{{ b.ty }}">{{ b.text }}</text>
+  </g>{% endfor %}
+</svg>
+{% if caption %}<figcaption class="small dim">{{ caption }}</figcaption>{% endif %}
+</figure>
