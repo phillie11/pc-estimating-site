@@ -9,6 +9,7 @@ from costs import urls as costs_urls
 from cvr import urls as cvr_urls
 from delivery import views as delivery
 from diary import urls as diary_urls
+from handoverpack import urls as handoverpack_urls
 from directory import views as directory
 from documents import urls as documents_urls
 from levelling import urls as levelling_urls
@@ -147,6 +148,9 @@ urlpatterns = [
     *cvr_urls.org_patterns,
     # Sub quotes > Level quotes on a bid (levelling/urls.py)
     *levelling_urls.project_patterns(P),
+    # Pricing workbook on a bid and the internal handover pack, Settings > Pricing workbook (handoverpack/urls.py)
+    *handoverpack_urls.project_patterns(P),
+    *handoverpack_urls.org_patterns,
     # Meetings tab: minutes, actions and agenda templates (meetings/urls.py)
     *meetings_urls.project_patterns(P),
     *meetings_urls.org_patterns,

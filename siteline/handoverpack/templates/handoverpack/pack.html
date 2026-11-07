@@ -1,0 +1,95 @@
+{% extends "project_base.html" %}{% load ui static hpack %}
+{% block title %}Handover pack · {{ project.name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'handoverpack/pack.css' %}">{% endblock %}
+{% block project_actions %}{% if ctx %}<a class="btn" href="{% url 'hpack_pack' org.slug project.pk %}?export=xlsx">{% icon 'download' %} Export to Excel</a>{% endif %}{% endblock %}
+{% block project_content %}
+{% include "handoverpack/_nav.html" %}
+{% if not ctx %}{% url 'hpack_workbook' org.slug project.pk as up_url %}{% include "partials/empty_state.html" with title="No handover pack yet" message="The pack is built from the pricing workbook. Upload the completed workbook and it appears here; when the bid is won the projects team gets it." cta_url=up_url cta_label="Go to the pricing workbook" %}
+{% else %}{% with t=ctx.totals h=ctx.header wb=ctx.workbook %}
+{% include "handoverpack/_recon.html" %}
+<nav class="hp-sections" aria-label="Pack sections">{% for code, label in ctx.sections %}<a class="chip" href="#{{ code }}">{{ forloop.counter }}. {{ label }}</a>{% endfor %}</nav>
+
+<section id="cover" class="card hp-section hp-cover" aria-labelledby="h-cover"><div class="card-body">
+  <p class="hp-stamp">INTERNAL ONLY</p>
+  <h2 id="h-cover" style="margin:0 0 6px">Estimating to delivery handover pack</h2>
+  <dl class="dl">
+    <dt>Project</dt><dd>{{ project.reference }} {{ project.name }}</dd>
+    <dt>Client</dt><dd>{{ project.client_name|default:h.client }}</dd>
+    <dt>Status</dt><dd>{% if pack.is_issued %}{% badge 'Issued' 'good' %} {{ pack.issued_at|date:"j M Y" }}{% if pack.issued_by %} by {{ pack.issued_by.full_name }}{% endif %}{% elif is_bid %}{% badge 'Preview: the bid is not won yet' 'info' %}{% else %}{% badge 'Draft' 'warn' %}{% endif %}</dd>
+    <dt>Built from</dt><dd>Pricing workbook revision {{ wb.revision }}{% if wb.label %} (workbook revision {{ wb.label }}){% endif %}, uploaded {{ wb.uploaded_at|date:"j M Y" }}{% if wb.uploaded_by %} by {{ wb.uploaded_by.full_name }}{% endif %}</dd>
+    <dt>Who may see it</dt><dd>Staff who see this job's commercial figures. Never send it to a client or subcontractor.</dd>
+  </dl>
+  {% if not is_bid and not pack.is_issued and editable %}<form method="post" action="{% url 'hpack_issue' org.slug project.pk %}" class="hp-actions" style="margin-top:10px">{% csrf_token %}{% if ctx.reconciled is False %}<button class="btn" disabled aria-disabled="true">Issue to the delivery team</button><span class="small bad">Can't be issued: the total is {{ ctx.difference|money_exact:currency }} out from the pricing summary.</span>{% else %}<button class="btn primary">Issue to the delivery team</button>{% endif %}</form>{% endif %}
+</div></section>
+
+<section id="summary" class="card hp-section" aria-labelledby="h-summary"><div class="card-head"><h2 id="h-summary">2. Project summary</h2></div><div class="card-body">
+  <div class="kpis">
+    <div class="kpi"><div class="label">Tender sum (charge)</div><div class="value">{{ t.charge|money:currency }}</div><div class="note">{{ t.charge|money_exact:currency }}</div></div>
+    <div class="kpi"><div class="label">Cost</div><div class="value">{{ t.cost|money:currency }}</div><div class="note">Allowed to spend</div></div>
+    <div class="kpi"><div class="label">Margin</div><div class="value{% if t.target_margin is not None and t.margin < t.target_margin %} bad{% endif %}">{{ t.margin|pct }}</div><div class="note">{{ t.profit|money:currency }}; target {{ t.target_margin|pct }}</div></div>
+    <div class="kpi"><div class="label">Open items</div><div class="value{% if ctx.open_count %} bad{% endif %}">{{ ctx.open_count }}</div><div class="note"><a href="{% url 'hpack_items' org.slug project.pk %}">Owners and dates</a></div></div>
+  </div>
+  <dl class="dl">
+    <dt>Workbook project</dt><dd>{{ h.project|default:"—" }}</dd><dt>Workbook client</dt><dd>{{ h.client|default:"—" }}</dd>
+    <dt>Estimator</dt><dd>{{ h.estimator|default:"—" }}</dd><dt>Workbook date</dt><dd>{{ h.date|default:"—" }}</dd>
+    <dt>Project manager</dt><dd>{{ project.manager.full_name|default:"Not yet appointed" }}</dd>
+    <dt>Dates</dt><dd>{% if project.start_date %}Start {{ project.start_date|date:"j M Y" }}{% endif %}{% if project.completion_date %}, completion {{ project.completion_date|date:"j M Y" }}{% endif %}{% if ctx.settings.duration_weeks %} · {{ ctx.settings.duration_weeks|qty }} weeks in the prelims{% endif %}</dd>
+    <dt>Markups</dt><dd>Trades {{ ctx.settings.default_markup|pct }} (unless set per trade), prelims {{ ctx.settings.prelim_markup|pct }}</dd>
+    {% if t.final_price is not None %}<dt>Final tender price</dt><dd>{{ t.final_price|money_exact:currency }} (margin {{ t.final_margin|pct }} at that price)</dd>{% endif %}
+    {% if project.handover_notes %}<dt>Handover notes</dt><dd style="white-space:pre-wrap">{{ project.handover_notes }}</dd>{% endif %}
+  </dl>
+</div></section>
+
+<section id="prices" class="card hp-section" aria-labelledby="h-prices"><div class="card-head"><h2 id="h-prices">3. Price summary</h2><span class="small dim">Margin = profit / charge</span></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th>Supplier</th><th class="num">Cost</th><th class="num">Charge</th><th class="num">Margin £</th><th class="num">Margin %</th></tr></thead><tbody>
+{% for p in ctx.prices %}<tr{% if not p.include %} class="hp-muted-row"{% endif %}><td>{{ p.name }}{% if not p.include %} {% badge 'Not included' 'muted' %}{% endif %}{% if p.provisional %} {% badge 'Provisional' 'warn' %}{% endif %}</td><td>{{ p.supplier|default:"—" }}</td><td class="num nowrap">{{ p.cost|money_exact:currency }}</td><td class="num nowrap">{{ p.charge|money_exact:currency }}</td><td class="num nowrap">{{ p.profit|money_exact:currency }}</td><td class="num">{{ p.margin|pct }}</td></tr>{% endfor %}
+<tr><td colspan="2"><strong>Total</strong></td><td class="num nowrap"><strong>{{ t.cost|money_exact:currency }}</strong></td><td class="num nowrap"><strong>{{ t.charge|money_exact:currency }}</strong></td><td class="num nowrap"><strong>{{ t.profit|money_exact:currency }}</strong></td><td class="num"><strong>{{ t.margin|pct }}</strong></td></tr>
+</tbody></table></div></section>
+
+<section id="scope" class="card hp-section" aria-labelledby="h-scope"><div class="card-head"><h2 id="h-scope">4. Scope allowed</h2><span class="small dim">{{ ctx.scope|length }} lines</span></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Section</th><th>Ref</th><th>Description</th><th class="num">Qty</th><th>Status</th><th class="num">Cost</th><th class="num">Charge</th><th>Comment</th></tr></thead><tbody>
+{% for r in ctx.scope %}<tr><td class="small">{{ r.section }}</td><td class="mono small">{{ r.ref }}</td><td>{{ r.description }}<span class="sub">{{ r.source }}</span></td><td class="num nowrap">{% if r.qty is not None %}{{ r.qty|qty }}{% else %}{{ r.qty_text }}{% endif %} {{ r.unit }}</td><td>{% badge r.label r.tone %}</td><td class="num nowrap">{{ r.cost|money_exact:currency }}</td><td class="num nowrap">{{ r.charge|money_exact:currency }}</td><td class="small">{{ r.comment }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+
+<section id="excluded" class="card hp-section" aria-labelledby="h-excluded"><div class="card-head"><h2 id="h-excluded">5. Not allowed</h2><span class="small dim">Exclusions and work by others</span></div>
+{% if ctx.excluded %}<div class="table-wrap"><table class="t"><thead><tr><th>Section</th><th>Ref</th><th>Description</th><th>Why</th><th class="num">Value if included</th></tr></thead><tbody>
+{% for r in ctx.excluded %}<tr><td class="small">{{ r.section }}</td><td class="mono small">{{ r.ref }}</td><td>{{ r.description }}<span class="sub">{{ r.source }}</span></td><td class="small">{{ r.why }}</td><td class="num nowrap">{{ r.cost|money_exact:currency }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty left"><p>No trade lines are excluded or left to others.</p></div>{% endif %}
+{% if ctx.prelims_no %}<details class="card-body"><summary><strong>Preliminaries marked No ({{ ctx.prelims_no|length }})</strong></summary>
+<ul class="list">{% for r in ctx.prelims_no %}<li><span class="grow">{{ r.description }}<span class="sub">{{ r.section }} · {{ r.source }}</span></span>{% if r.had_inputs %}{% badge 'Had figures, marked No' 'warn' %}{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+</section>
+
+<section id="clarifications" class="card hp-section" aria-labelledby="h-clar"><div class="card-head"><h2 id="h-clar">6. Clarifications</h2><a class="small" href="{% url 'hpack_clarifications' org.slug project.pk %}">Edit</a></div>
+{% if ctx.clarifications %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Trade</th><th>Clarification</th><th>Response</th><th>Status</th><th>Cost effect</th></tr></thead><tbody>
+{% for c in ctx.clarifications %}<tr><td class="mono small">{{ c.ref }}</td><td class="small">{{ c.trade }}</td><td>{{ c.text|linebreaksbr }}</td><td class="small">{{ c.response|linebreaksbr }}</td><td>{% badge c.get_status_display c.status_tone %}</td><td class="small">{{ c.cost_effect }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty left"><p>No clarifications in the workbook. Add them on the Clarifications page.</p></div>{% endif %}
+</section>
+
+<section id="drawings" class="card hp-section" aria-labelledby="h-dwg"><div class="card-head"><h2 id="h-dwg">7. Drawings</h2><a class="small" href="{% url 'document_list' org.slug project.pk %}">Drawing register</a></div>
+{% if ctx.drawings_missing %}<div class="card-body"><p class="bad" style="margin:0 0 6px"><strong>{{ ctx.drawings_missing|length }} drawing number{{ ctx.drawings_missing|length|pluralize }} in the workbook {{ ctx.drawings_missing|length|pluralize:"is,are" }} not in the register:</strong></p>
+<ul class="list">{% for d in ctx.drawings_missing %}<li><span class="grow"><span class="mono">{{ d.ref }}</span><span class="sub">Mentioned in {{ d.where|join:", "|truncatechars:120 }}</span></span>{% badge 'Not in register' 'bad' %}</li>{% endfor %}</ul></div>{% endif %}
+{% if ctx.register %}<div class="table-wrap"><table class="t"><thead><tr><th>Drawing no.</th><th>Title</th><th>Current revision</th></tr></thead><tbody>
+{% for d in ctx.register %}<tr><td class="mono"><a href="{{ d.url }}">{{ d.doc.reference|default:"—" }}</a></td><td>{{ d.doc.title }}</td><td>{{ d.current.revision|default:"—" }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty left"><p>No drawings in this project's register yet.</p></div>{% endif %}
+</section>
+
+<section id="suppliers" class="card hp-section" aria-labelledby="h-sup"><div class="card-head"><h2 id="h-sup">8. Suppliers</h2></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th>Selected supplier</th><th class="num">Quote</th><th>Other bidders</th><th>In Siteline</th></tr></thead><tbody>
+{% for s in ctx.suppliers %}<tr><td>{{ s.trade }}</td><td>{{ s.supplier|default:"None selected" }}{% if s.own_allowance %} {% badge 'Own allowance' 'warn' %}{% endif %}<span class="sub">{{ s.lines }} of {{ s.line_count }} lines priced</span></td><td class="num nowrap">{{ s.quote|money_exact:currency }}</td><td class="small">{% for o in s.others %}{{ o.name }}: {% if o.total is not None %}{{ o.total|money_exact:currency }} ({{ o.lines }} line{{ o.lines|pluralize }}){% else %}no prices{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="dim">No other bids</span>{% endfor %}</td><td class="small">{% if s.levelling_url %}<a href="{{ s.levelling_url }}">Quote levelling</a><br>{% endif %}{% if s.package_url %}<a href="{{ s.package_url }}">{% if s.package %}Package: {{ s.package.subcontractor }}{% else %}{{ s.packages|length }} package{{ s.packages|length|pluralize }}{% endif %}</a>{% endif %}{% if not s.levelling_url and not s.package_url %}<span class="dim">—</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></section>
+
+<section id="rules" class="card hp-section" aria-labelledby="h-rules"><div class="card-head"><h2 id="h-rules">9. Site rules</h2><a class="small" href="{% url 'hpack_site_rules' org.slug project.pk %}">Edit</a></div><div class="card-body">
+{% if ctx.site_rules %}<p class="hp-rules">{{ ctx.site_rules }}</p>{% else %}<p class="dim" style="margin:0">None recorded yet: working hours, access, permits, the client's and landlord's rules.</p>{% endif %}
+</div></section>
+
+<section id="buyout" class="card hp-section" aria-labelledby="h-buy"><div class="card-head"><h2 id="h-buy">10. Buy-out targets</h2><span class="small dim">Headroom: allowed cost less the next cheapest bid</span></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th class="num">Allowed cost</th><th class="num">Charge</th><th class="num">Margin</th><th class="num">Next cheapest bid</th><th class="num">Headroom</th><th>Flags</th></tr></thead><tbody>
+{% for b in ctx.buyout %}<tr><td>{{ b.trade }}<span class="sub">{{ b.supplier|default:"None selected" }}</span></td><td class="num nowrap"><strong>{{ b.cost|money_exact:currency }}</strong></td><td class="num nowrap">{{ b.charge|money_exact:currency }}</td><td class="num nowrap">{{ b.margin|money_exact:currency }}<span class="sub">{{ b.margin_pct|pct }}</span></td><td class="num nowrap">{% if b.next %}{{ b.next.total|money_exact:currency }}<span class="sub">{{ b.next.name }}</span>{% else %}<span class="dim">none</span>{% endif %}</td><td class="num nowrap">{% if b.headroom is not None %}{{ b.headroom|money_exact:currency }}{% else %}—{% endif %}</td><td class="small">{% if b.allowances %}{% badge 'Own allowance, no quote' 'warn' %}<span class="sub">{{ b.allowance_total|money_exact:currency }} on {{ b.allowances|length }} line{{ b.allowances|length|pluralize }}</span>{% endif %}{% if b.no_quote %}{% badge 'No supplier' 'bad' %}{% endif %}{% if b.provisional %}{% badge 'Provisional sums' 'info' %}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></section>
+
+<section id="items" class="card hp-section" aria-labelledby="h-items"><div class="card-head"><h2 id="h-items">11. Open items</h2><a class="small" href="{% url 'hpack_items' org.slug project.pk %}">Owners and dates</a></div>
+{% if ctx.items %}<ul class="list">{% for i in ctx.items %}<li class="hp-gap"><span class="grow"><strong>{{ i.title }}</strong>{% if i.detail %}<br><span class="small dim">{{ i.detail|truncatechars:240 }}</span>{% endif %}<br><span class="small">{% if i.owner %}{{ i.owner.full_name }}{% else %}<span class="dim">Nobody yet</span>{% endif %}{% if i.due_date %} · due {{ i.due_date|date:"j M Y" }}{% endif %}{% if i.source %} · <span class="mono">{{ i.source }}</span>{% endif %}</span></span><span class="nowrap">{% if i.amount is not None %}<span class="mono">{{ i.amount|money_exact:currency }}</span> {% endif %}{% if i.is_open %}{% badge 'Open' 'bad' %}{% else %}{% badge 'Done' 'good' %}{% endif %}</span></li>{% endfor %}</ul>
+{% else %}<div class="empty left"><p>Nothing open: no gaps, review lines or reconciliation issues.</p></div>{% endif %}
+</section>
+{% endwith %}{% endif %}
+{% endblock %}

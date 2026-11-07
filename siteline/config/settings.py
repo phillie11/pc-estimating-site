@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     'help',
     'api',
     'reports',
+    'handoverpack',
 ]
 
 MIDDLEWARE = [

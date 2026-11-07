@@ -1,0 +1,31 @@
+{% extends "project_base.html" %}{% load ui static hpack %}
+{% block title %}Pricing workbook · {{ project.name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'handoverpack/pack.css' %}">{% endblock %}
+{% block project_content %}
+{% include "handoverpack/_nav.html" %}
+{% if latest %}
+{% with wb=latest %}{% include "handoverpack/_recon.html" %}{% endwith %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Total charge</div><div class="value">{{ latest.charge|money:currency }}</div><div class="note">Revision {{ latest.revision }}{% if latest.label %} (workbook {{ latest.label }}){% endif %}</div></div>
+  <div class="kpi"><div class="label">Total cost</div><div class="value">{{ latest.cost|money:currency }}</div><div class="note">Included trades, joinery and prelims</div></div>
+  <div class="kpi"><div class="label">Margin</div><div class="value">{{ result.totals.margin|pct }}</div><div class="note">{{ latest.profit|money:currency }} profit{% if result.totals.target_margin is not None %}, target {{ result.totals.target_margin|pct }}{% endif %}</div></div>
+  <div class="kpi"><div class="label">Checks</div><div class="value{% if latest.gap_count %} bad{% endif %}">{{ latest.gap_count }}</div><div class="note">{{ latest.issue_count }} cell{{ latest.issue_count|pluralize }} not reconciling</div></div>
+</div>
+{% endif %}
+{% if can_upload %}<section class="card" aria-labelledby="hp-up"><div class="card-body">
+  <h2 id="hp-up" style="margin:0 0 6px">{% if latest %}Upload a new revision{% else %}Upload the pricing workbook{% endif %}</h2>
+  <p class="small dim" style="margin:0 0 10px">Siteline reads every trade tab, the prelim book, joinery and clarifications, recalculates each line, and checks the total against the pricing summary to the penny. Macro-enabled files are refused; save as .xlsx.</p>
+  <form method="post" action="{% url 'hpack_upload' org.slug project.pk %}" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Upload and check</button></div></form>
+</div></section>{% elif pack.is_issued %}<p class="small dim">The pack was issued {{ pack.issued_at|date:"j M Y" }}, so the workbook is fixed.</p>{% endif %}
+{% if latest %}
+<section class="card" aria-labelledby="hp-trades"><div class="card-head"><h2 id="hp-trades">By trade</h2>{% if revisions|length > 1 %}<span class="small dim">Change against revision {{ revisions.1.revision }}</span>{% endif %}</div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th class="num">Cost</th><th class="num">Charge</th>{% if revisions|length > 1 %}<th class="num">Charge change</th>{% endif %}</tr></thead><tbody>
+{% for d in deltas %}<tr{% if not d.charge and not d.cost %} class="hp-muted-row"{% endif %}><td>{{ d.name }}</td><td class="num nowrap">{{ d.cost|money_exact:currency }}</td><td class="num nowrap">{{ d.charge|money_exact:currency }}</td>{% if revisions|length > 1 %}<td class="num nowrap">{% if d.changed %}<span class="hp-delta {% if d.charge_delta > 0 %}up{% else %}down{% endif %}">{% if d.charge_delta > 0 %}+{% endif %}{{ d.charge_delta|money_exact:currency }}</span>{% else %}<span class="dim">no change</span>{% endif %}</td>{% endif %}</tr>{% endfor %}
+</tbody></table></div></section>
+{% include "handoverpack/_gaps.html" %}
+<section class="card" aria-labelledby="hp-revs"><div class="card-head"><h2 id="hp-revs">Revisions</h2><span class="small dim">Every upload is kept</span></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Revision</th><th>Uploaded</th><th class="num">Total charge</th><th class="num">Change</th><th>Check</th><th>File</th></tr></thead><tbody>
+{% for r in revisions %}<tr><td><a class="rowlink" href="{% url 'hpack_revision' org.slug project.pk r.pk %}"><strong>{{ r.revision }}</strong></a>{% if r.label %}<span class="sub">Workbook {{ r.label }}</span>{% endif %}</td><td class="small">{{ r.uploaded_at|date:"j M Y H:i" }}<span class="sub">{{ r.uploaded_by.full_name|default:"" }}</span></td><td class="num nowrap">{{ r.charge|money_exact:currency }}</td><td class="num nowrap">{% if r.charge_delta is not None %}{% if r.charge_delta > 0 %}+{% endif %}{{ r.charge_delta|money_exact:currency }}{% else %}<span class="dim">first</span>{% endif %}</td><td>{% if r.reconciled %}{% badge 'Reconciled' 'good' %}{% elif r.reconciled is None %}{% badge 'Not checked' 'warn' %}{% else %}{% badge 'Out' 'bad' %}{% endif %}</td><td><a href="{% url 'hpack_file' org.slug project.pk r.pk %}">{{ r.original_name|truncatechars:40 }}</a></td></tr>{% endfor %}
+</tbody></table></div></section>
+{% else %}{% if not can_upload %}{% include "partials/empty_state.html" with title="No pricing workbook" message="No pricing workbook was uploaded for this project." %}{% endif %}{% endif %}
+{% endblock %}

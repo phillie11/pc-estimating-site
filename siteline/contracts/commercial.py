@@ -39,6 +39,8 @@ def commercial_context(request, project, sub, **extra):
             # CVR and cashflow: the same people as Costs (cvr/access.py)
             ctx['commercial_nav'].append(('cvr', 'CVR', reverse('cvr_list', args=[org, pk])))
             ctx['commercial_nav'].append(('cashflow', 'Cashflow', reverse('cvr_cashflow', args=[org, pk])))
+            # The estimating-to-delivery handover pack: the same people again (handoverpack/access.py)
+            ctx['commercial_nav'].append(('handover_pack', 'Handover pack', reverse('hpack_pack', args=[org, pk])))
         from costs.access import COST_STAGES
         if project.stage in COST_STAGES:  # Dayworks: all staff on a won or live job (cvr/access.py)
             ctx['commercial_nav'].append(('dayworks', 'Dayworks', reverse('daywork_list', args=[org, pk])))

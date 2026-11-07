@@ -1,0 +1,3 @@
+{% include "commercial/_subnav.html" %}
+<div class="hp-internal" role="note"><strong>Internal only.</strong> Cost, margin and buy-out targets: never for clients or subcontractors.</div>
+<nav class="filters hp-nav" aria-label="Pricing and handover pack">{% for code, label, url in hpack_nav %}<a class="chip{% if code == hpack_sub %} on{% endif %}" href="{{ url }}"{% if code == hpack_sub %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>

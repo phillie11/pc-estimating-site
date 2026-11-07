@@ -99,8 +99,11 @@ def _read_bytes(f):
     return data
 
 
-def _check_zip(data):
-    """Before openpyxl sees it: a real .xlsx zip, no VBA project, not a zip bomb."""
+def _check_zip(data, max_unzipped=MAX_UNZIPPED):
+    """
+    Before openpyxl sees it: a real .xlsx zip, no VBA project, no DTD, not a zip bomb. The handover pack's
+    pricing workbook reader (handoverpack/reader.py) uses it too, with a larger limit for a whole workbook.
+    """
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
@@ -115,11 +118,11 @@ def _check_zip(data):
                                   '(.xlsx) without macros and upload that.')
         too_big = WorkbookRefused('That workbook is too large once unpacked. Copy the scope lines into a new '
                                   'workbook and upload that.')
-        if sum(i.file_size for i in infos) > MAX_UNZIPPED:
+        if sum(i.file_size for i in infos) > max_unzipped:
             raise too_big
         for i in infos:
             name = i.filename.lower()
-            if i.file_size > MAX_PART.get(name, MAX_UNZIPPED):
+            if i.file_size > MAX_PART.get(name, max_unzipped):
                 raise too_big
             # A part that unpacks to over 100 times its packed size is built to amplify, not to hold a bill
             if i.file_size > MAX_RATIO * max(i.compress_size, 1) and i.file_size > 64 * 1024:
