@@ -977,3 +977,11 @@ details.more-fields[open] > summary { margin-bottom: 10px; }
   .api-facts { grid-template-columns: 1fr; } .api-facts dd { margin-bottom: 6px; }
   .api-page input:not([type=checkbox]):not([type=radio]), .api-page select, .rp-page input, .rp-page select { min-height: 44px; }
 }
+/* Staff section links under a grouped tab (actions/tabs.py STAFF_GROUPS): underlined text links, so they read
+   as the level between the tab row and a page's own chips */
+.subtabs.sections { gap: 2px 18px; border-bottom: 1px solid var(--line); margin: -.75rem 0 1rem; padding: 0 2px; }
+.subtabs.sections .chip { background: none; border: 0; border-radius: 0; padding: 0 2px; min-height: 44px; color: var(--ink-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.subtabs.sections .chip:hover { color: var(--ink); }
+.subtabs.sections .chip.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.subtabs.sections .chip.on .n { background: var(--paper-2); color: var(--ink-2); }
