@@ -113,6 +113,19 @@ class DeployCheckTests(SimpleTestCase):
         self.assertEqual(self.run_python(code, SECURE_HSTS_SECONDS='600').stdout.strip(), '600')
         self.assertEqual(self.run_python(code, DEBUG='1').stdout.strip(), '0')
 
+    def test_cloud_storage_checksums_only_where_required_off_aws(self):
+        """botocore's default upload checksums on AWS S3; other S3-compatible services only where required."""
+        code = ('import django; django.setup(); from django.core.files.storage import default_storage as s\n'
+                'c = s.connection.meta.client.meta.config\n'
+                'print(s.endpoint_url, c.signature_version, c.request_checksum_calculation, '
+                'c.response_checksum_validation)')
+        keys = {'STORAGE_BUCKET': 'b', 'STORAGE_ACCESS_KEY': 'AKIDEXAMPLE', 'STORAGE_SECRET_KEY': 'secret'}
+        self.assertEqual(self.run_python(code, **keys).stdout.split(),
+                         ['https://s3.eu-west-2.amazonaws.com', 's3v4', 'when_supported', 'when_supported'])
+        self.assertEqual(
+            self.run_python(code, STORAGE_ENDPOINT_URL='https://lon1.digitaloceanspaces.com', **keys).stdout.split(),
+            ['https://lon1.digitaloceanspaces.com', 's3v4', 'when_required', 'when_required'])
+
     def test_check_deploy_only_reports_the_documented_choices(self):
         code = ('import sys, django; django.setup(); from django.core.management import call_command\n'
                 'call_command("check", deploy=True)')
