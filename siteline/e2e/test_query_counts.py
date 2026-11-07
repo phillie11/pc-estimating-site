@@ -33,6 +33,16 @@ class QueryCountsDontGrowTests(TestCase):
         # window takes extra queries (start the counter, clear finished ones). Held in one window, the small and
         # big company's pages are measured alike however slowly the suite runs.
         hold_rate_limit_clock(self)
+        # An external member's project visit moves last_seen at most once a minute (actions.visits.TOUCH_EVERY).
+        # On a slow runner that minute could end between the two loads _count compares, adding a write to the
+        # measured one. Held still, the first load does any write and the measured load never does.
+        from unittest import mock
+
+        from django.utils import timezone
+        held = timezone.now()
+        patcher = mock.patch('actions.visits.timezone', mock.Mock(now=mock.Mock(return_value=held)))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @classmethod
     def setUpTestData(cls):
