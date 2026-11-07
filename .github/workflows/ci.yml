@@ -143,6 +143,37 @@ jobs:
               print(f"::error title=MySQL server::{e}")
           sys.exit(1 if errors else 0)
 
+      # The service database is thrown away with the job, so it needn't survive a power cut: stop it
+      # flushing every commit and every DDL statement to disk. The migration tests apply and undo the
+      # whole schema several times, and this is most of their database time. Changed at runtime (service
+      # containers can't take server flags); nothing about how the database behaves for the tests changes.
+      - name: Skip disk flushes on the throwaway database
+        if: ${{ matrix.db != 'sqlite' }}
+        shell: python
+        run: |
+          import os
+          host, port = os.environ["DB_HOST"], int(os.environ["DB_PORT"])
+          user, password = os.environ["DB_USER"], os.environ["DB_PASSWORD"]
+          if os.environ["DB_ENGINE"] == "mysql":
+              import MySQLdb
+              conn = MySQLdb.connect(host=host, port=port, user=user, password=password)
+              cur = conn.cursor()
+              for sql in ("SET GLOBAL innodb_flush_log_at_trx_commit = 0", "SET GLOBAL sync_binlog = 0"):
+                  cur.execute(sql)
+              cur.execute("SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog")
+          else:
+              import psycopg
+              conn = psycopg.connect(host=host, port=port, user=user, password=password, dbname="postgres",
+                                     autocommit=True)
+              cur = conn.cursor()
+              for sql in ("ALTER SYSTEM SET fsync = off", "ALTER SYSTEM SET synchronous_commit = off",
+                          "ALTER SYSTEM SET full_page_writes = off", "SELECT pg_reload_conf()"):
+                  cur.execute(sql)
+              conn = psycopg.connect(host=host, port=port, user=user, password=password, dbname="postgres")
+              cur = conn.cursor()  # a new session sees the reloaded settings
+              cur.execute("SELECT current_setting('fsync'), current_setting('synchronous_commit')")
+          print(cur.fetchone())
+
       - name: Use a temporary MEDIA_ROOT
         run: echo "MEDIA_ROOT=$(mktemp -d)" >> "$GITHUB_ENV"
 
