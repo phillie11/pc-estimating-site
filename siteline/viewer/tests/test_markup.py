@@ -74,7 +74,7 @@ class SchemaTests(SimpleTestCase):
         self.assertEqual(len(markup.parse(doc_json(*[CLOUD] * 1000))['shapes']), 1000)
 
     def test_text_is_kept_as_plain_words(self):
-        data = markup.parse(doc_json(dict(NOTE, text='  <script>alert(1)</script>\n\tnext‮line\x00 ')))
+        data = markup.parse(doc_json(dict(NOTE, text='  <script>alert(1)</script>\n\tnext\u202eline\x00 ')))
         self.assertEqual(data['shapes'][0]['text'], '<script>alert(1)</script> nextline')  # stored as text, drawn by fillText
 
     def test_add_shapes(self):

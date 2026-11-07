@@ -38,7 +38,7 @@ def stand_in(fh, max_pages, deadline):
 
 class PureTests(SimpleTestCase):
     def test_normalise(self):
-        self.assertEqual(textindex.normalise('  Fire\x00 damper\n\tschedule​ '), ('Fire damper schedule', False))
+        self.assertEqual(textindex.normalise('  Fire\x00 damper\n\tschedule\u200b '), ('Fire damper schedule', False))
         text, cut = textindex.normalise('x' * (textindex.MAX_CHARS + 5))
         self.assertEqual((len(text), cut), (textindex.MAX_CHARS, True))
 
