@@ -1,0 +1,26 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Overdue across jobs{% endblock %}
+{% block content %}<div class="rp-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'reports_home' org.slug %}">Reports</a></div><h1>Overdue across jobs</h1>
+  <p class="small dim">Everything past its date on live jobs today, {{ today|date:"j M Y" }}.</p></div>
+  <div class="row">{% if total %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}</div></div>
+
+<nav class="filters" aria-label="Jump to">{% for s in sections %}<a class="chip" href="#{{ s.key }}">{{ s.title }} <strong>{{ s.count }}</strong></a>{% endfor %}</nav>
+
+{% for s in sections %}<div class="card" id="{{ s.key }}"><div class="card-head"><h2>{{ s.title }} {% if s.count %}{% badge s.count 'bad' %}{% else %}{% badge 'None' 'good' %}{% endif %}</h2>{% if s.advisory %}{% badge 'Advisory' 'warn' %}{% endif %}</div>
+{% if s.items %}<div class="table-wrap"><table class="t register">
+  <caption class="sr-only">{{ s.title }}</caption>
+  <thead><tr><th scope="col">Ref</th><th scope="col">Job</th><th scope="col">What</th><th scope="col">Was due</th><th scope="col" class="num">Days late</th></tr></thead>
+  <tbody>{% for i in s.shown %}<tr>
+    <td><a class="rowlink ref" href="{{ i.url }}">{{ i.ref }}</a></td>
+    <td>{{ i.project.name }}<span class="sub ref">{{ i.project.reference }}</span></td>
+    <td>{{ i.title }}{% if i.detail %}<span class="sub">{{ i.detail }}</span>{% endif %}</td>
+    <td>{{ i.due|date:"j M Y" }}</td>
+    <td class="num overdue">{{ i.days_late }}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% if s.more %}<div class="card-foot small dim">And {{ s.more }} more. The CSV lists every one.</div>{% endif %}
+{% else %}{% include "partials/empty_state.html" with message=s.what|add:" Nothing is late." left=True %}{% endif %}
+</div>{% endfor %}
+<p class="small dim">{% badge 'Advisory' 'warn' %} Contract clocks and payment dates are worked out from the dates recorded on each job. {{ advisory }}</p>
+</div>
+{% endblock %}

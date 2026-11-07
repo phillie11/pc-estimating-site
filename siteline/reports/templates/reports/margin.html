@@ -1,0 +1,37 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Portfolio margin{% endblock %}
+{% block content %}<div class="rp-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'reports_home' org.slug %}">Reports</a></div><h1>Portfolio margin</h1>
+  <p class="small dim">Each live job's forecast margin for {{ month|date:"F Y" }}, from its CVR: the figures it was submitted with once submitted or signed off, otherwise as they stand now.</p></div>
+  <div class="row">{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}</div></div>
+
+<form method="get" class="filters"><label class="small" for="rp-month">Month</label>
+  <select id="rp-month" name="month">{% for m in month_choices %}<option value="{{ m|date:'Y-m' }}"{% if m == month %} selected{% endif %}>{{ m|date:"F Y" }}</option>{% endfor %}</select>
+  <button class="btn">Show month</button></form>
+
+{% if rows %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Forecast final account</div><div class="value">{{ total.final_account|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Forecast final cost</div><div class="value">{{ total.final_cost|money:currency }}</div></div>
+  <div class="kpi"><div class="label">Forecast margin</div><div class="value{% if total.forecast_margin < 0 %} bad{% endif %}">{{ total.forecast_margin|money:currency }}</div><div class="note">{% if total.forecast_margin_pct is not None %}{{ total.forecast_margin_pct }}%{% endif %}</div></div>
+  <div class="kpi"><div class="label">Moved since last month</div><div class="value">{% include "cvr/_move.html" with v=total.move %}</div></div>
+</div>
+{% if graph %}<div class="card"><div class="card-head"><h2>Forecast margin by job</h2></div><div class="card-body">{% include "reports/_bars.html" with chart_id="rp-margin" chart_title="Forecast margin by job; the table below has every figure" %}{% if charted == 20 %}<p class="small dim">The first 20 jobs with figures are drawn; the table has them all.</p>{% endif %}</div></div>{% endif %}
+<div class="card"><div class="card-head"><h2>By job</h2></div><div class="table-wrap"><table class="t register">
+  <caption class="sr-only">Forecast margin by job for {{ month|date:"F Y" }}</caption>
+  <thead><tr><th scope="col">Job</th><th scope="col">CVR</th><th scope="col" class="num">Forecast final account</th><th scope="col" class="num">Forecast final cost</th><th scope="col" class="num">Forecast margin</th><th scope="col" class="num">Moved since last month</th><th scope="col" class="num">Margin to date</th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><a class="rowlink" href="{% url 'cvr_list' org.slug r.project.pk %}">{{ r.project.name }}</a><span class="sub ref">{{ r.project.reference }}{% if r.project.manager %} · {{ r.project.manager.full_name }}{% endif %}</span></td>
+    <td>{% if r.period %}{% status_badge r.period %}{% elif r.has_figures %}{% badge 'Not started' 'muted' %}{% else %}{% badge 'No figures yet' 'muted' %}{% endif %}</td>
+    <td class="num">{{ r.f.final_account|money:currency }}</td>
+    <td class="num">{{ r.f.final_cost|money:currency }}</td>
+    <td class="num{% if r.f.forecast_margin < 0 %} overdue{% endif %}">{{ r.f.forecast_margin|money:currency }}{% if r.f.forecast_margin_pct is not None %}<span class="sub">{{ r.f.forecast_margin_pct }}%</span>{% endif %}</td>
+    <td class="num">{% include "cvr/_move.html" with v=r.move %}</td>
+    <td class="num{% if r.f.margin < 0 %} overdue{% endif %}">{{ r.f.margin|money:currency }}{% if r.f.margin_pct is not None %}<span class="sub">{{ r.f.margin_pct }}%</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+  <tfoot><tr><th scope="row">Total</th><td></td><td class="num">{{ total.final_account|money:currency }}</td><td class="num">{{ total.final_cost|money:currency }}</td><td class="num">{{ total.forecast_margin|money:currency }}</td><td class="num">{% include "cvr/_move.html" with v=total.move %}</td><td class="num">{{ total.margin|money:currency }}</td></tr></tfoot>
+</table></div></div>
+{% else %}<div class="card">{% url 'project_list' org.slug as jobs_url %}{% include "partials/empty_state.html" with title="No live jobs" message="This report lists jobs that are won or live on site. Win a bid, or move a job to live, and its margin shows here." cta_url=jobs_url cta_label="Go to projects" %}</div>{% endif %}
+<p class="small dim">{% badge 'Advisory' 'warn' %} Forecast margin is the forecast final account (contract sum and approved client variations, with any CVR adjustments) less the forecast final cost. Excluding VAT. {{ advisory }}</p>
+</div>
+{% endblock %}

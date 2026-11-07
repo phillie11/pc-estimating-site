@@ -105,7 +105,9 @@ def _log_access(request, fieldfile, project, label):
     if getattr(request, 'org', None) is None:
         return
     ip = request.META.get('HTTP_X_REAL_IP') or request.META.get('REMOTE_ADDR')
-    FileAccess.objects.create(organization=request.org, user=request.user, project=project, label=label[:255],
+    user = getattr(request, 'user', None)  # an API token's download (api/views.py) has no signed-in user
+    FileAccess.objects.create(organization=request.org, user=user if getattr(user, 'is_authenticated', False) else None,
+                              project=project, label=label[:255],
                               path=fieldfile.name[:500], ip=ip or None)
 
 

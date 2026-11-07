@@ -1,0 +1,14 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Reports{% endblock %}
+{% block content %}<div class="rp-page">
+<div class="page-head"><div><h1>Reports</h1><p class="small dim">Across every job, for owners and admins. Each one has the table on screen and a CSV to take away. Figures come straight from each job's own pages, so they always agree.</p></div></div>
+<div class="rp-cards">
+  <a class="card rp-card" href="{% url 'report_margin' org.slug %}"><h2>Portfolio margin</h2><p>Each live job's forecast margin from its CVR, and how far it has moved since last month.</p></a>
+  <a class="card rp-card" href="{% url 'report_cash' org.slug %}"><h2>Cash position</h2><p>Money in and out on every live job this month and the next two, from each job's cashflow.</p></a>
+  <a class="card rp-card" href="{% url 'report_overdue' org.slug %}"><h2>Overdue across jobs</h2><p>RFIs, NEC clocks, payment notices, client payments, permits and defects past their date.</p></a>
+  <a class="card rp-card" href="{% url 'report_safety' org.slug %}"><h2>Safety</h2><p>Incidents by month and kind over the last year, and how many were RIDDOR reportable.</p></a>
+  <a class="card rp-card" href="{% url 'report_subcontractors' org.slug %}"><h2>Subcontractor performance</h2><p>Submittals made on time, snags per package and how long they take to close.</p></a>
+</div>
+<p class="small dim">Want these figures in another system? Owners and admins can make an API token in <a href="{% url 'api_settings' org.slug %}">Settings → API</a>.</p>
+</div>
+{% endblock %}

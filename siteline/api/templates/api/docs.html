@@ -1,0 +1,47 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}How to use the API{% endblock %}
+{% block content %}<div class="api-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / <a href="{% url 'api_settings' org.slug %}">API</a></div><h1>How to use the API</h1>
+  <p class="small dim">For whoever sets up the system that reads from Siteline. The same details are in the <a href="{{ openapi_url }}">OpenAPI description</a>, which tools such as Power BI and Postman can load.</p></div>
+  <div class="row"><a class="btn primary" href="{% url 'api_settings' org.slug %}#new-token">Make a token</a></div></div>
+
+<div class="card"><div class="card-head"><h2>The basics</h2></div><div class="card-body api-doc">
+  <ul>
+    <li>Address: <code>{{ api_base }}</code>, then the endpoint, e.g. <code>{{ api_base }}rfis/</code>.</li>
+    <li>Send the token in a header on every call: <code>Authorization: Bearer slk_…</code>. Tokens in the address are not accepted.</li>
+    <li>Read only: only <code>GET</code> works.</li>
+    <li>Lists come {{ page_size }} to a page (<code>?page=2</code>; up to {{ max_page_size }} with <code>?page_size=</code>), with <code>count</code>, <code>next</code> and <code>previous</code>. Add <code>?updated_since=2026-11-01</code> where it's listed to fetch only what has changed.</li>
+    <li>Money is text with two decimal places (<code>"1250.00"</code>), excluding VAT unless the field says otherwise. Times are UTC.</li>
+    <li>Each token can make {{ limit }} calls every {{ window_minutes }} minutes. Every call is logged under Settings → API.</li>
+    <li>A token reads one company, as a member of staff would: every job that isn't archived. Ids from another company, or archived jobs, answer 404.</li>
+  </ul>
+  <pre class="api-code"><code>curl -H "Authorization: Bearer slk_…" "{{ api_base }}rfis/?project=12&amp;status=OPEN"</code></pre>
+</div></div>
+
+<div class="card"><div class="card-head"><h2>When something goes wrong</h2></div>
+<div class="table-wrap"><table class="t">
+  <caption class="sr-only">Error answers</caption>
+  <thead><tr><th scope="col">Answer</th><th scope="col">What it means</th></tr></thead>
+  <tbody>
+    <tr><td>400</td><td>A filter isn't right; the message says which and how.</td></tr>
+    <tr><td>401</td><td>No token, or the token doesn't work (revoked, run out, or its maker is no longer an owner or admin).</td></tr>
+    <tr><td>402</td><td>The workspace is locked until its subscription is paid.</td></tr>
+    <tr><td>403</td><td>The token wasn't given that resource group.</td></tr>
+    <tr><td>404</td><td>Not found, or not something this token can see.</td></tr>
+    <tr><td>429</td><td>Too many calls: wait the number of seconds in <code>Retry-After</code>.</td></tr>
+  </tbody></table></div></div>
+
+{% for r in resources %}<div class="card api-resource" id="{{ r.name }}"><div class="card-head"><h2>{{ r.title }}</h2></div><div class="card-body api-doc">
+  <p>{{ r.description }}</p>
+  <p class="small"><code>GET {{ api_base }}{{ r.name }}/</code>{% if r.detail %} and <code>GET {{ api_base }}{{ r.name }}/{id}/</code>{% endif %}{% if r.name == 'documents' %}; download a revision with <code>GET {{ api_base }}documents/{id}/revisions/{revision id}/download/</code>{% endif %}</p>
+  {% if r.filters %}<p class="small"><strong>Filters:</strong> {% for f in r.filters %}<code>{{ f.name }}</code> ({{ f.description|lower|cut:"." }}){% if not forloop.last %}; {% endif %}{% endfor %}.</p>{% endif %}
+</div>
+<details class="api-fields"><summary>Fields ({{ r.fields|length }})</summary>
+<div class="table-wrap"><table class="t">
+  <caption class="sr-only">Fields of {{ r.title }}</caption>
+  <thead><tr><th scope="col">Field</th><th scope="col">Type</th><th scope="col">What it is</th></tr></thead>
+  <tbody>{% for f in r.fields %}<tr><td class="mono">{{ f.name }}</td><td>{{ f.type }}{% if f.nullable %} or empty{% endif %}</td><td>{{ f.description }}{% if f.detail_only %} <span class="dim">(single record only)</span>{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div></details>
+</div>{% endfor %}
+</div>
+{% endblock %}

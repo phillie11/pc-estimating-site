@@ -1,0 +1,37 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}API{% endblock %}
+{% block content %}<div class="api-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a></div><h1>API</h1>
+  <p class="small dim">Let another system, such as Power BI or your accounts package, read your jobs from Siteline. It can only read, never change anything, and only the parts you tick.</p></div>
+  <div class="row"><a class="btn" href="{% url 'api_docs' org.slug %}">How to use the API</a></div></div>
+
+<div class="card"><div class="card-head"><h2>Tokens in use</h2></div>
+{% if live %}<div class="table-wrap"><table class="t register">
+  <caption class="sr-only">API tokens that work</caption>
+  <thead><tr><th scope="col">Name</th><th scope="col">Can read</th><th scope="col">Made</th><th scope="col">Last used</th><th scope="col">Stops working</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+  <tbody>{% for t in live %}<tr>
+    <td><a class="rowlink" href="{% url 'api_token_detail' org.slug t.pk %}">{{ t.name }}</a><span class="sub ref">{{ t.prefix }}…</span></td>
+    <td class="small">{{ t.scope_labels|join:"; " }}</td>
+    <td>{{ t.created_at|date:"j M Y" }}<span class="sub">{% if t.created_by %}{{ t.created_by.full_name }}{% else %}Someone who has left{% endif %}</span></td>
+    <td>{% if t.last_used_at %}{{ t.last_used_at|date:"j M Y H:i" }}{% else %}<span class="dim">Not yet</span>{% endif %}</td>
+    <td>{% if t.expires_at %}{{ t.expires_at|date:"j M Y" }}{% else %}<span class="dim">When revoked</span>{% endif %}</td>
+    <td>{% if not t.maker_ok %}{% badge 'Stopped: its maker is no longer an owner or admin' 'bad' %}{% else %}{% with s=t.state %}{% badge s.0 s.1 %}{% endwith %}{% endif %}</td>
+    <td><form method="post" action="{% url 'api_token_revoke' org.slug t.pk %}" data-confirm="Revoke {{ t.name }}? Anything using it stops working straight away. This can't be undone: you would make a new token instead.">{% csrf_token %}<button class="linkbtn danger">Revoke</button></form></td>
+  </tr>{% endfor %}</tbody></table></div>
+{% else %}{% include "partials/empty_state.html" with title="No API tokens yet" message="Make one below for each system that needs to read from Siteline, so you can revoke one without stopping the others." left=True %}{% endif %}
+</div>
+
+<div class="card api-new" id="new-token"><div class="card-head"><h2>Make a token</h2></div><div class="card-body">
+  <form method="post" action="{% url 'api_settings' org.slug %}">{% csrf_token %}{% include "partials/form_fields.html" %}
+    <p class="small dim">A token reads the whole company as a member of staff would: every job that isn't archived, including internal RFIs and documents. It never sees what only clients or subcontractors see, and it stops working if you, its maker, stop being an owner or admin. Each token can make {{ limit }} calls every {{ window_minutes }} minutes, and every call is logged.</p>
+    <div class="form-actions"><button class="btn primary">Make token</button><a class="btn ghost" href="{% url 'org_settings' org.slug %}">Cancel</a></div>
+  </form></div></div>
+
+{% if old %}<details class="card api-old"><summary class="card-head"><h2>Revoked and run-out tokens ({{ old|length }})</h2></summary>
+<div class="table-wrap"><table class="t">
+  <caption class="sr-only">Tokens that no longer work</caption>
+  <thead><tr><th scope="col">Name</th><th scope="col">Made</th><th scope="col">Last used</th><th scope="col">Status</th></tr></thead>
+  <tbody>{% for t in old %}<tr><td><a href="{% url 'api_token_detail' org.slug t.pk %}">{{ t.name }}</a><span class="sub ref">{{ t.prefix }}…</span></td><td>{{ t.created_at|date:"j M Y" }}</td><td>{% if t.last_used_at %}{{ t.last_used_at|date:"j M Y H:i" }}{% else %}<span class="dim">Never</span>{% endif %}</td><td>{% with s=t.state %}{% badge s.0 s.1 %}{% endwith %}{% if t.revoked_at %}<span class="sub">{{ t.revoked_at|date:"j M Y" }}{% if t.revoked_by %} by {{ t.revoked_by.full_name }}{% endif %}</span>{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div></details>{% endif %}
+</div>
+{% endblock %}
