@@ -512,7 +512,7 @@ class AccessTests(ProcurementTestBase):
     def test_tabs(self):
         self.login(self.pat)
         r = self.client.get(self.url('project_detail', self.pa.pk))
-        self.assertContains(r, self.url('procurement_schedule', self.pa.pk))
+        self.assertIn('procurement', [t[0] for t in r.context['tabs']])  # grouped tabs: it sits one tap down, so check it is offered, not that its link is on this page
         self.login(self.sid)
         self.assertContains(self.client.get(self.url('project_decisions', self.pa.pk)),
                             self.url('submittal_list', self.pa.pk))
