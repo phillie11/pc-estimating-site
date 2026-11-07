@@ -229,7 +229,9 @@ class HandoverTests(Base):
         import actions
         with org_context(self.org_a):
             mine = [i for i in actions.for_user(self.request_for(self.pat)) if i.kind == 'handover_item']
-        self.assertEqual(len(mine), len(items))
+        self.assertEqual(len(mine), 1)  # one line per job, linking to its open items
+        self.assertEqual(mine[0].title, f'{len(items)} handover pack open items')
+        self.assertTrue(mine[0].url.startswith(self.url('hpack_items', self.bid.pk)))
         self.assertTrue(all('£' not in i.title and i.amount is None for i in mine))
         # The estimator who can't open live jobs no longer can
         self.assertEqual(self.status_for(self.eve, self.url('hpack_pack', self.bid.pk)), 404)

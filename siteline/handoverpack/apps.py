@@ -9,7 +9,11 @@ class HandoverPackConfig(AppConfig):
 
     def ready(self):
         import actions
+        from actions import providers
         from actions.providers import HookProvider
+        # Its figures ride on the shared my_jobs query, so the badge costs no extra query (actions.py)
+        if 'handoverpack.actions.job_annotations' not in providers.JOB_ANNOTATIONS:
+            providers.JOB_ANNOTATIONS.append('handoverpack.actions.job_annotations')
         # Open items given to this person, on packs they can open (handoverpack/actions.py). Staff only
         actions.register(HookProvider('handover_item', 'Handover open items', 'handoverpack.actions.items',
                                       staff=True, action='Sort it out and mark it done'))

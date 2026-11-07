@@ -1,40 +1,53 @@
 """
 Needs me: handover pack open items given to this person (a HookProvider, registered in apps.py, staff only).
 
-One query behind the badge on every page. The same rule as the pack's pages (handoverpack/access.py), in
-SQL: owners and admins on any project they can open; on a bid, staff who work in estimating; on a won,
-live or complete job, its project manager or a PM or QS on its team. Items never name a figure: the title
-says what to sort out, and the money stays on the pack's pages.
+It runs behind the badge on every page and adds no query of its own: its figures are subqueries on the
+shared actions.providers.my_jobs query (job_annotations below, through its JOB_ANNOTATIONS hook), which
+lists the won, live and complete jobs this person can open. That is where open items get their owners and
+due dates (at the handover), so that is where Needs me shows them; on a bid they are on the pack's Open items
+page. The rule is the pack's own (handoverpack/access.py): owners and admins, or the job's project manager or
+a PM or QS on its team. One line per job; several items link to the job's open items. Items never name a
+figure: the money stays on the pack's pages.
 """
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, IntegerField, Min, OuterRef, Subquery
 from django.urls import reverse
 
 from actions.registry import PRIORITY_HIGH, PRIORITY_NORMAL, Item
 
 
-def items(request):
-    from costs.access import COST_STAGES
-    from projects.access import is_internal, visible_projects
-    from projects.models import Project, ProjectMember
+def job_annotations(request):
+    from projects.access import is_internal
 
     from .models import OpenItem
-    m = request.membership
-    if m is None or not is_internal(request):
+    if request.membership is None or not is_internal(request):
+        return {}
+    mine = OpenItem.objects.filter(project=OuterRef('pk'), owner=request.user.pk, status=OpenItem.OPEN)
+    first = mine.order_by('due_date', 'pk')
+    return {
+        'hp_open_n': Subquery(mine.order_by().values('project').annotate(n=Count('pk')).values('n'),
+                              output_field=IntegerField()),
+        'hp_open_bad': Subquery(mine.filter(severity='bad').order_by().values('project').annotate(n=Count('pk'))
+                                .values('n'), output_field=IntegerField()),
+        'hp_open_due': Subquery(mine.order_by().values('project').annotate(d=Min('due_date')).values('d')),
+        'hp_open_pk': Subquery(first.values('pk')[:1]),
+        'hp_open_title': Subquery(first.values('title')[:1]),
+    }
+
+
+def items(request):
+    from actions.providers import my_jobs
+    from projects.access import is_internal
+    if request.membership is None or not is_internal(request):
         return []
-    qs = OpenItem.objects.filter(owner=request.user, status=OpenItem.OPEN,
-                                 project__in=visible_projects(request).values('pk'))
-    if not m.is_admin:
-        runs = ProjectMember.objects.filter(project=OuterRef('project'), user=request.user,
-                                            role__in=(ProjectMember.ROLE_PM, ProjectMember.ROLE_QS))
-        allowed = Q(project__stage__in=COST_STAGES) & (Q(project__manager=request.user) | Q(Exists(runs)))
-        if m.can_estimate:
-            allowed |= Q(project__stage__in=Project.ESTIMATING_STAGES)
-        qs = qs.filter(allowed)
-    out = []
-    for i in qs.select_related('project').order_by('due_date', 'pk')[:200]:
-        url = reverse('hpack_items', args=[request.org.slug, i.project_id]) + f'#item-{i.pk}'
-        out.append(Item(kind='handover_item', title=i.title, url=url, ref='', project=i.project, due=i.due_date,
-                        priority=PRIORITY_HIGH if i.severity == 'bad' else PRIORITY_NORMAL,
-                        status_label='Handover open item', tone='bad' if i.severity == 'bad' else 'warn',
-                        detail=i.trade, key=f'hpack:{i.pk}'))
+    admin, me, slug, out = request.membership.is_admin, request.user.pk, request.org.slug, []
+    for p in my_jobs(request):
+        n = getattr(p, 'hp_open_n', None)
+        if not n or not (admin or p.manager_id == me or p.on_team_pm or p.on_team_qs):
+            continue
+        url = reverse('hpack_items', args=[slug, p.pk]) + (f'#item-{p.hp_open_pk}' if n == 1 else '')
+        out.append(Item(kind='handover_item', title=p.hp_open_title if n == 1 else f'{n} handover pack open items',
+                        url=url, project=p, due=p.hp_open_due,
+                        priority=PRIORITY_HIGH if p.hp_open_bad else PRIORITY_NORMAL,
+                        status_label='Handover open item', tone='bad' if p.hp_open_bad else 'warn',
+                        key=f'hpack:{p.pk}'))
     return out

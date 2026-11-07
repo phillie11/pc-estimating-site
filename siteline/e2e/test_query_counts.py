@@ -27,6 +27,16 @@ BADGE_CEILING = 30
 PAGE_CEILING = 50
 
 
+_WORKBOOK = []
+
+
+def _pricing_workbook():
+    if not _WORKBOOK:
+        from handoverpack import sample
+        _WORKBOOK.append(sample.build(sample.DEMO))
+    return _WORKBOOK[0]
+
+
 class QueryCountsDontGrowTests(TestCase):
     def setUp(self):
         # The search and export pages count each request against a rate limit, and the first request of a new
@@ -90,10 +100,25 @@ class QueryCountsDontGrowTests(TestCase):
             ('sub', u('portal_permits', pk)), ('sub', u('portal_firestop', pk)), ('sub', u('portal_near_miss', pk)),
             ('sub', u('project_decisions', pk)), ('client', u('daywork_portal', pk)),
             ('client', u('project_decisions', pk)),
+            # Pricing workbook and handover pack on the job (handoverpack/), and the owner's settings page
+            *self._pack_pages(built, job, u),
             # Global search (help/search.py): common letters, so every source finds something
             ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
             ('client', u('search') + '?q=an'),
         ]
+
+    def _pack_pages(self, built, job, u):
+        """The job's pricing workbook (the same invented one in both companies), its revision and the pack."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from handoverpack import sample, services
+        from handoverpack.models import PricingWorkbook
+        with org_context(built.org):
+            wb = PricingWorkbook.objects.filter(project=job).first() or services.upload(
+                job, job.manager, SimpleUploadedFile('workbook.xlsx', _pricing_workbook()))
+        return [('pm', u('hpack_workbook', job.pk)), ('pm', u('hpack_revision', job.pk, wb.pk)),
+                ('pm', u('hpack_pack', job.pk)), ('pm', u('hpack_items', job.pk)),
+                ('pm', u('hpack_clarifications', job.pk)), ('owner', u('hpack_settings'))]
 
     def _meeting(self, built, job):
         """The job's latest issued meeting (the one with the most brought forward)."""
