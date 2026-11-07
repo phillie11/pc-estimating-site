@@ -113,7 +113,7 @@ def build(project, pack, wb, request=None, clarifications=None, items=None):
     prelims_no.sort(key=lambda x: not x['had_inputs'])
 
     # Drawings: the register, and numbers the workbook mentions
-    docs = list(Document.objects.filter(project=project, category='DRAWING').prefetch_related('revisions')
+    docs = list(Document.objects.filter(project=project, category__in=('DRAWING', 'TENDER')).prefetch_related('revisions')
                 .order_by('reference', 'title')[:500])
     mentioned = drawing_refs([(f'{tr["name"]} {ln["ref"] or ln["row"]}', ln['description'])
                               for tr in trades for ln in tr['lines']]
