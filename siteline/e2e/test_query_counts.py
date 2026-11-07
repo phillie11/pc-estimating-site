@@ -59,6 +59,8 @@ class QueryCountsDontGrowTests(TestCase):
             ('sub', u('project_detail', pk)), ('sub', u('subpay_list', pk)), ('sub', u('document_list', pk)),
             ('sub', u('needs_me')),
             ('client', u('project_detail', pk)), ('client', u('needs_me')), ('client', u('application_list', pk)),
+            # Drawing viewer with mark-up layers, and revision compare (stream G)
+            *self._drawing_pages(built, job, u),
             # Programme look-ahead and meetings (Release 3, stream C)
             ('pm', u('programme', pk)), ('pm', u('programme_lookahead', pk)), ('pm', u('meeting_list', pk)),
             ('pm', u('meeting_actions', pk) + '?show=all'), ('pm', u('meeting_detail', pk, self._meeting(built, job))),
@@ -85,6 +87,25 @@ class QueryCountsDontGrowTests(TestCase):
         from meetings.models import Meeting
         with org_context(built.org):
             return Meeting.objects.filter(project=job, status=Meeting.STATUS_ISSUED).order_by('-held_on').first().pk
+
+    def _drawing_pages(self, built, job, u):
+        """A shared drawing with two revisions, marked up by one person per job in the company (so more in the big one)."""
+        from projects.models import Document
+        from tenancy.models import Membership as M
+        from viewer.models import MarkupLayer
+        with org_context(built.org):
+            doc = next(d for d in Document.objects.filter(project=job, visibility=Document.VIS_SHARED).order_by('pk')
+                       if d.revisions.count() == 2)
+            cur = doc.revisions.get(is_current=True)
+            staff = [m.user for m in M.objects.filter(organization=built.org).exclude(role=M.ROLE_EXTERNAL)
+                     .select_related('user').order_by('pk')][:len(built.live)]
+            for i, user in enumerate(staff):
+                MarkupLayer.objects.get_or_create(
+                    revision=cur, owner=user, defaults={'project': job, 'document': doc,
+                                                        'share': MarkupLayer.EXTERNAL if i % 2 else MarkupLayer.TEAM,
+                                                        'data': {'v': 1, 'shapes': []}})
+        return [('pm', u('drawing_viewer', job.pk, doc.pk, cur.pk)), ('pm', u('drawing_compare', job.pk, doc.pk)),
+                ('sub', u('drawing_viewer', job.pk, doc.pk, cur.pk)), ('client', u('drawing_compare', job.pk, doc.pk))]
 
     def _quality_pages(self, built, job, u):
         from quality.models import Inspection, Penetration, Permit
