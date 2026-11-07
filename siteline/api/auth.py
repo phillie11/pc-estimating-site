@@ -23,9 +23,11 @@ A token works only while:
 Limits: LIMIT calls per WINDOW seconds per token, and BAD_LIMIT refused tokens per address per WINDOW
 (security.ratelimit.hit, the same database counters as every other limit).
 """
+import re
 import secrets
 import string
 from datetime import timedelta
+from urllib.parse import unquote
 
 from django.conf import settings
 from django.contrib.auth.hashers import PBKDF2PasswordHasher
@@ -157,12 +159,38 @@ def authenticate(request):
     return token, None
 
 
+# Anything shaped like a token's text, wherever it turns up in a URL (a token pasted into the query string as
+# well as the header). Its prefix is kept so an admin can tell which token got out; the secret never is.
+TOKEN_IN_TEXT = re.compile(r'slk_([A-Za-z0-9]{%d})_[A-Za-z0-9]+' % PREFIX_LENGTH)
+SECRET_LEFT_OUT = r'slk_\1_[removed]'
+
+
+def loggable_path(request):
+    """The path and query string for the call log, with any token's secret taken out."""
+    path = request.get_full_path()
+    plain = unquote(path)  # slk%5F... is a token too
+    if TOKEN_IN_TEXT.search(plain):
+        path = TOKEN_IN_TEXT.sub(SECRET_LEFT_OUT, plain)
+    return path[:300]
+
+
+def prune_log(now=None):
+    """
+    Delete calls older than KEEP_DAYS, for every company: the jobs worker's hourly prune (jobs/runner.py),
+    so the log is kept to 90 days even for a company that stops calling. A delete by age only: nothing is
+    read, and every company's rows go by the same rule, so it doesn't need (or use) a company's context.
+    """
+    from .models import ApiAccess
+    cutoff = (now or timezone.now()) - timedelta(days=KEEP_DAYS)
+    return ApiAccess.all_objects.filter(at__lt=cutoff).delete()[0]
+
+
 def record(token, request, status):
     """Log the call, and every minute or so note when the token was last used and drop old log rows."""
     from .models import ApiAccess, ApiToken
     now = timezone.now()
     ApiAccess.all_objects.create(organization_id=token.organization_id, token=token, at=now, method=request.method[:8],
-                                 path=request.get_full_path()[:300], status=status, ip=client_ip(request))
+                                 path=loggable_path(request), status=status, ip=client_ip(request))
     if token.last_used_at is None or now - token.last_used_at >= timedelta(seconds=TOUCH_SECONDS):
         with transaction.atomic():
             # Pinned to this token's row and company (the caller holds both)

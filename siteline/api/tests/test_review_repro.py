@@ -49,6 +49,49 @@ class BadInputIsA400NotAServerErrorTests(ApiTestBase):
         self.assertEqual(self.api(f'/api/v1/cvr/{self.pa.pk}/', self.text_a, month='0001-01').status_code, 400)
 
 
+class TokenTextNeverStoredInTheLogTests(ApiTestBase):
+    """The call log kept the whole query string, so a token pasted into the URL (as well as sent in the
+    header) was stored in full and shown to every owner and admin on the token's page for 90 days."""
+
+    def test_token_in_the_query_string_is_blanked_in_the_log(self):
+        prefix_b, secret_b = auth.parse(self.text_b)
+        prefix_a, secret_a = auth.parse(self.text_a)
+        self.client.get(f'/api/v1/projects/?api_key={self.text_b}&x={self.text_a}',
+                        HTTP_AUTHORIZATION=f'Bearer {self.text_a}')
+        with org_context(self.org_a):
+            path = ApiAccess.objects.get(token=self.token_a).path
+        for secret in (secret_a, secret_b):
+            self.assertNotIn(secret, path)
+        self.assertTrue(path.startswith('/api/v1/projects/?'))
+        self.login(self.alice)
+        page = self.client.get(reverse('api_token_detail', args=[self.org_a.slug, self.token_a.pk]))
+        self.assertNotContains(page, secret_a)
+        self.assertNotContains(page, secret_b)
+
+
+class AccessLogRetentionTests(ApiTestBase):
+    """Calls older than 90 days were only pruned when the same company made another API call, so a company
+    that stopped using the API (or revoked its tokens) kept callers' addresses for ever."""
+
+    def test_the_worker_prunes_every_companys_old_calls(self):
+        from jobs.runner import Worker
+        old = timezone.now() - timedelta(days=auth.KEEP_DAYS + 1)
+        recent = timezone.now() - timedelta(days=auth.KEEP_DAYS - 1)
+        rows = {}
+        for org, token in ((self.org_a, self.token_a), (self.org_b, self.token_b)):
+            with org_context(org):
+                rows[org.pk] = (ApiAccess.objects.create(token=token, method='GET', path='/old', status=200, at=old,
+                                                         ip='203.0.113.9'),
+                                ApiAccess.objects.create(token=token, method='GET', path='/new', status=200,
+                                                         at=recent))
+        Worker().prune()  # no API call in between, no organisation current: the worker's hourly prune
+        for org in (self.org_a, self.org_b):
+            with org_context(org):
+                gone, kept = rows[org.pk]
+                self.assertFalse(ApiAccess.objects.filter(pk=gone.pk).exists())
+                self.assertTrue(ApiAccess.objects.filter(pk=kept.pk).exists())
+
+
 class RfiOverdueAgreesWithTheRfiTests(ApiTestBase):
     """The API called a responded RFI past its date "overdue"; the RFI's own page, Needs me and the overdue
     report count only RFIs still waiting for a response."""
