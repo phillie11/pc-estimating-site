@@ -330,22 +330,59 @@ def photo_file(request, org_slug, pk, photo_id, size):
     return serve(request, field, project=project, label=f'Quality photo {photo.pk} ({size})')
 
 
-# --- Needs me for subcontractors ------------------------------------------------------
+# --- Needs me for people outside the company -----------------------------------------
+
+FAILED_SEAL, TO_SIGN = 'fs', 'dw'
+
+
+def portal_rows(request):
+    """
+    [(kind, pk, ref, title, due, detail, project)] waiting on this external person from the wave 2 portal
+    pages: FAILED_SEAL, a failed seal on their own company's package (an appointed sub); TO_SIGN, a daywork
+    sheet they were asked to sign in their portal (client side, cvr/portal.py). One UNION query per request,
+    shared by both Needs me providers because the badge runs on every page (plus one for the projects,
+    only when there is something to list).
+    """
+    from tenancy.context import request_memo
+
+    def fetch():
+        from django.db.models import CharField, DateField, F, Value
+        from django.db.models.functions import Cast
+
+        from cvr.models import DayworkSheet
+        from cvr.portal import CLIENT_ROLES
+        from projects.models import Project
+        cols = ('k', 'pk', 'project_id', 'r_ref', 'r_title', 'r_due', 'r_detail')
+        as_sub = ProjectMember.objects.filter(project=OuterRef('project_id'), user=request.user,
+                                              role=ProjectMember.ROLE_SUBCONTRACTOR,
+                                              subcontractor_id=OuterRef('package__subcontractor_id'))
+        seals = Penetration.objects.filter(status=Penetration.FAILED, package__status=Package.APPOINTED,
+                                           project__archived_at__isnull=True).filter(Exists(as_sub)).annotate(
+            k=Value(FAILED_SEAL, output_field=CharField()), r_ref=F('ref'), r_title=F('title'),
+            r_due=Cast(Value(None), output_field=DateField()), r_detail=F('location')).values_list(*cols).order_by()
+        as_client = ProjectMember.objects.filter(project=OuterRef('project_id'), user=request.user,
+                                                 role__in=CLIENT_ROLES)
+        sheets = DayworkSheet.objects.filter(sign_requested_from=request.user, status=DayworkSheet.DRAFT,
+                                             project__archived_at__isnull=True).filter(Exists(as_client)).annotate(
+            k=Value(TO_SIGN, output_field=CharField()), r_ref=F('ref'), r_title=F('title'),
+            r_due=Cast(F('due_date'), output_field=DateField()), r_detail=F('location')).values_list(*cols).order_by()
+        rows = list(seals.union(sheets, all=True))
+        if not rows:
+            return []
+        projects = {p.pk: p for p in Project.objects.filter(pk__in={r[2] for r in rows})}
+        return [(k, pk, ref, title, due, detail, projects[pid]) for k, pk, pid, ref, title, due, detail in rows
+                if pid in projects]
+    return request_memo(('portal_needs_me', request.user.pk), fetch)
+
 
 def sub_items(request):
     """Failed seals on a subcontractor's own packages, on jobs they are on: reseal, then mark it resealed."""
     if request.membership is None or is_internal(request):
         return []
     from actions.registry import PRIORITY_HIGH, Item
-    mine = ProjectMember.objects.filter(project=OuterRef('project_id'), user=request.user,
-                                        role=ProjectMember.ROLE_SUBCONTRACTOR,
-                                        subcontractor_id=OuterRef('package__subcontractor_id'))
-    rows = Penetration.objects.filter(status=Penetration.FAILED, package__status=Package.APPOINTED,
-                                      project__archived_at__isnull=True).filter(Exists(mine)) \
-        .select_related('project', 'project__organization')
     slug = request.org.slug
-    return [Item(kind='firestopping', title=p.title, ref=p.ref, project=p.project, due=None,
-                 url=reverse('portal_firestop_detail', args=[slug, p.project_id, p.pk]),
+    return [Item(kind='firestopping', title=title, ref=ref, project=project, due=None,
+                 url=reverse('portal_firestop_detail', args=[slug, project.pk, pk]),
                  action='Put the seal right, add a photo, then mark it resealed', status_label='Failed inspection',
-                 tone='bad', priority=PRIORITY_HIGH, detail=p.location, kind_label='Fire-stopping',
-                 key=f'fs-sub:{p.pk}') for p in rows]
+                 tone='bad', priority=PRIORITY_HIGH, detail=detail, kind_label='Fire-stopping', key=f'fs-sub:{pk}')
+            for kind, pk, ref, title, due, detail, project in portal_rows(request) if kind == FAILED_SEAL]

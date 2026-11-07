@@ -112,7 +112,9 @@ class DemoSeedTests(SafetyTestBase):
         with org_context(self.org_a):
             seed(leeds=self.pa, pm=self.pat, sub_user=self.sid, demo_pdf=lambda title, sub: b'%PDF-1.4 demo')
             self.assertEqual(list(Incident.objects.order_by('number').values_list('ref', 'status')),
-                             [('INC-001', 'CLOSED'), ('INC-002', 'INVESTIGATING'), ('INC-003', 'REPORTED')])
+                             [('INC-001', 'CLOSED'), ('INC-002', 'INVESTIGATING'), ('INC-003', 'REPORTED'),
+                              ('INC-004', 'REPORTED')])
+            self.assertEqual(Incident.objects.get(number=4).reported_by_company, self.subco)
             self.assertTrue(Incident.objects.get(number=2).riddor_outstanding)
             self.assertEqual(PhasePlan.objects.filter(project=self.pa).count(), 2)
             self.assertEqual(set(DutyHolder.objects.values_list('role', flat=True)) >= {'CLIENT', 'PD', 'PC'}, True)

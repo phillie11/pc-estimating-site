@@ -203,7 +203,9 @@ class SeedDemoTests(TestCase):
             self.assertTrue(Issue.objects.filter(project=leeds, issue_type='QUALITY').exists())
             states = {p.ref: p.state for p in Permit.objects.filter(project=leeds)}
             self.assertEqual(states, {'PTW-001': 'closed', 'PTW-002': 'requested', 'PTW-003': 'expiring',
-                                      'PTW-004': 'expired'})
+                                      'PTW-004': 'expired', 'PTW-005': 'requested'})
+            sub_user = User.objects.get(email='sub@demo.test')
+            self.assertEqual(Permit.objects.get(project=leeds, number=5).created_by, sub_user)
             fs = list(Penetration.objects.filter(project=leeds).order_by('number').values_list('status', flat=True))
             self.assertEqual(fs, ['SIGNED_OFF', 'SIGNED_OFF', 'SEALED', 'FAILED', 'TO_SEAL', 'TO_SEAL'])
             self.assertTrue(Penetration.objects.filter(project=leeds, drawing__isnull=False).exists())
@@ -216,7 +218,7 @@ class SeedDemoTests(TestCase):
                 return [i.kind_label for i in actions.for_user(actions.request_for(user, m)) if i.kind in ('inspection', 'permit', 'firestopping')]
             pm = kinds('pm@demo.test')
             self.assertEqual(pm.count('Inspection'), 1)
-            self.assertEqual(pm.count('Permit to work'), 3)  # one to approve, one expiring, one expired
+            self.assertEqual(pm.count('Permit to work'), 4)  # two to approve (one a sub's), one expiring, one expired
             self.assertEqual(pm.count('Fire-stopping'), 2)  # one to inspect, one to get resealed
             for email in ('client@demo.test', 'sub@demo.test', 'estimator@demo.test'):
                 self.assertEqual(kinds(email), [], email)

@@ -205,6 +205,10 @@ module "app" {
         command  = ["python", "manage.py", "check_file_scans"]
         schedule = "cron(0 * * * ? *)" # hourly, on the hour
       }
+      purge-signins = {
+        command  = ["python", "manage.py", "purge_signins"]
+        schedule = "cron(10 3 * * ? *)" # 03:10 UTC daily: visitors' sign-ins past retention
+      }
     },
     # With no worker service, an hourly burst still retries failed emails and prunes old jobs
     { for k, job in {

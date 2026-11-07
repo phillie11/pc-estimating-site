@@ -10,10 +10,12 @@ the Leeds job's packages, drawings (documents/demo.py) and snags exist.
     Permits      PTW-001 hot works closed with the fire watch; PTW-002 hot works for tomorrow waiting
                  for the PM's approval (Needs me); PTW-003 working at height running out within the
                  hour (Needs me, expiring); PTW-004 isolation that ran out yesterday and was never
-                 closed (Needs me, expired).
+                 closed (Needs me, expired); PTW-005 working at height for tomorrow, asked for by the
+                 joinery subcontractor in their portal, waiting for the PM's approval (Needs me).
     Fire-stopping  FS-001 to FS-006: two signed off (one pinned on the ground floor GA), one sealed
                  waiting for the PM to inspect (Needs me), one failed back with the PM to get
-                 resealed (Needs me), two still to seal.
+                 resealed (Needs me), two still to seal. The first three were marked sealed by the
+                 installing subcontractor (the PM signs off; whoever sealed it can't).
   Salford Quays (project 4): one passed inspection, an active permit and two penetrations.
 
 Photos are plain coloured placeholders (diary/demo.py), not real photos.
@@ -168,6 +170,11 @@ def seed(*, leeds, pm, owner):
                  (now - datetime.timedelta(days=2)).replace(hour=7, minute=30), 34, holder='Electrical supervisor',
                  package=pkg.get('Electrical'))
     _approve(p4, owner)
+    if sub is not None:
+        # Asked for by the joinery subcontractor in their portal (quality/portal.py): on the PM's Needs me
+        _permit(leeds, rules.HEIGHT, 'Fix the bar canopy soffit panels from a mobile tower', 'Ground floor bar, canopy',
+                sub, tomorrow + datetime.timedelta(hours=1), 8, holder=sub.full_name, package=joinery,
+                notes='Tower erected by our PASMA-trained joiners. RAMS JN-RAMS-03.')
 
     # --- Leeds fire-stopping ---------------------------------------------------------
     installer = drylining or joinery

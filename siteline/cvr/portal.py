@@ -15,7 +15,7 @@ Signing a daywork sheet in the client's portal, as an alternative to signing on 
 """
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -193,12 +193,10 @@ def client_items(request):
     if request.membership is None or is_internal(request):
         return []
     from actions.registry import PRIORITY_NORMAL, Item
-    on_job = ProjectMember.objects.filter(project=OuterRef('project_id'), user=request.user, role__in=CLIENT_ROLES)
-    rows = DayworkSheet.objects.filter(sign_requested_from=request.user, status=DayworkSheet.DRAFT,
-                                       project__archived_at__isnull=True).filter(Exists(on_job)) \
-        .select_related('project', 'project__organization')
+    from quality.portal import TO_SIGN, portal_rows  # one query shared with the subs' failed seals
     slug = request.org.slug
-    return [Item(kind='daywork_sign', title=s.title, ref=s.reference, project=s.project, due=s.due_date,
-                 url=reverse('daywork_portal_sign', args=[slug, s.project_id, s.pk]),
+    return [Item(kind='daywork_sign', title=title, ref=ref, project=project, due=due,
+                 url=reverse('daywork_portal_sign', args=[slug, project.pk, pk]),
                  action='Check the hours, plant and materials, then sign', status_label='To sign', tone='accent',
-                 priority=PRIORITY_NORMAL, kind_label='Daywork sheets', key=f'dw-sign:{s.pk}') for s in rows]
+                 priority=PRIORITY_NORMAL, detail=detail, kind_label='Daywork sheets', key=f'dw-sign:{pk}')
+            for kind, pk, ref, title, due, detail, project in portal_rows(request) if kind == TO_SIGN]

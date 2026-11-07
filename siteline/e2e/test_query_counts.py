@@ -70,6 +70,11 @@ class QueryCountsDontGrowTests(TestCase):
             # Quality (quality/): the three registers and the busiest record pages
             ('pm', u('inspection_list', pk) + '?status=all'), ('pm', u('permit_list', pk) + '?status=all'),
             ('pm', u('penetration_list', pk)), *self._quality_pages(built, job, u),
+            # The sub's and client's portal pages for the wave 2 defaults (quality/portal.py, safety/portal.py,
+            # cvr/portal.py), and the busiest staff pages they changed
+            ('sub', u('portal_permits', pk)), ('sub', u('portal_firestop', pk)), ('sub', u('portal_near_miss', pk)),
+            ('sub', u('project_decisions', pk)), ('client', u('daywork_portal', pk)),
+            ('client', u('project_decisions', pk)),
             # Global search (help/search.py): common letters, so every source finds something
             ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
             ('client', u('search') + '?q=an'),

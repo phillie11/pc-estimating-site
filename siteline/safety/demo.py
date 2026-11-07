@@ -10,6 +10,8 @@ after the jobs and the site diary exist.
                RIDDOR over-7-day: due to HSE within 15 days and not yet reported (on the PM's Needs
                me), with one action open and one done.
       INC-003  a near miss reported this morning, waiting for the PM to investigate.
+      INC-004  a near miss the joinery subcontractor reported from their portal yesterday
+               (sub@demo.test), on the PM's Needs me to investigate.
       Site sign-in: the PM, the joinery sub and their team, and a visitor on site today; yesterday's
       sign-ins, one with no sign-out.
   Salford Quays (project 4, NEC4): CDM register only part done (client recorded; no plan, not
@@ -112,6 +114,14 @@ def _leeds(leeds, pm, sub_user, org, demo_pdf, today, now):
     _incident(leeds, pm, pm, now - datetime.timedelta(hours=2),
               description='Extension lead trailing across the kitchen doorway. Spotted before anyone tripped.',
               location='First floor kitchen entrance', kind=Incident.KIND_NEAR_MISS)
+
+    # Reported by the joinery subcontractor from their portal (safety/portal.py)
+    from projects.models import ProjectMember
+    member = ProjectMember.objects.filter(project=leeds, user=sub_user, role=ProjectMember.ROLE_SUBCONTRACTOR).first()
+    _incident(leeds, pm, sub_user, now - datetime.timedelta(days=1, hours=1),
+              description='Offcut fell from the bar canopy scaffold onto the walkway below. Nobody underneath.',
+              location='Ground floor bar, by the canopy scaffold', kind=Incident.KIND_NEAR_MISS,
+              reported_by_company_id=member.subcontractor_id if member else None)
 
     gate = SiteGate.for_project(leeds)
     S, C, V = SiteAttendance.KIND_STAFF, SiteAttendance.KIND_COLLABORATOR, SiteAttendance.KIND_VISITOR
