@@ -76,9 +76,28 @@ def init_worker(counter, *args, **kwargs):
     override_settings(MEDIA_ROOT=media).enable()  # for the life of the worker; storages pick it up
 
 
+def _is_transaction_case(subsuite):
+    from django.test import TestCase, TransactionTestCase
+    first = next(iter(subsuite), None)
+    return isinstance(first, TransactionTestCase) and not isinstance(first, TestCase)
+
+
 class ParallelSuite(ParallelTestSuite):
+    """
+    Workers take whole test classes, in order. Django puts TransactionTestCase classes last; here they are
+    the migration tests, each one to three minutes, so last means they all start together at the end and
+    the run waits on them. Handed out first, they run alongside the short TestCase classes instead.
+    That is safe for the TestCase classes a worker runs after one: a TransactionTestCase empties the
+    tables and Django re-creates content types and permissions straight away, which leaves the database
+    as migrate made it (no migration here inserts rows into an empty database). Serial runs keep
+    Django's order.
+    """
     init_worker = init_worker
     runner_class = TextResultRunner
+
+    def __init__(self, subsuites, *args, **kwargs):
+        subsuites = sorted(subsuites, key=lambda s: not _is_transaction_case(s))  # stable: the rest keep their order
+        super().__init__(subsuites, *args, **kwargs)
 
 
 class TestRunner(DiscoverRunner):

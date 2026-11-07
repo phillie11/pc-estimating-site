@@ -1,9 +1,10 @@
 """The test runner's parallel workers report failures as text (security/testing.py), so a failure never stops the run."""
 import pickle
 import sys
+import unittest
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 
 from security import testing
 
@@ -55,3 +56,18 @@ class FailuresAsTextTests(SimpleTestCase):
     def test_the_runner_uses_it_for_parallel_runs(self):
         suite = testing.TestRunner.parallel_test_suite
         self.assertIs(suite.runner_class.resultclass, testing.TextResult)
+
+
+class ParallelOrderTests(SimpleTestCase):
+    def test_transaction_test_classes_are_handed_out_first(self):
+        class Quick(TestCase):  # made here, so the test runner doesn't find and run them
+            def test_a(self):
+                pass  # pragma: no cover - only built, never run
+
+        class Migrates(TransactionTestCase):
+            def test_b(self):
+                pass  # pragma: no cover - only built, never run
+        suites = [unittest.TestSuite([Quick('test_a')]), unittest.TestSuite([Migrates('test_b')]),
+                  unittest.TestSuite([FailuresAsTextTests('test_left_alone_where_tblib_can_pickle_the_real_traceback')])]
+        order = [type(next(iter(s))).__name__ for s in testing.ParallelSuite(suites, 2).subsuites]
+        self.assertEqual(order, ['Migrates', 'Quick', 'FailuresAsTextTests'])

@@ -21,7 +21,7 @@ jobs:
   test:
     name: Tests (${{ matrix.db }})
     runs-on: ubuntu-24.04
-    # The tests run in 4 processes (below) and take under 12 minutes on each database; 25 leaves room
+    # The tests run in 5 or 6 processes (below) and take under 12 minutes on each database; 25 leaves room
     # for a slow runner without letting a hung job sit for long.
     timeout-minutes: 25
     strategy:
@@ -161,9 +161,12 @@ jobs:
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
 
-      # Django copies the empty test database once per CPU (the runner has 4) and hands each process
-      # whole test classes. On MySQL the copy is made with mysqldump and the mysql client, which the
-      # runner image ships with; they are installed here only if an image ever drops them.
+      # Django copies the empty test database once per test process and hands each process whole test
+      # classes. The runner has 4 CPUs, but tests spend part of their time waiting (on files, and on the
+      # database server), so SQLite runs 5 processes and PostgreSQL and MySQL 6: each beat 4 when timed
+      # on this workflow.
+      # On MySQL the copies are made with mysqldump and the mysql client, which the runner image ships
+      # with; they are installed here only if an image ever drops them.
       - name: Check the MySQL client tools (for the parallel test databases)
         if: ${{ matrix.db == 'mysql' }}
         run: |
@@ -176,7 +179,7 @@ jobs:
       # Each process writes its own coverage file (.coveragerc: parallel = true, concurrency =
       # multiprocessing); the report step combines them. --durations lists the slowest tests in the log.
       - name: Run tests with coverage
-        run: python -m coverage run manage.py test --noinput --parallel auto --timing --durations 25
+        run: python -m coverage run manage.py test --noinput --parallel ${{ matrix.db == 'sqlite' && '5' || '6' }} --timing --durations 25
 
       - name: Coverage report
         if: ${{ !cancelled() }}
