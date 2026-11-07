@@ -66,7 +66,7 @@ def _post(*args, **kwargs):
 # --- Budget -----------------------------------------------------------------------------
 
 @transaction.atomic
-def set_original_budget(project, actor, basis_value, margin_pct, lines, reason=''):
+def set_original_budget(project, actor, basis_value, margin_pct, lines, reason='', date=None):
     _lock(project)
     if has_budget(project):
         raise CostError('This job already has a budget. Change it with a budget transfer or revision.')
@@ -77,15 +77,15 @@ def set_original_budget(project, actor, basis_value, margin_pct, lines, reason='
                                          kind=BudgetChange.ORIGINAL, basis_value=pennies(basis_value),
                                          margin_pct=pennies(margin_pct), reason=reason, created_by=actor)
     for code, desc, amount in lines:
-        _budget_line(change, code, desc, amount, actor, f'Original budget: {desc or code.name}')
+        _budget_line(change, code, desc, amount, actor, f'Original budget: {desc or code.name}', date=date)
     return change
 
 
-def _budget_line(change, code, desc, amount, actor, note):
+def _budget_line(change, code, desc, amount, actor, note, date=None):
     _check_code(change.project, code)
     line = BudgetLine.objects.create(change=change, project=change.project, cost_code=code,
                                      description=desc or code.name, amount=pennies(amount))
-    _post(change.project, code, ledger.BUDGET, line.amount, source=line, actor=actor, note=note)
+    _post(change.project, code, ledger.BUDGET, line.amount, source=line, actor=actor, note=note, date=date)
     return line
 
 

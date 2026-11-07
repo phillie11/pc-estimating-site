@@ -28,6 +28,21 @@ class SeedDemoApiTests(TestCase):
         super().tearDownClass()
         shutil.rmtree(cls.media, ignore_errors=True)
 
+    def test_salford_margin_moves_by_this_months_forecast_not_the_whole_budget(self):
+        """The Salford budget was entered today, so last month read as all margin and the portfolio margin report
+        showed a fall of about £1.5m this month. Set at handover, a month back, only this month's mechanical
+        forecast (£300k against a £260k budget) moves it."""
+        from decimal import Decimal
+
+        from django.utils import timezone
+
+        from cvr import rules
+        from reports import data
+        with org_context(self.org):
+            rep = data.portfolio_margin(rules.month_start(timezone.localdate()))
+        salford = next(r for r in rep['rows'] if r['project'].name == 'Office CAT A, Salford Quays')
+        self.assertEqual(salford['move'], Decimal('-40000.00'))
+
     def test_demo_tokens_and_reports(self):
         with org_context(self.org):
             tokens = {t.name: t for t in ApiToken.objects.all()}
