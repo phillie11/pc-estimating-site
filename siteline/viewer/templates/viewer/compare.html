@@ -48,12 +48,12 @@
     <span class="dvc-swatch black" aria-hidden="true"></span> On both (unchanged)</p>
   <div class="dvc-side" data-side>
     <div class="dvc-pane"><p class="dvc-cap">Rev <span class="mono">{{ old.revision }}</span> <span class="dim">older</span></p>
-      <div class="dv-port" data-port="a" tabindex="0" aria-label="Rev {{ old.revision }}. Use + and − to zoom."><div class="dv-stage" data-stage="a"></div></div></div>
+      <div class="dv-port" data-port="a" tabindex="0" role="region" aria-label="Rev {{ old.revision }}. Use + and − to zoom."><div class="dv-stage" data-stage="a"></div></div></div>
     <div class="dvc-pane"><p class="dvc-cap">Rev <span class="mono">{{ new.revision }}</span> <span class="dim">newer</span></p>
-      <div class="dv-port" data-port="b" tabindex="0" aria-label="Rev {{ new.revision }}. Use + and − to zoom."><div class="dv-stage" data-stage="b"></div></div></div>
+      <div class="dv-port" data-port="b" tabindex="0" role="region" aria-label="Rev {{ new.revision }}. Use + and − to zoom."><div class="dv-stage" data-stage="b"></div></div></div>
   </div>
   <div class="dvc-over" data-over hidden>
-    <div class="dv-port" data-port="o" tabindex="0" aria-label="Both revisions overlaid. Use + and − to zoom."><div class="dv-stage" data-stage="o"></div></div>
+    <div class="dv-port" data-port="o" tabindex="0" role="region" aria-label="Both revisions overlaid. Use + and − to zoom."><div class="dv-stage" data-stage="o"></div></div>
   </div>
   <canvas class="dv-ink" data-ink aria-hidden="true" hidden></canvas>
   <p class="dv-status-line small" data-status role="status">Loading both revisions…</p>
