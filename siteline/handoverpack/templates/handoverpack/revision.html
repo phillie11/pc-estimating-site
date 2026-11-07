@@ -1,0 +1,23 @@
+{% extends "project_base.html" %}{% load ui static hpack %}
+{% block title %}Revision {{ wb.revision }} · Pricing workbook · {{ project.name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'handoverpack/pack.css' %}">{% endblock %}
+{% block project_actions %}<a class="btn" href="{% url 'hpack_file' org.slug project.pk wb.pk %}">{% icon 'download' %} The uploaded file</a>{% endblock %}
+{% block project_content %}
+{% include "handoverpack/_nav.html" %}
+<div class="crumbs small"><a href="{% url 'hpack_workbook' org.slug project.pk %}">Pricing workbook</a> / Revision {{ wb.revision }}</div>
+<h2 style="margin:2px 0 4px">Revision {{ wb.revision }}{% if wb.label %} <span class="dim">(workbook revision {{ wb.label }})</span>{% endif %}</h2>
+<p class="small dim" style="margin:0 0 12px">Uploaded {{ wb.uploaded_at|date:"j M Y H:i" }}{% if wb.uploaded_by %} by {{ wb.uploaded_by.full_name }}{% endif %} · {{ wb.original_name }} · {{ wb.size|filesize }}{% if result.header.estimator %} · Estimator: {{ result.header.estimator }}{% endif %}</p>
+{% include "handoverpack/_recon.html" %}
+<section class="card" aria-labelledby="hp-trades"><div class="card-head"><h2 id="hp-trades">By trade</h2>{% if previous %}<span class="small dim">Against revision {{ previous.revision }}</span>{% endif %}</div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Trade</th><th class="num">Cost</th><th class="num">Charge</th>{% if previous %}<th class="num">Cost before</th><th class="num">Charge before</th><th class="num">Charge change</th>{% endif %}</tr></thead><tbody>
+{% for d in deltas %}<tr><td>{{ d.name }}</td><td class="num nowrap">{{ d.cost|money_exact:currency }}</td><td class="num nowrap">{{ d.charge|money_exact:currency }}</td>{% if previous %}<td class="num nowrap">{{ d.before_cost|money_exact:currency }}</td><td class="num nowrap">{{ d.before_charge|money_exact:currency }}</td><td class="num nowrap">{% if d.changed %}<span class="hp-delta {% if d.charge_delta > 0 %}up{% else %}down{% endif %}">{% if d.charge_delta > 0 %}+{% endif %}{{ d.charge_delta|money_exact:currency }}</span>{% else %}<span class="dim">no change</span>{% endif %}</td>{% endif %}</tr>{% endfor %}
+<tr><td><strong>Total</strong></td><td class="num nowrap"><strong>{{ result.totals.cost|money_exact:currency }}</strong></td><td class="num nowrap"><strong>{{ result.totals.charge|money_exact:currency }}</strong></td>{% if previous %}<td class="num nowrap">{{ previous.cost|money_exact:currency }}</td><td class="num nowrap">{{ previous.charge|money_exact:currency }}</td><td></td>{% endif %}</tr>
+</tbody></table></div></section>
+<div class="kpis">
+  <div class="kpi"><div class="label">Margin</div><div class="value">{{ result.totals.margin|pct }}</div><div class="note">Target {{ result.totals.target_margin|pct }}</div></div>
+  <div class="kpi"><div class="label">Price at target margin</div><div class="value">{{ result.totals.price_at_target|money:currency }}</div><div class="note">Cost / (1 - target)</div></div>
+  <div class="kpi"><div class="label">Markups</div><div class="value">{{ result.settings.default_markup|pct }}</div><div class="note">Trades; prelims {{ result.settings.prelim_markup|pct }}</div></div>
+  {% if result.totals.final_price is not None %}<div class="kpi"><div class="label">Final tender price</div><div class="value">{{ result.totals.final_price|money:currency }}</div><div class="note">Margin {{ result.totals.final_margin|pct }} at that price</div></div>{% endif %}
+</div>
+{% include "handoverpack/_gaps.html" %}
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block title %}Open items · Handover pack · {{ project.name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'handoverpack/pack.css' %}">{% endblock %}
+{% block project_content %}
+{% include "handoverpack/_nav.html" %}
+<div class="page-head" style="margin:0 0 8px"><div><h2 style="margin:0">Open items</h2><p class="small dim" style="margin:2px 0 0">Gaps, lines to review and figures that don't reconcile, biggest money first. An open item shows in its owner's Needs me. Uploading a new revision closes items it no longer has.</p></div></div>
+<nav class="filters" aria-label="Show"><a class="chip{% if show != 'all' %} on{% endif %}" href="?show=open" style="min-height:44px;display:inline-flex;align-items:center">Open</a><a class="chip{% if show == 'all' %} on{% endif %}" href="?show=all" style="min-height:44px;display:inline-flex;align-items:center">All</a></nav>
+{% if rows %}<div class="stack">{% for i in rows %}<article id="item-{{ i.pk }}" class="card hp-item"><div class="card-body">
+  <div class="hp-gap"><div class="grow"><strong>{{ i.title }}</strong>{% if i.detail %}<p class="small dim" style="margin:2px 0 0">{{ i.detail }}</p>{% endif %}<p class="small" style="margin:2px 0 0">{% if i.trade %}{{ i.trade }}{% endif %}{% if i.source and i.source != i.trade %} · <span class="mono">{{ i.source }}</span>{% endif %}{% if i.note %} · {{ i.note }}{% endif %}</p></div>
+  <div class="nowrap">{% if i.amount is not None %}<span class="mono">{{ i.amount|money_exact:currency }}</span> {% endif %}{% if i.is_open %}{% badge 'Open' 'bad' %}{% else %}{% badge 'Done' 'good' %}{% endif %}</div></div>
+  {% if editable %}<form method="post" class="hp-item-form">{% csrf_token %}<input type="hidden" name="item" value="{{ i.pk }}">
+    {% for field in i.form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+    <button class="btn">Save</button></form>
+  {% else %}<p class="small" style="margin:6px 0 0">{% if i.owner %}{{ i.owner.full_name }}{% else %}<span class="dim">Nobody yet</span>{% endif %}{% if i.due_date %} · due {{ i.due_date|date:"j M Y" }}{% endif %}</p>{% endif %}
+</div></article>{% endfor %}</div>
+<p class="small dim">Money on open items: {{ open_total|money_exact:currency }}. Some items have no figure.</p>
+{% else %}{% include "partials/empty_state.html" with title="Nothing open" message="No gaps, review lines or reconciliation issues are waiting." %}{% endif %}
+{% endblock %}

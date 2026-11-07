@@ -82,6 +82,8 @@ def project_context(request, project, tab, **extra):
                  ('packages', 'Sub quotes', url('package_list'), quotes),
                  ('documents', 'Documents', url('document_list'), None),
                  ('team', 'Team', url('project_team'), None)]
+        if request.membership.can_estimate:  # the pricing workbook and handover pack preview (handoverpack/)
+            tabs.append(('pricing', 'Pricing', url('hpack_workbook'), None))
         return {**base, **arrange(request, project, tabs, tab)}
 
     from rfis.models import RFI
@@ -540,6 +542,9 @@ def project_handover(request, org_slug, pk):
             p.stage = Project.STAGE_WON
         p.handed_over_at, p.handed_over_by = timezone.now(), request.user
         p.save()
+        if winning:  # the pricing workbook's handover pack reaches the delivery team (handoverpack/services.py)
+            from handoverpack.services import release
+            release(p, request.user)
         if direct:  # won straight from a lead: outside the bid/no-bid gate, but recorded for analytics
             from tenders.gate import record_direct_award
             record_direct_award(p, request.user)
@@ -561,8 +566,12 @@ def project_handover(request, org_slug, pk):
     from levelling.models import LevellingSheet
     has_levelling = LevellingSheet.objects.filter(project=project).exists() and (
         request.membership.can_estimate or (project.stage in COST_STAGES and runs_job(request.user, project)))
+    from handoverpack.models import HandoverPack  # the pricing workbook behind the bid, if one was uploaded
+    pricing = HandoverPack.objects.filter(project=project).select_related('workbook').first() if winning else None
     return render(request, 'projects/handover.html', {'project': project, 'form': form, 'winning': winning,
-                                                      'quotes': quotes, 'has_levelling': has_levelling, 'section': use_section(request, 'estimating' if winning else 'delivery')})
+                                                      'quotes': quotes, 'has_levelling': has_levelling,
+                                                      'pricing': pricing,
+                                                      'section': use_section(request, 'estimating' if winning else 'delivery')})
 
 
 @estimating_required

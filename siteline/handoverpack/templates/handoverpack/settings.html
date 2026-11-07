@@ -1,0 +1,11 @@
+{% extends "app.html" %}
+{% block title %}Pricing workbook settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a></div><h1>Pricing workbook</h1><p class="dim" style="margin:4px 0 0">How Siteline reads your internal pricing workbook, and what the handover pack flags.</p></div></div>
+<div class="card" style="max-width:760px"><div class="card-body">
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'org_settings' org.slug %}">Cancel</a></div></form>
+{% if custom %}<p class="small">Your company has its own workbook layout set up, which is used instead of the one chosen above.</p>{% endif %}
+<p class="small dim">The standard layout is the internal pricing workbook with a PRICING SUMMARY sheet, one tab per trade, the Prelim Book, JOINERY SUMMARY and Clarifications. If your workbook is laid out differently, ask us to map it: the figures are then read from your cells, with the same checks.</p>
+</div></div>
+{% endblock %}
