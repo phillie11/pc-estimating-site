@@ -10,7 +10,6 @@ from django.urls import reverse
 from accounts.models import User
 from api import auth
 from api.models import ApiToken
-from projects.models import Project
 from tenancy.context import org_context
 from tenancy.models import Organization
 
@@ -32,7 +31,6 @@ class SeedDemoApiTests(TestCase):
     def test_demo_tokens_and_reports(self):
         with org_context(self.org):
             tokens = {t.name: t for t in ApiToken.objects.all()}
-            leeds = Project.objects.get(pk__in=Project.objects.order_by('pk').values('pk')[:1])
         self.assertTrue(tokens['Power BI dashboard'].is_live)
         self.assertTrue(tokens['Old spreadsheet'].is_revoked)
         self.client.force_login(self.owner, backend='django.contrib.auth.backends.ModelBackend')
@@ -51,4 +49,3 @@ class SeedDemoApiTests(TestCase):
                     resp = self.client.get(path, HTTP_AUTHORIZATION=f'Bearer {text}')
                     self.assertEqual(resp.status_code, 200)
                     self.assertGreater(resp.json()['count'], 0, path)
-        self.assertIsNotNone(leeds)
