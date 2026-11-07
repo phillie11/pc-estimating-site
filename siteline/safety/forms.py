@@ -10,7 +10,7 @@ from projects.files import validate_upload
 from projects.forms import StyledModelForm
 
 from . import rules
-from .models import CDMProfile, DutyHolder, Incident, IncidentAction, PhasePlan, SiteAttendance
+from .models import CDMProfile, DutyHolder, Incident, IncidentAction, PhasePlan, SafetySettings, SiteAttendance
 
 DATETIME = forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M')
 DATE = forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')
@@ -238,3 +238,16 @@ class ManualSignInForm(StyledModelForm):
         phone_friendly(self)
         self.fields['kind'].initial = SiteAttendance.KIND_VISITOR
         required_says(self, name='Type their name.', kind='Pick who they are.')
+
+
+class SettingsForm(StyledModelForm):
+    class Meta:
+        model = SafetySettings
+        fields = ['investigation_days', 'visitor_retention_months']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['investigation_days'].error_messages.update({
+            'min_value': 'Enter a number of days from 1 to 60.', 'max_value': 'Enter a number of days from 1 to 60.'})
+        self.fields['visitor_retention_months'].error_messages.update({
+            'min_value': 'Keep them for at least 3 months.', 'max_value': 'Keep them for 36 months at most.'})

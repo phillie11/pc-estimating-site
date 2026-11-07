@@ -119,12 +119,38 @@ def suggest_riddor(anyone_hurt, is_worker, taken_to_hospital, days_off):
     return ''
 
 
-# Investigation target: company practice, not law
+# Investigation target: company practice, not law. Each company sets its own (SafetySettings, 1 to 60
+# days); 7 is the default until the product owner confirms it.
 INVESTIGATE_WITHIN_DAYS = 7
 
 
-def investigation_due(reported_on):
-    return reported_on + datetime.timedelta(days=INVESTIGATE_WITHIN_DAYS)
+def investigation_due(reported_on, days=INVESTIGATE_WITHIN_DAYS):
+    """The day an incident should be investigated by: `days` calendar days after it was reported."""
+    return reported_on + datetime.timedelta(days=INVESTIGATE_WITHIN_DAYS if days is None else days)
+
+
+# --- Visitor sign-in retention (UK GDPR: keep personal data no longer than needed) ---------
+# A visitor's QR sign-in (name and company, no account) is deleted this many months after they signed
+# in. Each company sets its own, 3 to 36 months; 12 is the default until the product owner confirms it.
+# Our staff's and portal users' sign-ins are kept (they are part of the job's records), and incidents
+# are never deleted by this.
+VISITOR_RETENTION_MONTHS, VISITOR_RETENTION_MIN, VISITOR_RETENTION_MAX = 12, 3, 36
+
+
+def months_before(moment, months):
+    """The same time `months` calendar months earlier, on the last day of the month if that day doesn't exist."""
+    import calendar
+    total = moment.year * 12 + (moment.month - 1) - months
+    year, month = divmod(total, 12)
+    month += 1
+    day = min(moment.day, calendar.monthrange(year, month)[1])
+    return moment.replace(year=year, month=month, day=day)
+
+
+def visitor_purge_cutoff(now, months=VISITOR_RETENTION_MONTHS):
+    """Visitor sign-ins from before this moment are deleted. `months` is kept within 3 to 36."""
+    months = max(VISITOR_RETENTION_MIN, min(VISITOR_RETENTION_MAX, int(months or VISITOR_RETENTION_MONTHS)))
+    return months_before(now, months)
 
 
 # --- CDM 2015 -------------------------------------------------------------------------------
