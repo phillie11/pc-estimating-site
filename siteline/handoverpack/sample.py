@@ -16,8 +16,9 @@ import io
 import zipfile
 from datetime import date
 from decimal import Decimal as D
-from xml.etree import ElementTree as ET
+from xml.etree import ElementTree as ET  # nosec B405: only builds and writes XML; parsing is defusedxml
 
+from defusedxml.ElementTree import fromstring
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
@@ -339,8 +340,8 @@ def _fmt(v):
 def inject_cached(data, values):
     """Write the saved values next to each formula, as Excel does: <c><f>..</f><v>value</v></c>."""
     zin = zipfile.ZipFile(io.BytesIO(data))
-    wbx = ET.fromstring(zin.read('xl/workbook.xml'))
-    rels = ET.fromstring(zin.read('xl/_rels/workbook.xml.rels'))
+    wbx = fromstring(zin.read('xl/workbook.xml'))
+    rels = fromstring(zin.read('xl/_rels/workbook.xml.rels'))
     target = {r.get('Id'): r.get('Target') for r in rels.findall(f'{{{PKG}}}Relationship')}
     paths = {}
     for s in wbx.find(f'{{{MAIN}}}sheets'):
@@ -354,7 +355,7 @@ def inject_cached(data, values):
             raw = zin.read(info)
             sheet = paths.get(info.filename)
             if sheet and values.get(sheet):
-                root = ET.fromstring(raw)
+                root = fromstring(raw)
                 want = values[sheet]
                 for c in root.iter(f'{{{MAIN}}}c'):
                     f = c.find(f'{{{MAIN}}}f')
