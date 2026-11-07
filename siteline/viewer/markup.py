@@ -75,10 +75,13 @@ def _int(value, low, high, what):
 
 
 def _coord(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise InvalidMarkup('A shape has a position that is not a number.')
+    # Range first: a huge JSON whole number is a Python int that math.isfinite can't turn into a float
     if value < 0 or value > 1:
         raise InvalidMarkup('A shape is off the page.')
+    if not math.isfinite(value):
+        raise InvalidMarkup('A shape has a position that is not a number.')
     return round(float(value), PLACES)
 
 
