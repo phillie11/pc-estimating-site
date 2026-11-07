@@ -95,7 +95,7 @@ def _approve(p, user):
 
 def _penetration(project, user, location, element, rating, service, size, system='', package=None, installer='',
                  n=0, before=False, after=False, seal=False, sign_off_by=None, fail_by=None, fail_note='',
-                 detail='', sealed_days_ago=2):
+                 detail='', sealed_days_ago=2, sealer=None):
     p = Penetration(project=project, location=location, element=element, fire_rating=rating, service=service,
                     size=size, system=system, detail_reference=detail, package=package, installer=installer)
     p.title = p.default_title()
@@ -105,7 +105,9 @@ def _penetration(project, user, location, element, rating, service, size, system
     if after:
         _photo(project, user, f'Sealed: {location}', n + 1, penetration=p, stage='AFTER')
     if seal:
-        apply_transition(p, 'seal', user, installed_on=timezone.localdate() - datetime.timedelta(days=sealed_days_ago))
+        # Signed off by someone other than whoever recorded the seal (QualitySettings.fs_independent_sign_off)
+        apply_transition(p, 'seal', sealer or user,
+                         installed_on=timezone.localdate() - datetime.timedelta(days=sealed_days_ago))
     if sign_off_by:
         apply_transition(p, 'sign_off', sign_off_by, remark='Collar and sealant as the manufacturer\'s detail.')
     if fail_by:
@@ -169,10 +171,12 @@ def seed(*, leeds, pm, owner):
 
     # --- Leeds fire-stopping ---------------------------------------------------------
     installer = drylining or joinery
+    # The subcontractor marks their own seals done in the portal; the PM inspects and signs them off
+    sealer = (_sub_user(leeds, installer) if installer else None) or owner
     fs1 = _penetration(leeds, pm, 'Ground floor, kitchen to corridor wall', 'WALL', 60, 'PIPE_PLASTIC', '110 mm',
                        'Intumescent pipe collar and acoustic sealant', package=installer, installer='Fire-stopping operative',
                        detail='Manufacturer detail PC-110', n=10, before=True, after=True, seal=True, sign_off_by=pm,
-                       sealed_days_ago=6)
+                       sealed_days_ago=6, sealer=sealer)
     doc = Document.objects.filter(project=leeds, reference=GA_NUMBER).first()
     if doc is not None:
         rev = doc.revisions.filter(revision='C01').first() or doc.revisions.first()
@@ -182,9 +186,10 @@ def seed(*, leeds, pm, owner):
             fs1.save(actor=pm, audit_action='pinned on a drawing')
     _penetration(leeds, pm, 'Ground floor, riser 1', 'FLOOR', 120, 'CABLE_TRAY', '300 x 50 mm tray',
                  'Fire batt with coated cables', package=installer, n=12, before=True, after=True, seal=True,
-                 sign_off_by=pm, sealed_days_ago=5)
+                 sign_off_by=pm, sealed_days_ago=5, sealer=sealer)
     _penetration(leeds, pm, 'Ground floor, bar store ceiling', 'CEILING', 30, 'DUCT', '250 mm duct',
-                 'Fire damper with intumescent mastic', package=installer, n=14, before=True, after=True, seal=True)
+                 'Fire damper with intumescent mastic', package=installer, n=14, before=True, after=True, seal=True,
+                 sealer=sealer)
     _penetration(leeds, pm, 'Ground floor, corridor C1 north wall', 'WALL', 60, 'MIXED', '150 x 100 mm opening',
                  'Intumescent sealant', package=installer, n=16, before=True, after=True, seal=True, fail_by=pm,
                  fail_note='Sealant depth short of the detail; gap visible behind the cables.')
@@ -205,7 +210,7 @@ def seed(*, leeds, pm, owner):
         _approve(sp, owner)
         _penetration(salford, s_pm, 'Level 4, core wall by lift 2', 'WALL', 120, 'PIPE_METAL', '28 mm copper',
                      'Intumescent wrap and sealant', n=20, before=True, after=True, seal=True, sign_off_by=s_pm,
-                     sealed_days_ago=3)
+                     sealed_days_ago=3, sealer=owner if owner != s_pm else None)
         _penetration(salford, s_pm, 'Level 4, riser 2 floor', 'FLOOR', 120, 'MIXED', 'Mixed services', n=22,
                      before=True)
     return {'inspections': Inspection.objects.count(), 'permits': Permit.objects.count(),

@@ -50,9 +50,10 @@ class FirestopFlowTests(QualityTestBase):
 
     def test_sign_off_needs_the_system_and_an_after_photo(self):
         p = self.penetration()
-        self.login(self.pat)
+        self.login(self.sam)  # whoever seals it doesn't sign it off (QualitySettings.fs_independent_sign_off)
         self.client.post(self.purl('penetration_action', p.pk), {'action': 'seal'})
         self.assertEqual(self.fresh(p).status, Penetration.SEALED)
+        self.login(self.pat)
         r = self.client.post(self.purl('penetration_action', p.pk), {'action': 'sign_off'}, follow=True)
         self.assertContains(r, 'Record the fire-stopping system or product')
         with org_context(self.org_a):
@@ -86,7 +87,7 @@ class FirestopFlowTests(QualityTestBase):
         with org_context(self.org_a):
             from ..photos import add_photo
             add_photo(self.pa, self.pat, jpeg(), penetration=p, stage='AFTER')
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             apply_transition(p, 'sign_off', self.pat)
             photo = QualityPhoto.objects.get()
         self.login(self.sam)

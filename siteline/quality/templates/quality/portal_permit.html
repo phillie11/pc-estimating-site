@@ -1,0 +1,30 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}<button type="button" class="btn" data-print>Print permit</button>{% endblock %}
+{% block project_content %}
+<p class="small"><a href="{% url 'portal_permits' org.slug project.pk %}">← All your permits</a></p>
+<div class="q-site q-touch">
+{% if permit.state == 'expired' %}<div class="banner q-bad">This permit ran out at {{ permit.expires_at|date:"H:i \o\n D j M" }}. Work under it must stop. Tell the site team, or ask for a new permit if work carries on.</div>
+{% elif permit.state == 'expiring' %}<div class="banner">This permit runs out at {{ permit.expires_at|date:"H:i \o\n D j M" }}. Tell the site team when the work is done so they can close it.</div>
+{% elif permit.state == 'requested' %}<div class="banner">Waiting for the site team to approve it. Work must not start until this permit is approved.</div>{% endif %}
+
+<div class="card"><div class="card-head"><h2><span class="ref">{{ permit.ref }}</span> {{ permit.type_label }}</h2>{% status_badge permit.state_label permit.status_tone %}</div><div class="card-body">
+  <dl class="dl">
+    <dt>Work</dt><dd>{{ permit.title }}</dd>
+    <dt>Where</dt><dd>{{ permit.location }}</dd>
+    <dt>Who</dt><dd>{{ permit.who }}</dd>
+    <dt>Valid</dt><dd>{{ permit.starts_at|date:"D j M Y, H:i" }} to {{ permit.expires_at|date:"D j M Y, H:i" }}</dd>
+    {% if permit.method_notes %}<dt>Notes</dt><dd class="q-pre">{{ permit.method_notes }}</dd>{% endif %}
+    {% if permit.approved_by %}<dt>Approved by</dt><dd>{{ permit.approved_by.full_name }}, {{ permit.approved_at|date:"j M H:i" }}</dd>{% endif %}
+    {% if permit.status == 'REFUSED' %}<dt>Refused because</dt><dd class="q-pre">{{ permit.refusal_reason }}</dd>{% endif %}
+    {% if permit.closed_at %}<dt>Closed</dt><dd>{{ permit.closed_at|date:"j M H:i" }}{% if permit.fire_watch_minutes %} · fire watch {{ permit.fire_watch_minutes }} minutes{% endif %}</dd>{% endif %}
+  </dl>
+</div></div>
+
+{% if permit.approved_by %}<div class="card"><div class="card-head"><h2>Precautions confirmed</h2></div><div class="card-body">
+  <ul class="small">{% for text, ok in precautions %}<li>{% if ok %}{% badge 'In place' 'good' %}{% else %}{% badge 'Not confirmed' 'bad' %}{% endif %} {{ text }}</li>{% endfor %}</ul>
+  {% if permit.extra_precautions %}<p class="small"><strong>Also:</strong> <span class="q-pre">{{ permit.extra_precautions }}</span></p>{% endif %}
+  {% if permit.is_hot_works %}<p class="small">After hot works stop, keep a fire watch for <strong>{{ fire_watch_minutes }} minutes</strong>, then tell the site team so they can close the permit.</p>{% endif %}
+</div></div>{% endif %}
+<p class="small dim">{% badge 'Advisory' 'warn' %} {{ advisory }}</p>
+</div>
+{% endblock %}

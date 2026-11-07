@@ -9,7 +9,7 @@
     <dt>Through</dt><dd>{{ p.get_element_display }}{% if p.fire_rating %}, {{ p.get_fire_rating_display }} fire rating{% else %} <span class="dim">(rating not known yet)</span>{% endif %}</dd>
     <dt>What passes through</dt><dd>{% if p.service %}{{ p.get_service_display }}{% else %}<span class="dim">Not recorded</span>{% endif %}{% if p.size %}, {{ p.size }}{% endif %}</dd>
     <dt>System or product</dt><dd>{{ p.system|default:"Not recorded yet" }}{% if p.detail_reference %}<span class="sub">Detail {{ p.detail_reference }}</span>{% endif %}</dd>
-    <dt>Installed by</dt><dd>{{ p.installed_by|default:"Not recorded yet" }}{% if p.installed_on %}, sealed {{ p.installed_on|date:"j M Y" }}{% endif %}</dd>
+    <dt>Installed by</dt><dd>{{ p.installed_by|default:"Not recorded yet" }}{% if p.installed_on %}, sealed {{ p.installed_on|date:"j M Y" }}{% endif %}{% if p.sealed_by %}<span class="sub">Marked sealed by {{ p.sealed_by.full_name }}</span>{% endif %}</dd>
     {% if p.inspected_at %}<dt>{% if p.status == 'FAILED' %}Failed by{% else %}Inspected by{% endif %}</dt><dd>{{ p.inspected_by.full_name|default:"—" }}, {{ p.inspected_at|date:"j M Y H:i" }}{% if p.inspection_note %}<span class="sub q-pre">{{ p.inspection_note }}</span>{% endif %}</dd>{% endif %}
     {% if p.status == 'SEALED' %}<dt>To inspect</dt><dd>{{ p.ball_in_court_user.full_name|default:"The project manager" }}</dd>{% endif %}
     {% if p.notes %}<dt>Notes</dt><dd class="q-pre">{{ p.notes }}</dd>{% endif %}
@@ -32,10 +32,11 @@
   {% if 'seal' in transitions or 'reseal' in transitions %}<form method="post" action="{% url 'penetration_action' org.slug project.pk p.pk %}">{% csrf_token %}<input type="hidden" name="action" value="{% if 'seal' in transitions %}seal{% else %}reseal{% endif %}">
     <p class="small">{% if after %}When the seal is finished, mark it sealed. It then goes on the project manager's Needs me to inspect.{% else %}Add a photo of the finished seal above first if you can; it is needed for sign-off.{% endif %}</p>
     <div class="form-actions"><button class="btn primary block">{% if 'seal' in transitions %}Mark as sealed{% else %}Mark as resealed{% endif %}</button></div></form>{% endif %}
-  {% if 'sign_off' in transitions %}<form method="post" action="{% url 'penetration_action' org.slug project.pk p.pk %}">{% csrf_token %}
+  {% if own_seal %}<p class="small" id="own-seal">{{ own_seal }}</p>{% endif %}
+  {% if 'sign_off' in transitions or 'fail' in transitions %}<form method="post" action="{% url 'penetration_action' org.slug project.pk p.pk %}">{% csrf_token %}
     <div class="field"><label for="id_note">Inspection note</label>{{ note_form.note }}<div class="help">Needed if it fails: say what's wrong.</div></div>
-    <div class="form-actions q-results"><button class="btn primary" name="action" value="sign_off" data-confirm="Sign off {{ p.ref }}? It goes in the fire-stopping register as inspected and signed off by you.">Sign off</button><button class="btn danger" name="action" value="fail" data-confirm="Fail {{ p.ref }}? It goes back to {{ p.created_by.full_name|default:'whoever recorded it' }} to get resealed.">Fail inspection</button></div>
-    <p class="small dim">Sign-off needs the system or product recorded and a photo of the finished seal.</p>
+    <div class="form-actions q-results">{% if 'sign_off' in transitions %}<button class="btn primary" name="action" value="sign_off" data-confirm="Sign off {{ p.ref }}? It goes in the fire-stopping register as inspected and signed off by you.">Sign off</button>{% endif %}<button class="btn danger" name="action" value="fail" data-confirm="Fail {{ p.ref }}? It goes back to {{ p.created_by.full_name|default:'whoever recorded it' }} to get resealed.">Fail inspection</button></div>
+    {% if 'sign_off' in transitions %}<p class="small dim">Sign-off needs the system or product recorded and a photo of the finished seal.</p>{% endif %}
   </form>{% endif %}
   {% if 'reopen' in transitions %}<form method="post" action="{% url 'penetration_action' org.slug project.pk p.pk %}"><input type="hidden" name="action" value="reopen">{% csrf_token %}
     <div class="field"><label for="id_note">Why it needs sealing again</label>{{ note_form.note }}<div class="help">For example, disturbed by later work.</div></div>
