@@ -251,14 +251,12 @@ class SubVariationProvider:
 
 
 def _bidding(request):
-    """
-    (project_id, subcontractor_id) for each tender this external user's company is pricing. The tender and
-    addendum providers both need it, behind the badge on every page: one query per request.
-    """
+    """(project_id, subcontractor_id) for each tender this external user's company is pricing."""
     from projects.models import ProjectMember
-    from tenancy.context import request_memo
     if _staff(request):
         return []
+    from tenancy.context import request_memo  # the tender and addendum providers both ask, on every page
+
     return request_memo(('needs_me_bidding', request.user.pk), lambda: list(
         _my_memberships(request, [ProjectMember.ROLE_BIDDER, ProjectMember.ROLE_SUBCONTRACTOR])
         .filter(subcontractor__isnull=False).values_list('project_id', 'subcontractor_id')))

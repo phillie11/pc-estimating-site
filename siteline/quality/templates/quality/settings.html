@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a></div><h1>Quality settings</h1></div></div>
 <div class="card q-narrow q-touch"><div class="card-body">
-<p class="small dim">How permits to work behave on every job. {% badge 'Advisory' 'warn' %} Set these with your safety adviser and your insurer's conditions.</p>
+<p class="small dim">How permits to work and fire-stopping sign-off work on every job. {% badge 'Advisory' 'warn' %} Set these with your safety adviser and your insurer's conditions.</p>
 <form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
 <div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'org_settings' org.slug %}">Cancel</a></div></form>
 <p class="small dim">The checklists your teams inspect against are in the <a href="{% url 'quality_templates' org.slug %}">checklist library</a>.</p>

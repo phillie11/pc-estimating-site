@@ -6,7 +6,8 @@ from core.forms import RecordFormMixin
 from projects.access import assignable_users, staff_users
 from projects.forms import StyledModelForm, style_widgets
 
-from .models import KIND_CHOICES, PROGRESS, AgendaTemplate, Meeting, MeetingAction
+from .models import (INTERNAL_PREFIX, KIND_CHOICES, PROGRESS, AgendaTemplate, Meeting, MeetingAction,
+                     MeetingSettings, parse_agenda_line)
 
 
 class PeopleField(forms.ModelMultipleChoiceField):
@@ -73,13 +74,15 @@ class ActionForm(StyledModelForm):
         labels = {'title': 'Action'}
         widgets = {'title': forms.Textarea(attrs={'rows': 2, 'maxlength': 200})}
 
-    def __init__(self, *args, meeting=None, **kwargs):
+    def __init__(self, *args, meeting=None, staff_ids=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.staff_ids = staff_ids
         self.fields['owner'].queryset = assignable_users(meeting.project).exclude(
             project_memberships__project=meeting.project, project_memberships__role='BIDDER')
         self.fields['owner'].empty_label = 'Choose someone, or type a name below'
         self.fields['item'].queryset = meeting.items.all()
         self.fields['item'].empty_label = 'General'
+        self.fields['item'].label_from_instance = lambda i: f'{i.heading} (internal only)' if i.internal_only else i.heading
         self.fields['title'].help_text = 'What needs doing, in a sentence.'
         self.fields['title'].error_messages['required'] = 'Say what needs doing.'
 
@@ -87,6 +90,11 @@ class ActionForm(StyledModelForm):
         data = super().clean()
         if data.get('owner') and data.get('owner_name'):
             data['owner_name'] = ''  # a login wins: they get it on Needs me
+        item, owner = data.get('item'), data.get('owner')
+        if item is not None and item.internal_only and owner is not None and self.staff_ids is not None \
+                and owner.pk not in self.staff_ids:
+            self.add_error('owner', f'"{item.heading}" is internal only, so its actions stay with our team. Give it to '
+                                    'someone in our team, or put it under a heading that is shared.')
         return data
 
 
@@ -101,6 +109,9 @@ class AgendaTemplateForm(StyledModelForm):
         model = AgendaTemplate
         fields = ['name', 'items']
         widgets = {'items': forms.Textarea(attrs={'rows': 12})}
+        help_texts = {'items': 'One item per line, in order. Start a line with "Internal:" to keep that heading, its '
+                               'minutes and its actions from clients, consultants and subcontractors, e.g. '
+                               '"Internal: Commercial and costs".'}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -108,9 +119,22 @@ class AgendaTemplateForm(StyledModelForm):
         self.fields['name'].error_messages['required'] = 'Give the agenda a name, e.g. "Site progress meeting".'
 
     def clean_items(self):
-        lines = [ln.strip()[:200] for ln in self.cleaned_data['items'].splitlines() if ln.strip()]
-        if not lines:
+        rows = [parse_agenda_line(ln) for ln in self.cleaned_data['items'].splitlines() if ln.strip()]
+        if any(not heading for heading, _ in rows):
+            raise forms.ValidationError('Put the heading after "Internal:", e.g. "Internal: Commercial and costs".')
+        if not rows:
             raise forms.ValidationError('Add at least one agenda item, one per line.')
-        if len(lines) > 40:
+        if len(rows) > 40:
             raise forms.ValidationError('Keep it to 40 items or fewer.')
-        return '\n'.join(lines)
+        return '\n'.join(f'{INTERNAL_PREFIX} {h[:200]}' if internal else h[:200] for h, internal in rows)
+
+
+class MeetingSettingsForm(StyledModelForm):
+    class Meta:
+        model = MeetingSettings
+        fields = ['minutes_due_days']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['minutes_due_days'].error_messages.update({
+            'min_value': 'Enter 0 (the same day) or more.', 'max_value': 'Enter 14 days or fewer.'})

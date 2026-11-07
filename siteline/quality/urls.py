@@ -4,6 +4,7 @@ plain entries in its urlpatterns (the archived-project test walks that list).
 """
 from django.urls import path
 
+from . import portal
 from .views import common, firestop, inspections, permits
 
 
@@ -32,6 +33,17 @@ def project_patterns(P):
         path(Q + 'fire-stopping/<int:pen_id>/action/', firestop.penetration_action, name='penetration_action'),
         path(Q + 'photos/<int:photo_id>/remove/', common.photo_remove, name='quality_photo_remove'),
         path(Q + 'photos/<int:photo_id>/<str:size>/', common.photo_file, name='quality_photo_file'),
+        # An appointed subcontractor's own permits and fire-stopping, in their portal (quality/portal.py)
+        path(Q + 'yours/permits/', portal.permit_list, name='portal_permits'),
+        path(Q + 'yours/permits/ask/', portal.permit_create, name='portal_permit_create'),
+        path(Q + 'yours/permits/<int:permit_id>/', portal.permit_detail, name='portal_permit'),
+        path(Q + 'yours/fire-stopping/', portal.penetration_list, name='portal_firestop'),
+        path(Q + 'yours/fire-stopping/new/', portal.penetration_create, name='portal_firestop_create'),
+        path(Q + 'yours/fire-stopping/<int:pen_id>/', portal.penetration_detail, name='portal_firestop_detail'),
+        path(Q + 'yours/fire-stopping/<int:pen_id>/photos/', portal.penetration_photo, name='portal_firestop_photo'),
+        path(Q + 'yours/fire-stopping/<int:pen_id>/action/', portal.penetration_action,
+             name='portal_firestop_action'),
+        path(Q + 'yours/photos/<int:photo_id>/<str:size>/', portal.photo_file, name='portal_quality_photo'),
     ]
 
 

@@ -1,0 +1,24 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Safety report{% endblock %}
+{% block content %}<div class="rp-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'reports_home' org.slug %}">Reports</a></div><h1>Safety</h1>
+  <p class="small dim">Incidents and near misses on every job since {{ first|date:"F Y" }}, by the month they happened.</p></div>
+  <div class="row">{% if total %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}<a class="btn" href="{% url 'company_incidents' org.slug %}">Incident register</a></div></div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Incidents</div><div class="value">{{ total }}</div><div class="note">last 12 months</div></div>
+  <div class="kpi"><div class="label">RIDDOR reportable</div><div class="value{% if riddor %} bad{% endif %}">{{ riddor }}</div></div>
+</div>
+{% if graph %}<div class="card"><div class="card-head"><h2>Incidents by month</h2></div><div class="card-body">{% include "reports/_bars.html" with chart_id="rp-safety" chart_title="Incidents by month over the last 12 months; the table below has every figure" %}</div></div>{% endif %}
+<div class="card"><div class="card-head"><h2>By month and kind</h2></div>
+{% if total %}<div class="table-wrap"><table class="t rp-safety">
+  <caption class="sr-only">Incidents by month and kind</caption>
+  <thead><tr><th scope="col">Month</th>{% for code, label in kinds %}<th scope="col" class="num">{{ label }}</th>{% endfor %}<th scope="col" class="num">Total</th><th scope="col" class="num">RIDDOR</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><th scope="row">{{ r.month|date:"M Y" }}</th>{% for n in r.by_kind %}<td class="num">{{ n }}</td>{% endfor %}<td class="num"><strong>{{ r.total }}</strong></td><td class="num">{{ r.riddor }}</td></tr>{% endfor %}</tbody>
+  <tfoot><tr><th scope="row">Total</th>{% for n in kind_totals %}<td class="num">{{ n }}</td>{% endfor %}<td class="num"><strong>{{ total }}</strong></td><td class="num">{{ riddor }}</td></tr></tfoot>
+</table></div>
+{% else %}{% include "partials/empty_state.html" with title="No incidents in the last 12 months" message="Incidents and near misses reported on any job's Safety tab are counted here." left=True %}{% endif %}
+</div>
+<p class="small dim">{% badge 'Advisory' 'warn' %} RIDDOR reportable means a RIDDOR category was picked on the incident. Whether something must be reported, and by when, is for your safety adviser. {{ advisory }}</p>
+</div>
+{% endblock %}

@@ -56,6 +56,9 @@ urlpatterns = [
     # QR site sign-in (public; the poster's secret token is the credential; safety/public.py)
     *safety_urls.public_patterns,
 
+    # Read-only company API (api/views.py): the Bearer token is the credential and names the company
+    path('api/v1/', include('api.urls')),
+
     # Stripe
     path('billing/webhook/', billing.webhook, name='stripe_webhook'),
 

@@ -34,7 +34,7 @@ class SignedOffPenetrationIsLockedTests(QualityTestBase):
         p = self.penetration(system='Intumescent collar', size='110 mm', service='PIPE_PLASTIC')
         with org_context(self.org_a):
             add_photo(self.pa, self.pat, jpeg(), penetration=p, stage=QualityPhoto.AFTER)
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             apply_transition(p, 'sign_off', self.pat, remark='As detail')
         return self.fresh(p)
 
@@ -99,11 +99,11 @@ class ResignOffNeedsANewPhotoTests(QualityTestBase):
         p = self.penetration(system='Collar')
         with org_context(self.org_a):
             add_photo(self.pa, self.pat, jpeg(), penetration=p, stage=QualityPhoto.AFTER)
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             apply_transition(p, 'sign_off', self.pat)
             apply_transition(self.fresh(p), 'reopen', self.pat, remark='Cut out for a new cable')
             p = self.fresh(p)
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             p = self.fresh(p)
             with self.assertRaises(InvalidTransition):
                 apply_transition(p, 'sign_off', self.pat)

@@ -26,12 +26,12 @@ from .models import CostCode
 from .money import budget_from_tender
 
 
-def _budget(project, actor, margin_pct, amounts, note):
+def _budget(project, actor, margin_pct, amounts, note, date=None):
     codes = {c.code: c for c in CostCode.objects.all()}
     target = budget_from_tender(project.value, margin_pct)
     lines = [(codes[k], '', Decimal(v)) for k, v in amounts.items()]
     lines.append((codes['900'], 'Contingency and risk allowance', target - sum(a for _, _, a in lines)))
-    services.set_original_budget(project, actor, project.value, Decimal(margin_pct), lines, reason=note)
+    services.set_original_budget(project, actor, project.value, Decimal(margin_pct), lines, reason=note, date=date)
     return codes
 
 
@@ -77,11 +77,14 @@ def seed(*, leeds, pm, owner, demo_pdf=None):
 
     # --- Salford Quays -----------------------------------------------------------------
     salford = Project.objects.get(name='Office CAT A, Salford Quays')
+    # Set at handover, a month back: entered today, last month's CVR and the portfolio margin report would
+    # read last month as the whole contract sum in margin and show a fall of about £1.5m this month
+    salford_budget_on = today - timedelta(days=31)
     codes = _budget(salford, pm, '11', {
         '100': 120000, '110': 26000, '120': 18000, '130': 14000, '140': 9000, '150': 12000, '210': 205000,
         '215': 120000, '220': 90000, '230': 140000, '235': 41000, '240': 260000, '250': 215000, '255': 22000,
         '300': 30000, '400': 28000, '500': 14000, '600': 38000, '610': 6500,
-    }, 'From the tender build-up at handover.')
+    }, 'From the tender build-up at handover.', date=salford_budget_on)
     trades = {t.name: t for t in Trade.objects.all()}
     for name, trade, value, code in [('Pennine Drylining', 'Drylining & partitions', '199800', '210'),
                                      ('Brightside Electrical', 'Electrical', '208400', '250'),

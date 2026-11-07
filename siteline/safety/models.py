@@ -14,12 +14,17 @@ Safety on a job: incidents and near misses, the CDM register and QR site sign-in
   SiteGate            one per job: the secret token behind the QR poster. Replacing it stops
                       old posters working.
   SiteAttendance      one sign-in: a person with an account, or a visitor's name and company.
+                      Visitors' rows are deleted after the company's retention period by
+                      `manage.py purge_signins` (daily).
+  SafetySettings      per company: the incident investigation target and how long visitors'
+                      sign-ins are kept. Defaults pending owner decision.
 """
 import os
 import secrets
 import uuid
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
@@ -42,6 +47,32 @@ def upload_incident_photo(instance, filename):
 
 def upload_phase_plan(instance, filename):
     return _private(instance, 'phase-plans', filename)
+
+
+class SafetySettings(TenantModel):
+    """One row per company; with no row, the defaults below apply (pending owner decision)."""
+    investigation_days = models.PositiveSmallIntegerField(
+        'Investigate incidents within (days)', default=rules.INVESTIGATE_WITHIN_DAYS,
+        validators=[MinValueValidator(1), MaxValueValidator(60)],
+        help_text='A new incident or near miss is due to be investigated this many days after it is reported. '
+                  'It is on the project manager\'s Needs me until then.')
+    visitor_retention_months = models.PositiveSmallIntegerField(
+        "Keep visitors' sign-ins for (months)", default=rules.VISITOR_RETENTION_MONTHS,
+        validators=[MinValueValidator(rules.VISITOR_RETENTION_MIN), MaxValueValidator(rules.VISITOR_RETENTION_MAX)],
+        help_text='Between 3 and 36. Visitors who signed in with the QR code without an account are deleted after '
+                  'this long. Sign-ins by your staff and portal users, and incidents, are kept.')
+
+    class Meta(TenantModel.Meta):
+        constraints = [models.UniqueConstraint(fields=['organization'], name='safety_one_settings_per_org')]
+        verbose_name_plural = 'safety settings'
+
+    def __str__(self):
+        return 'Safety settings'
+
+    @classmethod
+    def for_org(cls, org):
+        # Pinned to the organisation the caller already holds
+        return cls.all_objects.filter(organization=org).first() or cls(organization=org)
 
 
 # --- incidents ----------------------------------------------------------------------------
@@ -95,6 +126,9 @@ class Incident(RecordBase):
     closed_at = models.DateTimeField(null=True, blank=True, editable=False)
     closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                   related_name='+', editable=False)
+    # Reported by a subcontractor in their portal (safety/portal.py): whose people reported it
+    reported_by_company = models.ForeignKey('directory.Subcontractor', null=True, blank=True,
+                                            on_delete=models.SET_NULL, related_name='+', editable=False)
 
     class Meta(RecordBase.Meta):
         ordering = ['-occurred_at', '-pk']

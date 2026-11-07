@@ -80,6 +80,8 @@ INSTALLED_APPS = [
     'meetings',
     'closeout',
     'help',
+    'api',
+    'reports',
 ]
 
 MIDDLEWARE = [

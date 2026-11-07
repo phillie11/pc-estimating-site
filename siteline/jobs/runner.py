@@ -100,7 +100,8 @@ class Worker:
         """
         Retention. Sent emails lose their body after JOBS_EMAIL_BODY_DAYS (it holds invite links that
         still work) but keep who/what/when. Done jobs and sent emails go after JOBS_KEEP_DAYS; dead jobs
-        and failed emails, kept longer for someone to look at, after JOBS_KEEP_FAILED_DAYS.
+        and failed emails, kept longer for someone to look at, after JOBS_KEEP_FAILED_DAYS. The API's call
+        log (api.ApiAccess) goes after api.auth.KEEP_DAYS.
         Returns (jobs deleted, emails deleted, bodies blanked).
         """
         now = timezone.now()
@@ -112,6 +113,8 @@ class Worker:
         blanked = OutboxEmail.objects.filter(
             status=OutboxEmail.SENT, sent_at__lt=now - timedelta(days=settings.JOBS_EMAIL_BODY_DAYS)).exclude(
             body='').update(body='')
+        from api.auth import prune_log
+        prune_log(now)  # API calls after api.auth.KEEP_DAYS, every company's, by age alone
         return jobs, emails, blanked
 
     # --- running ------------------------------------------------------------------

@@ -162,6 +162,7 @@ def quality_settings(request, org_slug):
     form = SettingsForm(request.POST or None, instance=obj)
     if request.method == 'POST' and form.is_valid():
         form.save()
-        messages.success(request, 'Quality settings saved. They apply to permits asked for from now on.')
+        messages.success(request, 'Quality settings saved. Permit times apply to permits asked for from now on; '
+                                  'the fire-stopping sign-off rule applies straight away.')
         return redirect('quality_settings', org_slug=org_slug)
     return render(request, 'quality/settings.html', {'form': form})

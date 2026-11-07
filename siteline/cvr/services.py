@@ -203,9 +203,11 @@ def refresh_terms(sheet):
 
 
 def change_description(sheet, price):
-    signed = (f'Signed on the day by {sheet.signed_by_name} ({sheet.get_signed_by_role_display().lower()}) on '
-              f'{timezone.localtime(sheet.signed_at):%d %b %Y}.' if sheet.signed_at else
-              'Not signed by the client side.')
+    in_portal = sheet.signed_at and sheet.signature_recorded_by_id is not None \
+        and sheet.signature_recorded_by_id == sheet.sign_requested_from_id
+    signed = (f'Signed {"in their portal" if in_portal else "on the day"} by {sheet.signed_by_name} '
+              f'({sheet.get_signed_by_role_display().lower()}) on {timezone.localtime(sheet.signed_at):%d %b %Y}.'
+              if sheet.signed_at else 'Not signed by the client side.')
     parts = [sheet.description.strip(), f'Daywork on {sheet.work_date:%d %b %Y}'
              + (f' at {sheet.location}' if sheet.location else '') + '.',
              f'Instructed by: {sheet.instructed_by}.' if sheet.instructed_by else '', signed,

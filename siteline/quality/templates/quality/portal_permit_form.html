@@ -1,0 +1,16 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="card q-narrow q-touch"><div class="card-head"><h2>Ask for a permit to work</h2></div><div class="card-body">
+  <form method="post">{% csrf_token %}
+    {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    {% for h in form.hidden_fields %}{{ h }}{% endfor %}
+    <fieldset class="q-types{% if form.permit_type.errors %} has-error{% endif %}"><legend>Type of permit <span class="dim">*</span></legend>
+      {% for c in form.permit_type %}<label class="q-type">{{ c.tag }} <span><strong>{{ c.choice_label }}</strong>{% for code, t in types.items %}{% if code == c.data.value %}<span class="sub">{{ t.help }}</span>{% endif %}{% endfor %}</span></label>{% endfor %}
+      {% for e in form.permit_type.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    </fieldset>
+    <div class="form-grid">{% for field in form.visible_fields %}{% if field.name != 'permit_type' %}{% include "partials/field.html" %}{% endif %}{% endfor %}</div>
+    <div class="form-actions"><button class="btn primary block">Send for approval</button><a class="btn ghost" href="{% url 'portal_permits' org.slug project.pk %}">Cancel</a></div>
+  </form>
+  <p class="small dim">The site team checks the precautions for this type of work and approves it. Work must not start until then; you'll be told when it is approved. {% badge 'Advisory' 'warn' %}</p>
+</div></div>
+{% endblock %}

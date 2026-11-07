@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 from actions import views as actions
+from api import urls as api_urls
 from billing import views as billing
 from changes import urls as changes_urls
 from closeout import urls as closeout_urls
@@ -16,6 +17,7 @@ from payments import urls as payments_urls
 from procurement import urls as procurement_urls
 from projects import programme_views
 from quality import urls as quality_urls
+from reports import urls as reports_urls
 from projects import views as projects
 from rfis import views as rfis
 from safety import urls as safety_urls
@@ -154,6 +156,10 @@ urlpatterns = [
     # Quality tab: inspections, permits to work, fire-stopping; Settings > Checklists (quality/urls.py)
     *quality_urls.project_patterns(P),
     *quality_urls.org_patterns,
+    # Settings > API: company API tokens and how to use them (api/urls.py)
+    *api_urls.org_patterns,
+    # Company reports for owners and admins (reports/urls.py)
+    *reports_urls.org_patterns,
     path('', include('help.urls')),  # global search, help topics, getting-started checklist (help/)
     path('', include('tenders.urls')),  # bid/no-bid gate, loss review, quote coverage (tenders/urls.py)
 ]

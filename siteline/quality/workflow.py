@@ -26,7 +26,11 @@ Fire-stopping penetrations (FS-)
                                                           (taken since it last failed or was reopened)
   SEALED --fail--> FAILED --reseal--> SEALED            failing needs a note of what's wrong
   SIGNED_OFF --reopen--> TO_SEAL        the PM or an admin, e.g. the seal was disturbed by later work
-  Ball in court: the PM (else an admin) to inspect once sealed; whoever recorded it once failed.
+  seal / reseal: anyone on the job, or the appointed subcontractor whose package it is (the portal,
+  quality/portal.py). sign_off: anyone on the job except whoever recorded the seal (sealed_by), while
+  the company keeps "Someone else signs off fire-stopping" on (the default; pending owner decision).
+  Ball in court: the PM (else an admin; never the person who sealed it while that setting is on) to
+  inspect once sealed; whoever recorded it once failed (the PM when that was a subcontractor).
 """
 from django.utils import timezone
 
@@ -76,6 +80,25 @@ def on_job(record, user):
 
 def pm_or_admin(record, user):
     return is_pm_or_admin(user, record.project)
+
+
+def is_installer(record, user):
+    """The appointed subcontractor whose package the record is on: one of that company's people on this job."""
+    from directory.models import Package
+    from projects.models import ProjectMember
+    if user is None or not record.package_id or record.package.status != Package.APPOINTED:
+        return False
+    return ProjectMember.objects.filter(project_id=record.project_id, user=user, role=ProjectMember.ROLE_SUBCONTRACTOR,
+                                        subcontractor_id=record.package.subcontractor_id).exists()
+
+
+def on_job_or_installer(record, user):
+    return on_job(record, user) or is_installer(record, user)
+
+
+def independent_sign_off(project):
+    from .models import QualitySettings
+    return QualitySettings.for_org(project.organization).fs_independent_sign_off
 
 
 # --- inspections -----------------------------------------------------------------------
@@ -175,12 +198,30 @@ PERMIT_AUDIT_FIELDS = ('permit_type', 'location', 'package', 'holder', 'starts_a
 
 # --- fire-stopping ---------------------------------------------------------------------
 
+def inspector_for(project, sealer):
+    """Who inspects a seal: the approver, but never the person who sealed it while the company wants that."""
+    if independent_sign_off(project):
+        return permit_approver_for(project, sealer)
+    return approver_for(project)
+
+
+def may_sign_off(record, user):
+    if not on_job(record, user):
+        return False
+    return rules.own_seal_problem(record.sealed_by_id, getattr(user, 'pk', None),
+                                  independent_sign_off(record.project)) is None
+
+
 def _sealed(record, user, installed_on=None, **params):
     record.installed_on = installed_on or record.installed_on or timezone.localdate()
-    record.ball_in_court_user = approver_for(record.project)
+    record.sealed_by = user
+    record.ball_in_court_user = inspector_for(record.project, user)
 
 
 def _signed_off(record, user, remark='', **params):
+    own = rules.own_seal_problem(record.sealed_by_id, user.pk, independent_sign_off(record.project))
+    if own:
+        raise InvalidTransition(own)
     after = QualityPhoto.objects.filter(penetration=record, stage=QualityPhoto.AFTER)
     if record.inspected_at is not None:
         # Failed or reopened since: only a photo of the seal as it is now counts, not the earlier one
@@ -212,11 +253,11 @@ def _reopened_penetration(record, user, remark='', **params):
 
 F = Penetration
 PENETRATION_TRANSITIONS = [
-    Transition('seal', source=(F.TO_SEAL,), target=F.SEALED, label='mark as sealed', allowed=on_job,
+    Transition('seal', source=(F.TO_SEAL,), target=F.SEALED, label='mark as sealed', allowed=on_job_or_installer,
                on_apply=_sealed),
-    Transition('reseal', source=(F.FAILED,), target=F.SEALED, label='mark as resealed', allowed=on_job,
+    Transition('reseal', source=(F.FAILED,), target=F.SEALED, label='mark as resealed', allowed=on_job_or_installer,
                on_apply=_sealed),
-    Transition('sign_off', source=(F.SEALED,), target=F.SIGNED_OFF, label='sign off', allowed=on_job,
+    Transition('sign_off', source=(F.SEALED,), target=F.SIGNED_OFF, label='sign off', allowed=may_sign_off,
                on_apply=_signed_off),
     Transition('fail', source=(F.SEALED,), target=F.FAILED, label='fail the inspection', allowed=on_job,
                on_apply=_failed),
@@ -224,5 +265,5 @@ PENETRATION_TRANSITIONS = [
                on_apply=_reopened_penetration),
 ]
 PENETRATION_AUDIT_FIELDS = ('location', 'element', 'fire_rating', 'service', 'size', 'system', 'detail_reference',
-                            'package', 'installer', 'installed_on', 'notes', 'drawing', 'pin_page', 'inspected_by',
-                            'inspection_note')
+                            'package', 'installer', 'installed_on', 'notes', 'drawing', 'pin_page', 'sealed_by',
+                            'inspected_by', 'inspection_note')
