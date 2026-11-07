@@ -30,12 +30,6 @@ from ..models import (Certificate, CompletionSection, HandoverItem, HandoverPack
                       OMSection, OMTemplateSection)
 from .base import CloseoutTestBase, jpg, pdf
 
-MEDIA = tempfile.mkdtemp()
-
-
-def tearDownModule():
-    shutil.rmtree(MEDIA, ignore_errors=True)
-
 
 def kinds(test, user, kind, org=None):
     org = org or test.org_a
@@ -44,7 +38,6 @@ def kinds(test, user, kind, org=None):
         return [i for i in actions.for_user(actions.request_for(user, m)) if i.kind == kind]
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class CompletionTests(CloseoutTestBase):
     def test_recording_whole_works_pc_sets_the_contract_and_the_defects_end(self):
         self.login(self.pat)
@@ -112,7 +105,6 @@ class CompletionTests(CloseoutTestBase):
         self.assertContains(self.client.get(self.url('closeout_overview', self.pa.pk)), 'The contract has no')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class DefectTests(CloseoutTestBase):
     def test_a_snag_raised_after_whole_works_pc_is_a_defect(self):
         self.assertEqual(self.issue().issue_type, 'SNAG')  # before PC
@@ -218,7 +210,6 @@ class DefectTests(CloseoutTestBase):
         self.assertContains(r, 'Report a defect')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class NeedsMeTests(CloseoutTestBase):
     def test_end_of_defects_reminder_for_the_pm_six_weeks_out(self):
         today = timezone.localdate()
@@ -269,7 +260,6 @@ class NeedsMeTests(CloseoutTestBase):
             self.assertEqual(DefectToAssignProvider().items(req_b), [])
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class OMTests(CloseoutTestBase):
     def setup_manual(self):
         self.login(self.pat)
@@ -401,7 +391,6 @@ class OMTests(CloseoutTestBase):
         self.assertNotIn(rows[0].title, titles)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class CertificateTests(CloseoutTestBase):
     def test_upload_list_download_logged(self):
         self.login(self.pat)
@@ -427,7 +416,6 @@ class CertificateTests(CloseoutTestBase):
         self.assertContains(r, '.exe files are not allowed')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PackTests(CloseoutTestBase):
     def setUp(self):
         super().setUp()
@@ -552,7 +540,6 @@ class PackTests(CloseoutTestBase):
         self.assertEqual(cats, [HandoverItem.COMPLETION, HandoverItem.DRAWING, HandoverItem.OM, HandoverItem.CERTIFICATE])
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class AccessTests(CloseoutTestBase):
     """Every page, every role: staff on the job, the estimator, client, consultant, subs, bidder, outsider."""
 
@@ -622,7 +609,6 @@ class AccessTests(CloseoutTestBase):
         self.assertEqual(self.client.post(self.url('closeout_om', self.pa.pk), {'action': 'setup'}).status_code, 403)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class TenancyTests(CloseoutTestBase):
     def test_another_company_gets_a_404(self):
         sec = self.section()

@@ -7,11 +7,9 @@ plus sam (site manager on the job's team) and stan (projects staff, not on this 
   nora external, not on the job · bob owner of another company
 """
 import io
-import tempfile
 from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from django.utils import timezone
 from PIL import Image
 
@@ -22,8 +20,6 @@ from tenancy.models import Membership
 
 from ..models import Incident, SiteGate
 
-MEDIA = tempfile.mkdtemp(prefix='safety-tests-')
-
 
 def jpeg(name='scene.jpg', size=(640, 480)):
     buf = io.BytesIO()
@@ -31,7 +27,6 @@ def jpeg(name='scene.jpg', size=(640, 480)):
     return SimpleUploadedFile(name, buf.getvalue(), content_type='image/jpeg')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class SafetyTestBase(CommercialTestBase):
     def setUp(self):
         super().setUp()

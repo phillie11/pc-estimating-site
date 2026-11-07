@@ -1,14 +1,11 @@
 """
 Review of the close-out branch: one test per defect found, each failing before its fix.
 """
-import shutil
 import sys
-import tempfile
 import types
 from datetime import date, timedelta
 from unittest import mock
 
-from django.test import override_settings
 from django.utils import timezone
 
 from contracts.models import MainContract
@@ -20,14 +17,7 @@ from ..models import CompletionSection, HandoverItem, HandoverPack
 from .base import CloseoutTestBase, pdf
 from .test_closeout import kinds
 
-MEDIA = tempfile.mkdtemp()
 
-
-def tearDownModule():
-    shutil.rmtree(MEDIA, ignore_errors=True)
-
-
-@override_settings(MEDIA_ROOT=MEDIA)
 class InternalDrawingsStayOutOfThePackTests(CloseoutTestBase):
     """Issuing a pack lets the client download every item: internal-only drawings must not be in it."""
 
@@ -119,7 +109,6 @@ class ReservedSectionNameTests(CloseoutTestBase):
         self.assertEqual(self.fresh(s).name, 'Bar')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class ZipEntryNameTests(CloseoutTestBase):
     """Only the base of a file name was cleaned; the extension went into the zip entry as typed."""
 

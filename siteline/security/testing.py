@@ -14,11 +14,16 @@ object", without saying which test failed or why. Rather than add a dependency, 
 send each failure's formatted traceback as text instead, so a failing test is reported in full
 and the rest of the suite carries on, as in a serial run.
 
-Each worker also gets its own folder under MEDIA_ROOT. The workers' databases are separate copies,
-so two of them can both make organisation 1's project 1 and save its files to the same path; with
-one shared folder, one test's clean-up could delete a file another test is about to download.
+Uploaded files: the whole run saves them in a temporary MEDIA_ROOT made for it and deleted at the
+end, and in a parallel run each worker has its own folder in it. The workers' databases are
+separate copies, so two of them can both make organisation 1's project 1 and save its files to the
+same path. (Test modules used to make their own folder at import and delete it when their tests
+finished; in a parallel run that folder was shared, and one worker deleted it while another was
+still reading from it. That, with the pickling, was why --parallel was "broken".)
 """
 import os
+import shutil
+import tempfile
 import traceback
 
 from django.test import runner as django_runner
@@ -81,9 +86,11 @@ class TestRunner(DiscoverRunner):
 
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)
-        self._two_factor_off = override_settings(TWO_FACTOR_ENFORCE=False)
-        self._two_factor_off.enable()
+        self._media = tempfile.mkdtemp(prefix='siteline-test-media-')
+        self._overrides = override_settings(TWO_FACTOR_ENFORCE=False, MEDIA_ROOT=self._media)
+        self._overrides.enable()
 
     def teardown_test_environment(self, **kwargs):
-        self._two_factor_off.disable()
+        self._overrides.disable()
+        shutil.rmtree(self._media, ignore_errors=True)
         super().teardown_test_environment(**kwargs)
