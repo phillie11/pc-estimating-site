@@ -112,6 +112,10 @@ def project_context(request, project, tab, **extra):
     payments_tab = client_tab(request, project)
     if payments_tab:
         tabs.append(payments_tab)
+    from cvr.portal import tab_for as daywork_sign_tab  # a client asked to sign daywork sheets in the portal
+    dayworks_tab = daywork_sign_tab(request, project)
+    if dayworks_tab:
+        tabs.append(dayworks_tab)
     if can_use_site_portal(request):
         counts = site_counts(request, project)
         tabs += [('subvariations', 'Sub variations' if internal else 'Variations', url('subvariation_list'), counts['subvariations']),
@@ -143,6 +147,12 @@ def project_context(request, project, tab, **extra):
     meetings = meetings_tab(request, project)
     if meetings:
         tabs.append(meetings)
+    from quality.portal import tabs_for as quality_portal_tabs  # appointed subs: their permits and fire-stopping
+    tabs += quality_portal_tabs(request, project)
+    from safety.portal import tab_for as near_miss_tab  # appointed subs: report a near miss
+    near_miss = near_miss_tab(request, project)
+    if near_miss:
+        tabs.append(near_miss)
     from closeout.access import tab_for as closeout_tab  # staff: Close-out; client side: Defects and handover
     closeout = closeout_tab(request, project)
     if closeout:

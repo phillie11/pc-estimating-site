@@ -5,7 +5,7 @@ urlpatterns (the archived-project test walks that list).
 """
 from django.urls import path
 
-from . import views
+from . import portal, views
 
 
 def project_patterns(P):
@@ -25,6 +25,11 @@ def project_patterns(P):
         path(C + 'dayworks/<int:sheet_id>/signature/', views.daywork_signature, name='daywork_signature'),
         path(C + 'dayworks/<int:sheet_id>/photos/<int:photo_id>/<str:size>/', views.daywork_photo,
              name='daywork_photo'),
+        # The client or consultant asked to sign a sheet in their portal (cvr/portal.py)
+        path(P + 'dayworks-to-sign/', portal.daywork_list, name='daywork_portal'),
+        path(P + 'dayworks-to-sign/<int:sheet_id>/', portal.daywork_sign, name='daywork_portal_sign'),
+        path(P + 'dayworks-to-sign/<int:sheet_id>/photos/<int:photo_id>/<str:size>/', portal.daywork_photo,
+             name='daywork_portal_photo'),
     ]
 
 

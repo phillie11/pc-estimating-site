@@ -10,8 +10,12 @@ Who sees the CVR, cashflow and dayworks (all under the Commercial tab, staff onl
                                          its CVR; sign off only if the
                                          company allows it
   other staff on the job (site team)     no (403)                       record, get signed and send on
-  client, consultant, subcontractor      never (403)                    never (403): the client signs on
-                                                                        the site team's phone
+  client, consultant, subcontractor      never (403)                    never (403) on these pages: the
+                                                                        client signs on the site team's
+                                                                        phone, or the one client or
+                                                                        consultant asked signs that sheet
+                                                                        in their portal (cvr/portal.py,
+                                                                        hours only, never money)
   another company / non-member           404 (tenant middleware and get_project)
 
 Archived jobs are read only for everyone (get_project refuses anything but GET/HEAD).

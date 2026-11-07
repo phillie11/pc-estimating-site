@@ -8,6 +8,8 @@ org_context, after payments, costs and sub payments, so the figures have somethi
       DW-001  signed by the client's representative and on the change register (a change event)
       DW-002  signed, waiting to go on the change register (on the PM's Needs me)
       DW-003  written today, ready for the client to sign on the phone
+      DW-004  written yesterday and sent to the client (client@demo.test) to sign in their portal:
+              on their Needs me under Waiting on you
     CVR for the month before last: signed off by the owner, with the costs from before the job
       moved to Siteline as an accrual.
     CVR for last month: submitted by the PM with an accrual and the client's under-valuation of the
@@ -89,6 +91,18 @@ def seed(*, leeds, pm, owner):
            'Client asked on site this morning', [
                ('LABOUR', 'Joiner', '', '3.5', '', None), ('LABOUR', 'Labourer', '', '3.5', '', None),
                ('MATERIALS', None, 'Skirting, primed softwood', '6', 'm', '7.85')])
+    # Sent to the client to sign in their portal (cvr/portal.py); set directly so the seed emails nobody
+    from projects.models import ProjectMember
+    client = ProjectMember.objects.filter(project=leeds, role=ProjectMember.ROLE_CLIENT).select_related('user') \
+        .order_by('pk').first()
+    if client is not None:
+        dw4 = _sheet(leeds, pm, rates, 'Box in exposed pipework in the customer WCs', today - timedelta(days=1),
+                     'Customer WCs', "Client's operations manager by email", [
+                         ('LABOUR', 'Joiner', '', '5', '', None),
+                         ('MATERIALS', None, '12mm moisture-resistant MDF', '2', 'sheets', '31.20')])
+        dw4.sign_requested_from, dw4.sign_requested_by = client.user, pm
+        dw4.sign_requested_at = timezone.now() - timedelta(hours=20)
+        dw4.save(actor=pm, audit_action='signature requested', audit_note='Asked the client to sign in the portal')
 
     # --- Leeds CVRs ------------------------------------------------------------------------
     from .figures import live_figures

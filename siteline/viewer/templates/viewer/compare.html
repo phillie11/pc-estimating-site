@@ -1,0 +1,67 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block title %}Compare {{ doc.reference|default:doc.title }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'viewer/viewer.css' %}">{% endblock %}
+{% block project_content %}<div class="docs">
+{% include "documents/_nav.html" %}
+<p class="small"><a href="{% url 'document_detail' org.slug project.pk doc.pk %}">← {{ doc.reference|default:doc.title }}</a></p>
+{% if not old %}
+<div class="card">{% url 'document_detail' org.slug project.pk doc.pk as back_url %}
+  {% include "partials/empty_state.html" with title="Nothing to compare yet" message="Comparing needs two PDF revisions of this drawing that you can open. When a new revision is issued, you can compare it with this one here." cta_url=back_url cta_label="Back to the drawing" %}
+</div>
+{% else %}
+<div class="card dv dvc" id="dvc">
+  <div class="dv-head">
+    <h2>{% if doc.reference %}<span class="mono">{{ doc.reference }}</span> · {% endif %}{{ doc.title }}</h2>
+    <p class="small dim dvc-what">Comparing rev <strong class="mono">{{ old.revision }}</strong> with rev <strong class="mono">{{ new.revision }}</strong></p>
+  </div>
+  <form class="dv-toolbar dvc-pick" method="get" aria-label="Choose two revisions">
+    <label>Older <select name="a">{% for r in revs %}<option value="{{ r.pk }}"{% if r.pk == old.pk %} selected{% endif %}>Rev {{ r.revision }} · {{ r.shown_status }}</option>{% endfor %}</select></label>
+    <label>Newer <select name="b">{% for r in revs %}<option value="{{ r.pk }}"{% if r.pk == new.pk %} selected{% endif %}>Rev {{ r.revision }} · {{ r.shown_status }}</option>{% endfor %}</select></label>
+    <button class="btn">Compare these</button>
+  </form>
+  <div class="dv-toolbar" role="toolbar" aria-label="Compare controls">
+    <span class="dv-group">
+      <button type="button" class="btn" data-mode="side" aria-pressed="true">Side by side</button>
+      <button type="button" class="btn" data-mode="overlay" aria-pressed="false">Overlay</button>
+    </span>
+    <span class="dv-group">
+      <button type="button" class="btn" data-act="prev" aria-label="Previous page" disabled>‹</button>
+      <span class="dv-label" aria-live="polite">Page <span data-page>1</span> of <span data-pages>…</span></span>
+      <button type="button" class="btn" data-act="next" aria-label="Next page" disabled>›</button>
+    </span>
+    <span class="dv-group">
+      <button type="button" class="btn" data-act="out" aria-label="Zoom out">−</button>
+      <span class="dv-label" data-zoom aria-live="polite">Fit</span>
+      <button type="button" class="btn" data-act="in" aria-label="Zoom in">+</button>
+      <button type="button" class="btn" data-act="fit">Fit width</button>
+    </span>
+    <span class="dv-group dvc-fade" data-overlay-only hidden>
+      <label for="dvc-fade">Fade</label>
+      <span class="small mono" aria-hidden="true">{{ old.revision }}</span>
+      <input type="range" id="dvc-fade" min="0" max="100" value="50" step="5" data-fade aria-valuetext="Both revisions at full strength">
+      <span class="small mono" aria-hidden="true">{{ new.revision }}</span>
+    </span>
+    {% if can_cloud %}<span class="dv-group"><button type="button" class="btn" data-act="cloud" aria-pressed="false">Cloud a change</button></span>{% endif %}
+  </div>
+  <p class="dvc-key small" data-overlay-only hidden><span class="dvc-swatch red" aria-hidden="true"></span> Only on rev {{ old.revision }} (taken out)
+    <span class="dvc-swatch blue" aria-hidden="true"></span> Only on rev {{ new.revision }} (added)
+    <span class="dvc-swatch black" aria-hidden="true"></span> On both (unchanged)</p>
+  <div class="dvc-side" data-side>
+    <div class="dvc-pane"><p class="dvc-cap">Rev <span class="mono">{{ old.revision }}</span> <span class="dim">older</span></p>
+      <div class="dv-port" data-port="a" tabindex="0" aria-label="Rev {{ old.revision }}. Use + and − to zoom."><div class="dv-stage" data-stage="a"></div></div></div>
+    <div class="dvc-pane"><p class="dvc-cap">Rev <span class="mono">{{ new.revision }}</span> <span class="dim">newer</span></p>
+      <div class="dv-port" data-port="b" tabindex="0" aria-label="Rev {{ new.revision }}. Use + and − to zoom."><div class="dv-stage" data-stage="b"></div></div></div>
+  </div>
+  <div class="dvc-over" data-over hidden>
+    <div class="dv-port" data-port="o" tabindex="0" aria-label="Both revisions overlaid. Use + and − to zoom."><div class="dv-stage" data-stage="o"></div></div>
+  </div>
+  <canvas class="dv-ink" data-ink aria-hidden="true" hidden></canvas>
+  <p class="dv-status-line small" data-status role="status">Loading both revisions…</p>
+  <p class="dv-hint small dim">Side by side keeps both at the same zoom and position. Overlay shows what changed in colour.{% if can_cloud %} <strong>Cloud a change</strong> marks it on your own mark-up of rev {{ new.revision }}, which you can share from the viewer. <span data-cloud-state role="status"></span>{% endif %}</p>
+  <p class="dv-hint"><a class="btn" href="{{ viewer_new }}#markups">Open rev {{ new.revision }} in the viewer</a></p>
+</div>
+<form hidden data-csrf>{% csrf_token %}</form>
+{{ config|json_script:"dvc-config" }}
+{% endif %}
+</div>{% endblock %}
+{% block scripts %}{% if old %}<script type="module" src="{% static 'viewer/compare.js' %}"></script>{% endif %}{% endblock %}

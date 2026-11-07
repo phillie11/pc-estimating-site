@@ -1,0 +1,10 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="card q-narrow q-touch"><div class="card-head"><h2>Record fire-stopping</h2></div><div class="card-body">
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    {% include "partials/form_fields.html" %}
+    <div class="form-actions"><button class="btn primary block">Record it</button><a class="btn ghost" href="{% url 'portal_firestop' org.slug project.pk %}">Cancel</a></div>
+  </form>
+  <p class="small dim">Only where it is is needed now. With a photo of the finished seal it goes straight to the site team to inspect and sign off; without one, add the photo later.</p>
+</div></div>
+{% endblock %}

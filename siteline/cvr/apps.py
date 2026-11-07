@@ -23,3 +23,6 @@ class CvrConfig(AppConfig):
                                       covers=('cvr.cvrperiod',), action='Prepare or sign off the CVR'))
         actions.register(HookProvider('daywork', 'Daywork sheets', 'cvr.actions.daywork_items', staff=True,
                                       covers=('cvr.dayworksheet',), action='Get it signed and valued'))
+        # The client or consultant asked to sign a sheet in their portal (cvr/portal.py)
+        actions.register(HookProvider('daywork_sign', 'Daywork sheets to sign', 'cvr.portal.client_items',
+                                      staff=False, action='Check it and sign it'))

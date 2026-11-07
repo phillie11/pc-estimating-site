@@ -36,4 +36,5 @@ def project_patterns(P):
 
 org_patterns = [
     path('close-out/om-template/', views.om_template, name='closeout_om_template'),
+    path('close-out/settings/', views.closeout_settings, name='closeout_settings'),
 ]

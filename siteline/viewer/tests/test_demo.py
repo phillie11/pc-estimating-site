@@ -31,7 +31,7 @@ class SeedDemoPinsTests(TestCase):
             self.assertEqual(sum(1 for p in pins if p.rfi_id), 1)
             self.assertEqual(sorted(p.revision_code for p in pins), ['C01', 'C01', 'C01', 'P02'])
             url = reverse('drawing_viewer', args=[org.slug, ga.project_id, ga.pk, current.pk])
-            seen = {}
+            seen, layers = {}, {}
             for email in ('pm@demo.test', 'sub@demo.test', 'client@demo.test'):
                 self.client.force_login(User.objects.get(email=email),
                                         backend='django.contrib.auth.backends.ModelBackend')
@@ -40,6 +40,7 @@ class SeedDemoPinsTests(TestCase):
                 cfg = json.loads(re.search(r'<script id="dv-config" type="application/json">(.*?)</script>',
                                            r.content.decode(), re.S).group(1))
                 seen[email] = sorted(p['ref'] for p in cfg['pins'])
+                layers[email] = sorted((la['owner'], la['revision'], la['share']) for la in cfg['layers'])
                 pdf = self.client.get(cfg['pdf_url'])
                 self.assertEqual(pdf.status_code, 200, email)
                 self.assertTrue(b''.join(pdf.streaming_content).startswith(b'%PDF-'))
@@ -47,3 +48,10 @@ class SeedDemoPinsTests(TestCase):
             self.assertEqual(seen['pm@demo.test'], ['FS-001', 'IS-001', 'IS-002', 'IS-003', 'RFI-001'])
             self.assertEqual(seen['sub@demo.test'], ['IS-001', 'RFI-001'])
             self.assertEqual(seen['client@demo.test'], ['RFI-001'])
+            # Mark-ups: the PM's shared layer on C01 reaches the client and sub; the sub's own stays private
+            pm = User.objects.get(email='pm@demo.test').full_name
+            self.assertEqual(layers['pm@demo.test'], [('You', 'C01', 'EXTERNAL'), ('You', 'P02', 'TEAM')])
+            self.assertEqual(layers['sub@demo.test'], [(pm, 'C01', 'EXTERNAL'), ('You', 'C01', 'PRIVATE')])
+            self.assertEqual(layers['client@demo.test'], [(pm, 'C01', 'EXTERNAL')])
+            compare = reverse('drawing_compare', args=[org.slug, ga.project_id, ga.pk])
+            self.assertContains(self.client.get(compare), 'Comparing rev')

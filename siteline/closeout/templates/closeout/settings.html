@@ -1,0 +1,11 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Close-out settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a></div><h1>Close-out settings</h1></div></div>
+<div class="card" style="max-width:720px"><div class="card-body">
+<p class="small dim">When a client or consultant reports a defect in their portal, the job's project manager has it on Needs me until it is given to whoever will fix it. Weekends and bank holidays don't count.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'org_settings' org.slug %}">Cancel</a></div></form>
+<p class="small dim">The contents list for O&amp;M manuals is under <a href="{% url 'closeout_om_template' org.slug %}">O&amp;M contents</a>.</p>
+</div></div>
+{% endblock %}
