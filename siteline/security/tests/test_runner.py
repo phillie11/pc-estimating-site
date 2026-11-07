@@ -15,13 +15,18 @@ def exc_info(raise_it):
         return sys.exc_info()
 
 
+def roundtrip(obj):
+    """As a parallel worker sends a result to the main process (multiprocessing pickles it)."""
+    return pickle.loads(pickle.dumps(obj))  # nosec B301 - bytes this test pickled itself a line earlier
+
+
 class FailuresAsTextTests(SimpleTestCase):
     def _fail(self):
         self.assertEqual('expected', 'got')
 
     def test_a_failure_pickles_as_a_failure_with_its_traceback(self):
         with mock.patch.object(testing.django_runner, 'tblib', None):
-            kind, exc, tb = pickle.loads(pickle.dumps(testing.as_text(exc_info(self._fail))))
+            kind, exc, tb = roundtrip(testing.as_text(exc_info(self._fail)))
         self.assertIs(kind, testing.RemoteFailure)
         self.assertTrue(issubclass(kind, AssertionError))  # unittest files it under failures, not errors
         self.assertIsNone(tb)
@@ -36,7 +41,7 @@ class FailuresAsTextTests(SimpleTestCase):
         def boom():
             raise Unpicklable('database went away')
         with mock.patch.object(testing.django_runner, 'tblib', None):
-            kind, exc, tb = pickle.loads(pickle.dumps(testing.as_text(exc_info(boom))))
+            kind, exc, tb = roundtrip(testing.as_text(exc_info(boom)))
         self.assertIs(kind, testing.RemoteError)
         self.assertFalse(issubclass(kind, AssertionError))
         self.assertIn('Unpicklable: database went away', str(exc))
