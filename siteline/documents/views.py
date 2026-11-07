@@ -23,7 +23,7 @@ from projects.models import Document, DocumentRevision, FileAccess
 from projects.views import project_context
 from tenancy.models import log_activity
 
-from . import bulk, naming, services
+from . import bulk, naming, services, textindex
 from .access import annotate, display_revision, revisions_for, visible_documents, visible_ids, visible_revisions
 from .forms import (CodeForm, DistributionRuleForm, DocumentDetailsForm, DocumentUploadForm, RegisterSettingsForm,
                     RevisionUploadForm, TransmittalForm)
@@ -80,8 +80,14 @@ def register_rows(request, project, params):
         rows = [(d, r) for d, r in rows if d.naming in (Document.NAMING_UNPARSED, Document.NAMING_ACCEPTED)]
     if f['q']:
         q = f['q'].lower()
+        # Words inside the PDFs too (documents/textindex.py), only in revisions this person may open
+        inside = set(textindex.matching_revisions(textindex.openable(request, visible_revisions(request, project)),
+                                                  f['q'])
+                     .values_list('revision__document_id', flat=True))
+        for d, _ in rows:
+            d.found_inside = d.pk in inside
         rows = [(d, r) for d, r in rows if q in d.title.lower() or q in d.reference.lower()
-                or q in (d.folder or '').lower() or (r and q in r.original_name.lower())]
+                or q in (d.folder or '').lower() or (r and q in r.original_name.lower()) or d.found_inside]
     return all_rows, rows, f
 
 
@@ -251,10 +257,19 @@ def document_detail(request, org_slug, pk, doc_id):
         for d in downloads:
             d.revision = names.get(d.path)
     usual = services.describe(*services.usual_recipients(project, [doc])) if internal else ''
+    text_note, text_tone = textindex.page_note(current)
     return render(request, 'documents/document_detail.html', docs_context(
         request, project, 'register', doc=doc, revisions=revisions, current=current, form=form, details=details,
         downloads=downloads, can_revise=can_revise, usual=usual, purposes=Transmittal.PURPOSE_CHOICES,
-        transmittals=services.doc_transmittals(request, project, doc), parts=_parts_display(doc)))
+        transmittals=services.doc_transmittals(request, project, doc), parts=_parts_display(doc),
+        text_note=text_note, text_tone=text_tone,
+        can_compare=_can_compare(request, revisions)))
+
+
+def _can_compare(request, revisions):
+    """Two or more revisions this person may open in the viewer: offer Compare revisions."""
+    from viewer.access import can_view
+    return sum(1 for r in revisions if can_view(request, r)) >= 2
 
 
 def _parts_display(doc):
