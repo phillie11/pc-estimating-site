@@ -34,6 +34,7 @@ from openpyxl.utils import get_column_letter
 from . import mapping as maps
 
 PENNY = Decimal('0.01')
+HALF_PENNY = Decimal('0.005')
 ZERO = Decimal('0')
 ONE = Decimal('1')
 REF = re.compile(r"^=\s*(?:(?:'((?:[^']|'')+)'|([A-Za-z0-9_.]+))!)?\$?([A-Z]{1,3})\$?([0-9]{1,6})\s*$")
@@ -114,7 +115,9 @@ class Run:
         self.issues, self.gaps, self.notes = [], [], []
         summary = m['summary']['sheet']
         g50 = maps.split(f"{m['summary']['cols']['charge']}{m['summary']['total_row']}")
-        self.cached = num(book.value(summary, *g50)) is not None or not book.is_formula(summary, *g50)
+        # Without saved values the total's formula cell comes back blank. Anything else (a number, an error such
+        # as #REF!, text, a formula overtyped or cleared) means Excel's values are there to check against.
+        self.cached = not (book.is_formula(summary, *g50) and blank(book.value(summary, *g50)))
         if book.has(summary) and not self.cached:
             self.notes.append('This file was saved without calculated values (it was not last saved by Excel), so '
                               'the figures here are Siteline\'s own recalculation and could not be checked against '
@@ -517,11 +520,17 @@ class Run:
             'final_margin': margin(final - cost, final) if final else None,
             'charge_cell': f"{s['cols']['charge']}{trow}",
         }
-        if self.cached and excel['charge'] is not None:
-            totals['difference'] = charge.quantize(PENNY) - excel['charge'].quantize(PENNY)
+        # To the penny: the two totals are less than half a penny apart, compared unrounded (rounding each side
+        # first would call 0.004 vs 0.006 a penny out)
+        saved_total = self.book.value(sheet, trow, sc['charge'])
+        totals['excel_text'] = '' if excel['charge'] is not None else (text(saved_total)[:60] or 'blank')
+        if not self.cached:
+            totals['difference'], totals['reconciled'] = None, None
+        elif excel['charge'] is None:  # an error value, text or nothing where the total should be
+            totals['difference'], totals['reconciled'] = None, False
         else:
-            totals['difference'] = None
-        totals['reconciled'] = totals['difference'] == ZERO if totals['difference'] is not None else None
+            totals['difference'] = charge - excel['charge']
+            totals['reconciled'] = abs(totals['difference']) < HALF_PENNY
         if target is not None and totals['margin'] is not None and totals['margin'] < target - self.tolerance:
             short = (totals['price_at_target'] - charge) if totals['price_at_target'] is not None else None
             self.gap('margin_below_target', f'Margin {totals["margin"] * 100:.1f}% is below the {target * 100:.1f}% '

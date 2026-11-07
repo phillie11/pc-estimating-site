@@ -47,6 +47,13 @@ class PricingSettings(TenantModel):
         help_text='When a bid is won, open items with no due date get one this many days after the handover.')
     assign_to_manager = models.BooleanField(
         'Give unowned open items to the project manager at handover', default=True)
+    BLOCK, WARN = 'BLOCK', 'WARN'
+    UNCHECKED_CHOICES = [(BLOCK, 'Don\'t issue it: save it in Excel and upload it again'),
+                         (WARN, 'Allow it to be issued, with a warning')]
+    unchecked_issue = models.CharField(
+        'A workbook with no values saved by Excel', max_length=8, choices=UNCHECKED_CHOICES, default=BLOCK,
+        help_text='A file last saved by another program has no saved values, so its total can\'t be checked '
+                  'against the pricing summary.')
 
     class Meta(TenantModel.Meta):
         constraints = [models.UniqueConstraint(fields=['organization'], name='hpack_one_settings_per_org')]
@@ -82,8 +89,12 @@ class PricingWorkbook(TenantModel):
     charge = models.DecimalField(max_digits=16, decimal_places=2)
     profit = models.DecimalField(max_digits=16, decimal_places=2)
     excel_charge = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
-    # Recalculated total charge less PRICING SUMMARY's, in pence-rounded pounds; None without Excel's values
+    # Recalculated total charge less PRICING SUMMARY's, to the penny for display; None when there is no number
+    # to compare with (no saved values, or an error or text where the total should be)
     difference = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    # True: the totals agree to the penny (less than half a penny apart, unrounded). False: they don't, or the
+    # summary's total isn't a number. None: no values saved by Excel to check against.
+    reconciled = models.BooleanField(null=True, blank=True)
     cached = models.BooleanField('Has Excel\'s saved values', default=True)
     issue_count = models.PositiveIntegerField(default=0)
     gap_count = models.PositiveIntegerField(default=0)
@@ -95,11 +106,6 @@ class PricingWorkbook(TenantModel):
 
     def __str__(self):
         return f'Pricing workbook revision {self.revision}'
-
-    @property
-    def reconciled(self):
-        """True: the recalculated total equals the workbook's to the penny. None: no saved values to check against."""
-        return None if self.difference is None else self.difference == 0
 
     @property
     def result(self):
@@ -132,6 +138,14 @@ class HandoverPack(TenantModel):
     def is_issued(self):
         return self.issued_at is not None
 
+    @property
+    def shown_workbook(self):
+        """The revision the pack shows: the one it was issued from, once issued."""
+        return self.issued_workbook if self.is_issued and self.issued_workbook_id else self.workbook
+
+    def visible_clarifications(self):
+        return self.clarifications.filter(hidden=False)
+
     def get_absolute_url(self):
         return reverse('hpack_pack', args=[self.project.organization.slug, self.project_id])
 
@@ -155,6 +169,8 @@ class PackClarification(TenantModel):
     workbook_row = models.PositiveIntegerField(null=True, blank=True)
     # Once someone changes a workbook clarification here, a later upload leaves it alone
     edited = models.BooleanField(default=False)
+    # Removed here: a workbook row is hidden rather than deleted, so the next upload doesn't bring it back
+    hidden = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -150,7 +150,8 @@ def build(ctx, org_name=''):
          if p and p.is_issued else 'Not yet'),
         ('Reconciliation', 'Reconciled to the penny with the pricing summary' if ctx['reconciled'] else (
             'Not checked: the workbook had no saved values from Excel' if ctx['reconciled'] is None
-            else f'NOT RECONCILED: {abs(ctx["difference"]):,} out')),
+            else 'NOT RECONCILED: ' + (f'{abs(ctx["difference"]):,} out' if ctx['difference'] is not None
+                                       else 'the summary total is not a number'))),
         ('Who may see this', 'Staff who see this job\'s commercial figures. Never send it to a client or '
                              'subcontractor.'),
     ]

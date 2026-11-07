@@ -68,6 +68,10 @@ def possible_owners(project):
     member = Membership.objects.filter(organization=project.organization, user=OuterRef('pk'), is_active=True)
     team = ProjectMember.objects.filter(project=project, user=OuterRef('pk'),
                                         role__in=(ProjectMember.ROLE_PM, ProjectMember.ROLE_QS))
-    return User.objects.filter(Exists(member.filter(role__in=Membership.INTERNAL_ROLES))).filter(
-        Q(Exists(member.filter(role__in=Membership.ADMIN_ROLES))) | Q(pk=project.manager_id) | Q(Exists(team))
+    # Owners and admins; otherwise staff who work on delivery jobs (as staff_users(org, 'delivery')) and run this one
+    delivers = member.filter(role__in=Membership.INTERNAL_ROLES,
+                             area__in=(Membership.AREA_BOTH, Membership.AREA_DELIVERY))
+    return User.objects.filter(
+        Q(Exists(member.filter(role__in=Membership.ADMIN_ROLES)))
+        | (Q(Exists(delivers)) & (Q(pk=project.manager_id) | Q(Exists(team))))
     ).order_by('full_name')

@@ -18,7 +18,7 @@
     </div></div>
     {% if winning %}<div class="card"><div class="card-head"><h2>Handover pack</h2><span class="small dim">Internal only</span></div><div class="card-body small">
       {% if pricing %}<p>The pricing workbook (revision {{ pricing.workbook.revision }}) becomes the <strong>handover pack</strong>: scope allowed, exclusions, clarifications, suppliers and buy-out targets. The project manager is told it is ready.</p>
-      {% if pricing.workbook.reconciled is False %}<p class="bad" style="margin:0"><strong>Its total is {{ pricing.workbook.difference|money_exact:currency }} out from the pricing summary.</strong> It can be handed over, but not issued until the workbook is corrected.</p>{% endif %}
+      {% if pricing.workbook.reconciled is False %}<p class="bad" style="margin:0"><strong>Its total does not match the pricing summary{% if pricing.workbook.difference is not None %} ({{ pricing.workbook.difference|money_exact:currency }} out){% endif %}.</strong> It can be handed over, but not issued until the workbook is corrected.</p>{% endif %}
       <p style="margin:0"><a href="{% url 'hpack_pack' org.slug project.pk %}">Preview the pack</a></p>
       {% else %}<p style="margin:0">No pricing workbook uploaded. <a href="{% url 'hpack_workbook' org.slug project.pk %}">Upload it</a> first and the projects team get a handover pack with the scope, exclusions and buy-out targets.</p>{% endif %}
     </div></div>{% endif %}

@@ -16,10 +16,10 @@
     <dt>Project</dt><dd>{{ project.reference }} {{ project.name }}</dd>
     <dt>Client</dt><dd>{{ project.client_name|default:h.client }}</dd>
     <dt>Status</dt><dd>{% if pack.is_issued %}{% badge 'Issued' 'good' %} {{ pack.issued_at|date:"j M Y" }}{% if pack.issued_by %} by {{ pack.issued_by.full_name }}{% endif %}{% elif is_bid %}{% badge 'Preview: the bid is not won yet' 'info' %}{% else %}{% badge 'Draft' 'warn' %}{% endif %}</dd>
-    <dt>Built from</dt><dd>Pricing workbook revision {{ wb.revision }}{% if wb.label %} (workbook revision {{ wb.label }}){% endif %}, uploaded {{ wb.uploaded_at|date:"j M Y" }}{% if wb.uploaded_by %} by {{ wb.uploaded_by.full_name }}{% endif %}</dd>
+    <dt>Built from</dt><dd>Pricing workbook revision {{ wb.revision }}{% if pack.is_issued and pack.workbook_id != wb.pk %} (as issued){% endif %}{% if wb.label %} (workbook revision {{ wb.label }}){% endif %}, uploaded {{ wb.uploaded_at|date:"j M Y" }}{% if wb.uploaded_by %} by {{ wb.uploaded_by.full_name }}{% endif %}</dd>
     <dt>Who may see it</dt><dd>Staff who see this job's commercial figures. Never send it to a client or subcontractor.</dd>
   </dl>
-  {% if not is_bid and not pack.is_issued and editable %}<form method="post" action="{% url 'hpack_issue' org.slug project.pk %}" class="hp-actions" style="margin-top:10px">{% csrf_token %}{% if ctx.reconciled is False %}<button class="btn" disabled aria-disabled="true">Issue to the delivery team</button><span class="small bad">Can't be issued: the total is {{ ctx.difference|money_exact:currency }} out from the pricing summary.</span>{% else %}<button class="btn primary">Issue to the delivery team</button>{% endif %}</form>{% endif %}
+  {% if not is_bid and not pack.is_issued and editable %}<form method="post" action="{% url 'hpack_issue' org.slug project.pk %}" class="hp-actions" style="margin-top:10px">{% csrf_token %}{% if ctx.cannot_issue %}<button class="btn" disabled aria-disabled="true">Issue to the delivery team</button><span class="small bad">Can't be issued: {{ ctx.cannot_issue }}</span>{% else %}<button class="btn primary">Issue to the delivery team</button>{% if ctx.unchecked_allowed %}<span class="small warn">Not checked against Excel: your company allows issuing it anyway.</span>{% endif %}{% endif %}</form>{% endif %}
 </div></section>
 
 <section id="summary" class="card hp-section" aria-labelledby="h-summary"><div class="card-head"><h2 id="h-summary">2. Project summary</h2></div><div class="card-body">

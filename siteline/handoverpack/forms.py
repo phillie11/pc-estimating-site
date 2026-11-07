@@ -61,7 +61,7 @@ class OpenItemForm(StyledModelForm):
 class SettingsForm(StyledModelForm):
     class Meta:
         model = PricingSettings
-        fields = ['preset', 'margin_tolerance', 'item_due_days', 'assign_to_manager']
+        fields = ['preset', 'margin_tolerance', 'item_due_days', 'assign_to_manager', 'unchecked_issue']
 
     def clean_margin_tolerance(self):
         v = self.cleaned_data['margin_tolerance']

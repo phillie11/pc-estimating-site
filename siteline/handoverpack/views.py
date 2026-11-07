@@ -90,6 +90,9 @@ def workbook_upload(request, org_slug, pk):
         return back
     try:
         wb = services.upload(project, request.user, form.cleaned_data['file'])
+    except services.Busy as e:
+        messages.error(request, f'Not uploaded: {e}')
+        return back
     except reader.WorkbookRefused as e:
         messages.error(request, f'Not uploaded: {e}')
         return back
@@ -100,8 +103,8 @@ def workbook_upload(request, org_slug, pk):
     log_activity(request, 'uploaded the pricing workbook', f'revision {wb.revision}', project=project,
                  url=_url('hpack_workbook', project), internal_only=True)
     if wb.reconciled is False:
-        messages.warning(request, f'Revision {wb.revision} uploaded, but its total is {abs(wb.difference):,} out from '
-                                  'the pricing summary. See the reconciliation below.')
+        messages.warning(request, f'Revision {wb.revision} uploaded, but its total does not match the pricing '
+                                  'summary. See the reconciliation below.')
     elif wb.reconciled is None:
         messages.warning(request, f'Revision {wb.revision} uploaded. It had no values saved by Excel, so it could not be '
                                   'checked against Excel: the figures are Siteline\'s own recalculation.')
@@ -133,10 +136,13 @@ def pack_page(request, org_slug, pk):
     pack = _pack(project)
     if pack is None:
         return render(request, 'handoverpack/pack.html', _context(request, project, 'pack', ctx=None))
-    ctx = packs.build(project, pack, pack.workbook, request)
+    wb = pack.shown_workbook  # once issued, the revision it was issued from
+    ctx = packs.build(project, pack, wb, request)
+    ctx['cannot_issue'] = services.why_not_issue(pack, wb, project)
+    ctx['unchecked_allowed'] = wb.reconciled is None and ctx['cannot_issue'] is None
     if request.GET.get('export') == 'xlsx':
         data = exports.build(ctx, request.org.name)
-        log_activity(request, 'exported the handover pack', f'revision {pack.workbook.revision}', project=project,
+        log_activity(request, 'exported the handover pack', f'revision {wb.revision}', project=project,
                      url=_url('hpack_pack', project), internal_only=True)
         resp = HttpResponse(data, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         resp['Content-Disposition'] = f'attachment; filename="{project.reference}-handover-pack-INTERNAL.xlsx"'
@@ -154,11 +160,11 @@ def pack_issue(request, org_slug, pk):
     if pack is None or not access.can_edit(project):
         return redirect('hpack_pack', org_slug=org_slug, pk=pk)
     try:
-        services.issue(pack, request.user)
+        pack = services.issue(pack, request.user)
     except services.CannotIssue as e:
         messages.error(request, f'Not issued: {e}')
         return redirect('hpack_pack', org_slug=org_slug, pk=pk)
-    log_activity(request, 'issued the handover pack', f'revision {pack.workbook.revision}', project=project,
+    log_activity(request, 'issued the handover pack', f'revision {pack.issued_workbook.revision}', project=project,
                  url=_url('hpack_pack', project), internal_only=True)
     messages.success(request, 'Handover pack issued to the delivery team.')
     return redirect('hpack_pack', org_slug=org_slug, pk=pk)
@@ -199,7 +205,7 @@ def clarifications(request, org_slug, pk):
             return redirect('hpack_clarifications', org_slug=org_slug, pk=pk)
     from . import clarifications as drafting
     return render(request, 'handoverpack/clarifications.html', _context(
-        request, project, 'clarifications', pack=pack, form=form, rows=list(pack.clarifications.all()),
+        request, project, 'clarifications', pack=pack, form=form, rows=list(pack.visible_clarifications()),
         drafting=drafting.available()))
 
 
@@ -208,13 +214,17 @@ def clarification_edit(request, org_slug, pk, cl_id):
     pack = _pack(project)
     if pack is None:
         raise Http404
-    c = get_object_or_404(PackClarification, pack=pack, pk=cl_id)
+    c = get_object_or_404(PackClarification, pack=pack, pk=cl_id, hidden=False)
     form = ClarificationForm(request.POST or None, instance=c)
     if request.method == 'POST':
         if not access.can_edit(project):
             raise Http404
         if request.POST.get('delete'):
-            c.delete()
+            if c.source == PackClarification.FROM_WORKBOOK:  # hidden, so the next upload doesn't bring it back
+                c.hidden = c.edited = True
+                c.save(update_fields=['hidden', 'edited', 'updated_at'])
+            else:
+                c.delete()
             messages.success(request, 'Clarification removed.')
             return redirect('hpack_clarifications', org_slug=org_slug, pk=pk)
         if form.is_valid():

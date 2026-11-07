@@ -45,7 +45,7 @@ class RecalculationTests(SimpleTestCase):
         t = self.demo['totals']
         self.assertTrue(self.demo['cached'])
         self.assertEqual(self.demo['issues'], [])
-        self.assertEqual(t['difference'], D('0.00'))
+        self.assertEqual(t['difference'], D('0'))
         self.assertTrue(t['reconciled'])
         self.assertEqual(t['cost'], D('205349.8'))
         self.assertEqual(t['charge'], D('228753.406'))
@@ -103,7 +103,7 @@ class ReconciliationTests(SimpleTestCase):
     def test_a_typed_over_total_breaks_reconciliation(self):
         r = run(sample.build(small(), typed={('PRICING SUMMARY', 'G50'): D('200')}))
         self.assertFalse(r['totals']['reconciled'])
-        self.assertEqual(r['totals']['difference'], D('149.60') - D('200.00') + D('0.00'))
+        self.assertEqual(r['totals']['difference'], D('149.5989') - D('200'))
         self.assertIn(('PRICING SUMMARY', 'G50'), [(i['sheet'], i['cell']) for i in r['issues']])
 
     def test_without_saved_values_the_recalculation_is_used_and_says_so(self):

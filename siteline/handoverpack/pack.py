@@ -170,7 +170,7 @@ def build(project, pack, wb, request=None, clarifications=None, items=None):
         })
 
     if clarifications is None:
-        clarifications = list(pack.clarifications.all()) if pack else []
+        clarifications = list(pack.visible_clarifications()) if pack else []
     if items is None:
         items = list(pack.items.select_related('owner').all()) if pack else []
     open_items = sorted(items, key=lambda i: (i.status != i.OPEN, i.amount is None, -(i.amount or ZERO), i.pk))
