@@ -113,13 +113,14 @@ class PricingWorkbook(TenantModel):
 
 class HandoverPack(TenantModel):
     project = models.OneToOneField('projects.Project', on_delete=models.CASCADE, related_name='handover_pack')
-    workbook = models.ForeignKey(PricingWorkbook, on_delete=models.PROTECT, related_name='+')
+    # CASCADE, not PROTECT: deleting a whole workspace (or an empty project) must be able to take both
+    workbook = models.ForeignKey(PricingWorkbook, on_delete=models.CASCADE, related_name='+')
     site_rules = models.TextField(blank=True)
     released_at = models.DateTimeField('Reached delivery', null=True, blank=True)
     issued_at = models.DateTimeField(null=True, blank=True)
     issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                   related_name='+')
-    issued_workbook = models.ForeignKey(PricingWorkbook, null=True, blank=True, on_delete=models.PROTECT,
+    issued_workbook = models.ForeignKey(PricingWorkbook, null=True, blank=True, on_delete=models.SET_NULL,
                                         related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
