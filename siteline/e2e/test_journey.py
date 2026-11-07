@@ -20,14 +20,26 @@ The steps follow the brief:
   9  RFI -> change event -> client variation -> client approves
   10 AP-001 -> client payment notice -> payment recorded
   11 sub applies -> our payment notice -> paid with CIS -> cost report reconciles
-  12 Needs me counts for each role at each step
+  Release 3:
+  12 inspection with a failed check -> snag for the sub -> fixed and closed
+  13 hot works permit asked for by the PM -> approved by the owner (never by whoever asked) -> closed
+  14 fire-stopping recorded with photos -> signed off by the PM
+  15 near miss reported -> investigated with an action -> closed; a visitor signs in by the QR poster
+  16 MS Project XML import -> re-import updates by task ID -> the 2/3/4 week look-ahead for each role
+  17 meeting with minutes and actions -> issued by email link -> actions done
+  18 practical completion -> client defect fixed -> O&M from the sub -> handover pack with the fire-stopping register
+  19 daywork sheet priced and signed on a phone -> change register -> client variation
+  20 the month ends -> CVR signed off -> the cashflow adds up to the final account and final cost
+  Needs me for each role is checked after every step (checkpoint), and inside the steps as things move.
 """
 import csv
+import hashlib
 import io
 import re
-from html.parser import HTMLParser
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from html.parser import HTMLParser
+from unittest import mock
 
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -50,6 +62,16 @@ def png_bytes():
     from PIL import Image
     buf = io.BytesIO()
     Image.new('RGB', (8, 8), (200, 30, 30)).save(buf, 'PNG')
+    return buf.getvalue()
+
+
+def signature_png():
+    """A signature as the phone's signature pad sends it: a PNG with a line drawn on it."""
+    from PIL import Image, ImageDraw
+    img = Image.new('RGBA', (300, 120), (255, 255, 255, 255))
+    ImageDraw.Draw(img).line((20, 80, 120, 30, 200, 90), fill=(21, 25, 31, 255), width=4)
+    buf = io.BytesIO()
+    img.save(buf, 'PNG')
     return buf.getvalue()
 
 
@@ -164,7 +186,9 @@ def form_data(response, having):
     raise AssertionError(f'No form with {having!r} on the page')
 
 
-@override_settings(EMAIL_SYNC=True)
+# The test client sends every POST as multipart, so the upload rate limit (60 in ten minutes per person) would
+# count each form the PM submits; nobody posts that many in ten minutes. security/tests cover the limits.
+@override_settings(EMAIL_SYNC=True, RATELIMIT_ENABLED=False)
 class JourneyTest(TestCase):
     """Phases share state, so they run in order inside one test."""
 
@@ -175,6 +199,9 @@ class JourneyTest(TestCase):
         self.est = User.objects.create_user(email='est@journey.test', password=PW, full_name='Ezra Estimator')
         self.pm = User.objects.create_user(email='pm@journey.test', password=PW, full_name='Priya Manager')
         self.org = create_organization('Journey Fitout', self.owner)
+        # A paying company: the journey runs past the month end (phase 20), beyond the free trial
+        self.org.subscription_status = self.org.STATUS_ACTIVE
+        self.org.save(update_fields=['subscription_status'])
         Membership.objects.create(organization=self.org, user=self.est, role=Membership.ROLE_MEMBER,
                                   area=Membership.AREA_ESTIMATING)
         Membership.objects.create(organization=self.org, user=self.pm, role=Membership.ROLE_MEMBER,
@@ -193,6 +220,25 @@ class JourneyTest(TestCase):
         self.c = {}
         for name, user in (('owner', self.owner), ('est', self.est), ('pm', self.pm), ('rival', self.rival)):
             self.c[name] = self._client_for(user)
+
+    def travel_to(self, day):
+        """
+        Move the clock to 9am on `day` for the rest of the journey (the month end, for the CVR). Everything reads
+        the time through django.utils.timezone, so dates on pages, Needs me and the rules all move together.
+        Sessions older than two weeks would have expired by then, so everyone signs in again.
+        """
+        real_now = timezone.now
+        target = timezone.make_aware(datetime.combine(day, time(9)))
+        offset = target - real_now()
+        patcher = mock.patch('django.utils.timezone.now', side_effect=lambda: real_now() + offset)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        emails = {'owner': 'owner@journey.test', 'est': 'est@journey.test', 'pm': 'pm@journey.test',
+                  'rival': 'rival@other.test', 'sub': 'sid@oakash.test', 'sub2': 'cal@cheapside.test',
+                  'client': 'cara@northerntaverns.test'}
+        for name in list(self.c):
+            self.c[name] = self._client_for(User.objects.get(email=emails[name]))
+        self.assertEqual(TODAY(), day)
 
     def _client_for(self, user):
         c = Client()
@@ -255,7 +301,12 @@ class JourneyTest(TestCase):
         phases = [self.phase1_lead_to_tender, self.phase2_subs_quote, self.phase3_levelling_and_submit,
                   self.phase4_won_handover_appoint, self.phase5_contract_budget_order, self.phase6_procurement,
                   self.phase7_site_diary, self.phase8_drawing_snag_pin, self.phase9_rfi_change_variation,
-                  self.phase10_application_for_payment, self.phase11_sub_payment_and_cost_report]
+                  self.phase10_application_for_payment, self.phase11_sub_payment_and_cost_report,
+                  self.phase12_inspection_fails_and_raises_a_snag, self.phase13_hot_works_permit,
+                  self.phase14_fire_stopping, self.phase15_incident_and_visitor_sign_in,
+                  self.phase16_programme_import_and_look_ahead, self.phase17_meeting_issued_and_actions_done,
+                  self.phase18_practical_completion_defects_om_and_handover,
+                  self.phase19_daywork_to_the_change_register, self.phase20_month_end_cvr_signed_off_and_cashflow]
         for n, phase in enumerate(phases, 1):
             phase()
             self.checkpoint(n)
@@ -275,16 +326,15 @@ class JourneyTest(TestCase):
         expected.update(self.EXPECTED_NEEDS.get(n, {}))
         if 5 <= n <= 9:  # from the contract's valuation day until AP-001 goes in
             expected['pm'] = expected.get('pm', set()) | {self.ap_due()}
+        if n == 20:  # next month's applications, ours and the sub's, if their valuation dates are this week
+            for who, due in self.month_end_needs.items():
+                expected[who] = expected.get(who, set()) | due
         self.assertEqual(out, expected, f'Needs me after phase {n}')
 
     # Needs me for every role once each phase has finished (diary days aside, checked by count above).
     # Everything else is cleared by the phase that raised it, and is asserted there when it was waiting.
-    EXPECTED_NEEDS = {
-        8: {'client': {('transmittal', 'TR-001')}},  # the client hasn't acknowledged the drawing issue
-        9: {'client': {('transmittal', 'TR-001')}},
-        10: {'client': {('transmittal', 'TR-001')}},
-        11: {'client': {('transmittal', 'TR-001')}},
-    }
+    # The client doesn't acknowledge the drawing issue until they take the handover (phase 18).
+    EXPECTED_NEEDS = {n: {'client': {('transmittal', 'TR-001')}} for n in range(8, 18)}
 
     def ap_due(self):
         """The PM's prompt to submit this month's application: the valuation day is today's day of the month."""
@@ -418,7 +468,7 @@ class JourneyTest(TestCase):
     # 4 -----------------------------------------------------------------
 
     def phase4_won_handover_appoint(self):
-        start = TODAY() - timedelta(days=30)
+        start = self.job_start = TODAY() - timedelta(days=30)
         finish = TODAY() + timedelta(days=120)
         # Moving to Won from the stage select goes through the handover
         r = self.post('est', self.pu('project_stage'), {'stage': 'WON'})
@@ -492,7 +542,8 @@ class JourneyTest(TestCase):
         # JCT IC pays from Interim Valuation Dates, so the day of the month is needed and never guessed
         r = self.post('pm', self.pu('contract_edit'), data, status=200)
         self.assertIn('Enter the valuation day', text(r))
-        data['valuation_day'] = str(TODAY().day)
+        self.valuation_day = TODAY().day
+        data['valuation_day'] = str(self.valuation_day)
         r = self.post('pm', self.pu('contract_edit'), data, follow=True, status=200)
         page = text(r)
         self.assertIn('Contract set up', page)
@@ -594,10 +645,13 @@ class JourneyTest(TestCase):
     def _diary_missing(self):
         """The diary days the rules say are due and unwritten (diary.rules, a pure function), as Needs me titles."""
         from diary import rules
+        from diary.models import DiaryEntry
         now = timezone.localtime().replace(tzinfo=None)
-        start = TODAY() - timedelta(days=30)
+        with org_context(self.org):
+            written = set(DiaryEntry.objects.filter(project_id=self.pk).values_list('entry_date', flat=True))
         return {('diary_missing', f'Site diary missing for {d:%a} {d.day} {d:%b}')
-                for d in rules.expected_days(now, False, rules.DEFAULT_REGION, start=start)}
+                for d in rules.expected_days(now, False, rules.DEFAULT_REGION, start=self.job_start)
+                if d not in written}
 
     def phase7_site_diary(self):
         # A live job with no diary for the last working days: each is on the PM's Needs me, nobody else's
@@ -921,3 +975,630 @@ class JourneyTest(TestCase):
         self.assertEqual((month.in_actual, month.out_actual), (Decimal('62700.00'), Decimal('19000.00')))
         for who in ('sub', 'client', 'est'):
             self.assertIn(self.c[who].get(self.pu('cvr_list')).status_code, (403, 404))
+
+    # ================================================================== Release 3
+
+    # 12 ----------------------------------------------------------------
+
+    def phase12_inspection_fails_and_raises_a_snag(self):
+        from projects.models import Issue
+        from quality.models import Inspection
+        for who in ('sub', 'client'):  # Quality is staff only
+            self.get(who, self.pu('inspection_list'), status=403)
+        # The fire doors checklist from the company's starting library, on the joiner's work, inspected by the PM
+        r = self.get('pm', self.pu('inspection_create'))
+        data = form_data(r, 'template')
+        template = next(t for t in r.context['form'].fields['template'].queryset if t.name == 'Fire doors')
+        self.assertEqual(int(data['ball_in_court_user']), self.pm.pk)  # whoever starts it, unless they change it
+        data.update({'template': template.pk, 'area': 'Bar store', 'package': self.pkg_oak.pk})
+        r = self.post('pm', self.pu('inspection_create'), data)
+        with org_context(self.org):
+            ins = Inspection.objects.get(project=self.project)
+            checks = list(ins.items.order_by('order'))
+        self.assertEqual(r.url, ins.get_absolute_url())
+        self.assertEqual((ins.ref, ins.title, len(checks)), ('INS-001', 'Fire doors, Bar store', 8))
+        self.assertNeeds('pm', {('inspection', 'INS-001')})
+        # Six pass, the self-closer fails (with a note and a photo), the glazing is N/A
+        failed = None
+        for check in checks:
+            body = {'result': 'PASS', 'note': ''}
+            if check.text.startswith('Self-closer'):
+                failed = check
+                body = {'result': 'FAIL', 'note': 'Closer stalls 100 mm open',
+                        'photo': SimpleUploadedFile('closer.png', png_bytes(), content_type='image/png')}
+            elif check.text.startswith('Glazing'):
+                body['result'] = 'NA'
+            self.post('pm', self.pu('inspection_item', ins.pk, check.pk), body)
+        # Finishing records the outcome from the answers
+        r = self.post('pm', self.pu('inspection_action', ins.pk), {'action': 'finish', 'notes': ''}, follow=True,
+                      status=200)
+        self.assertIn('INS-001 failed (6 pass, 1 fail, 1 N/A)', text(r))
+        self.assertNeeds('pm', set())  # finished: no longer waiting on the inspector
+        # One tap raises a snag from the failed check, for the joiner whose work it is, due in a week
+        r = self.post('pm', self.pu('inspection_snag', ins.pk, failed.pk), follow=True, status=200)
+        with org_context(self.org):
+            snag = Issue.objects.get(project=self.project, title__startswith='Failed check')
+        due = TODAY() + timedelta(days=7)
+        self.assertIn(f'{snag.reference} raised and assigned to Sid Oak, due {due:%a} {due.day} {due:%b}', text(r))
+        self.assertEqual((snag.title, snag.assignee, snag.location, snag.issue_type, snag.due_date),
+                         ('Failed check: Self-closer shuts the door fully from any angle', self.sub_user, 'Bar store',
+                          'QUALITY', due))
+        self.assertIn('Closer stalls 100 mm open', snag.description)
+        self.assertTrue(snag.photo)  # the check's photo goes with it
+        # A second tap doesn't raise a second snag
+        self.post('pm', self.pu('inspection_snag', ins.pk, failed.pk))
+        with org_context(self.org):
+            self.assertEqual(Issue.objects.filter(project=self.project, title__startswith='Failed check').count(), 1)
+        self.assertNeeds('sub', {('snag', snag.reference)})
+        self.assertNeeds('pm', set())
+        # The joiner puts it right; the PM inspects and closes it
+        self.post('sub', self.pu('issue_detail', snag.pk), {'action': 'ready'})
+        self.assertNeeds('sub', set())
+        self.assertNeeds('pm', {('snag_inspect', snag.reference)})
+        self.post('pm', self.pu('issue_detail', snag.pk), {'action': 'close'})
+        self.assertNeeds('pm', set())
+        page = text(self.get('pm', self.pu('inspection_list') + '?status=failed'))
+        self.assertIn('INS-001', page)
+        self.assertIn('Fire doors, Bar store', page)
+
+    # 13 ----------------------------------------------------------------
+
+    def phase13_hot_works_permit(self):
+        from quality import rules as quality_rules
+        from quality.models import Permit
+        self.get('sub', self.pu('permit_list'), status=403)
+        # The PM asks for a hot works permit; the form starts at the next quarter hour, for the company's usual 8 hours
+        r = self.get('pm', self.pu('permit_create') + '?type=HOT_WORKS')
+        data = form_data(r, 'title')
+        data.update({'permit_type': 'HOT_WORKS', 'title': 'Cut and weld steel bracket for the bar canopy',
+                     'location': 'Bar, north wall', 'package': '', 'holder': 'Site welder', 'method_notes': ''})
+        r = self.post('pm', self.pu('permit_create'), data, follow=True, status=200)
+        with org_context(self.org):
+            permit = Permit.objects.get(project=self.project)
+        # The PM asked, so the PM can't approve it: it goes to the owner, the company's admin
+        self.assertIn('PTW-001 sent to Olive Owner to approve. Work must not start until it is approved.', text(r))
+        self.assertEqual((permit.ref, permit.ball_in_court_user, permit.expires_at - permit.starts_at),
+                         ('PTW-001', self.owner, timedelta(hours=8)))
+        self.assertNeeds('owner', {('permit', 'PTW-001')})
+        self.assertNeeds('pm', set())
+        self.assertIn('PTW-001: Hot works permit to approve', text(self.get('owner', self.u('notifications'))))
+        act = self.pu('permit_action', permit.pk)
+        every = quality_rules.precautions_for('HOT_WORKS')
+        self.post('pm', act, {'action': 'approve', 'precautions': every, 'extra': ''}, status=403)  # who asked
+        with org_context(self.org):
+            permit.refresh_from_db()
+        self.assertEqual(permit.status, 'REQUESTED')
+        # The owner approves it, but only once every precaution is ticked
+        r = self.post('owner', act, {'action': 'approve', 'precautions': every[:-1], 'extra': ''}, follow=True,
+                      status=200)
+        self.assertIn('Tick every precaution once it is in place (1 not ticked)', text(r))
+        r = self.post('owner', act, {'action': 'approve', 'precautions': every, 'extra': ''}, follow=True, status=200)
+        self.assertIn('PTW-001 approved.', text(r))
+        with org_context(self.org):
+            permit.refresh_from_db()
+        self.assertEqual((permit.status, permit.approved_by, permit.ball_in_court_user),
+                         ('APPROVED', self.owner, self.pm))
+        self.assertNeeds('owner', set())
+        # Back with the PM, who asked for it: on their Needs me from the day it runs out until it is closed
+        runs_out = timezone.localdate(permit.expires_at)
+        self.assertNeeds('pm', {('permit', 'PTW-001')} if runs_out <= TODAY() else set())
+        self.assertIn('PTW-001: Hot works permit approved', text(self.get('pm', self.u('notifications'))))
+        page = text(self.get('pm', self.pu('permit_print', permit.pk)))
+        self.assertIn('PTW-001', page)
+        self.assertIn('Cut and weld steel bracket for the bar canopy', page)
+        # Closing hot works needs the area left safe and the fire watch done
+        self.post('pm', act, {'action': 'close', 'safe': 'on', 'note': ''})
+        with org_context(self.org):
+            permit.refresh_from_db()
+        self.assertEqual(permit.status, 'APPROVED')
+        self.post('pm', act, {'action': 'close', 'safe': 'on', 'fire_watch': 'on', 'note': 'Bracket fixed'})
+        with org_context(self.org):
+            permit.refresh_from_db()
+        self.assertEqual((permit.status, permit.closed_by, permit.fire_watch_minutes), ('CLOSED', self.pm, 60))
+        self.assertNeeds('pm', set())
+
+    # 14 ----------------------------------------------------------------
+
+    def phase14_fire_stopping(self):
+        from quality.models import Penetration
+        # The owner records a seal on the joiner's package; the photo of the finished seal marks it sealed
+        r = self.get('owner', self.pu('penetration_create'))
+        data = form_data(r, 'location')
+        data.update({'location': 'L0, bar store, east wall', 'element': 'WALL', 'fire_rating': '60', 'service': 'PIPE_PLASTIC',
+                     'size': '110 mm pipe', 'system': 'Intumescent pipe collar', 'detail_reference': 'IPC-110',
+                     'package': self.pkg_oak.pk, 'installer': 'Sid Oak', 'installed_on': '', 'notes': '',
+                     'before_photo': SimpleUploadedFile('before.png', png_bytes(), content_type='image/png'),
+                     'after_photo': SimpleUploadedFile('after.png', png_bytes(), content_type='image/png')})
+        r = self.post('owner', self.pu('penetration_create'), data, follow=True, status=200)
+        self.assertIn('FS-001 added and marked sealed, ready to inspect.', text(r))
+        with org_context(self.org):
+            self.seal = Penetration.objects.get(project=self.project)
+        self.assertEqual((self.seal.status, self.seal.installed_on, self.seal.ball_in_court_user),
+                         ('SEALED', TODAY(), self.pm))
+        # Waiting on the PM to inspect it, not on the owner who recorded it
+        self.assertNeeds('pm', {('firestopping', 'FS-001')})
+        self.assertNeeds('owner', set())
+        self.post('pm', self.pu('penetration_action', self.seal.pk), {'action': 'sign_off', 'note': 'Collar checked'})
+        with org_context(self.org):
+            self.seal.refresh_from_db()
+        self.assertEqual((self.seal.status, self.seal.inspected_by), ('SIGNED_OFF', self.pm))
+        self.assertNeeds('pm', set())
+        # The register's CSV, which the handover pack carries, has it signed off
+        rows = list(csv.reader(io.StringIO(
+            self.get('pm', self.pu('penetration_list') + '?export=csv').content.decode())))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], 'FS-001')
+        self.assertIn('Intumescent pipe collar', rows[1])
+        self.assertIn('Signed off', rows[1])
+
+    # 15 ----------------------------------------------------------------
+
+    def phase15_incident_and_visitor_sign_in(self):
+        from safety.models import Incident, SiteAttendance
+        # The owner reports a near miss on a phone; it goes to the job's PM to investigate
+        r = self.get('owner', self.pu('incident_report'))
+        data = form_data(r, 'description')
+        self.assertTrue(data['occurred_at'])  # defaults to now
+        data.update({'description': 'Board slid off the trolley by the goods lift. Nobody hurt.',
+                     'location': 'Goods lift lobby', 'anyone_hurt': 'False'})
+        r = self.post('owner', self.pu('incident_report'), data)
+        with org_context(self.org):
+            inc = Incident.objects.get(project=self.project)
+        self.assertEqual(r.url, inc.get_absolute_url())
+        self.assertIn(f'Thank you. {inc.ref} is recorded and the project manager has been told.',
+                      text(self.get('owner', r.url)))
+        self.assertEqual((inc.ref, inc.kind, inc.ball_in_court_user, inc.due_date),
+                         ('INC-001', 'NEAR_MISS', self.pm, TODAY() + timedelta(days=7)))
+        self.assertNeeds('pm', {('incident', 'INC-001')})
+        self.assertNeeds('owner', set())
+        for who in ('sub', 'client'):
+            self.get(who, self.pu('incident_list'), status=403)
+        # The PM investigates and gives the owner an action
+        self.post('pm', self.pu('incident_transition', inc.pk), {'transition': 'investigate'})
+        r = self.get('pm', self.pu('incident_action_add', inc.pk))
+        data = form_data(r, 'description')
+        data.update({'description': 'Buy a trolley with side rails', 'owner': self.owner.pk,
+                     'due_date': (TODAY() + timedelta(days=3)).isoformat()})
+        self.post('pm', self.pu('incident_action_add', inc.pk), data)
+        self.assertNeeds('owner', {('safety', 'INC-001')})
+        self.assertNeeds('pm', {('incident', 'INC-001')})
+        # Closing needs the findings written and no open actions
+        r = self.post('pm', self.pu('incident_transition', inc.pk), {'transition': 'close'}, follow=True, status=200)
+        self.assertIn('Write up the findings and lessons learned. Finish the open actions', text(r))
+        with org_context(self.org):
+            action = inc.actions.get()
+        self.post('owner', self.pu('incident_action_update', inc.pk, action.pk), {'do': 'done'})
+        self.assertNeeds('owner', set())
+        r = self.get('pm', self.pu('incident_edit', inc.pk))
+        data = form_data(r, 'findings')
+        data.update({'findings': 'Loose boards on a flat trolley. Use the railed trolley.', 'root_cause': 'Wrong trolley'})
+        self.post('pm', self.pu('incident_edit', inc.pk), data)
+        r = self.post('pm', self.pu('incident_transition', inc.pk), {'transition': 'close'}, follow=True, status=200)
+        self.assertIn('INC-001 closed.', text(r))
+        self.assertNeeds('pm', set())
+        self.assertIn('INC-001', text(self.get('owner', self.u('company_incidents'))))
+
+        # A visitor scans the QR poster: no account, just a name and company, and nothing else about the job
+        poster = text(self.get('pm', self.pu('safety_poster')))
+        signin = re.search(r'/sign-in/[\w-]+/', poster).group(0)
+        visitor = Client()
+        r = visitor.get(signin)
+        self.assertEqual(r.status_code, 200)
+        page = text(r)
+        self.assertIn('Leeds Bar Fit-out', page)
+        for private in ('Journey Fitout', 'Northern Taverns', 'Call Lane', 'Oak & Ash'):
+            self.assertNotIn(private, page)
+        r = visitor.post(signin, {'name': 'Vic Visitor', 'company': 'Building Control'}, follow=True)
+        self.assertIn('Signed in at', text(r))
+        page = text(self.get('pm', self.pu('safety_on_site')))
+        self.assertIn('Vic Visitor', page)
+        self.assertIn('Building Control', page)
+        # Only the visitor's own phone signs them out
+        Client().post(signin + 'out/')
+        with org_context(self.org):
+            self.assertIsNone(SiteAttendance.objects.get(project=self.project, name='Vic Visitor').signed_out_at)
+        visitor.post(signin + 'out/')
+        with org_context(self.org):
+            row = SiteAttendance.objects.get(project=self.project, name='Vic Visitor')
+        self.assertIsNotNone(row.signed_out_at)
+        self.assertEqual(row.kind, SiteAttendance.KIND_VISITOR)
+        self.assertNotIn('Vic Visitor', text(self.get('pm', self.pu('safety_on_site'))))
+        self.assertIn('Vic Visitor', text(self.get('pm', self.pu('safety_sign_in_log'))))
+        self.assertEqual(self.c['rival'].get(self.pu('safety_on_site')).status_code, 404)
+
+    # 16 ----------------------------------------------------------------
+
+    def _mspdi(self, joinery_finish_days):
+        """The job's programme as MS Project (or Asta) saves it as XML, with dates from this week."""
+        monday = TODAY() - timedelta(days=TODAY().weekday())
+
+        def at(d, h=8):
+            return f'{d.isoformat()}T{h:02d}:00:00'
+
+        def task(uid, name, start, finish, *, summary=0, milestone=0, after=None, done=0):
+            link = (f'<PredecessorLink><PredecessorUID>{after}</PredecessorUID><Type>1</Type></PredecessorLink>'
+                    if after else '')
+            return (f'<Task><UID>{uid}</UID><ID>{uid}</ID><Name>{name}</Name><OutlineLevel>{1 if summary else 2}'
+                    f'</OutlineLevel><Summary>{summary}</Summary><Milestone>{milestone}</Milestone>'
+                    f'<Start>{at(start)}</Start><Finish>{at(finish, 17)}</Finish>'
+                    f'<PercentComplete>{done}</PercentComplete>{link}</Task>')
+        end = monday + timedelta(days=60)
+        tasks = [
+            task(1, 'Leeds Bar Fit-out', monday, end, summary=1),
+            task(10, 'Bar joinery install', TODAY(), TODAY() + timedelta(days=joinery_finish_days)),
+            task(11, 'Suspended ceilings', TODAY() + timedelta(days=3), TODAY() + timedelta(days=8), after=10),
+            task(12, 'Decorations', monday + timedelta(days=21), monday + timedelta(days=25), after=11),
+            task(13, 'Practical completion', end, end, milestone=1, after=12),
+        ]
+        return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Project xmlns="http://schemas.microsoft.com/project"><Name>Leeds bar.xml</Name>'
+                f'<Tasks>{"".join(tasks)}</Tasks>'
+                '<Resources><Resource><UID>1</UID><Name>Oak &amp; Ash Joinery</Name></Resource>'
+                '<Resource><UID>2</UID><Name>Pennine Drylining</Name></Resource></Resources>'
+                '<Assignments><Assignment><UID>1</UID><TaskUID>10</TaskUID><ResourceUID>1</ResourceUID></Assignment>'
+                '<Assignment><UID>2</UID><TaskUID>11</TaskUID><ResourceUID>2</ResourceUID></Assignment>'
+                '</Assignments></Project>').encode()
+
+    def _import_programme(self, data):
+        from projects.models import ProgrammeImport
+        r = self.post('pm', self.pu('programme_import'),
+                      {'file': SimpleUploadedFile('Leeds bar.xml', data, content_type='text/xml')})
+        with org_context(self.org):
+            imp = ProgrammeImport.objects.filter(project=self.project).latest('pk')
+        self.assertEqual(r.url, self.pu('programme_import_preview', imp.pk))
+        return imp
+
+    def phase16_programme_import_and_look_ahead(self):
+        from projects.models import Activity
+        for who in ('sub', 'client'):
+            self.get(who, self.pu('programme_import'), status=403)
+        imp = self._import_programme(self._mspdi(5))
+        # Nothing changes until the PM confirms the preview
+        with org_context(self.org):
+            self.assertFalse(Activity.objects.filter(project=self.project).exists())
+        page = text(self.get('pm', self.pu('programme_import_preview', imp.pk)))
+        for name in ('Bar joinery install', 'Suspended ceilings', 'Decorations', 'Practical completion'):
+            self.assertIn(name, page)
+        r = self.post('pm', self.pu('programme_import_preview', imp.pk), {'action': 'apply'}, follow=True,
+                      status=200)
+        self.assertIn('Programme updated from Leeds bar.xml: 5 added, 0 changed, 0 removed.', text(r))
+        with org_context(self.org):
+            lines = {a.source_uid: a for a in Activity.objects.filter(project=self.project).select_related(
+                'subcontractor', 'after')}
+        self.assertEqual(set(lines), {1, 10, 11, 12, 13})
+        # The resource named like the appointed joiner sets the subcontractor; the other is just "who"
+        self.assertEqual((lines[10].subcontractor, lines[10].trade), (self.oak, self.joinery))
+        self.assertEqual((lines[11].subcontractor, lines[11].responsible), (None, 'Pennine Drylining'))
+        self.assertEqual(lines[12].after, lines[11])
+        # Re-importing the updated file moves the joinery by its MS Project ID: changed, not duplicated
+        imp = self._import_programme(self._mspdi(7))
+        r = self.post('pm', self.pu('programme_import_preview', imp.pk), {'action': 'apply'}, follow=True,
+                      status=200)
+        self.assertIn('Programme updated from Leeds bar.xml: 0 added, 1 changed, 0 removed.', text(r))
+        with org_context(self.org):
+            self.assertEqual(Activity.objects.filter(project=self.project).count(), 5)
+            self.assertEqual(Activity.objects.get(project=self.project, source_uid=10).finish,
+                             TODAY() + timedelta(days=7))
+
+        def lookahead(who, weeks):
+            r = self.get(who, self.pu('programme_lookahead') + f'?weeks={weeks}')
+            return [ln.activity.name for ln in r.context['rows']], r
+        # Two and three weeks from this Monday hold the joinery and the ceilings; four weeks add the decorations.
+        # The summary line and the completion milestone eight weeks out are never in it.
+        self.assertEqual(lookahead('pm', 2)[0], ['Bar joinery install', 'Suspended ceilings'])
+        self.assertEqual(lookahead('pm', 3)[0], ['Bar joinery install', 'Suspended ceilings'])
+        self.assertEqual(lookahead('pm', 4)[0], ['Bar joinery install', 'Suspended ceilings', 'Decorations'])
+        # Filtered to the joiner
+        r = self.get('pm', self.pu('programme_lookahead') + f'?weeks=4&sub={self.oak.pk}')
+        self.assertEqual([ln.activity.name for ln in r.context['rows']], ['Bar joinery install'])
+        csv_rows = list(csv.reader(io.StringIO(
+            self.get('pm', self.pu('programme_lookahead') + '?weeks=4&export=csv').content.decode())))
+        self.assertEqual([row[0] for row in csv_rows[1:]], ['Bar joinery install', 'Suspended ceilings', 'Decorations'])
+        # The joiner sees only their own line; the client sees every shared line but never the CSV
+        names, r = lookahead('sub', 4)
+        self.assertEqual(names, ['Bar joinery install'])
+        self.assertNotIn('Pennine Drylining', text(r))
+        self.assertEqual(lookahead('client', 4)[0], ['Bar joinery install', 'Suspended ceilings', 'Decorations'])
+        self.assertNotIn('text/csv', self.get('client', self.pu('programme_lookahead') + '?export=csv')
+                         .get('Content-Type', ''))
+
+    # 17 ----------------------------------------------------------------
+
+    def phase17_meeting_issued_and_actions_done(self):
+        from meetings.models import Meeting, MeetingAction
+        client_user = User.objects.get(email='cara@northerntaverns.test')
+        r = self.get('pm', self.pu('meeting_create'))
+        data = form_data(r, 'held_on')
+        self.assertEqual(data['held_on'], TODAY().isoformat())
+        data.update({'kind': 'PROGRESS', 'starts_at': '10:00', 'location': 'Site office',
+                     'attendees': [self.pm.pk, self.sub_user.pk, client_user.pk], 'others': ''})
+        r = self.post('pm', self.pu('meeting_create'), data)
+        with org_context(self.org):
+            meeting = Meeting.objects.get(project=self.project)
+            item = meeting.items.order_by('pk').first()
+        self.assertEqual(r.url, meeting.get_absolute_url())
+        self.assertEqual(meeting.ref, 'MTG-001')
+        self.assertNeeds('pm', {('meeting', 'MTG-001')})  # the chair, until the minutes are issued
+        # Minutes, then an action for the joiner and one for the PM
+        url = meeting.get_absolute_url()
+        self.post('pm', url, {'action': 'minutes', 'version': meeting.version, f'item-{item.pk}': 'All on programme.',
+                              'notes': ''})
+        due = TODAY() + timedelta(days=5)
+        for owner, title in ((self.sub_user, 'Send the revised bar front shop drawing'),
+                             (self.pm, 'Confirm the marble template date')):
+            self.post('pm', url, {'action': 'add_action', 'act-title': title, 'act-owner': owner.pk,
+                                  'act-owner_name': '', 'act-due_date': due.isoformat(), 'act-item': ''})
+        with org_context(self.org):
+            sub_action = MeetingAction.objects.get(meeting=meeting, owner=self.sub_user)
+            pm_action = MeetingAction.objects.get(meeting=meeting, owner=self.pm)
+        # Not on anyone's Needs me until the minutes are issued
+        self.assertNeeds('sub', set())
+        self.assertNeeds('pm', {('meeting', 'MTG-001')})
+        mail.outbox.clear()
+        r = self.post('pm', url, {'action': 'issue'}, follow=True, status=200)
+        self.assertIn('MTG-001 minutes issued. 2 people were emailed a link to them', text(r))
+        sent = sorted(m.to[0] for m in mail.outbox)
+        self.assertEqual(sent, ['cara@northerntaverns.test', 'sid@oakash.test'])
+        for m in mail.outbox:  # a link, never an attachment
+            self.assertFalse(m.attachments)
+            self.assertIn(f'/projects/{self.pk}/meetings/', m.body)
+        self.assertNeeds('pm', {('meetingaction', pm_action.ref)})
+        self.assertNeeds('sub', {('meeting_action', sub_action.ref)})
+        self.assertNeeds('client', {('transmittal', 'TR-001')})
+        # The client reads the issued minutes but has no actions; the joiner marks theirs done in the portal
+        self.assertIn('All on programme.', text(self.get('client', url)))
+        self.post('sub', self.pu('meeting_action_update', sub_action.pk), {'status': 'DONE', 'update': 'Sent rev 03'})
+        self.assertNeeds('sub', set())
+        self.post('pm', self.pu('meeting_action_update', pm_action.pk), {'status': 'DONE', 'update': ''})
+        self.assertNeeds('pm', set())
+        with org_context(self.org):
+            self.assertEqual(set(MeetingAction.objects.filter(meeting=meeting).values_list('status', flat=True)),
+                             {'DONE'})
+        # Done actions are not carried forward to the next meeting
+        r = self.post('pm', self.pu('meeting_create'), {**data, 'held_on': (TODAY() + timedelta(days=7)).isoformat()},
+                      follow=True, status=200)
+        self.assertIn('MTG-002 set up with the standard agenda.', text(r))
+        with org_context(self.org):
+            nxt = Meeting.objects.get(project=self.project, ref='MTG-002')
+            self.assertEqual(nxt.brought_forward.count(), 0)
+        self.post('pm', nxt.get_absolute_url(), {'action': 'cancel', 'note': 'Not needed this week'})
+        self.assertNeeds('pm', set())
+
+    # 18 ----------------------------------------------------------------
+
+    def phase18_practical_completion_defects_om_and_handover(self):
+        from closeout.models import HandoverPack, OMSection
+        from procurement.models import Submittal
+        from projects.models import Issue
+        client_user = User.objects.get(email='cara@northerntaverns.test')
+        # Practical completion on the whole works: the JCT IC defects period runs from it
+        r = self.get('pm', self.pu('closeout_section', 'whole'))
+        data = form_data(r, 'pc_date')
+        data.update({'pc_date': TODAY().isoformat(), 'made_good_on': ''})
+        r = self.post('pm', self.pu('closeout_section', 'whole'), data, follow=True, status=200)
+        page = text(r)
+        # JCT IC's rectification period is 6 months unless the contract says otherwise (advisory)
+        from closeout.rules import add_months
+        self.assertIn(f'The defects period ends on {add_months(TODAY(), 6):%d %b %Y}.', page)
+        self.assertIn('advisory', page.lower())
+
+        # The client reports a defect in the portal: it goes to the PM to give to someone
+        r = self.get('client', self.pu('closeout_client'))
+        data = form_data(r, 'title')
+        data.update({'title': 'WC 2 door does not close', 'location': 'Ground floor WC 2', 'description': ''})
+        r = self.post('client', self.pu('closeout_client'), data)
+        with org_context(self.org):
+            defect = Issue.objects.get(project=self.project, issue_type='DEFECT')
+        self.assertIn(f'Thank you. {defect.reference} has been sent to Journey Fitout.',
+                      text(self.get('client', r.url)))
+        self.assertEqual(defect.created_by, client_user)
+        self.assertNeeds('pm', {('defect_assign', defect.reference)})
+        # The PM gives it to the joiner; they fix it; the PM checks it
+        r = self.get('pm', self.pu('issue_edit', defect.pk))
+        data = form_data(r, 'title')
+        data.update({'assignee': self.sub_user.pk, 'due_date': (TODAY() + timedelta(days=5)).isoformat()})
+        self.post('pm', self.pu('issue_edit', defect.pk), data)
+        self.assertNeeds('pm', set())
+        self.assertNeeds('sub', {('snag', defect.reference)})
+        page = text(self.get('client', self.pu('closeout_client')))
+        self.assertIn('WC 2 door does not close', page)
+        self.assertIn('Being fixed', page)
+        self.post('sub', self.pu('issue_detail', defect.pk), {'action': 'ready'})
+        self.assertNeeds('pm', {('snag_inspect', defect.reference)})
+        self.post('pm', self.pu('issue_detail', defect.pk), {'action': 'close'})
+        self.assertNeeds('pm', set())
+        self.assertIn('Fixed and checked', text(self.get('client', self.pu('closeout_client'))))
+
+        # O&M manual: sections from the company template; the joinery section asked of the joiner
+        self.post('pm', self.pu('closeout_om'), {'action': 'setup'})
+        with org_context(self.org):
+            sections = list(OMSection.objects.filter(project=self.project).order_by('order'))
+            joinery = next(s for s in sections if 'joinery' in s.title.lower())
+            others = [s for s in sections if s.pk != joinery.pk]
+        for s in others:  # not on this job
+            self.post('pm', self.pu('closeout_om_section', s.pk), {'title': s.title, 'package': '',
+                                                                  'contents': s.contents, 'not_needed': 'on'})
+        self.post('pm', self.pu('closeout_om_section', joinery.pk), {'title': joinery.title, 'package': self.pkg_oak.pk,
+                                                                    'contents': joinery.contents})
+        r = self.get('pm', self.pu('closeout_om_request', joinery.pk))
+        data = form_data(r, 'due_date')
+        self.post('pm', self.pu('closeout_om_request', joinery.pk), {**data, 'note': 'Care of the oak veneer'})
+        with org_context(self.org):
+            om_sub = Submittal.objects.get(project=self.project, kind=Submittal.OM)
+        self.assertNeeds('sub', {('submittal', om_sub.ref)})
+        self.post('sub', om_sub.get_absolute_url(), {
+            'action': 'submit', 'note': 'Joinery O&M',
+            'files': SimpleUploadedFile('joinery-om.pdf', pdf_bytes(3), content_type='application/pdf')})
+        self.assertNeeds('sub', set())
+        self.assertNeeds('pm', {('submittal', om_sub.ref)})
+        self.post('pm', om_sub.get_absolute_url(), {'action': 'review', 'code': 'A', 'comments': ''})
+        self.assertNeeds('pm', set())
+        r = self.post('pm', self.pu('closeout_om'), {'action': 'compile'}, follow=True, status=200)
+        self.assertIn('O&M manual version 1 is ready to download.', text(r))
+        comp = r.context['compilations'][0]
+        self.post('pm', self.pu('closeout_om'), {'action': 'share', 'compilation': comp.pk})
+        self.assertEqual(self.get('client', self.pu('closeout_om_download', comp.pk)).status_code, 200)
+        self.get('sub', self.pu('closeout_om_download', comp.pk), status=403)
+
+        # The golden thread handover pack: the drawing at its current revision, the fire-stopping register and
+        # the O&M, each with its checksum
+        r = self.post('pm', self.pu('closeout_packs'), {'note': 'Handover at practical completion'}, follow=True,
+                      status=200)
+        with org_context(self.org):
+            pack = HandoverPack.objects.get(project=self.project)
+            items = list(pack.items.order_by('pk'))
+        self.assertIn(f'{pack} built: check it, then issue it to the client.', text(r))
+        self.assertEqual(pack.status, HandoverPack.READY)
+        self.assertEqual({(i.category, i.reference) for i in items if i.category != 'OM'},
+                         {('DRAWING', 'LBF-JFO-ZZ-00-DR-A-1001'), ('FIRE_STOPPING', '')})
+        self.assertTrue(all(len(i.sha256) == 64 for i in items))
+        register = next(i for i in items if i.category == 'FIRE_STOPPING')
+        self.assertEqual(register.title, 'Fire-stopping register (1 rows)')
+        self.get('client', pack.get_absolute_url(), status=403)  # not until it is issued
+        self.post('pm', pack.get_absolute_url(), {'action': 'issue'})
+        page = text(self.get('client', self.pu('closeout_client')))
+        self.assertIn('Fire-stopping register (1 rows)', page)
+        r = self.c['client'].get(self.pu('closeout_pack_item', pack.pk, register.pk))
+        self.assertEqual(r.status_code, 200)
+        body = b''.join(r.streaming_content) if r.streaming else r.content
+        self.assertEqual(hashlib.sha256(body).hexdigest(), register.sha256)
+        rows = list(csv.reader(io.StringIO(body.decode('utf-8-sig'))))
+        self.assertEqual([row[0] for row in rows[1:]], ['FS-001'])
+        self.assertIn('Signed off', rows[1])
+        # The client acknowledges the drawing issue as they take the handover
+        from documents.models import Transmittal
+        with org_context(self.org):
+            tr = Transmittal.objects.get(project=self.project)
+        self.post('client', self.pu('transmittal_detail', tr.pk), {'action': 'acknowledge'})
+        self.assertNeeds('client', set())
+
+    # 19 ----------------------------------------------------------------
+
+    def phase19_daywork_to_the_change_register(self):
+        from changes.models import ChangeEvent
+        from cvr.models import DayworkSheet
+        self.get('sub', self.pu('daywork_list'), status=403)
+        self.get('client', self.pu('daywork_list'), status=403)
+        # The contract's daywork rates and percentage additions (Commercial > Dayworks > Rates)
+        rates = self.pu('daywork_rates')
+        self.post('pm', rates, {'action': 'add_rate', 'rate-kind': 'LABOUR', 'rate-name': 'Joiner', 'rate-unit': 'hour',
+                                'rate-rate': '42.50'})
+        self.post('pm', rates, {'action': 'terms', 'terms-labour_pct': '80', 'terms-materials_pct': '15',
+                                'terms-plant_pct': '10', 'terms-basis': 'Contract Particulars'})
+        # On a phone: only what the work was; the date is today
+        r = self.post('pm', self.pu('daywork_create'), {'title': 'Make good bar back after marble template',
+                                                        'work_date': TODAY().isoformat()})
+        with org_context(self.org):
+            sheet = DayworkSheet.objects.get(project=self.project)
+            joiner = self.project.daywork_rates.get(name='Joiner')
+        self.assertEqual((r.url, sheet.reference), (sheet.get_absolute_url(), 'DW-001'))
+        for line in ({'line-kind': 'LABOUR', 'line-rate': joiner.pk, 'line-quantity': '8'},
+                     {'line-kind': 'MATERIALS', 'line-description': 'Oak lipping', 'line-quantity': '2',
+                      'line-unit': 'lengths', 'line-unit_rate': '18.50'},
+                     {'line-kind': 'PLANT', 'line-description': 'Tower scaffold', 'line-quantity': '1',
+                      'line-unit_rate': '45.00'}):
+            self.post('pm', sheet.get_absolute_url(), {'action': 'add_line', **line})
+        # 8 h at 42.50 = 340.00 + 80% = 612.00; 2 x 18.50 = 37.00 + 15% = 42.55; 45.00 + 10% = 49.50: 704.05
+        page = text(self.get('pm', sheet.get_absolute_url()))
+        self.assertIn('£704.05', page)
+        # The client's representative signs on the PM's phone
+        r = self.post('pm', self.pu('daywork_sign', sheet.pk), {
+            'name': 'Cara Client', 'role': 'CLIENT', 'confirm': 'on',
+            'signature': SimpleUploadedFile('signature.png', signature_png(), content_type='image/png')})
+        self.assertEqual(r.url, sheet.get_absolute_url())
+        self.assertNeeds('pm', {('daywork', 'DW-001')})  # signed: to go on the change register within a week
+        # One step onto the change register: a new change event priced from the sheet
+        r = self.post('pm', sheet.get_absolute_url(), {'action': 'send', 'send-change_event': ''})
+        with org_context(self.org):
+            ce = ChangeEvent.objects.get(project=self.project, number=2)
+            sheet.refresh_from_db()
+            ce_lines = {(ln.kind, ln.amount) for ln in ce.lines.all()}
+        self.assertEqual(r.url, ce.get_absolute_url())
+        self.assertEqual((ce.reference, sheet.status, sheet.change_event_id), ('CE-002', 'IN_CHANGE', ce.pk))
+        self.assertEqual(ce_lines, {('REVENUE', Decimal('704.05')), ('COST', Decimal('422.00'))})
+        self.assertIn('Signed on the day by Cara Client', ce.description)
+        self.assertNeeds('pm', {('change', 'CE-002')})
+        # It becomes the client's variation VO-002, which they approve at the daywork value
+        r = self.post('pm', ce.get_absolute_url(), {'action': 'raise_variation'})
+        vo_url = r.url
+        self.post('pm', vo_url, {'action': 'submit'})
+        self.assertIn(('client_variation', 'VO-002'), self.needs('client')[1])
+        data = form_data(self.get('client', vo_url), 'decision')
+        data.update({'decision': 'APPROVED', 'approved_value': '704.05', 'client_reference': 'PO-7790',
+                     'decision_notes': 'Dayworks as signed.'})
+        self.post('client', vo_url, data)
+        for step in ('notify', 'quote', 'agree', 'implement'):
+            self.post('pm', ce.get_absolute_url(), {'action': step})
+        self.assertNeeds('pm', set())
+        self.assertNeeds('client', set())
+        # The forecast final account: 250,000 + 6,000 (VO-001) + 704.05 (VO-002)
+        self.assertIn('Forecast final account £256,704', text(self.get('pm', self.pu('contract_detail'))))
+
+    # 20 ----------------------------------------------------------------
+
+    def phase20_month_end_cvr_signed_off_and_cashflow(self):
+        """The month ends: the CVR started in phase 11 is finished, signed off, and agrees with the cashflow."""
+        from cvr.models import CVRPeriod
+        month = TODAY().replace(day=1)
+        self.next_month = (month + timedelta(days=32)).replace(day=1)
+        # Before the month ends the CVR can't go for sign-off
+        with org_context(self.org):
+            period = CVRPeriod.objects.get(project=self.project)
+        url = self.pu('cvr_period', period.pk)
+        r = self.post('pm', url, {'action': 'submit'}, follow=True, status=200)
+        self.assertIn('has not ended yet', text(r))
+        self.travel_to(self.next_month)
+        valuation = self.next_month.replace(day=min(self.valuation_day, 28))
+        expect_pm = {('cvr', 'CVR-001')}  # Prepare the CVR for last month
+        if valuation <= TODAY() + timedelta(days=7):
+            expect_pm.add(('payment', f'Application for payment for {valuation.day} {valuation:%b %Y}'))
+        self.assertNeeds('pm', expect_pm)
+        self.assertNeeds('owner', set())
+        data = form_data(self.get('sub', self.pu('subpay_apply', self.pkg_oak.pk)), 'gross_to_date')
+        sub_valuation = date.fromisoformat(data['valuation_date'])
+        expect_sub = {('subpayment', 'Apply for payment: Joinery')} if sub_valuation <= TODAY() + timedelta(days=7) \
+            else set()
+        self.assertNeeds('sub', expect_sub)
+        self.month_end_needs = {'pm': expect_pm - {('cvr', 'CVR-001')}, 'sub': expect_sub}
+        # The PM submits it: its figures are frozen as they stand at the month end
+        self.post('pm', url, {'action': 'submit'})
+        expect_pm.discard(('cvr', 'CVR-001'))
+        self.assertNeeds('pm', expect_pm)
+        self.assertNeeds('owner', {('cvr', 'CVR-001')})  # owners and admins sign off
+        self.post('pm', url, {'action': 'sign_off'}, status=403)
+        r = self.post('owner', url, {'action': 'sign_off'}, follow=True, status=200)
+        with org_context(self.org):
+            period.refresh_from_db()
+        self.assertEqual((period.status, period.signed_off_by), ('SIGNED_OFF', self.owner))
+        self.assertNeeds('owner', set())
+        # Signed off at the month's figures: value 66,000 (AP-001), cost 19,000 (the ledger), margin 47,000;
+        # forecast final account 256,704.05 and final cost 225,000 (the cost report)
+        r = self.get('pm', self.pu('cvr_list'))
+        page = text(r)
+        self.assertIn(f'{month:%B %Y} CVR-001 Signed off by Olive Owner £66,000 £19,000 £47,000 71.2% £256,704 '
+                      '£225,000 £31,704 12.4%', page)
+        report = self.get('pm', self.pu('cost_report')).context['data']
+        self.assertEqual((report['final_account'], report['final_cost']), (Decimal('256704.05'), Decimal('225000.00')))
+        # The figures were frozen when it was submitted, and the page shows the same
+        self.assertEqual((period.value_to_date, period.cost_to_date, period.contract_sum, period.approved_variations),
+                         (Decimal('66000.00'), Decimal('19000.00'), Decimal('250000.00'), Decimal('6704.05')))
+        f = self.get('pm', url).context['f']
+        self.assertEqual((f.value, f.cost, f.margin), (Decimal('66000.00'), Decimal('19000.00'), Decimal('47000.00')))
+        self.assertEqual((f.final_account, f.final_cost), (report['final_account'], report['final_cost']))
+        # A signed-off month is locked: no more adjustments
+        r = self.post('pm', url, {'action': 'adjust', 'adj-kind': 'ACCRUAL', 'adj-amount': '100.00',
+                                  'adj-reason': 'Late invoice'}, follow=True, status=200)
+        with org_context(self.org):
+            self.assertFalse(period.adjustments.exists())
+        # The cashflow ties out: everything in adds up to the forecast final account and everything out to the
+        # forecast final cost, received and spent to date as recorded
+        data = self.get('pm', self.pu('cvr_cashflow')).context['data']
+        t = data['totals']
+        self.assertEqual((t['in_actual'], t['out_actual']), (Decimal('62700.00'), Decimal('19000.00')))
+        self.assertEqual(t['in'], Decimal('256704.05'))
+        self.assertEqual(t['in'], data['final_account'])
+        self.assertEqual(t['out'], Decimal('225000.00'))
+        self.assertEqual(t['out'], data['final_cost'])
+        self.assertEqual(t['net'], Decimal('31704.05'))
+        for who in ('sub', 'client', 'est'):
+            self.assertIn(self.c[who].get(self.pu('cvr_cashflow')).status_code, (403, 404))
