@@ -13,6 +13,7 @@ from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from security.testing import hold_rate_limit_clock
 from tenancy import scale
 from tenancy.context import close_request_memo, open_request_memo, org_context
 from tenancy.models import Membership
@@ -27,6 +28,12 @@ PAGE_CEILING = 50
 
 
 class QueryCountsDontGrowTests(TestCase):
+    def setUp(self):
+        # The search and export pages count each request against a rate limit, and the first request of a new
+        # window takes extra queries (start the counter, clear finished ones). Held in one window, the small and
+        # big company's pages are measured alike however slowly the suite runs.
+        hold_rate_limit_clock(self)
+
     @classmethod
     def setUpTestData(cls):
         cls.small = scale.build('Small Fitout', jobs=SMALL, staff=6, subs=40, email_domain='small.test', **VOLUMES)
