@@ -70,9 +70,10 @@ class QueryCountsDontGrowTests(TestCase):
             # Quality (quality/): the three registers and the busiest record pages
             ('pm', u('inspection_list', pk) + '?status=all'), ('pm', u('permit_list', pk) + '?status=all'),
             ('pm', u('penetration_list', pk)), *self._quality_pages(built, job, u),
-            # Company reports and Settings > API (reports/, api/). The cash position report is left out: it runs each
-            # live job's own cashflow forecast, so it grows with the number of live jobs (see reports/data.py)
-            ('owner', u('reports_home')), ('owner', u('report_margin')), ('owner', u('report_overdue')),
+            # Company reports and Settings > API (reports/, api/). The cash position reads every live job's cashflow
+            # at once (cvr.cashflow.build_many)
+            ('owner', u('reports_home')), ('owner', u('report_margin')), ('owner', u('report_cash')),
+            ('owner', u('report_overdue')),
             ('owner', u('report_safety')), ('owner', u('report_subcontractors')), ('owner', u('api_settings')),
             ('owner', u('api_docs')),
             # Global search (help/search.py): common letters, so every source finds something

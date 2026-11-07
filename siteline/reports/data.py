@@ -7,7 +7,7 @@ page (reports/tests/test_reconcile.py holds them to it):
                      CVR's fixed figures, otherwise live ones from payments, the cost ledger and the
                      contract. Live jobs (won, or live on site), not archived.
   cash_position      cvr.cashflow.build for each live job, this month and the next two, as the job's
-                     Cashflow page shows them.
+                     Cashflow page shows them (build_many: every job's rows read at once).
   overdue            open RFIs past their response date; NEC change event clocks that have run out
                      (changes.clocks, advisory); our payment notices to subcontractors past their date
                      and client payments past their final date (payments and subpayments, advisory);
@@ -90,8 +90,9 @@ def cash_position(today, projects=None):
     months = [rules.add_months(first, i) for i in range(CASH_MONTHS)]
     rows = []
     totals = [{'month': m, 'in': ZERO, 'out': ZERO, 'net': ZERO} for m in months]
+    built = cashflow.build_many(projects, today)  # the same as build() per job, in a fixed number of queries
     for p in projects:
-        data = cashflow.build(p, today)
+        data = built[p.pk]
         by_month = {m.month: m for m in data['months']}
         cells = []
         for i, m in enumerate(months):
