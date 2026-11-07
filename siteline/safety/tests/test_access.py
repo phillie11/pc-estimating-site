@@ -66,7 +66,7 @@ class EveryPageEveryRoleTests(SafetyTestBase):
         for name in self.STAFF_ON_JOB:
             self.login(getattr(self, name))
             r = self.client.get(self.u('project_detail', self.pa.pk))
-            self.assertContains(r, self.u('safety_home', self.pa.pk))
+            self.assertIn('safety', [t[0] for t in r.context['tabs']])  # grouped tabs: it sits one tap down, so check it is offered, not that its link is on this page
         for user in (self.stan, self.carla, self.sid, self.connie):
             self.login(user)
             r = self.client.get(self.u('project_detail', self.pa.pk))

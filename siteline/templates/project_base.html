@@ -22,7 +22,7 @@
     <div class="pmenu right" role="menu">{% for code, label, url, n in tab_more %}<a role="menuitem" href="{{ url }}" class="{% if code == tab %}on{% endif %}">{{ label }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</div>
   </details>{% endif %}
 </div>
-{% if subtabs %}<nav class="subtabs" aria-label="In this section">{% for code, label, url, n in subtabs %}<a href="{{ url }}" class="chip{% if code == tab %} on{% endif %}"{% if code == tab %} aria-current="page"{% endif %}>{{ label }}{% if n %} <span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>{% endif %}
+{% if subtabs %}<nav class="subtabs{% if subtabs_grouped %} sections{% endif %}" aria-label="In this section">{% for code, label, url, n in subtabs %}<a href="{{ url }}" class="chip{% if code == tab %} on{% endif %}"{% if code == tab %} aria-current="page"{% endif %}>{{ label }}{% if n %} <span class="n">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>{% endif %}
 {% if not is_internal and tab == 'overview' and last_visit %}
 <div class="card changed">
   <div class="card-head"><h2>What's changed since your last visit</h2><span class="small dim">{{ last_visit|date:"D j M, H:i" }}</span></div>
