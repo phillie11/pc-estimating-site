@@ -13,6 +13,7 @@ anything they couldn't already open:
   variations     every client variation on those          shared ones, only where they are the client or
                                                           a consultant (as variations.views._visible)
   drawings       every document on those projects          documents.access.visible_documents per project
+                 (words inside PDFs: every revision)      (words inside PDFs: only revisions they may see)
   subcontractors the supply chain (archived: admins)      never
   people         everyone in the workspace (Team page)    who's who on their projects (no tendering subs)
 
@@ -106,11 +107,18 @@ def variations(request, q, limit):
 
 
 def documents(request, q, limit):
-    from documents.access import visible_documents
-    from projects.models import Document
+    """
+    By number and title, and by the words inside PDF revisions (documents/textindex.py) from three
+    characters on. The words only ever come from revisions this person may see, so a match in work in
+    progress or a revision never issued to them finds nothing.
+    """
+    from documents import textindex
+    from documents.access import visible_documents, visible_revisions
+    from projects.models import Document, DocumentRevision
     cond = Q(title__icontains=q) | Q(reference__icontains=q)
     if is_internal(request):
         qs = Document.objects.filter(project__in=_open_projects(request).values('pk'))
+        revs = DocumentRevision.objects.filter(document__project__in=_open_projects(request).values('pk'))
     else:
         # documents.access decides per project, from the person's role there; build one query across them
         members = list(ProjectMember.objects.filter(user=request.user, project__in=_open_projects(request).values('pk'))
@@ -118,17 +126,35 @@ def documents(request, q, limit):
         if not members:
             return []
         saved = getattr(request, 'project_member', None)
-        qs = None
+        qs = revs = None
         try:
             for m in members:
                 request.project_member = m
-                part = visible_documents(request, m.project)
+                part, rpart = visible_documents(request, m.project), visible_revisions(request, m.project)
                 qs = part if qs is None else qs | part
+                revs = rpart if revs is None else revs | rpart
         finally:
             request.project_member = saved
-    rows = qs.filter(cond).select_related('project').order_by('-updated_at')[:limit]
+    inside = textindex.matching_revisions(revs, q)
+    if len(q) >= textindex.MIN_QUERY:
+        cond |= Q(pk__in=inside.values('revision__document_id'))
+    rows = list(qs.filter(cond).select_related('project').order_by('-updated_at')[:limit])
+    # A line from the file for documents found by their words (one more query, however many hits)
+    found = {}
+    if rows and len(q) >= textindex.MIN_QUERY:
+        plain = q.lower()
+        for doc_id, text in inside.filter(revision__document__in=[d.pk for d in rows]) \
+                .order_by('-revision__is_current', '-revision__uploaded_at').values_list('revision__document_id', 'text'):
+            if doc_id not in found:
+                found[doc_id] = textindex.snippet(text, q)
+        found = {k: v for k, v in found.items() if v}
+        for d in rows:  # a number or title match needs no quote from the file
+            if plain in d.title.lower() or plain in (d.reference or '').lower():
+                found.pop(d.pk, None)
     return [Hit(d.title, reverse('document_detail', args=[request.org.slug, d.project_id, d.pk]), d.reference,
-                f'{d.project.name} · {d.get_category_display()}') for d in rows]
+                ' · '.join(x for x in (d.project.name, d.get_category_display(),
+                                       f'Found in the file: {found[d.pk]}' if d.pk in found else '') if x))
+            for d in rows]
 
 
 def subcontractors(request, q, limit):

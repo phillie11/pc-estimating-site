@@ -1,5 +1,5 @@
 {% extends "project_base.html" %}{% load ui viewer_tags %}
-{% block project_actions %}{% if current|viewable:is_internal %}<a class="btn primary" href="{% url 'drawing_viewer' org.slug project.pk doc.pk current.pk %}">View drawing</a>{% endif %}{% if is_internal %}
+{% block project_actions %}{% if can_compare %}<a class="btn" href="{% url 'drawing_compare' org.slug project.pk doc.pk %}">Compare revisions</a>{% endif %}{% if current|viewable:is_internal %}<a class="btn primary" href="{% url 'drawing_viewer' org.slug project.pk doc.pk current.pk %}">View drawing</a>{% endif %}{% if is_internal %}
   {% if current %}<a class="btn" href="{% url 'transmittal_create' org.slug project.pk %}?rev={{ current.pk }}">Add to a transmittal</a>{% endif %}
   <form method="post">{% csrf_token %}<input type="hidden" name="action" value="visibility"><button class="btn">{% if doc.visibility == 'SHARED' %}Make internal only{% else %}Share with collaborators{% endif %}</button></form>
   <form method="post" data-confirm="Delete this document and every revision? This can't be undone.">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn danger">Delete</button></form>{% endif %}{% endblock %}
@@ -28,6 +28,7 @@
       </td></tr>
     {% empty %}<tr><td colspan="6"><div class="empty left">No revisions you can see yet.</div></td></tr>{% endfor %}
     </tbody></table></div>
+    {% if text_note %}<p class="small doc-search-note card-body" data-text-note>{% badge 'Search' text_tone %} {{ text_note }}</p>{% endif %}
     {% if is_internal and current and not current.is_withdrawn %}<div class="card-body" style="border-top:1px solid var(--line)">
       <form method="post" class="row">{% csrf_token %}<input type="hidden" name="action" value="issue"><input type="hidden" name="revision" value="{{ current.pk }}">
         <label class="small" for="purpose">Issue rev {{ current.revision }} to usual recipients ({{ usual }})</label>

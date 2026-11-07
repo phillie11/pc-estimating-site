@@ -3,6 +3,8 @@ Background work for document control. Each task runs inside its job's organisati
 safe to run twice.
 
 - documents.transmittal_sheet: the PDF record of an issued transmittal.
+- documents.extract_text: the words in a PDF revision, for search (documents/textindex.py). Waits
+  for the virus check the same way.
 - documents.file_facts: sha256 and page count for a stored revision or bulk-upload row.
   The file is only read once GuardDuty has cleared it (the bucket refuses to serve it
   before then), so until then the task re-queues itself a minute later, for up to two hours.
@@ -59,3 +61,16 @@ def file_facts(payload):
     model.objects.filter(pk=obj.pk).update(**fields)
     if model is UploadRow and obj.committed_revision_id:
         DocumentRevision.objects.filter(pk=obj.committed_revision_id, sha256='').update(sha256=sha, page_count=pages)
+
+
+@jobs.task(name='documents.extract_text', max_attempts=2)
+def extract_text(payload):
+    from . import textindex
+    from .models import RevisionText
+    rev = DocumentRevision.objects.filter(pk=payload['revision_id']).first()
+    if rev is None or not textindex.available() or RevisionText.objects.filter(revision=rev).exists():
+        return  # gone, no reader, or already read: a second run changes nothing
+    if textindex.read(rev) is None:
+        tries = payload.get('tries', 0) + 1
+        if tries <= textindex.SCAN_WAIT_TRIES:
+            textindex.enqueue(rev, tries=tries, later=True, key=payload.get('key', 'upload'))
