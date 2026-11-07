@@ -17,6 +17,7 @@ from . import chart, data
 
 ADVISORY = 'Advisory: check your contract.'
 SAFETY_ADVISORY = 'Advisory: check with your safety adviser.'
+EARLIEST_MONTH = date(1900, 1, 1)
 
 
 def _month(value, today):
@@ -24,7 +25,8 @@ def _month(value, today):
     this = rules.month_start(today)
     try:
         y, m = (int(x) for x in (value or '').split('-'))
-        return min(date(y, m, 1), this)
+        # Not before 1900: the report compares with the month before, and there is none before year 1
+        return max(min(date(y, m, 1), this), EARLIEST_MONTH)
     except ValueError:
         return this
 
