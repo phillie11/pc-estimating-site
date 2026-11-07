@@ -3,7 +3,6 @@ Inspections through the views: the library, starting one, answering checks with 
 raising a snag in one tap, finishing, reopening and cancelling, numbering, the index and the audit trail.
 """
 from django.core import mail
-from django.test import override_settings
 
 from core.models import AuditEntry, RecordIndex
 from projects.models import Issue, ProjectMember
@@ -12,10 +11,9 @@ from tenancy.context import org_context
 from .. import rules
 from ..library import DEFAULT_TEMPLATES, ensure_library
 from ..models import ChecklistTemplate, Inspection, InspectionItem, QualityPhoto, QualitySettings, TemplateItem
-from .base import MEDIA, QualityTestBase, jpeg, tearDownModule  # noqa: F401
+from .base import QualityTestBase, jpeg
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class LibraryTests(QualityTestBase):
     def test_library_is_seeded_once_per_company(self):
         with org_context(self.org_a):
@@ -76,7 +74,6 @@ class LibraryTests(QualityTestBase):
         self.assertEqual((s.permit_hours, s.expiry_warning_hours, s.fire_watch_minutes), (10, 3, 120))
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class InspectionFlowTests(QualityTestBase):
     def test_empty_list_says_what_goes_here(self):
         self.login(self.pat)
@@ -262,7 +259,6 @@ class InspectionFlowTests(QualityTestBase):
         self.assertContains(r, 'value="PASS"')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class InspectionRecordTests(QualityTestBase):
     def test_numbering_is_per_project(self):
         a, _ = self.inspection()

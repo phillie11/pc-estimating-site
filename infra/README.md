@@ -19,7 +19,7 @@ Internet ──HTTPS──> Load balancer (ALB) ──> web: 2 x gunicorn contai
                          │                                  ├──> S3: your existing files bucket (no keys: the containers' own role)
                          │                                  ├──> SES: outgoing email
                          │                                  └──> Stripe
- Scheduled: send_reminders 06:00 UTC daily, check_file_scans hourly (EventBridge Scheduler -> one-off containers)
+ Scheduled: send_reminders 06:00 UTC daily, purge_signins 03:10 UTC daily, check_file_scans hourly (EventBridge Scheduler -> one-off containers)
  Worker: 1 x run_worker container (once switched on) sends queued emails from the database, with retries;
          until then an hourly scheduled run_worker --burst retries failed emails
 ```

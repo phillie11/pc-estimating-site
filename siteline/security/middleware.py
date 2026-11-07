@@ -210,6 +210,9 @@ STEP_UP = {
     'project_archive': _post,
     'project_delete': _post,
     'sub_archive': _post,
+    # Company API tokens (api/views.py): making one and revoking one
+    'api_settings': _post,
+    'api_token_revoke': _post,
     # Your own two-factor settings
     'two_factor_disable': _post,
     'two_factor_regenerate': _post,

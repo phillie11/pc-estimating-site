@@ -31,14 +31,36 @@
     </span>
     <span class="dv-group">
       {% if can_pin %}<button type="button" class="btn" data-act="pin" aria-pressed="false">Add pin</button>{% endif %}
+      {% if can_draw %}<button type="button" class="btn" data-act="markup" aria-pressed="false" aria-controls="dv-tools">Mark up</button>{% endif %}
+      {% if compare %}<a class="btn" href="{% url 'drawing_compare' org.slug project.pk doc.pk %}?b={{ rev.pk }}">Compare revisions</a>{% endif %}
       <a class="btn" href="{{ download_url }}">{% icon 'download' %} Download</a>
     </span>
   </div>
+  {% if can_draw %}<div class="dv-tools" id="dv-tools" data-tools role="toolbar" aria-label="Mark-up tools" hidden>
+    <span class="dv-group dv-toolset">
+      <button type="button" class="btn" data-tool="pen" aria-pressed="true">Pen</button>
+      <button type="button" class="btn" data-tool="line" aria-pressed="false">Line</button>
+      <button type="button" class="btn" data-tool="arrow" aria-pressed="false">Arrow</button>
+      <button type="button" class="btn" data-tool="rect" aria-pressed="false">Box</button>
+      <button type="button" class="btn" data-tool="cloud" aria-pressed="false">Cloud</button>
+      <button type="button" class="btn" data-tool="text" aria-pressed="false">Note</button>
+      <button type="button" class="btn" data-tool="measure" aria-pressed="false">Measure</button>
+      <button type="button" class="btn" data-tool="erase" aria-pressed="false">Rub out</button>
+    </span>
+    <span class="dv-group">
+      <label class="dv-colour"><span>Colour</span> <select data-colour>
+        <option value="red">Red</option><option value="blue">Blue</option><option value="green">Green</option>
+        <option value="orange">Orange</option><option value="purple">Purple</option><option value="black">Black</option></select></label>
+      <button type="button" class="btn" data-act="undo">Undo</button>
+      <button type="button" class="btn primary" data-act="markup-done">Done</button>
+      <span class="dv-save small" data-save-state role="status" aria-live="polite"></span>
+    </span>
+  </div>{% endif %}
   <div class="dv-port" data-port tabindex="0" aria-label="Drawing, page by page. Use + and − to zoom.">
-    <div class="dv-stage" data-stage><canvas data-canvas></canvas><div class="dv-pins" data-pins></div></div>
+    <div class="dv-stage" data-stage><canvas data-canvas></canvas><canvas class="dv-ink" data-ink aria-hidden="true"></canvas><div class="dv-pins" data-pins></div></div>
     <div class="dv-status" data-status role="status">Loading the drawing…</div>
   </div>
-  <p class="dv-hint small dim">{% if can_pin %}<span data-hint-place>Tap and hold a spot on the drawing (or choose <strong>Add pin</strong>, then tap) to pin a snag or RFI there. </span>{% elif rev.is_withdrawn %}Nothing can be pinned to a withdrawn revision. {% endif %}Pinch or use + and − to zoom; drag to move around.</p>
+  <p class="dv-hint small dim">{% if can_pin %}<span data-hint-place>Tap and hold a spot on the drawing (or choose <strong>Add pin</strong>, then tap) to pin a snag or RFI there. </span>{% elif rev.is_withdrawn %}Nothing can be pinned to a withdrawn revision. {% endif %}{% if can_draw %}<strong>Mark up</strong> draws on your own layer, which saves itself. {% endif %}Pinch or use + and − to zoom; drag to move around.</p>
 </div>
 
 <div class="card dv-list">
@@ -52,6 +74,39 @@
   </li>{% endfor %}</ul>
   {% else %}<div class="empty left">{% if internal %}No snags or RFIs are pinned to this drawing yet.{% else %}No pins you can see on this drawing. You see pins for snags assigned to you and RFIs shared with you.{% endif %}{% if can_pin %} Tap and hold a spot on the drawing to pin one.{% endif %}</div>{% endif %}
 </div>
+
+<div class="card dv-list dv-layers" id="markups">
+  <div class="card-head"><h3>Mark-ups</h3><span class="small dim">{{ layers|length }}</span></div>
+  <ul class="list">
+  {% if can_draw or mine %}<li data-mine-row>
+    <label class="dv-layer grow"><input type="checkbox" data-layer="mine" checked> <span><strong>Your mark-up on rev {{ rev.revision }}</strong><span class="sub small dim" data-mine-summary>{% if mine_info %}{{ mine_info.summary }}{% else %}Nothing drawn yet. Press Mark up to draw on this revision.{% endif %}</span></span></label>
+    <form method="post" class="inline dv-share" action="{% if mine %}{% url 'markup_share' org.slug project.pk doc.pk mine.pk %}{% endif %}" data-needs-layer="{% url 'markup_share' org.slug project.pk doc.pk 0 %}"{% if not mine %} hidden{% endif %}>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <label class="sr-only" for="dv-share-mine">Who can see your mark-up</label>
+      <select name="share" id="dv-share-mine">{% for v, l in share_choices %}<option value="{{ v }}"{% if mine.share == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      <button class="btn sm">Save sharing</button></form>
+    <form method="post" class="inline" action="{% if mine %}{% url 'markup_delete' org.slug project.pk doc.pk mine.pk %}{% endif %}" data-needs-layer="{% url 'markup_delete' org.slug project.pk doc.pk 0 %}" data-confirm="Delete your mark-up on rev {{ rev.revision }}? Everything on it goes, for everyone it was shared with. This can't be undone."{% if not mine %} hidden{% endif %}>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn sm danger">Delete</button></form>
+  </li>{% endif %}
+  {% for l in layers %}{% if not l.mine or not l.here %}<li>
+    <label class="dv-layer grow"><input type="checkbox" data-layer="{{ l.id }}"{% if l.here %} checked{% endif %}> <span><strong>{% if l.mine %}Your mark-up{% else %}{{ l.owner }}{% endif %}</strong> · rev {{ l.revision }}{% if not l.here %} <span class="dim">(drawn on another revision)</span>{% endif %}<span class="sub small dim">{{ l.summary }}</span></span></label>
+    {% badge l.share_label 'muted' %}
+    {% if l.mine %}<form method="post" class="inline" action="{% url 'markup_delete' org.slug project.pk doc.pk l.id %}" data-confirm="Delete your mark-up on rev {{ l.revision }}? This can't be undone.">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn sm danger" aria-label="Delete your mark-up on rev {{ l.revision }}">Delete</button></form>{% endif %}
+  </li>{% endif %}{% endfor %}
+  {% if not layers and not can_draw %}<li><div class="empty left">No mark-ups you can see on this drawing.{% if not internal %} The site team shares theirs with you when you need to see them.{% endif %}</div></li>{% endif %}
+  </ul>
+  <div class="card-body dv-export"><span class="small">Export this page with the mark-ups ticked above:</span>
+    <button type="button" class="btn sm" data-act="png">{% icon 'download' %} Picture (PNG)</button>
+    <button type="button" class="btn sm" data-act="pdf">{% icon 'download' %} PDF</button></div>
+</div>
+
+{% if can_draw %}<dialog class="dv-dialog" data-text-dialog aria-labelledby="dv-text-title">
+  <form method="dialog">
+    <h3 id="dv-text-title" data-text-title>Add a note</h3>
+    <label class="dv-existing" for="dv-text-input" data-text-label>Note</label>
+    <input type="text" id="dv-text-input" class="dv-text" maxlength="300" autocomplete="off" data-text-input>
+    <p class="small dim" data-text-hint></p>
+    <div class="form-actions"><button class="btn primary" value="ok">Add to the drawing</button><button class="btn ghost" value="cancel" formnovalidate>Cancel</button></div>
+  </form>
+</dialog>{% endif %}
 
 {% if can_pin %}<dialog class="dv-dialog" data-dialog aria-labelledby="dv-dialog-title">
   <form method="dialog">

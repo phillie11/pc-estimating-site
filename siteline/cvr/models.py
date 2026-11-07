@@ -66,6 +66,10 @@ class CommercialSettings(TenantModel):
     pm_can_sign_off = models.BooleanField(
         "The job's project manager can sign off its CVR", default=False,
         help_text='Owners and admins can always sign off. Leave unticked if a director signs every CVR.')
+    cvr_every_month = models.BooleanField(
+        'Every month needs a signed-off CVR', default=True,
+        help_text="A month can't be signed off while an earlier month since the job's first CVR has none. "
+                  'Untick to allow skipping a month.')
     labour_pct = models.DecimalField('Labour addition %', default=ZERO, **PCT)
     materials_pct = models.DecimalField('Materials addition %', default=ZERO, **PCT)
     plant_pct = models.DecimalField('Plant addition %', default=ZERO, **PCT)
@@ -313,6 +317,12 @@ class DayworkSheet(RecordBase):
                                               on_delete=models.SET_NULL, related_name='+', editable=False)
     change_event = models.ForeignKey('changes.ChangeEvent', null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name='+', editable=False)
+    # Asked to sign in their portal instead of on our phone (cvr/portal.py): a client or consultant on the job
+    sign_requested_from = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                            related_name='+', editable=False)
+    sign_requested_at = models.DateTimeField(null=True, blank=True, editable=False)
+    sign_requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                          related_name='+', editable=False)
 
     class Meta(RecordBase.Meta):
         ordering = ['-work_date', '-number']
@@ -342,6 +352,10 @@ class DayworkSheet(RecordBase):
     @property
     def is_editable(self):
         return self.status in self.EDITABLE
+
+    @property
+    def waiting_for_portal_signature(self):
+        return self.status == self.DRAFT and self.sign_requested_from_id is not None
 
     def percentages(self):
         return {rules.LABOUR: self.labour_pct, rules.MATERIALS: self.materials_pct, rules.PLANT: self.plant_pct}
@@ -402,6 +416,8 @@ class DayworkPhoto(FixedOnceSigned, TenantModel):
     sheet = models.ForeignKey(DayworkSheet, on_delete=models.CASCADE, related_name='photos')
     image = models.FileField(upload_to=upload_daywork_photo)
     thumbnail = models.FileField(upload_to=upload_daywork_photo, blank=True)
+    # A re-encoded copy without the camera's data (location, device): what the client portal shows
+    display = models.FileField(upload_to=upload_daywork_photo, blank=True)
     original_name = models.CharField(max_length=255, blank=True)
     caption = models.CharField(max_length=200, blank=True)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')

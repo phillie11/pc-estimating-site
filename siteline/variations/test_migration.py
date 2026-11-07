@@ -16,19 +16,32 @@ STAY = [('core', '0002_audit_actor_name_retention'), ('rfis', '0005_remove_rfi_i
         ('directory', '0006_regions_from_text')]  # keeps the historical Subcontractor in step with the database
 BEFORE = [('variations', '0002_alter_variation_project'), *STAY]
 AFTER = [('variations', '0009_strip_sub_variation_source'), *STAY]  # latest, so the live model below matches
+# variations 0007 (respond-by backfill) and 0009 (strip the sub variation source note)
+RESPOND_BEFORE = [('variations', '0006_decision_evidence'), *STAY]
+RESPOND_AFTER = [('variations', '0007_backfill_respond_by'), *STAY]
+STRIP_BEFORE = [('variations', '0008_variation_source_note'), ('delivery', '0003_subvariation_change_event'), *STAY]
+STRIP_AFTER = [('variations', '0009_strip_sub_variation_source'), ('delivery', '0003_subvariation_change_event'), *STAY]
 
 
 class MigrateMixin:
-    def migrate(self, targets):
+    """
+    Each test starts by migrating to the state it needs. The schema goes back to every app's latest migration
+    once, after the class's last test, rather than after each one: putting back the whole schema, only for
+    the next test to take most of it away again, was most of these tests' time (two to four minutes a test
+    on CI). Data is emptied after each test as for any TransactionTestCase.
+    """
+    @staticmethod
+    def migrate(targets):
         executor = MigrationExecutor(connection)
-        executor.loader.build_graph()
         executor.migrate(targets)
         return MigrationExecutor(connection).loader.project_state(targets).apps
 
-    def tearDown(self):
-        executor = MigrationExecutor(connection)
-        self.migrate(executor.loader.graph.leaf_nodes())  # leave the schema as every other test expects
-        super().tearDown()
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls.migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())  # as every other test expects
+        finally:
+            super().tearDownClass()
 
 
 class VariationMigrationTests(MigrateMixin, TransactionTestCase):
@@ -131,16 +144,11 @@ class VariationMigrationTests(MigrateMixin, TransactionTestCase):
         self.assertFalse(apps.get_model('core', 'RecordIndex').objects.exists())
         self.migrate(BEFORE)
 
-
-class RespondByBackfillTests(MigrateMixin, TransactionTestCase):
-    """variations 0007: submitted variations get due_date = submitted + 14 days (and their index row); reversible."""
-    BEFORE = [('variations', '0006_decision_evidence'), *STAY]
-    AFTER = [('variations', '0007_backfill_respond_by'), *STAY]
-
-    def test_forward_and_backward(self):
+    def test_respond_by_backfill_forward_and_backward(self):
+        """variations 0007: submitted variations get due_date = submitted + 14 days (and their index row); reversible."""
         import datetime
 
-        old = self.migrate(self.BEFORE)
+        old = self.migrate(RESPOND_BEFORE)
         Organization, Project = old.get_model('tenancy', 'Organization'), old.get_model('projects', 'Project')
         Variation, RecordIndex = old.get_model('variations', 'Variation'), old.get_model('core', 'RecordIndex')
         ContentType = old.get_model('contenttypes', 'ContentType')
@@ -161,26 +169,20 @@ class RespondByBackfillTests(MigrateMixin, TransactionTestCase):
                                        updated_at=sent)
             rows[n] = v.pk
 
-        new = self.migrate(self.AFTER)
+        new = self.migrate(RESPOND_AFTER)
         due = dict(new.get_model('variations', 'Variation').objects.values_list('number', 'due_date'))
         self.assertEqual(due, {1: datetime.date(2026, 10, 15), 2: agreed, 3: None, 4: None})
         idx = dict(new.get_model('core', 'RecordIndex').objects.values_list('object_id', 'due_date'))
         self.assertEqual(idx[rows[1]], datetime.date(2026, 10, 15))
 
-        back = self.migrate(self.BEFORE)
+        back = self.migrate(RESPOND_BEFORE)
         due = dict(back.get_model('variations', 'Variation').objects.values_list('number', 'due_date'))
         self.assertEqual(due, {1: None, 2: agreed, 3: None, 4: None})
         idx = dict(back.get_model('core', 'RecordIndex').objects.values_list('object_id', 'due_date'))
         self.assertIsNone(idx[rows[1]])
-
-
-class StripSubVariationSourceTests(MigrateMixin, TransactionTestCase):
-    """variations 0009: the auto-added "(From SV-nnn, sub)" leaves client-visible descriptions; reversible."""
-    BEFORE = [('variations', '0008_variation_source_note'), ('delivery', '0003_subvariation_change_event'), *STAY]
-    AFTER = [('variations', '0009_strip_sub_variation_source'), ('delivery', '0003_subvariation_change_event'), *STAY]
-
-    def test_forward_and_backward(self):
-        old = self.migrate(self.BEFORE)
+    def test_strip_sub_variation_source_forward_and_backward(self):
+        """variations 0009: the auto-added "(From SV-nnn, sub)" leaves client-visible descriptions; reversible."""
+        old = self.migrate(STRIP_BEFORE)
         Organization, Project = old.get_model('tenancy', 'Organization'), old.get_model('projects', 'Project')
         Variation, SubVariation = old.get_model('variations', 'Variation'), old.get_model('delivery', 'SubVariation')
         Subcontractor = old.get_model('directory', 'Subcontractor')
@@ -200,12 +202,12 @@ class StripSubVariationSourceTests(MigrateMixin, TransactionTestCase):
             SubVariation.objects.create(organization=org, project=p, subcontractor=sub, number=number, title='x',
                                         description='x', value='1.00', status='APPROVED', client_variation=vo)
 
-        new = self.migrate(self.AFTER)
+        new = self.migrate(STRIP_AFTER)
         got = {v.number: (v.description, v.source_note) for v in new.get_model('variations', 'Variation').objects.all()}
         self.assertEqual(got[1], ('Two extra shelves.', 'From SV-002, Lund Joinery Ltd'))
         for n in (2, 3, 4):
             self.assertEqual(got[n], (texts[n], ''), n)
 
-        back = self.migrate(self.BEFORE)
+        back = self.migrate(STRIP_BEFORE)
         got = dict(back.get_model('variations', 'Variation').objects.values_list('number', 'description'))
         self.assertEqual(got, texts)

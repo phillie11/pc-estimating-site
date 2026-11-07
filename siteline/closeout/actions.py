@@ -8,7 +8,10 @@
                   admins where a job has     date recorded. Due: the end of the defects period.
                   none)
   defect_assign   the same people            Defects reported by the client side that nobody   issue_edit
-                                             has been given to fix yet. Due: its fix-by date.
+                                             has been given to fix yet. Due: the company's
+                                             give-out target, CloseoutSettings (default 2
+                                             working days after it was reported; pending owner
+                                             decision; rules.give_out_by), red once it passes.
 
 Both read one UNION query, shared for the request, because the badge runs on every page.
 Defects being fixed and checked are already on Needs me as snags ("Snags to fix" for whoever has
@@ -50,6 +53,9 @@ def _rows(request):
         from .access import CLIENT_ROLES
         months = Subquery(MainContract.objects.filter(project_id=OuterRef('project_id'))
                           .values('defects_period_months')[:1], output_field=IntegerField())
+        region = Coalesce(Subquery(MainContract.objects.filter(project_id=OuterRef('project_id'))
+                                   .values('bank_holiday_region')[:1], output_field=CharField()),
+                          Value('', output_field=CharField()), output_field=CharField())
         sections = CompletionSection.objects.filter(project_id__in=list(jobs), pc_date__isnull=False,
                                                     made_good_on__isnull=True).annotate(
             kind=Value(SECTION, output_field=CharField()), rid=F('pk'), pid=F('project_id'),
@@ -57,7 +63,8 @@ def _rows(request):
             n=Coalesce(NullIf('defects_period_months', Value(0)), months,  # 0 = use the contract's, as on the page
                         output_field=IntegerField()),
             text=Coalesce('name', Value(''), output_field=CharField()), where=Value('', output_field=CharField()),
-        ).values_list('kind', 'rid', 'pid', 'day', 'n', 'text', 'where').order_by()
+            at=F('created_at'), region=region,
+        ).values_list('kind', 'rid', 'pid', 'day', 'n', 'text', 'where', 'at', 'region').order_by()
         client_side = ProjectMember.objects.filter(project_id__in=list(jobs), role__in=CLIENT_ROLES).values('user_id')
         defects = Issue.objects.filter(project_id__in=list(jobs), issue_type='DEFECT', assignee__isnull=True,
                                        created_by__in=client_side).exclude(status=Issue.STATUS_CLOSED).annotate(
@@ -66,7 +73,8 @@ def _rows(request):
             n=Coalesce('number', Value(0), output_field=IntegerField()),
             text=Coalesce('title', Value(''), output_field=CharField()),
             where=Coalesce('location', Value(''), output_field=CharField()),
-        ).values_list('kind', 'rid', 'pid', 'day', 'n', 'text', 'where').order_by()
+            at=F('created_at'), region=region,
+        ).values_list('kind', 'rid', 'pid', 'day', 'n', 'text', 'where', 'at', 'region').order_by()
         return jobs, list(sections.union(defects, all=True))
     return request_memo(('closeout_needs_me', request.user.pk), fetch)
 
@@ -80,7 +88,7 @@ class DefectsEndProvider:
         jobs, rows = _rows(request)
         today = timezone.localdate()
         out = []
-        for kind, pk, project_id, pc_date, months, name, _ in rows:
+        for kind, pk, project_id, pc_date, months, name, _, _, _ in rows:
             if kind != SECTION:
                 continue
             end = rules.defects_end(pc_date, months)
@@ -105,9 +113,21 @@ class DefectToAssignProvider:
         if request.membership is None or not is_internal(request):
             return []
         jobs, rows = _rows(request)
-        return [Item(
-            kind=self.kind, title=title, ref=f'IS-{number:03d}', project=jobs[project_id], due=due,
-            url=reverse('issue_edit', args=[request.org.slug, project_id, pk]),
-            action='Give it to whoever will fix it', status_label='Reported by the client', tone='warn',
-            detail=where, kind_label='Defects', key=f'issue:{pk}')
-            for kind, pk, project_id, due, number, title, where in rows if kind == DEFECT]
+        if not any(r[0] == DEFECT for r in rows):
+            return []
+        from .models import CloseoutSettings
+        days = CloseoutSettings.for_org(request.org).defect_give_out_days
+        today = timezone.localdate()
+        out = []
+        for kind, pk, project_id, _, number, title, where, at, region in rows:
+            if kind != DEFECT:
+                continue
+            due = rules.give_out_by(timezone.localdate(at), days, region or None)
+            late = due < today
+            out.append(Item(
+                kind=self.kind, title=title, ref=f'IS-{number:03d}', project=jobs[project_id], due=due,
+                url=reverse('issue_edit', args=[request.org.slug, project_id, pk]),
+                action='Give it to whoever will fix it', status_label='Not given out yet' if late else 'Reported by the client',
+                tone='bad' if late else 'warn', priority=PRIORITY_HIGH if late else PRIORITY_NORMAL,
+                detail=where, kind_label='Defects', key=f'issue:{pk}'))
+        return out

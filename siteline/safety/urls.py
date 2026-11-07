@@ -5,7 +5,7 @@ that list). public_patterns are the QR sign-in page, outside any workspace (conf
 """
 from django.urls import path
 
-from . import public, views
+from . import portal, public, views
 
 
 def project_patterns(P):
@@ -36,11 +36,14 @@ def project_patterns(P):
         path(S + 'roll-call/sw.js', views.roll_call_sw, name='safety_roll_call_sw'),
         path(S + 'poster/', views.poster, name='safety_poster'),
         path(S + 'poster/replace/', views.poster_replace, name='safety_poster_replace'),
+        # An appointed subcontractor reports a near miss from their portal (safety/portal.py)
+        path(S + 'near-miss/', portal.near_miss, name='portal_near_miss'),
     ]
 
 
 org_patterns = [
     path('safety/incidents/', views.company_incidents, name='company_incidents'),
+    path('safety/settings/', views.safety_settings, name='safety_settings'),
 ]
 
 public_patterns = [

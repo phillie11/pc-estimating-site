@@ -66,7 +66,7 @@ class EveryPageEveryRoleTests(SafetyTestBase):
         for name in self.STAFF_ON_JOB:
             self.login(getattr(self, name))
             r = self.client.get(self.u('project_detail', self.pa.pk))
-            self.assertContains(r, self.u('safety_home', self.pa.pk))
+            self.assertIn('safety', [t[0] for t in r.context['tabs']])  # grouped tabs: it sits one tap down, so check it is offered, not that its link is on this page
         for user in (self.stan, self.carla, self.sid, self.connie):
             self.login(user)
             r = self.client.get(self.u('project_detail', self.pa.pk))
@@ -112,7 +112,9 @@ class DemoSeedTests(SafetyTestBase):
         with org_context(self.org_a):
             seed(leeds=self.pa, pm=self.pat, sub_user=self.sid, demo_pdf=lambda title, sub: b'%PDF-1.4 demo')
             self.assertEqual(list(Incident.objects.order_by('number').values_list('ref', 'status')),
-                             [('INC-001', 'CLOSED'), ('INC-002', 'INVESTIGATING'), ('INC-003', 'REPORTED')])
+                             [('INC-001', 'CLOSED'), ('INC-002', 'INVESTIGATING'), ('INC-003', 'REPORTED'),
+                              ('INC-004', 'REPORTED')])
+            self.assertEqual(Incident.objects.get(number=4).reported_by_company, self.subco)
             self.assertTrue(Incident.objects.get(number=2).riddor_outstanding)
             self.assertEqual(PhasePlan.objects.filter(project=self.pa).count(), 2)
             self.assertEqual(set(DutyHolder.objects.values_list('role', flat=True)) >= {'CLIENT', 'PD', 'PC'}, True)

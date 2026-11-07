@@ -17,7 +17,6 @@ from unittest import mock
 
 from django.db import connection
 from django.db.models.deletion import Collector
-from django.test import override_settings
 from django.utils import timezone
 
 from core.exceptions import InvalidTransition, TransitionForbidden
@@ -27,16 +26,15 @@ from tenancy.context import org_context
 from .. import rules
 from ..models import Penetration, Permit, QualityPhoto
 from ..photos import add_photo
-from .base import MEDIA, QualityTestBase, jpeg, tearDownModule  # noqa: F401
+from .base import QualityTestBase, jpeg
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class SignedOffPenetrationIsLockedTests(QualityTestBase):
     def signed_off(self):
         p = self.penetration(system='Intumescent collar', size='110 mm', service='PIPE_PLASTIC')
         with org_context(self.org_a):
             add_photo(self.pa, self.pat, jpeg(), penetration=p, stage=QualityPhoto.AFTER)
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             apply_transition(p, 'sign_off', self.pat, remark='As detail')
         return self.fresh(p)
 
@@ -58,7 +56,6 @@ class SignedOffPenetrationIsLockedTests(QualityTestBase):
         self.assertEqual(self.client.get(self.purl('penetration_edit', p.pk)).status_code, 302)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PermitWithdrawTests(QualityTestBase):
     def approved(self, **kw):
         p = self.permit(**kw)
@@ -97,17 +94,16 @@ class PermitWithdrawTests(QualityTestBase):
         self.assertEqual(self.fresh(p).status, rules.WITHDRAWN)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class ResignOffNeedsANewPhotoTests(QualityTestBase):
     def test_reopened_penetration_needs_a_new_after_photo(self):
         p = self.penetration(system='Collar')
         with org_context(self.org_a):
             add_photo(self.pa, self.pat, jpeg(), penetration=p, stage=QualityPhoto.AFTER)
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             apply_transition(p, 'sign_off', self.pat)
             apply_transition(self.fresh(p), 'reopen', self.pat, remark='Cut out for a new cable')
             p = self.fresh(p)
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             p = self.fresh(p)
             with self.assertRaises(InvalidTransition):
                 apply_transition(p, 'sign_off', self.pat)
@@ -127,7 +123,6 @@ class ResignOffNeedsANewPhotoTests(QualityTestBase):
                 apply_transition(self.fresh(p), 'sign_off', self.pat)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class InspectorMustBeAbleToOpenTheJobTests(QualityTestBase):
     """
     The bid's estimator often stays on the team after the job is won. Estimating-only staff can't open
@@ -155,7 +150,6 @@ class InspectorMustBeAbleToOpenTheJobTests(QualityTestBase):
             self.assertFalse(Inspection.objects.filter(ball_in_court_user=self.eve).exists())
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class CsvFormulaGuardTests(QualityTestBase):
     def test_fire_stopping_csv_cells_cant_run_as_formulas(self):
         self.penetration(location=' =HYPERLINK("http://x","y")', system='@SUM(A1)', installer='+1+1',
@@ -166,7 +160,6 @@ class CsvFormulaGuardTests(QualityTestBase):
             self.assertIn("'" + raw, body, raw)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class DeleteGuardTests(QualityTestBase):
     def test_quality_photos_stay_fast_deletable(self):
         self.assertTrue(Collector(using='default').can_fast_delete(QualityPhoto.objects.none()),
@@ -183,7 +176,6 @@ class DeleteGuardTests(QualityTestBase):
         self.assertFalse(QualityPhoto.all_objects.exists())
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class NoSelfApprovalTests(QualityTestBase):
     """
     PENDING OWNER DECISION: whoever asked for a permit must not approve (or refuse) it themselves. It goes

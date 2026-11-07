@@ -227,6 +227,7 @@ Throughout, `~/siteline/siteline` is prod's folder: the one holding `manage.py` 
    | Time (UTC) | Command |
    |---|---|
    | 06:00 daily | `cd ~/siteline/siteline && .venv/bin/python manage.py send_reminders` |
+   | 03:10 daily | `cd ~/siteline/siteline && .venv/bin/python manage.py purge_signins` |
    | Hourly | `cd ~/siteline/siteline && .venv/bin/python manage.py check_file_scans` (only if you use S3 storage) |
    | 05:15 on the 1st | `cd ~/siteline/siteline && .venv/bin/python manage.py update_bank_holidays` |
    | 02:00 daily (replaces the MySQL one) | `pg_dump -h yourusername-NNNN.postgres.pythonanywhere-services.com -p PORT -U siteline siteline \| gzip > ~/backups/siteline-$(date +\%a).sql.gz` |

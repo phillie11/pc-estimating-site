@@ -10,10 +10,13 @@ the Leeds job's packages, drawings (documents/demo.py) and snags exist.
     Permits      PTW-001 hot works closed with the fire watch; PTW-002 hot works for tomorrow waiting
                  for the PM's approval (Needs me); PTW-003 working at height running out within the
                  hour (Needs me, expiring); PTW-004 isolation that ran out yesterday and was never
-                 closed (Needs me, expired).
+                 closed (Needs me, expired); PTW-005 working at height for tomorrow, asked for by the
+                 joinery subcontractor in their portal, waiting for the PM's approval (Needs me).
     Fire-stopping  FS-001 to FS-006: two signed off (one pinned on the ground floor GA), one sealed
                  waiting for the PM to inspect (Needs me), one failed back with the PM to get
-                 resealed (Needs me), two still to seal.
+                 resealed (Needs me), two still to seal. The first three were marked sealed by the
+                 installing subcontractor (the PM signs off; whoever sealed it can't). FS-007 was recorded
+                 by the joinery subcontractor in their portal and waits for the PM (Needs me).
   Salford Quays (project 4): one passed inspection, an active permit and two penetrations.
 
 Photos are plain coloured placeholders (diary/demo.py), not real photos.
@@ -95,7 +98,7 @@ def _approve(p, user):
 
 def _penetration(project, user, location, element, rating, service, size, system='', package=None, installer='',
                  n=0, before=False, after=False, seal=False, sign_off_by=None, fail_by=None, fail_note='',
-                 detail='', sealed_days_ago=2):
+                 detail='', sealed_days_ago=2, sealer=None):
     p = Penetration(project=project, location=location, element=element, fire_rating=rating, service=service,
                     size=size, system=system, detail_reference=detail, package=package, installer=installer)
     p.title = p.default_title()
@@ -105,7 +108,9 @@ def _penetration(project, user, location, element, rating, service, size, system
     if after:
         _photo(project, user, f'Sealed: {location}', n + 1, penetration=p, stage='AFTER')
     if seal:
-        apply_transition(p, 'seal', user, installed_on=timezone.localdate() - datetime.timedelta(days=sealed_days_ago))
+        # Signed off by someone other than whoever recorded the seal (QualitySettings.fs_independent_sign_off)
+        apply_transition(p, 'seal', sealer or user,
+                         installed_on=timezone.localdate() - datetime.timedelta(days=sealed_days_ago))
     if sign_off_by:
         apply_transition(p, 'sign_off', sign_off_by, remark='Collar and sealant as the manufacturer\'s detail.')
     if fail_by:
@@ -166,13 +171,20 @@ def seed(*, leeds, pm, owner):
                  (now - datetime.timedelta(days=2)).replace(hour=7, minute=30), 34, holder='Electrical supervisor',
                  package=pkg.get('Electrical'))
     _approve(p4, owner)
+    if sub is not None:
+        # Asked for by the joinery subcontractor in their portal (quality/portal.py): on the PM's Needs me
+        _permit(leeds, rules.HEIGHT, 'Fix the bar canopy soffit panels from a mobile tower', 'Ground floor bar, canopy',
+                sub, tomorrow + datetime.timedelta(hours=1), 8, holder=sub.full_name, package=joinery,
+                notes='Tower erected by our PASMA-trained joiners. RAMS JN-RAMS-03.')
 
     # --- Leeds fire-stopping ---------------------------------------------------------
     installer = drylining or joinery
+    # The subcontractor marks their own seals done in the portal; the PM inspects and signs them off
+    sealer = (_sub_user(leeds, installer) if installer else None) or owner
     fs1 = _penetration(leeds, pm, 'Ground floor, kitchen to corridor wall', 'WALL', 60, 'PIPE_PLASTIC', '110 mm',
                        'Intumescent pipe collar and acoustic sealant', package=installer, installer='Fire-stopping operative',
                        detail='Manufacturer detail PC-110', n=10, before=True, after=True, seal=True, sign_off_by=pm,
-                       sealed_days_ago=6)
+                       sealed_days_ago=6, sealer=sealer)
     doc = Document.objects.filter(project=leeds, reference=GA_NUMBER).first()
     if doc is not None:
         rev = doc.revisions.filter(revision='C01').first() or doc.revisions.first()
@@ -182,15 +194,21 @@ def seed(*, leeds, pm, owner):
             fs1.save(actor=pm, audit_action='pinned on a drawing')
     _penetration(leeds, pm, 'Ground floor, riser 1', 'FLOOR', 120, 'CABLE_TRAY', '300 x 50 mm tray',
                  'Fire batt with coated cables', package=installer, n=12, before=True, after=True, seal=True,
-                 sign_off_by=pm, sealed_days_ago=5)
+                 sign_off_by=pm, sealed_days_ago=5, sealer=sealer)
     _penetration(leeds, pm, 'Ground floor, bar store ceiling', 'CEILING', 30, 'DUCT', '250 mm duct',
-                 'Fire damper with intumescent mastic', package=installer, n=14, before=True, after=True, seal=True)
+                 'Fire damper with intumescent mastic', package=installer, n=14, before=True, after=True, seal=True,
+                 sealer=sealer)
     _penetration(leeds, pm, 'Ground floor, corridor C1 north wall', 'WALL', 60, 'MIXED', '150 x 100 mm opening',
                  'Intumescent sealant', package=installer, n=16, before=True, after=True, seal=True, fail_by=pm,
                  fail_note='Sealant depth short of the detail; gap visible behind the cables.')
     _penetration(leeds, pm, 'Ground floor, WC lobby wall', 'WALL', 60, 'PIPE_METAL', '54 mm copper', n=18,
                  before=True)
     _penetration(leeds, pm, 'Ground floor, kitchen ceiling void', 'CEILING', 30, 'CABLE', 'Cable bundle')
+    if joinery is not None and sub is not None:
+        # Recorded by the joinery subcontractor in their portal, with photos: waiting for the PM to sign it off
+        _penetration(leeds, sub, 'Ground floor, bar back wall behind the back bar', 'WALL', 30, 'CABLE',
+                     '20 mm bundle', 'Intumescent sealant', package=joinery, installer=sub.full_name,
+                     n=24, before=True, after=True, seal=True, sealed_days_ago=1)
 
     # --- Salford ---------------------------------------------------------------------
     salford = Project.objects.filter(name='Office CAT A, Salford Quays').first()
@@ -205,7 +223,7 @@ def seed(*, leeds, pm, owner):
         _approve(sp, owner)
         _penetration(salford, s_pm, 'Level 4, core wall by lift 2', 'WALL', 120, 'PIPE_METAL', '28 mm copper',
                      'Intumescent wrap and sealant', n=20, before=True, after=True, seal=True, sign_off_by=s_pm,
-                     sealed_days_ago=3)
+                     sealed_days_ago=3, sealer=owner if owner != s_pm else None)
         _penetration(salford, s_pm, 'Level 4, riser 2 floor', 'FLOOR', 120, 'MIXED', 'Mixed services', n=22,
                      before=True)
     return {'inspections': Inspection.objects.count(), 'permits': Permit.objects.count(),

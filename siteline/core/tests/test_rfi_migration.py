@@ -13,18 +13,28 @@ BEFORE = [('rfis', '0002_alter_rfi_project'), ('core', '0001_records')]  # core 
 AFTER = [('rfis', '0005_remove_rfi_is_shared'), ('core', '0002_audit_actor_name_retention')]
 
 
-class RFIMigrationTests(TransactionTestCase):
-    def migrate(self, targets):
+class MigrateMixin:
+    """
+    Each test starts by migrating to the state it needs. The schema goes back to every app's latest migration
+    once, after the class's last test, rather than after each one: putting back the whole schema, only for
+    the next test to take most of it away again, was most of these tests' time (two to four minutes a test
+    on CI). Data is emptied after each test as for any TransactionTestCase.
+    """
+    @staticmethod
+    def migrate(targets):
         executor = MigrationExecutor(connection)
-        executor.loader.build_graph()
         executor.migrate(targets)
         return MigrationExecutor(connection).loader.project_state(targets).apps
 
-    def tearDown(self):
-        executor = MigrationExecutor(connection)
-        self.migrate(executor.loader.graph.leaf_nodes())  # leave the schema as every other test expects
-        super().tearDown()
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls.migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())  # as every other test expects
+        finally:
+            super().tearDownClass()
 
+
+class RFIMigrationTests(MigrateMixin, TransactionTestCase):
     def seed(self, apps):
         Organization = apps.get_model('tenancy', 'Organization')
         Project = apps.get_model('projects', 'Project')

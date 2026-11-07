@@ -9,8 +9,10 @@ Incident status changes, registered in SafetyConfig.ready().
   CLOSED        --reopen (PM or admin, with a reason)----------> INVESTIGATING  (ball: who reopens it)
 
 Reporting puts the ball with the job's project manager (or whoever reported it, if the job has
-no manager) and sets the due date to the investigation target (rules.INVESTIGATE_WITHIN_DAYS),
-so open incidents appear on that person's Needs me through the record index.
+no manager; for a subcontractor's report from the portal, the first owner or admin) and sets the
+due date to the company's investigation target (SafetySettings.investigation_days, default
+rules.INVESTIGATE_WITHIN_DAYS), so open incidents appear on that person's Needs me through the
+record index.
 """
 from django.utils import timezone
 

@@ -83,23 +83,70 @@ def _not_before(d, today):
 
 
 def build(project, today):
+    return build_many([project], today)[project.pk]
+
+
+def build_many(projects, today):
+    """
+    {project id: build(project, today)} for several jobs in a fixed number of queries, whatever the
+    number of jobs (the company cash position report runs every live job's forecast on one page).
+    """
+    projects = list(projects)
+    loaded = _load(projects)
+    return {p.pk: _build(p, today, loaded) for p in projects}
+
+
+def _load(projects):
+    """Every row build() reads, for all these jobs at once: about ten queries."""
     from contracts.models import MainContract
     from costs.models import LedgerEntry
-    from payments import rules as pay_rules
+    from costs.report import final_accounts, forecast_costs
     from payments.models import Application, Payment
     from projects.models import Activity
     from subpayments.models import SubApplication
     from subpayments.models import settings_for as sub_settings
+
+    ids = [p.pk for p in projects]
+    loaded = {
+        'contracts': {c.project_id: c for c in MainContract.objects.filter(project_id__in=ids)},  # one per job
+        # The same figures as the cost report and the commercial position (costs.report)
+        'final_accounts': final_accounts(projects) if projects else {},
+        'final_costs': forecast_costs(ids) if projects else {},
+        'apps': {pk: {} for pk in ids}, 'payments': {}, 'costs': {pk: [] for pk in ids},
+        'sub_apps': {pk: [] for pk in ids}, 'activities': {pk: [] for pk in ids}, 'sub_settings': {},
+    }
+    for a in Application.objects.filter(project_id__in=ids, status__in=Application.COUNTED):
+        loaded['apps'][a.project_id][a.pk] = a
+    app_ids = [pk for apps in loaded['apps'].values() for pk in apps]
+    for app_id, received_on, amount in Payment.objects.filter(application__in=app_ids, reversed_at__isnull=True) \
+            .order_by('received_on', 'pk').values_list('application_id', 'received_on', 'amount'):
+        loaded['payments'].setdefault(app_id, []).append((received_on, amount))
+    for row in LedgerEntry.objects.filter(project_id__in=ids, kind=LedgerEntry.ACTUAL).annotate(m=TruncMonth('date')) \
+            .values('project_id', 'm').annotate(s=Sum('amount')).order_by('project_id', 'm'):
+        loaded['costs'][row['project_id']].append(row)
+    for sa in SubApplication.objects.filter(project_id__in=ids, status__in=SubApplication.AWAITING).annotate(
+            paid=Sum('payments__gross', filter=Q(payments__reversed_at__isnull=True))):
+        loaded['sub_apps'][sa.project_id].append(sa)
+    for project_id, *row in Activity.objects.filter(project_id__in=ids).values_list(
+            'project_id', 'start', 'finish', 'progress', 'is_milestone'):
+        loaded['activities'][project_id].append(tuple(row))
+    for p in projects:
+        if p.organization_id not in loaded['sub_settings']:
+            loaded['sub_settings'][p.organization_id] = sub_settings(p.organization, create=False)
+    return loaded
+
+
+def _build(project, today, loaded):
+    from payments import rules as pay_rules
+    from payments.models import Application
     from subpayments.rules import sub_cycle, sub_terms
-    from costs.report import final_accounts, forecast_costs
 
     this_month = _month(today)
     month_end = rules.month_end(today)
-    contract = MainContract.objects.filter(project=project).first()
+    contract = loaded['contracts'].get(project.pk)
     terms = pay_rules.terms_for(contract)
-    # The same figures as the cost report and the commercial position (costs.report), two queries
-    final_account = pennies(final_accounts([project])[project.pk])
-    final_cost = forecast_costs([project.pk]).get(project.pk, ZERO)
+    final_account = pennies(loaded['final_accounts'][project.pk])
+    final_cost = loaded['final_costs'].get(project.pk, ZERO)
     notes = []
     flows = {}  # month -> Month
 
@@ -107,11 +154,8 @@ def build(project, today):
         return flows.setdefault(month, Month(month=month))
 
     # --- actual money in: receipts excluding VAT, stepped so the months add up to paid to date ----------
-    apps = {a.pk: a for a in Application.objects.filter(project=project, status__in=Application.COUNTED)}
-    by_app = {}
-    for app_id, received_on, amount in Payment.objects.filter(application__in=list(apps), reversed_at__isnull=True) \
-            .order_by('received_on', 'pk').values_list('application_id', 'received_on', 'amount'):
-        by_app.setdefault(app_id, []).append((received_on, amount))
+    apps = loaded['apps'][project.pk]
+    by_app = {app_id: loaded['payments'][app_id] for app_id in apps if app_id in loaded['payments']}
     for app_id, rows in by_app.items():
         a = apps[app_id]
         months = sorted({_month(d) for d, _ in rows})
@@ -124,8 +168,7 @@ def build(project, today):
 
     # --- actual money out: the cost ledger's actual costs by month --------------------------------------
     cost_to_date = ZERO
-    for row in LedgerEntry.objects.filter(project=project, kind=LedgerEntry.ACTUAL).annotate(m=TruncMonth('date')) \
-            .values('m').annotate(s=Sum('amount')).order_by('m'):
+    for row in loaded['costs'][project.pk]:
         at(_month(row['m'])).out_actual += pennies(row['s'])
         if _month(row['m']) <= this_month:
             cost_to_date += pennies(row['s'])
@@ -146,9 +189,7 @@ def build(project, today):
 
     # --- forecast out: owed on subcontractors' applications ---------------------------------------------
     owed_out = ZERO
-    sub_apps = list(SubApplication.objects.filter(project=project, status__in=SubApplication.AWAITING).annotate(
-        paid=Sum('payments__gross', filter=Q(payments__reversed_at__isnull=True))))
-    for sa in sub_apps:
+    for sa in loaded['sub_apps'][project.pk]:
         sa._paid_gross = sa.paid or ZERO
         left = sa.payable - sa._paid_gross
         if left > 0 and sa.final_date:
@@ -156,8 +197,7 @@ def build(project, today):
             owed_out += left
 
     # --- the rest of the job: spread by the programme -----------------------------------------------------
-    activities = list(Activity.objects.filter(project=project).values_list('start', 'finish', 'progress',
-                                                                         'is_milestone'))
+    activities = loaded['activities'][project.pk]
     finish = max((f for _, f, _, _ in activities), default=None) or project.completion_date
     uses_programme = bool(activities) and any(not m for *_, m in activities)
     if finish is None:
@@ -212,7 +252,7 @@ def build(project, today):
         notes.append('No defects period is set on the contract, so the last of the retention is not forecast.')
 
     remaining_cost = max(final_cost - cost_to_date - owed_out, ZERO)
-    defaults = sub_settings(project.organization, create=False)
+    defaults = loaded['sub_settings'][project.organization_id]
     sterms = sub_terms(defaults.due_date_offset_days, defaults.payment_notice_days, defaults.final_date_offset_days,
                        defaults.pay_less_notice_days, contract.bank_holiday_region if contract else 'EW')
     sub_day = defaults.valuation_day or 25

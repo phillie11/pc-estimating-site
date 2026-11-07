@@ -6,14 +6,17 @@ Run from siteline/ with the branch checked out:
     MEDIA_ROOT=$(mktemp -d) DEBUG=1 python manage.py test viewer.tests.test_review_repro
 Every test here fails on the branch as reviewed and should pass once fixed.
 """
+import json
 from decimal import Decimal
 from unittest import mock
 
-from django.test import RequestFactory, override_settings
+from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from projects.models import DocumentRevision
 from tenancy.context import org_context
-from viewer.models import DrawingPin
+from viewer import markup
+from viewer.models import DrawingPin, MarkupLayer
+from viewer.tests.test_markup import CLOUD, NOTE, MarkupBase, doc_json
 from viewer.tests.test_viewer import ViewerBase
 
 
@@ -173,3 +176,48 @@ class ThroughAppBuffersWholeFileTests(ViewerBase):
         text = (Path(settings.BASE_DIR) / 'config' / 'settings.py').read_text()
         block = text[text.index("'BACKEND': 'storages.backends.s3.S3Storage'"):]
         self.assertIn("'max_memory_size': 5 * 1024 * 1024", block[:block.index('\n    }')])
+
+
+# ---------------------------------------------------------------------------
+# Review of origin/claude/r3b-docs (mark-up layers): each test failed on that branch
+# ---------------------------------------------------------------------------
+
+HUGE = int('1' + '0' * 400)  # a JSON whole number too big to turn into a float
+
+
+class MarkupHugeNumberTests(SimpleTestCase):
+    def test_a_huge_whole_number_position_is_refused_not_a_crash(self):
+        # math.isfinite(10**400) raises OverflowError, which escaped parse() as a 500
+        for shape in (dict(CLOUD, a=[HUGE, 0.5]), dict(NOTE, at=[0.5, HUGE]),
+                      {'t': 'pen', 'p': 1, 'c': 'red', 'w': 3, 'pts': [[0.1, HUGE]]}):
+            with self.assertRaises(markup.InvalidMarkup):
+                markup.parse(doc_json(shape))
+
+
+class MarkupHugeNumberViewTests(MarkupBase):
+    def test_saving_a_huge_whole_number_is_a_400(self):
+        self.login(self.staff)
+        r = self.save(doc_json(dict(CLOUD, a=[HUGE, 0.5])))
+        self.assertEqual(r.status_code, 400)
+        with org_context(self.org_a):
+            self.assertFalse(MarkupLayer.objects.exists())
+
+
+class MarkupAddSizeCapTests(MarkupBase):
+    def test_adding_in_small_pieces_cannot_grow_a_layer_past_the_save_cap(self):
+        """Each add was under MAX_BYTES, but the layer grew with no cap on bytes, so it could no longer be saved."""
+        self.login(self.staff)
+        url = self.purl('markup_add', self.ga.pk, self.p02.pk)
+        note = dict(NOTE, text='€' * markup.MAX_TEXT)  # 900 bytes of text per note
+        chunk = json.dumps([note] * 250, ensure_ascii=False)
+        self.assertLess(len(chunk.encode()), markup.MAX_BYTES)
+        statuses = [self.client.post(url, {'shapes': chunk}).status_code for _ in range(3)]
+        self.assertEqual(statuses[0], 200)
+        self.assertIn(400, statuses)
+        with org_context(self.org_a):
+            layer = MarkupLayer.objects.get()
+        stored = json.dumps(layer.data, ensure_ascii=False, separators=(',', ':'))
+        self.assertLessEqual(len(stored.encode()), markup.MAX_BYTES)
+        # What is stored can still be saved back whole from the viewer
+        r = self.save(stored, version=str(layer.version))
+        self.assertEqual(r.status_code, 200, r.content)

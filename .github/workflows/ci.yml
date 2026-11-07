@@ -21,7 +21,9 @@ jobs:
   test:
     name: Tests (${{ matrix.db }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 40  # the suite outgrew 20 on MySQL in Release 3
+    # The tests run in 4 or 6 processes (below) and take under 12 minutes on each database; 25 leaves room
+    # for a slow runner without letting a hung job sit for long.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -141,6 +143,37 @@ jobs:
               print(f"::error title=MySQL server::{e}")
           sys.exit(1 if errors else 0)
 
+      # The service database is thrown away with the job, so it needn't survive a power cut: stop it
+      # flushing every commit and every DDL statement to disk. The migration tests apply and undo the
+      # whole schema several times, and this is most of their database time. Changed at runtime (service
+      # containers can't take server flags); nothing about how the database behaves for the tests changes.
+      - name: Skip disk flushes on the throwaway database
+        if: ${{ matrix.db != 'sqlite' }}
+        shell: python
+        run: |
+          import os
+          host, port = os.environ["DB_HOST"], int(os.environ["DB_PORT"])
+          user, password = os.environ["DB_USER"], os.environ["DB_PASSWORD"]
+          if os.environ["DB_ENGINE"] == "mysql":
+              import MySQLdb
+              conn = MySQLdb.connect(host=host, port=port, user=user, password=password)
+              cur = conn.cursor()
+              for sql in ("SET GLOBAL innodb_flush_log_at_trx_commit = 0", "SET GLOBAL sync_binlog = 0"):
+                  cur.execute(sql)
+              cur.execute("SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog")
+          else:
+              import psycopg
+              conn = psycopg.connect(host=host, port=port, user=user, password=password, dbname="postgres",
+                                     autocommit=True)
+              cur = conn.cursor()
+              for sql in ("ALTER SYSTEM SET fsync = off", "ALTER SYSTEM SET synchronous_commit = off",
+                          "ALTER SYSTEM SET full_page_writes = off", "SELECT pg_reload_conf()"):
+                  cur.execute(sql)
+              conn = psycopg.connect(host=host, port=port, user=user, password=password, dbname="postgres")
+              cur = conn.cursor()  # a new session sees the reloaded settings
+              cur.execute("SELECT current_setting('fsync'), current_setting('synchronous_commit')")
+          print(cur.fetchone())
+
       - name: Use a temporary MEDIA_ROOT
         run: echo "MEDIA_ROOT=$(mktemp -d)" >> "$GITHUB_ENV"
 
@@ -159,12 +192,30 @@ jobs:
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
 
+      # Django copies the empty test database once per test process and hands each process whole test
+      # classes. SQLite runs one per CPU (the runner has 4). PostgreSQL and MySQL run 6, because those
+      # tests spend part of their time waiting on the database server: on MySQL 6 took the leg from
+      # 12m26s to under 12 minutes when timed on this workflow.
+      # On MySQL the copies are made with mysqldump and the mysql client, which the runner image ships
+      # with; they are installed here only if an image ever drops them.
+      - name: Check the MySQL client tools (for the parallel test databases)
+        if: ${{ matrix.db == 'mysql' }}
+        run: |
+          command -v mysqldump > /dev/null && command -v mysql > /dev/null || {
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 mysql-client
+          }
+          mysqldump --version
+
+      # Each process writes its own coverage file (.coveragerc: parallel = true, concurrency =
+      # multiprocessing); the report step combines them. --durations lists the slowest tests in the log.
       - name: Run tests with coverage
-        run: python -m coverage run manage.py test --noinput
+        run: python -m coverage run manage.py test --noinput --parallel ${{ matrix.db == 'sqlite' && 'auto' || '6' }} --timing --durations 25
 
       - name: Coverage report
         if: ${{ !cancelled() }}
         run: |
+          python -m coverage combine
           python -m coverage report
           {
             echo "### Coverage (${{ matrix.db }})"

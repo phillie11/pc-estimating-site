@@ -303,6 +303,30 @@ class UploadRow(TenantModel):
         return [w for w in self.warnings.split('\n') if w]
 
 
+class RevisionText(TenantModel):
+    """
+    The words read out of a PDF revision, for searching inside documents (documents/textindex.py).
+    One row per revision once it has been tried. A scanned drawing has no text layer, so it is
+    marked NO_TEXT and found only by its number and title: there is no OCR.
+    """
+    DONE, NO_TEXT, TOO_BIG, FAILED, BLOCKED = 'DONE', 'NO_TEXT', 'TOO_BIG', 'FAILED', 'BLOCKED'
+    STATUS_CHOICES = [(DONE, 'Searchable'), (NO_TEXT, 'No text in the file'), (TOO_BIG, 'Too big to read'),
+                      (FAILED, 'Could not be read'), (BLOCKED, 'Blocked by the virus check')]
+
+    revision = models.OneToOneField(DocumentRevision, on_delete=models.CASCADE, related_name='text_index')
+    status = models.CharField(max_length=8, choices=STATUS_CHOICES)
+    text = models.TextField(blank=True)
+    pages_read = models.PositiveIntegerField(default=0)
+    truncated = models.BooleanField(default=False, help_text='Only the first part of a long file was read.')
+    extracted_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['status'])]
+
+    def __str__(self):
+        return f'Text of {self.revision}'
+
+
 def recipient_q(user, prefix='', project=None):
     """
     Q for TransmittalRecipient rows that stand for this user: addressed to them, or to a

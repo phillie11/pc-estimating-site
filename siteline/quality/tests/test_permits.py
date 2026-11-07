@@ -7,7 +7,6 @@ and the printable page.
 import datetime
 
 from django.core import mail
-from django.test import override_settings
 from django.utils import timezone
 
 import actions
@@ -16,14 +15,13 @@ from tenancy.models import Membership
 
 from .. import rules
 from ..models import Permit, QualitySettings
-from .base import MEDIA, QualityTestBase, tearDownModule  # noqa: F401
+from .base import QualityTestBase
 
 
 def local(dt):
     return timezone.localtime(dt).strftime('%Y-%m-%dT%H:%M')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PermitFlowTests(QualityTestBase):
     def form(self, **kw):
         start = timezone.now() + datetime.timedelta(hours=1)
@@ -199,7 +197,6 @@ class PermitFlowTests(QualityTestBase):
         self.assertNotContains(r, 'SUM(A1)')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PermitNeedsMeTests(QualityTestBase):
     """Through actions.for_user, as the badge and the Needs me page get them (one index query, no extra)."""
 

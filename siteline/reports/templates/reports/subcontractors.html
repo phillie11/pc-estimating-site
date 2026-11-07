@@ -1,0 +1,27 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Subcontractor performance{% endblock %}
+{% block content %}<div class="rp-page">
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'reports_home' org.slug %}">Reports</a></div><h1>Subcontractor performance</h1>
+  <p class="small dim">Every subcontractor appointed on a job that isn't archived: whether their submittals came in by the date, how many snags and defects they were given per package, and how long those took to close.</p></div>
+  <div class="row">{% if rows %}<a class="btn" href="{% qs export='csv' %}">{% icon 'download' %} Export CSV</a>{% endif %}</div></div>
+
+{% if any %}<form method="get" class="search"><input type="search" name="q" value="{{ q }}" aria-label="Search subcontractors" placeholder="Subcontractor name"><button class="btn">Search</button>{% if q %}<a class="btn ghost" href="?">Clear</a>{% endif %}</form>{% endif %}
+<div class="card">
+{% if rows %}<div class="table-wrap"><table class="t register">
+  <caption class="sr-only">Subcontractor performance</caption>
+  <thead><tr><th scope="col">Subcontractor</th><th scope="col" class="num">Packages</th><th scope="col" class="num">Submittals on time</th><th scope="col" class="num">Snags and defects</th><th scope="col" class="num">Per package</th><th scope="col" class="num">Average days to close</th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td><a class="rowlink" href="{% url 'sub_detail' org.slug r.subcontractor_id %}">{{ r.name }}</a><span class="sub">{{ r.jobs }} job{{ r.jobs|pluralize }}</span></td>
+    <td class="num">{{ r.packages }}</td>
+    <td class="num">{% if r.submittals_due %}{{ r.on_time }} of {{ r.submittals_due }}<span class="sub">{{ r.on_time_pct }}%</span>{% else %}<span class="dim">None due yet</span>{% endif %}</td>
+    <td class="num">{{ r.snags }}{% if r.snags %}<span class="sub">{{ r.closed }} closed</span>{% endif %}</td>
+    <td class="num">{{ r.per_package }}</td>
+    <td class="num">{% if r.avg_days is not None %}{{ r.avg_days }}{% else %}<span class="dim">None closed</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% include "partials/pager.html" %}
+{% elif q %}{% include "partials/empty_state.html" with title="No subcontractors match" message="No appointed subcontractor has that in their name. Clear the search to see them all." cta_url="?" cta_label="Clear search" cta_plain=True %}
+{% else %}{% url 'sub_list' org.slug as subs_url %}{% include "partials/empty_state.html" with title="No appointed subcontractors yet" message="Subcontractors show here once they are appointed on a package on a job." cta_url=subs_url cta_label="Go to the supply chain" %}{% endif %}
+</div>
+<p class="small dim">On time: first made on or before the submittal's due date (one with no due date counts as on time once made). Not counted until it is made or its date passes. Snags and defects are those given to the subcontractor's people on the jobs they are appointed on.</p>
+</div>
+{% endblock %}

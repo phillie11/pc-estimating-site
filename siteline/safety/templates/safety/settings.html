@@ -1,0 +1,11 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}Safety settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a></div><h1>Safety settings</h1></div></div>
+<div class="card" style="max-width:720px"><div class="card-body">
+<p class="small dim">These apply to every job. {% badge 'Advisory' 'warn' %} Agree them with your safety adviser and whoever looks after your data protection.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'org_settings' org.slug %}">Cancel</a></div></form>
+<p class="small dim">Visitors' sign-ins are deleted in a clear-out each night. Until then their names stay on the sign-in log.</p>
+</div></div>
+{% endblock %}

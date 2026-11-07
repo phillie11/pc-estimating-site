@@ -4,7 +4,6 @@ before and after, sealing, sign-off (needs the system and an after photo), faili
 resealing, reopening (PM only), the CSV export, Needs me, and pins from the drawing viewer.
 """
 from django.core.files.base import ContentFile
-from django.test import override_settings
 
 from core.workflow import apply_transition
 from projects.models import Document, DocumentRevision
@@ -12,10 +11,9 @@ from tenancy.context import org_context
 
 from ..exports import HEADER, register
 from ..models import Penetration, QualityPhoto
-from .base import MEDIA, QualityTestBase, jpeg, tearDownModule  # noqa: F401
+from .base import QualityTestBase, jpeg
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class FirestopFlowTests(QualityTestBase):
     def test_empty_register_says_what_goes_here(self):
         self.login(self.pat)
@@ -50,9 +48,10 @@ class FirestopFlowTests(QualityTestBase):
 
     def test_sign_off_needs_the_system_and_an_after_photo(self):
         p = self.penetration()
-        self.login(self.pat)
+        self.login(self.sam)  # whoever seals it doesn't sign it off (QualitySettings.fs_independent_sign_off)
         self.client.post(self.purl('penetration_action', p.pk), {'action': 'seal'})
         self.assertEqual(self.fresh(p).status, Penetration.SEALED)
+        self.login(self.pat)
         r = self.client.post(self.purl('penetration_action', p.pk), {'action': 'sign_off'}, follow=True)
         self.assertContains(r, 'Record the fire-stopping system or product')
         with org_context(self.org_a):
@@ -86,7 +85,7 @@ class FirestopFlowTests(QualityTestBase):
         with org_context(self.org_a):
             from ..photos import add_photo
             add_photo(self.pa, self.pat, jpeg(), penetration=p, stage='AFTER')
-            apply_transition(p, 'seal', self.pat)
+            apply_transition(p, 'seal', self.sam)
             apply_transition(p, 'sign_off', self.pat)
             photo = QualityPhoto.objects.get()
         self.login(self.sam)
@@ -143,7 +142,6 @@ class FirestopFlowTests(QualityTestBase):
         self.assertEqual(rows[0][0], 'FS-001')
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class FirestopNeedsMeTests(QualityTestBase):
     def items(self, user):
         import actions
@@ -166,7 +164,6 @@ class FirestopNeedsMeTests(QualityTestBase):
             self.assertEqual(self.items(user), [])
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class ViewerPinTests(QualityTestBase):
     def setUp(self):
         super().setUp()

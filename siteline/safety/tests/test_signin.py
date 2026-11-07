@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from projects.models import Project
+from security.testing import hold_rate_limit_clock
 from tenancy.context import org_context
 
 from ..models import SiteAttendance, SiteGate
@@ -26,6 +27,7 @@ INVALID = "This sign-in code isn't in use"
 class PublicPageTests(SafetyTestBase):
     def setUp(self):
         super().setUp()
+        hold_rate_limit_clock(self)  # the limit tests post 60 or 120 times in one window, however slow the runner
         with org_context(self.org_a):
             self.pa.name = 'Bar fit-out, Call Lane'
             self.pa.client_name, self.pa.site_address = 'Secret Client Group', '1 Hidden Street'
