@@ -1,0 +1,45 @@
+{% extends "project_base.html" %}{% load ui static %}
+{% block head %}<script src="{% static 'cvr/signature.js' %}" defer></script>{% endblock %}
+{% block project_content %}<div class="cvr-touch">
+<div class="dw-card">
+<p class="small"><a href="{% url 'daywork_portal' org.slug project.pk %}">← Daywork sheets</a></p>
+<div class="card"><div class="card-body">
+  <h2 class="dw-title">Sign daywork sheet {{ sheet.reference }}</h2>
+  <p><strong>{{ sheet.title }}</strong><br><span class="small">{{ sheet.work_date|date:"l j F Y" }}{% if sheet.location %}, {{ sheet.location }}{% endif %}</span></p>
+  {% if sheet.instructed_by %}<p class="small">Instructed by: {{ sheet.instructed_by }}</p>{% endif %}
+  {% if sheet.description %}<p class="cvr-pre small">{{ sheet.description }}</p>{% endif %}
+  <table class="t dw-table">
+    <caption class="sr-only">What you are signing for</caption>
+    <thead><tr><th scope="col">Who or what</th><th scope="col" class="num">Hours or qty</th></tr></thead>
+    <tbody>{% for ln in lines %}<tr><td>{{ ln.get_kind_display }}: {{ ln.description }}</td><td class="num">{{ ln.quantity|floatformat:"-2" }} {{ ln.unit }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% if photos %}<ul class="dw-photos">{% for p in photos %}<li><a href="{% url 'daywork_portal_photo' org.slug project.pk sheet.pk p.pk 'full' %}"><img src="{% url 'daywork_portal_photo' org.slug project.pk sheet.pk p.pk 'thumb' %}" alt="{{ p.caption|default:'Photo of the work' }}" loading="lazy" width="160" height="120"></a>{% if p.caption %}<span class="small">{{ p.caption }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+  <p class="small dim">Signing confirms the hours, plant and materials were used on this work. The value is agreed separately{% if sheet.sign_requested_by %}; ask {{ sheet.sign_requested_by.full_name }} if anything looks wrong{% endif %}.</p>
+</div></div>
+
+<div class="card"><div class="card-body">
+<form method="post" enctype="multipart/form-data" class="sig-form" novalidate>{% csrf_token %}<input type="hidden" name="version" value="{{ sheet.version }}">
+  {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <div class="form-grid">
+    {% include "partials/field.html" with field=form.name full=1 %}
+    {% include "partials/field.html" with field=form.role full=1 %}
+  </div>
+  <div class="field full sig-field{% if form.signature.errors %} has-error{% endif %}">
+    <span class="label" id="sig-label">Your signature <span class="dim">*</span></span>
+    <div class="sig-pad" hidden>
+      <canvas class="sig-canvas" width="600" height="220" role="img" aria-labelledby="sig-label" aria-describedby="sig-help"></canvas>
+      <div class="row"><button type="button" class="btn sig-clear">Clear and sign again</button>
+        <button type="button" class="btn ghost sig-use-photo">Upload a photo of my signature instead</button></div>
+    </div>
+    <div class="sig-upload"><label for="{{ form.signature.id_for_label }}">Photo of your signature on paper</label>{{ form.signature }}</div>
+    <div class="help" id="sig-help">{{ form.signature.help_text }}</div>
+    {% for e in form.signature.errors %}<div class="err">{{ e }}</div>{% endfor %}
+  </div>
+  {% include "partials/field.html" with field=form.confirm %}
+  <div class="form-actions"><button class="btn primary block">Sign the sheet</button><a class="btn ghost" href="{% url 'daywork_portal' org.slug project.pk %}">Not now</a></div>
+  <p class="small dim">Once signed, the sheet can't be changed. The site team is told straight away.</p>
+</form>
+</div></div>
+</div>
+</div>
+{% endblock %}

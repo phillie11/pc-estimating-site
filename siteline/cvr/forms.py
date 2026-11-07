@@ -57,7 +57,7 @@ class ReverseForm(StyledForm):
 class SettingsForm(StyledModelForm):
     class Meta:
         model = CommercialSettings
-        fields = ['cvr_due_day', 'pm_can_sign_off', 'labour_pct', 'materials_pct', 'plant_pct']
+        fields = ['cvr_due_day', 'pm_can_sign_off', 'cvr_every_month', 'labour_pct', 'materials_pct', 'plant_pct']
         help_texts = {'labour_pct': 'Starting percentage additions for a new job\'s daywork. Each job can change '
                                     'its own under Dayworks > Rates.'}
 
