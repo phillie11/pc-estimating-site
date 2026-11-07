@@ -1,0 +1,29 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block head %}{% include "safety/_head.html" %}{% endblock %}
+{% block project_content %}
+<div class="site-mode touch">
+<div class="card"><div class="card-head"><h2>Report a near miss or incident</h2></div><div class="card-body">
+  <p class="small dim" style="margin-top:0">Just the basics. The site team is told straight away and looks into it. If someone is badly hurt, call 999 first.</p>
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    {% if form.non_field_errors %}<ul class="errorlist">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    {% include "partials/field.html" with field=form.description full=True %}
+    {% include "partials/field.html" with field=form.location full=True %}
+    <fieldset class="field full sf-yes-no{% if form.anyone_hurt.errors %} has-error{% endif %}">
+      <legend>{{ form.anyone_hurt.label }}</legend>
+      <div class="sf-yes-no-opts">{% for c in form.anyone_hurt %}<label class="sf-choice">{{ c.tag }} <span>{{ c.choice_label }}</span></label>{% endfor %}</div>
+      {% for e in form.anyone_hurt.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    </fieldset>
+    {% include "partials/field.html" with field=form.occurred_at full=True %}
+    <div class="field full file-pick{% if form.photo.errors %} has-error{% endif %}">
+      <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>{{ form.photo }}
+      <div class="help" id="{{ form.photo.auto_id }}_helptext">{{ form.photo.help_text }}</div>{% for e in form.photo.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="form-actions"><button class="btn primary block">Send report</button></div>
+  </form>
+</div></div>
+<div class="card"><div class="card-head"><h2>Reports from your company</h2></div>
+{% if reports %}<ul class="list">{% for i in reports %}<li style="flex-wrap:wrap"><span class="grow" style="flex-basis:12rem"><span class="ref">{{ i.ref }}</span> {{ i.title }}<br><span class="small dim">{{ i.occurred_at|date:"D j M Y, H:i" }} · {{ i.location }}</span></span>{% if i.is_open %}{% badge 'With the site team' 'info' %}{% else %}{% badge 'Closed by the site team' 'muted' %}{% endif %}</li>{% endfor %}</ul>
+{% else %}{% include "partials/empty_state.html" with title="No reports yet" message="Near misses and incidents your people report here are listed, so you can see the site team has them." left=True %}{% endif %}
+</div>
+</div>
+{% endblock %}

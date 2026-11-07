@@ -1,0 +1,13 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_content %}
+<div class="card"><div class="card-head"><h2>Daywork sheets to sign</h2></div>
+{% if waiting %}<ul class="list">{% for s in waiting %}<li style="flex-wrap:wrap;align-items:center"><span class="grow" style="flex-basis:12rem"><span class="ref">{{ s.reference }}</span> {{ s.title }}<br><span class="small dim">Work on {{ s.work_date|date:"D j M Y" }}{% if s.location %} · {{ s.location }}{% endif %}</span></span>
+  <a class="btn primary" href="{% url 'daywork_portal_sign' org.slug project.pk s.pk %}" style="min-height:44px">Check and sign</a></li>{% endfor %}</ul>
+{% else %}{% include "partials/empty_state.html" with title="Nothing to sign" message="When the site team asks you to sign a daywork sheet, it shows here. You check the hours, plant and materials and sign it on your phone or computer." left=True %}{% endif %}
+</div>
+{% if done %}<div class="card"><div class="card-head"><h2>Signed</h2></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Sheet</th><th>Work on</th><th>Signed</th></tr></thead><tbody>
+{% for s in done %}<tr><td><span class="ref">{{ s.reference }}</span> {{ s.title }}</td><td class="small nowrap">{{ s.work_date|date:"j M Y" }}</td><td class="small">{% if s.signed_at %}{{ s.signed_by_name }}, {{ s.signed_at|date:"j M Y" }}{% else %}{% badge 'Not signed' 'muted' %}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></div>{% endif %}
+<p class="small dim">Signing confirms the hours, plant and materials were used on the work. The value is agreed separately.</p>
+{% endblock %}

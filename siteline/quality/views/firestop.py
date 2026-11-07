@@ -14,12 +14,13 @@ from core.models import AuditEntry
 from core.workflow import apply_transition, available_transitions
 from tenancy.models import log_activity
 
-from .. import exports
+from .. import exports, rules
 from .. import photos as photo_files
 from .. import pins
 from ..access import quality_project
 from ..forms import NoteForm, PenetrationForm, PenetrationPhotoForm
 from ..models import Penetration, QualityPhoto
+from ..workflow import independent_sign_off
 from .common import csv_response, ctx, first_error, page_of
 
 FILTERS = {
@@ -123,6 +124,7 @@ def penetration_detail(request, org_slug, pk, pen_id):
     project = quality_project(request, pk)
     p = get_object_or_404(
         Penetration.objects.select_related('package__subcontractor', 'drawing', 'drawing_revision', 'inspected_by',
+                                           'sealed_by',
                                            'created_by', 'ball_in_court_user')
         .prefetch_related(Prefetch('photos', queryset=QualityPhoto.objects.select_related('uploaded_by'))),
         project=project, pk=pen_id)
@@ -133,8 +135,11 @@ def penetration_detail(request, org_slug, pk, pen_id):
     for a in audit:
         a.label = a.action.replace('_', ' ').capitalize()
     names = {t.name for t in available_transitions(p, request.user)} if not project.is_archived else set()
+    own_seal = None
+    if p.status == Penetration.SEALED and 'sign_off' not in names and not project.is_archived:
+        own_seal = rules.own_seal_problem(p.sealed_by_id, request.user.pk, independent_sign_off(project))
     return render(request, 'quality/penetration_detail.html', ctx(
-        request, project, 'firestopping', p=p, transitions=names, audit=audit,
+        request, project, 'firestopping', p=p, transitions=names, audit=audit, own_seal=own_seal,
         before=[x for x in photos if x.stage == QualityPhoto.BEFORE],
         after=[x for x in photos if x.stage == QualityPhoto.AFTER],
         photo_form=PenetrationPhotoForm(initial={'stage': 'BEFORE' if p.status == Penetration.TO_SEAL else 'AFTER'}),
@@ -162,7 +167,7 @@ def penetration_photo(request, org_slug, pk, pen_id):
 
 
 ACTION_MESSAGES = {
-    'seal': '{ref} marked sealed. It is on the project manager\'s Needs me to inspect and sign off.',
+    'seal': '{ref} marked sealed. It is on {inspector}\'s Needs me to inspect and sign off.',
     'reseal': '{ref} marked resealed. It is ready to inspect again.',
     'sign_off': '{ref} signed off.',
     'fail': '{ref} failed inspection. It is back with whoever recorded it to get resealed.',
@@ -180,12 +185,18 @@ def penetration_action(request, org_slug, pk, pen_id):
         return redirect(p)
     form = NoteForm(request.POST)
     note = form.cleaned_data['note'] if form.is_valid() else ''
+    if action == 'sign_off':
+        own = rules.own_seal_problem(p.sealed_by_id, request.user.pk, independent_sign_off(project))
+        if own:
+            messages.error(request, own)
+            return redirect(p)
     try:
         apply_transition(p, action, request.user, note=note[:255], remark=note)
     except (InvalidTransition, RecordConflict) as e:
         messages.error(request, str(e))
         return redirect('penetration_detail', org_slug=org_slug, pk=pk, pen_id=pen_id)
-    messages.success(request, ACTION_MESSAGES[action].format(ref=p.ref))
+    inspector = p.ball_in_court_user.full_name if p.ball_in_court_user_id else 'the project manager'
+    messages.success(request, ACTION_MESSAGES[action].format(ref=p.ref, inspector=inspector))
     log_activity(request, {'seal': 'marked sealed', 'reseal': 'marked resealed', 'sign_off': 'signed off',
                            'fail': 'failed the inspection of', 'reopen': 'reopened'}[action],
                  f'{p.ref} {p.location}', project=project, url=p.get_absolute_url(), internal_only=True)

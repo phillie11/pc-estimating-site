@@ -1,0 +1,15 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block project_actions %}{% if can_add and not project.is_archived %}<a class="btn primary" href="{% url 'portal_firestop_create' org.slug project.pk %}">{% icon 'plus' %} Record fire-stopping</a>{% endif %}{% endblock %}
+{% block project_content %}
+<div class="q-site q-touch">
+{% if failed %}<div class="banner q-bad">{{ failed }} seal{{ failed|pluralize }} failed inspection. Put {{ failed|pluralize:"it,them" }} right, add a photo and mark {{ failed|pluralize:"it,them" }} resealed.</div>{% endif %}
+<div class="card"><div class="card-head"><h2>Fire-stopping on your packages</h2><span class="small dim">{{ rows|length }}</span></div>
+{% if rows %}<div class="table-wrap"><table class="t"><thead><tr><th>Penetration</th><th>Where</th><th>Status</th></tr></thead><tbody>
+{% for p in rows %}<tr><td><a class="rowlink" href="{% url 'portal_firestop_detail' org.slug project.pk p.pk %}"><span class="ref">{{ p.ref }}</span> {{ p.title }}</a></td><td class="small">{{ p.location }}</td><td>{% status_badge p %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% elif can_add %}{% url 'portal_firestop_create' org.slug project.pk as add_url %}{% include "partials/empty_state.html" with title="No fire-stopping recorded yet" message="Record each penetration you seal, with a photo before and of the finished seal. The site team inspects and signs it off." cta_url=add_url cta_label="Record fire-stopping" left=True %}
+{% else %}{% include "partials/empty_state.html" with title="No fire-stopping" message="You can record fire-stopping here once you have a package on this job. Until then, ask the site team." left=True %}{% endif %}
+</div>
+<p class="small dim">{% badge 'Advisory' 'warn' %} Install to the manufacturer's tested detail for the wall or floor. This record is evidence for the building's golden thread.</p>
+</div>
+{% endblock %}

@@ -10,4 +10,6 @@ Site progress meetings, client meetings and pre-starts: the agenda, the minutes 
 2. In the meeting, untick anyone who sent apologies, write the minutes under each heading and add actions with who and when.
 3. Press **Issue the minutes**. Everyone listed with a login gets an email with a link (no attachment), and each action goes on its owner's Needs me.
 
-Spotted a mistake after issuing? **Correct the minutes**, change them, and issue again: everyone gets the corrected version. Owners and admins change the standard agendas under Settings, Meeting agendas.
+**Internal only:** tick it on a heading and its minutes and actions stay with your team, never shown to the client or subs.
+
+Spotted a mistake? **Correct the minutes** and issue again. Owners and admins change the standard agendas, and how many days after the meeting the minutes are due, under Settings, Meeting agendas.

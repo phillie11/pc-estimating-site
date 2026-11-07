@@ -25,7 +25,7 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required, internal_required
 
 from . import cashflow as cashflow_rules
-from . import chart, figures, rules, services
+from . import chart, figures, portal, rules, services
 from .access import can_set_rates, cvr_project, daywork_project, prepares_cvr
 from .forms import (AdjustmentForm, CommentaryForm, LineForm, PhotoForm, RateForm, ReverseForm, SendForm,
                     SettingsForm, SheetForm, SignatureForm, StartForm, TermsForm)
@@ -332,8 +332,8 @@ def cashflow(request, org_slug, pk):
 # ---------------------------------------------------------------------------
 
 def _sheet(project, sheet_id):
-    return get_object_or_404(DayworkSheet.objects.select_related('created_by', 'change_event'), project=project,
-                             pk=sheet_id)
+    return get_object_or_404(DayworkSheet.objects.select_related('created_by', 'change_event', 'sign_requested_from'),
+                             project=project, pk=sheet_id)
 
 
 DW_FILTERS = [('', 'All'), ('open', 'To do'), (DayworkSheet.DRAFT, 'Not signed yet'), (DayworkSheet.SIGNED, 'Signed'),
@@ -441,12 +441,15 @@ def _store_photo(sheet, f, caption, user):
     photo.image.save(os.path.basename(f.name), f, save=False)
     f.seek(0)
     img = ImageOps.exif_transpose(Image.open(f))
-    img.thumbnail((480, 480))
     if img.mode != 'RGB':
         img = img.convert('RGB')
-    buf = io.BytesIO()
-    img.save(buf, 'JPEG', quality=80)
-    photo.thumbnail.save('thumb.jpg', ContentFile(buf.getvalue()), save=False)
+    # Re-encoded copies carry no EXIF (location, device), so the client portal never needs the original
+    for field, size, name in ((photo.display, 1600, 'display.jpg'), (photo.thumbnail, 480, 'thumb.jpg')):
+        copy = img.copy()
+        copy.thumbnail((size, size))
+        buf = io.BytesIO()
+        copy.save(buf, 'JPEG', quality=82)
+        field.save(name, ContentFile(buf.getvalue()), save=False)
     photo.save()
     return photo
 
@@ -520,6 +523,20 @@ def daywork_detail(request, org_slug, pk, sheet_id):
                                                f'{sheet.reference} added to {ce.reference}') +
                                      '. Its revenue and cost lines are priced from the sheet.')
                     return redirect(ce)
+            elif action == 'ask_client':
+                chosen = request.POST.get('signer', '')
+                signer = portal.client_side(project).filter(pk=int(chosen)).first() \
+                    if chosen.isdigit() and chosen.isascii() else None
+                portal.ask(sheet, request.user, signer)
+                log_activity(request, 'asked the client to sign', sheet.reference, project=project,
+                             url=sheet.get_absolute_url(), internal_only=True)
+                messages.success(request, f'{sheet.reference} sent to {signer.full_name} to sign in their portal. It '
+                                          'is on their Needs me; you\'ll be told when they sign.')
+                return redirect(sheet)
+            elif action == 'stop_asking':
+                portal.stop_asking(sheet, request.user)
+                messages.success(request, f'{sheet.reference} is no longer waiting for a signature in the portal.')
+                return redirect(sheet)
             elif action == 'cancel':
                 apply_transition(sheet, 'cancel', request.user, note=request.POST.get('note', '')[:255])
                 messages.success(request, f'{sheet.reference} cancelled. It stays on the register.')
@@ -537,7 +554,7 @@ def daywork_detail(request, org_slug, pk, sheet_id):
         request, project, 'dayworks', sheet=sheet, lines=lines, groups=groups, price=price, line_form=line_form,
         photo_form=photo_form, send_form=send_form, photos=list(sheet.photos.all()), kind=kind,
         rates=list(DayworkRate.objects.filter(project=project, is_active=True)),
-        can_set_rates=can_set_rates(request, project),
+        can_set_rates=can_set_rates(request, project), signers=list(portal.client_side(project)),
         transitions={t.name for t in available_transitions(sheet, request.user)}))
 
 

@@ -50,10 +50,10 @@ STAFF_LABELS = {
 # External tab groups, in row order
 EXTERNAL_GROUPS = (
     ('overview', 'Overview', ('overview', 'team')),
-    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'payments', 'subpayments', 'subvariations', 'rams', 'submittals', 'tasks', 'meetings')),
+    ('decisions', 'Decisions', ('decisions', 'rfis', 'variations', 'payments', 'dayworks', 'subpayments', 'subvariations', 'rams', 'permits', 'nearmiss', 'submittals', 'tasks', 'meetings')),
     ('documents', 'Documents', ('documents',)),
     ('programme', 'Programme', ('programme',)),
-    ('snags', 'Snags', ('issues', 'closeout')),
+    ('snags', 'Snags', ('issues', 'firestopping', 'closeout')),
 )
 EXTERNAL_LABELS = {
     'decisions': 'Waiting on you',
@@ -69,6 +69,10 @@ EXTERNAL_LABELS = {
     'meetings': 'Meetings',
     'issues': 'Your snags',
     'closeout': 'Defects and handover',
+    'dayworks': 'Daywork sheets',
+    'permits': 'Your permits',
+    'nearmiss': 'Report a near miss',
+    'firestopping': 'Fire-stopping',
 }
 
 

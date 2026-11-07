@@ -15,7 +15,7 @@ class QualityConfig(AppConfig):
         from .actions import TYPES
         from .actions import format as format_item
         from .models import Inspection, Penetration, Permit
-        # All internal (external_roles=()): nothing in Quality is shared with clients, consultants or subs yet
+        # All internal in the index (external_roles=()): subs reach their own through quality/portal.py
         register_record_type(Inspection, prefix='INS', transitions=w.INSPECTION_TRANSITIONS,
                              open_statuses=Inspection.OPEN_STATUSES, audit_fields=w.INSPECTION_AUDIT_FIELDS,
                              draft_statuses=(Inspection.IN_PROGRESS,), external_roles=())
@@ -28,3 +28,8 @@ class QualityConfig(AppConfig):
         # Needs me: worded by quality.actions.format from the records provider's one index query
         for record_type in TYPES:
             register_record_formatter(record_type, format_item)
+        # A subcontractor's failed seals, in their portal (the record index never serves externals)
+        import actions
+        from actions.providers import HookProvider
+        actions.register(HookProvider('firestopping_sub', 'Fire-stopping to put right', 'quality.portal.sub_items',
+                                      staff=False))

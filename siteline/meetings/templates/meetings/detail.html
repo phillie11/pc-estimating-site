@@ -28,7 +28,7 @@
 {% endif %}
 
 {% if editable %}
-<form method="post" id="minutes">{% csrf_token %}<input type="hidden" name="action" value="minutes"><input type="hidden" name="version" value="{{ meeting.version }}">
+<form method="post" id="minutes">{% csrf_token %}<input type="hidden" name="action" value="minutes"><input type="hidden" name="version" value="{{ meeting.version }}"><input type="hidden" name="internal_listed" value="1">
 <div class="card">
   <div class="card-head"><h2>Who was there</h2></div>
   <div class="card-body">
@@ -41,8 +41,9 @@
   <div class="card-head"><h2>Minutes</h2></div>
   <div class="card-body">
     {% for item in items %}<div class="mtg-item">
-      <h3><label for="item-{{ item.pk }}">{{ forloop.counter }}. {{ item.heading }}</label></h3>
+      <h3><label for="item-{{ item.pk }}">{{ forloop.counter }}. {{ item.heading }}</label>{% if item.internal_only %} {% badge 'Internal only' 'muted' %}{% endif %}</h3>
       <textarea name="item-{{ item.pk }}" id="item-{{ item.pk }}" rows="3" placeholder="What was said or agreed">{{ item.minutes }}</textarea>
+      <label class="small mtg-internal" for="internal-{{ item.pk }}"><input type="checkbox" name="internal" value="{{ item.pk }}" id="internal-{{ item.pk }}"{% if item.internal_only %} checked{% endif %}> Internal only: keep this heading, its minutes and its actions from the client, consultants and subcontractors</label>
       {% if item.actions.all %}<ul class="small" style="margin:6px 0 0">{% for a in item.actions.all %}<li><a href="#action-{{ a.pk }}">{{ a.reference }}</a> {{ a.title|truncatechars:90 }} · {{ a.who }}</li>{% endfor %}</ul>{% endif %}
     </div>{% endfor %}
     <div class="mtg-item"><h3><label for="notes">General notes</label></h3><textarea name="notes" id="notes" rows="3">{{ meeting.notes }}</textarea></div>
@@ -64,7 +65,7 @@
 <div class="card">
   <div class="card-head"><h2>Minutes</h2></div>
   <div class="card-body">
-    {% for item in items %}<div class="mtg-item"><h3>{{ forloop.counter }}. {{ item.heading }}</h3>
+    {% for item in items %}<div class="mtg-item"><h3>{{ forloop.counter }}. {{ item.heading }}{% if item.internal_only and is_internal %} {% badge 'Internal only' 'muted' %}{% endif %}</h3>
       {% if item.minutes %}<p class="minutes">{{ item.minutes }}</p>{% else %}<p class="dim small">Nothing recorded.</p>{% endif %}
       {% if item.actions.all %}<ul class="small" style="margin:0">{% for a in item.actions.all %}<li><strong>Action {{ a.reference }}:</strong> {{ a.title }} · {{ a.who }}{% if a.due_date %} · by {{ a.due_date|date:"j M Y" }}{% endif %}</li>{% endfor %}</ul>{% endif %}
     </div>{% endfor %}
@@ -91,7 +92,7 @@
 {% if buttons %}
 <div class="card mtg-noprint">
   <div class="card-body">
-    {% if meeting.is_planned %}<p class="small">{% if recipients %}Issuing emails a link to the minutes to {{ recipients }} {{ recipients|pluralize:"person,people" }} (everyone listed with a login, and anyone given an action), and puts each action on its owner's Needs me.{% else %}Nobody listed has a login, so issuing records the minutes without emailing anyone.{% endif %} You can correct them afterwards and issue them again.</p>{% endif %}
+    {% if meeting.is_planned %}<p class="small">{% if recipients %}Issuing emails a link to the minutes to {{ recipients }} {{ recipients|pluralize:"person,people" }} (everyone listed with a login, and anyone given an action), and puts each action on its owner's Needs me.{% else %}Nobody listed has a login, so issuing records the minutes without emailing anyone.{% endif %} You can correct them afterwards and issue them again.{% if internal_headings %} {{ internal_headings }} heading{{ internal_headings|pluralize }} marked internal only {{ internal_headings|pluralize:"is,are" }} left out for the client, consultants and subcontractors, with {{ internal_headings|pluralize:"its,their" }} actions.{% endif %}</p>{% endif %}
     <div class="form-actions">{% for name, label, tone in buttons %}
       <form method="post" class="inline"{% if name == 'issue' %} data-confirm="Issue the minutes and email the link to {{ recipients }} {{ recipients|pluralize:'person,people' }}?"{% elif name == 'cancel' %} data-confirm="Cancel this meeting? Its actions stay open."{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="{{ name }}"><button class="btn {{ tone }}">{{ label }}</button></form>
     {% endfor %}</div>

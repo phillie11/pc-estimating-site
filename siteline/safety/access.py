@@ -9,7 +9,9 @@ Who may use the Safety tab on a job.
   owners and admins  the company-wide incident register
   everyone else      nothing on the Safety tab. Externals (client, consultant, subcontractor)
                      only meet safety through the public QR sign-in page, which shows nothing
-                     but the job's name.
+                     but the job's name, and an appointed subcontractor's "Report a near miss"
+                     page in their portal (safety/portal.py: the report form and their own
+                     company's reports, never the investigation).
 
 The rule for "staff on the job" is the site diary's (diary.access), so the two tabs always
 agree. Every view still fetches the project with projects.access.get_project() first, so

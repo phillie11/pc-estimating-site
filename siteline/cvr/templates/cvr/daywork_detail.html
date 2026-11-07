@@ -14,8 +14,19 @@
 </div></div>
 
 {% if sheet.status == 'DRAFT' and lines and not project.is_archived %}<div class="dw-next card"><div class="card-body">
+  {% if sheet.waiting_for_portal_signature %}
+  <p id="dw-portal-wait"><strong>Waiting for {{ sheet.sign_requested_from.full_name }}</strong> to sign it in their portal (asked {{ sheet.sign_requested_at|date:"D j M, H:i" }}). It is on their Needs me. If they are on site, they can sign it on this phone instead.</p>
+  <a class="btn block" href="{% url 'daywork_sign' org.slug project.pk sheet.pk %}">Sign it on this phone instead</a>
+  <form method="post" data-confirm="Stop waiting for {{ sheet.sign_requested_from.full_name }} to sign {{ sheet.reference }}? It comes off their Needs me.">{% csrf_token %}<input type="hidden" name="action" value="stop_asking"><button class="linkbtn">Stop waiting for their signature</button></form>
+  {% else %}
   <p><strong>Next:</strong> get the client or contract administrator to check the sheet and sign it on this phone.</p>
   <a class="btn primary block" href="{% url 'daywork_sign' org.slug project.pk sheet.pk %}">Get it signed</a>
+  {% if signers %}<details class="dw-portal-ask"><summary class="small">Not on site? Ask them to sign it in their portal</summary>
+    <form method="post" data-confirm="Ask them to sign {{ sheet.reference }} in their portal? They are emailed a link and it goes on their Needs me. They see the hours, plant and materials, never the rates.">{% csrf_token %}<input type="hidden" name="action" value="ask_client">
+      <div class="field"><label for="dw-signer">Who signs it</label><select id="dw-signer" name="signer">{% for u in signers %}<option value="{{ u.pk }}">{{ u.full_name }}</option>{% endfor %}</select></div>
+      <div class="form-actions"><button class="btn">Ask them to sign</button></div></form>
+  </details>{% endif %}
+  {% endif %}
 </div></div>{% endif %}
 
 <section class="card" aria-labelledby="dw-lines"><div class="card-head"><h2 id="dw-lines">Labour, plant and materials</h2></div>
