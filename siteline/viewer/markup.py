@@ -160,6 +160,17 @@ def parse(text, page_count=None):
     return {'v': VERSION, 'shapes': clean_shapes(data.get('shapes'), page_count)}
 
 
+def check_size(data):
+    """
+    A whole layer must stay small enough for the viewer to post back in one save (MAX_BYTES), however
+    it was built up: adding shapes in pieces (the compare page's clouds) can't grow it past that.
+    Measured as the browser sends it: compact JSON in UTF-8.
+    """
+    if len(json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf-8')) > MAX_BYTES:
+        raise InvalidMarkup('This mark-up is too big to add to. Remove some pen strokes or notes from it first.')
+    return data
+
+
 def parse_shapes(text, page_count=None):
     """A JSON list of shapes to add to a layer (the compare page's clouds). Raises InvalidMarkup."""
     shapes = loads(text)

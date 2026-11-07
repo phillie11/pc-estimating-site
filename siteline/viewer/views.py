@@ -270,7 +270,8 @@ def markup_add(request, org_slug, pk, doc_id, rev_id):
             elif layer.pk:
                 layer.version += 1
             shapes = markup.clean_shapes(layer.shapes + new, rev.page_count)
-            layer.data, layer.shape_count = {'v': markup.VERSION, 'shapes': shapes}, len(shapes)
+            layer.data = markup.check_size({'v': markup.VERSION, 'shapes': shapes})
+            layer.shape_count = len(shapes)
             with transaction.atomic():
                 layer.save()
     except markup.InvalidMarkup as e:
