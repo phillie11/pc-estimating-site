@@ -15,7 +15,8 @@ the Leeds job's packages, drawings (documents/demo.py) and snags exist.
     Fire-stopping  FS-001 to FS-006: two signed off (one pinned on the ground floor GA), one sealed
                  waiting for the PM to inspect (Needs me), one failed back with the PM to get
                  resealed (Needs me), two still to seal. The first three were marked sealed by the
-                 installing subcontractor (the PM signs off; whoever sealed it can't).
+                 installing subcontractor (the PM signs off; whoever sealed it can't). FS-007 was recorded
+                 by the joinery subcontractor in their portal and waits for the PM (Needs me).
   Salford Quays (project 4): one passed inspection, an active permit and two penetrations.
 
 Photos are plain coloured placeholders (diary/demo.py), not real photos.
@@ -203,6 +204,11 @@ def seed(*, leeds, pm, owner):
     _penetration(leeds, pm, 'Ground floor, WC lobby wall', 'WALL', 60, 'PIPE_METAL', '54 mm copper', n=18,
                  before=True)
     _penetration(leeds, pm, 'Ground floor, kitchen ceiling void', 'CEILING', 30, 'CABLE', 'Cable bundle')
+    if joinery is not None and sub is not None:
+        # Recorded by the joinery subcontractor in their portal, with photos: waiting for the PM to sign it off
+        _penetration(leeds, sub, 'Ground floor, bar back wall behind the back bar', 'WALL', 30, 'CABLE',
+                     '20 mm cable bundle', 'Intumescent sealant', package=joinery, installer=sub.full_name,
+                     n=24, before=True, after=True, seal=True, sealed_days_ago=1)
 
     # --- Salford ---------------------------------------------------------------------
     salford = Project.objects.filter(name='Office CAT A, Salford Quays').first()

@@ -207,7 +207,8 @@ class SeedDemoTests(TestCase):
             sub_user = User.objects.get(email='sub@demo.test')
             self.assertEqual(Permit.objects.get(project=leeds, number=5).created_by, sub_user)
             fs = list(Penetration.objects.filter(project=leeds).order_by('number').values_list('status', flat=True))
-            self.assertEqual(fs, ['SIGNED_OFF', 'SIGNED_OFF', 'SEALED', 'FAILED', 'TO_SEAL', 'TO_SEAL'])
+            self.assertEqual(fs, ['SIGNED_OFF', 'SIGNED_OFF', 'SEALED', 'FAILED', 'TO_SEAL', 'TO_SEAL', 'SEALED'])
+            self.assertEqual(Penetration.objects.get(project=leeds, number=7).created_by.email, 'sub@demo.test')
             self.assertTrue(Penetration.objects.filter(project=leeds, drawing__isnull=False).exists())
             for model in (Inspection, Permit, Penetration):
                 self.assertTrue(model.objects.filter(project=salford).exists(), model)
@@ -219,6 +220,6 @@ class SeedDemoTests(TestCase):
             pm = kinds('pm@demo.test')
             self.assertEqual(pm.count('Inspection'), 1)
             self.assertEqual(pm.count('Permit to work'), 4)  # two to approve (one a sub's), one expiring, one expired
-            self.assertEqual(pm.count('Fire-stopping'), 2)  # one to inspect, one to get resealed
+            self.assertEqual(pm.count('Fire-stopping'), 3)  # two to inspect (one a sub's), one to get resealed
             for email in ('client@demo.test', 'sub@demo.test', 'estimator@demo.test'):
                 self.assertEqual(kinds(email), [], email)
