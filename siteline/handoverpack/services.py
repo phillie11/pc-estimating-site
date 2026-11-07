@@ -38,10 +38,33 @@ def read(data, org):
     except MappingError as e:
         raise reader.WorkbookRefused(f'Your company\'s workbook layout can\'t be used: {e}')
     book = reader.open_book(data, engine.extents(m))
+    suggested = _suggest(book, m)
     try:
-        return engine.run(book, m, (s.margin_tolerance or 0) / 100)
-    except ValueError as e:  # not the pricing workbook (no summary sheet)
+        result = engine.run(book, m, (s.margin_tolerance or 0) / 100)
+    except ValueError as e:  # not the pricing workbook (no summary sheet, or not this layout)
+        if suggested:
+            e = f'{e} It looks like the "{suggested["name"]}" layout: an owner can choose that under Settings > ' \
+                'Pricing workbook.'
         raise reader.WorkbookRefused(str(e))
+    result['suggested_layout'] = suggested
+    if suggested:
+        result['gaps'].append({
+            'code': 'layout_mismatch', 'title': f'This looks like the "{suggested["name"]}" layout',
+            'detail': f'Settings > Pricing workbook is set to "{m["name"]}". If the figures here look wrong, an owner '
+                      'can change the layout there and the workbook can be uploaded again.',
+            'sheet': '', 'cell': '', 'trade': '', 'amount': None, 'severity': 'info'})
+    return result
+
+
+def _suggest(book, m):
+    """The built-in layout the file looks like, when it isn't the one in use: {key, name} or None."""
+    from .mapping import PRESETS, detect
+    summary = m['summary']['sheet']
+    cells = [book.value(summary, r, c) for r in range(1, 13) for c in range(1, 12)]
+    key = detect(book.sheetnames, cells)
+    if key is None or key == m['key'] or key not in PRESETS:
+        return None
+    return {'key': key, 'name': PRESETS[key]['name']}
 
 
 class Busy(reader.WorkbookRefused):
@@ -60,9 +83,14 @@ def _check_size(t):
 def upload(project, user, f):
     """Read the file, store it as the next revision, and bring the pack up to date. Returns the PricingWorkbook."""
     from django.db import IntegrityError, OperationalError
-    reader.check_name(getattr(f, 'name', ''))
-    data = reader.read_bytes(f)
+    ext = reader.check_name(getattr(f, 'name', ''))
+    # An .xlsm is stripped of its macros and controls first; only that .xlsx copy is read and stored
+    data, removed = reader.prepare(reader.read_bytes(f), ext)
     result = read(data, project.organization)
+    if ext == '.xlsm':
+        result['notes'].insert(0, f'Uploaded as a macro-enabled workbook (.xlsm). Its macros and controls ({removed} '
+                                  'part' + ('s' if removed != 1 else '') + ') were removed before it was read, and only '
+                                  'that copy, saved as .xlsx, is kept.')
     t = result['totals']
     _check_size(t)
     stored = []
@@ -75,7 +103,7 @@ def upload(project, user, f):
             n = (PricingWorkbook.objects.filter(project=project).aggregate(n=Max('revision'))['n'] or 0) + 1
             wb = PricingWorkbook(
                 organization=project.organization, project=project, revision=n,
-                original_name=(getattr(f, 'name', '') or 'workbook.xlsx')[-200:], size=len(data),
+                original_name=(reader.xlsx_name(getattr(f, 'name', '')) or 'workbook.xlsx')[-200:], size=len(data),
                 sha256=reader.sha256(data), uploaded_by=user, mapping_key=result['mapping'],
                 label=result['header'].get('revision', '')[:40], cost=pennies(t['cost']), charge=pennies(t['charge']),
                 profit=pennies(t['profit']), excel_charge=pennies(t['excel_charge']),
@@ -166,10 +194,18 @@ def item_rows(wb, result):
                                   'title': f'{more} more cells do not reconcile',
                                   'detail': 'See the revision page for the full list.', 'source': '',
                                   'amount': None}))
+    keys = set()
     for g in result['gaps']:
         if g['severity'] == 'info':
             continue
-        rows.append((f'gap:{g["code"]}:{g["trade"]}:{g["cell"]}'[:200], {
+        key = f'gap:{g["code"]}:{g["trade"]}:{g["cell"]}'[:200]
+        if key in keys:  # two gaps of a kind with no trade or cell (two missing tabs): tell them apart by sheet
+            key = f'{key}:{g["sheet"]}'[:190]
+            n = 2
+            while key in keys:
+                key, n = f'{key.rsplit("#", 1)[0]}#{n}', n + 1
+        keys.add(key)
+        rows.append((key, {
             'kind': OpenItem.GAP, 'code': g['code'], 'severity': g['severity'], 'trade': g['trade'][:80],
             'title': g['title'][:200], 'detail': g['detail'], 'source': _where(g['sheet'], g['cell'])[:120],
             'amount': pennies(g['amount'])}))

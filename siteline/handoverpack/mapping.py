@@ -2,14 +2,20 @@
 Where things are in a company's pricing workbook, as data.
 
 Every cell the reader looks at comes from a mapping, never from a cell reference written into the
-reader. The built-in preset below is the layout of the standard internal pricing workbook (PRICING
-SUMMARY, one tab per trade, Prelim Book, JOINERY SUMMARY, Clarifications). A company whose workbook
-is laid out differently gets its own mapping (CompanySettings.custom_mapping, the same shape as
-STANDARD), checked by validate() before it is used. There is no editor for it yet.
+reader. Two layouts are built in:
 
-`calc` names how the workbook calculates (which formulas its cells hold). The reader recomputes with
-that model; a mapping can move cells around but must keep the same arithmetic until another model is
-written.
+  STANDARD         the standard internal pricing workbook (PRICING SUMMARY with an Include? column, one
+                   tab per trade with a bidder number in D4, Prelim Book, JOINERY SUMMARY, Clarifications)
+  SUPPLIER_SELECT  the older pricing document: no Include? column, the supplier picked by name on each
+                   trade tab (W2, through Excel's FILTER), joinery on numbered workshop sheets
+
+A company whose workbook is laid out differently gets its own mapping (PricingSettings.custom_mapping,
+the same shape as one of these), checked by validate() before it is used. There is no editor for it
+yet. detect() suggests which built-in layout an uploaded file looks like; the company's setting decides.
+
+`calc` names how the workbook calculates (which formulas its cells hold): standard-v1 is engine.py,
+select-v1 is supplier_select.py. A mapping can move cells around but must keep the same arithmetic until
+another model is written.
 """
 import copy
 import re
@@ -103,7 +109,98 @@ STANDARD = {
     'words': {'yes': 'Yes', 'no': 'No', 'priced': 'Priced', 'review': 'Review', 'excluded': 'Excluded'},
 }
 
-PRESETS = {STANDARD['key']: STANDARD}
+CALC_SELECT = 'select-v1'
+
+# The older pricing document: the supplier on each trade tab is chosen by name (W2) and Excel's FILTER function
+# copies that supplier's Rate and Est Adj columns into Y and Z. The summary has no Include? column (every trade
+# row counts), its rows are found by their labels, and each trade tab's total row is the one the summary links to.
+# Joinery is priced on numbered workshop sheets ('1', '2'...) that JOINERY SUMMARY links to. See supplier_select.py.
+SUPPLIER_SELECT = {
+    'key': 'supplier-select',
+    'name': 'Pricing document (supplier-select layout)',
+    'calc': CALC_SELECT,
+    'summary': {
+        'sheet': 'PRICING SUMMARY',
+        'header': {'project': 'D2', 'date': 'D3', 'revision': 'D4'},
+        'default_markup': 'F4',
+        'joinery_markups': {'material': 'E4', 'manufacture': 'G4'},
+        'first_row': 7,
+        'scan_to': 150,
+        # The summary rows a trade tab's markup is looked up in (its AE2: INDEX/MATCH over D7:D45)
+        'markup_lookup': [7, 45],
+        'cols': {'supplier': 'B', 'name': 'D', 'cost': 'E', 'markup': 'F', 'charge': 'G', 'flag': 'H',
+                 'notes': 'I'},
+        # Rows found by the label in the name column (the first that starts with it, below the trades)
+        'labels': {'joinery': 'Joinery', 'installation': 'Installation', 'prelims': 'Prelims', 'total': 'Total',
+                   'profit': 'Profit', 'percentage': 'Percentage'},
+        # On the Profit and Percentage rows: profit and margin in F, the sheet's own target in G, F - G in I
+        'profit_col': 'F', 'margin_col': 'F', 'target_col': 'G', 'target_difference_col': 'I',
+        # Below the total: labels in F, values in G
+        'check_label_col': 'F', 'check_value_col': 'G',
+        'check_labels': {'checked_total': 'Checked Total', 'client_total': 'Client Document Total',
+                         'client_difference': 'Difference'},
+    },
+    'trade': {
+        'name': 'B2',
+        'selected_name': 'W2',
+        'markup': 'AE2',
+        'supplier_names': ['F2', 'J2', 'N2', 'R2'],
+        'first_row': 4,
+        'max_row': 400,
+        'total_label_col': 'C',
+        'total_label': 'TOTAL',
+        'cols': {'ref': 'B', 'description': 'C', 'qty': 'D', 'unit': 'E'},
+        'slots': [
+            {'rate': 'F', 'adj': 'G', 'quote': 'H', 'comment': 'I'},
+            {'rate': 'J', 'adj': 'K', 'quote': 'L', 'comment': 'M'},
+            {'rate': 'N', 'adj': 'O', 'quote': 'P', 'comment': 'Q'},
+            {'rate': 'R', 'adj': 'S', 'quote': 'T', 'comment': 'U'},
+        ],
+        'selected': {'qty': 'W', 'rate': 'Y', 'adj': 'Z', 'cost': 'AA', 'tender_rate': 'AC', 'charge': 'AD'},
+        'total_cols': {'cost': 'AA', 'charge': 'AD'},
+        'provisional': ['Prov Sums'],
+    },
+    'prelims': {
+        'sheet': 'Prelim Book',
+        'duration': 'C4',
+        'first_row': 1,
+        'last_row': 400,
+        'cols': {'section': 'B', 'description': 'C', 'allocation': 'D', 'qty': 'F', 'unit': 'G', 'rate': 'I',
+                 'cost': 'K', 'charge': 'P'},
+        'weeks_unit': 'weeks',
+    },
+    'joinery': {
+        'sheet': 'JOINERY SUMMARY',
+        'first_row': 7,
+        'last_row': 200,
+        'total_label': 'Total',
+        'cols': {'ref': 'B', 'description': 'C', 'qty': 'D', 'unit': 'E', 'supply_cost': 'F', 'supply_charge': 'G',
+                 'install_cost': 'H', 'install_charge': 'I', 'rate': 'J', 'total': 'K'},
+    },
+    # Numbered workshop sheets: cost build-up in R, charge in T, by row
+    'workshops': {
+        'pattern': r'^[0-9]{1,3}$',
+        'description': 'B1',
+        'cost_col': 'R',
+        'charge_col': 'T',
+        'parts': {'labour': 2, 'materials': 3, 'ancillary': 4, 'finish': 5, 'glass': 6, 'fabric': 7},
+        'rows': {'supply': 11, 'delivery': 13, 'install': 14, 'total': 16},
+        'max_row': 60,
+    },
+    'clarifications': {
+        'sheet': 'Clarifications',
+        'first_row': 8,
+        'last_row': 300,
+        # A number in A starts a clarification; its heading is in B and the text in B on the rows below it
+        'cols': {'ref': 'A', 'text': 'B'},
+    },
+    'words': {'yes': 'Yes', 'no': 'No', 'priced': 'Priced', 'review': 'Review', 'excluded': 'Excluded'},
+    # A selected supplier with one of these names is the estimator's own allowance or a provisional sum
+    'allowance_words': ['allowance'],
+    'ps_words': ['provisional sum', 'prov sum', 'client ps', 'ps'],
+}
+
+PRESETS = {STANDARD['key']: STANDARD, SUPPLIER_SELECT['key']: SUPPLIER_SELECT}
 PRESET_CHOICES = [(k, v['name']) for k, v in PRESETS.items()]
 MAX_ROW = 2000
 MAX_TRADES = 80
@@ -141,6 +238,8 @@ def validate(m):
     if not isinstance(m, dict):
         raise MappingError('A mapping is a JSON object.')
     _need(m, '', ('key', 'name', 'calc', 'summary', 'trade', 'prelims', 'joinery', 'clarifications', 'words'))
+    if m['calc'] == CALC_SELECT:
+        return validate_select(m)
     if m['calc'] != CALC_STANDARD:
         raise MappingError(f'Unknown calculation model {m["calc"]!r}.')
     s, t, p, j, c = m['summary'], m['trade'], m['prelims'], m['joinery'], m['clarifications']
@@ -187,6 +286,99 @@ def validate(m):
             col(letter)
     _need(m['words'], 'words.', ('yes', 'no', 'priced', 'review', 'excluded'))
     return m
+
+
+def _rows(*rows):
+    for r in rows:
+        if not isinstance(r, int) or isinstance(r, bool):
+            raise MappingError(f'{r!r} is not a row number.')
+        split(f'A{r}')
+
+
+def _texts(d, path):
+    if not isinstance(d, dict) or not d or not all(isinstance(v, str) and v.strip() for v in d.values()):
+        raise MappingError(f'{path} must name each label.')
+
+
+def validate_select(m):
+    """The supplier-select layout's mapping (calc select-v1)."""
+    s, t, p, j, c, w = m['summary'], m['trade'], m['prelims'], m['joinery'], m['clarifications'], m.get('workshops')
+    _need(s, 'summary.', ('sheet', 'header', 'default_markup', 'joinery_markups', 'first_row', 'scan_to',
+                          'markup_lookup', 'cols', 'labels', 'profit_col', 'margin_col', 'target_col',
+                          'target_difference_col', 'check_label_col', 'check_value_col', 'check_labels'))
+    for ref in [s['default_markup'], *s['header'].values(), *s['joinery_markups'].values()]:
+        split(ref)
+    _need(s['cols'], 'summary.cols.', ('supplier', 'name', 'cost', 'markup', 'charge', 'flag', 'notes'))
+    for letter in [*s['cols'].values(), s['profit_col'], s['margin_col'], s['target_col'], s['target_difference_col'],
+                   s['check_label_col'], s['check_value_col']]:
+        col(letter)
+    if not isinstance(s['markup_lookup'], list) or len(s['markup_lookup']) != 2:
+        raise MappingError('summary.markup_lookup is [first row, last row].')
+    _rows(s['first_row'], s['scan_to'], *s['markup_lookup'])
+    if s['first_row'] > s['scan_to']:
+        raise MappingError('summary.first_row is below summary.scan_to.')
+    _need(s['labels'], 'summary.labels.', ('joinery', 'installation', 'prelims', 'total', 'profit', 'percentage'))
+    _texts(s['labels'], 'summary.labels')
+    _need(s['check_labels'], 'summary.check_labels.', ('checked_total', 'client_total', 'client_difference'))
+    _texts(s['check_labels'], 'summary.check_labels')
+    _need(t, 'trade.', ('name', 'selected_name', 'markup', 'supplier_names', 'first_row', 'max_row', 'total_label_col',
+                        'total_label', 'cols', 'slots', 'selected', 'total_cols', 'provisional'))
+    for ref in [t['name'], t['selected_name'], t['markup'], *t['supplier_names']]:
+        split(ref)
+    _rows(t['first_row'], t['max_row'])
+    if not 1 <= len(t['slots']) <= 8 or len(t['slots']) != len(t['supplier_names']):
+        raise MappingError('trade.slots and trade.supplier_names must list the same suppliers (1 to 8).')
+    for slot in t['slots']:
+        _need(slot, 'trade.slots[].', ('rate', 'adj', 'quote', 'comment'))
+    _need(t['cols'], 'trade.cols.', ('ref', 'description', 'qty', 'unit'))
+    _need(t['selected'], 'trade.selected.', ('qty', 'rate', 'adj', 'cost', 'tender_rate', 'charge'))
+    _need(t['total_cols'], 'trade.total_cols.', ('cost', 'charge'))
+    for letter in [t['total_label_col'], *t['cols'].values(), *t['selected'].values(), *t['total_cols'].values(),
+                   *(v for slot in t['slots'] for v in slot.values())]:
+        col(letter)
+    _need(p, 'prelims.', ('sheet', 'duration', 'first_row', 'last_row', 'cols', 'weeks_unit'))
+    split(p['duration'])
+    _need(p['cols'], 'prelims.cols.', ('section', 'description', 'allocation', 'qty', 'unit', 'rate', 'cost', 'charge'))
+    _need(j, 'joinery.', ('sheet', 'first_row', 'last_row', 'total_label', 'cols'))
+    _need(j['cols'], 'joinery.cols.', ('ref', 'description', 'qty', 'unit', 'supply_cost', 'supply_charge',
+                                       'install_cost', 'install_charge', 'rate', 'total'))
+    _need(c, 'clarifications.', ('sheet', 'first_row', 'last_row', 'cols'))
+    _need(c['cols'], 'clarifications.cols.', ('ref', 'text'))
+    for sec, path in ((p, 'prelims.'), (j, 'joinery.'), (c, 'clarifications.')):
+        _rows(sec['first_row'], sec['last_row'])
+        if sec['first_row'] > sec['last_row']:
+            raise MappingError(f'{path}first_row is below last_row.')
+        for letter in sec['cols'].values():
+            col(letter)
+    if w is not None:
+        _need(w, 'workshops.', ('pattern', 'description', 'cost_col', 'charge_col', 'parts', 'rows', 'max_row'))
+        try:
+            re.compile(w['pattern'])
+        except (re.error, TypeError):
+            raise MappingError('workshops.pattern is not a pattern.')
+        split(w['description'])
+        col(w['cost_col']), col(w['charge_col'])
+        _need(w['rows'], 'workshops.rows.', ('supply', 'delivery', 'install', 'total'))
+        _rows(w['max_row'], *w['parts'].values(), *w['rows'].values())
+    _need(m['words'], 'words.', ('yes', 'no', 'priced', 'review', 'excluded'))
+    for key in ('allowance_words', 'ps_words'):
+        if not isinstance(m.get(key, []), list):
+            raise MappingError(f'{key} is a list of words.')
+    return m
+
+
+def detect(sheetnames, summary_cells):
+    """
+    Which built-in layout a workbook looks like, from its sheet names and the top of its summary sheet, or None.
+    summary_cells: the text of the summary's first rows. A suggestion only: the company's setting decides.
+    """
+    words = {str(v).strip().casefold() for v in summary_cells if isinstance(v, str)}
+    if 'include?' in words:
+        return STANDARD['key']
+    numbered = any(re.match(SUPPLIER_SELECT['workshops']['pattern'], n or '') for n in sheetnames)
+    if STANDARD['summary']['sheet'] in sheetnames and (numbered or 'subcontractor markup' in words):
+        return SUPPLIER_SELECT['key']
+    return None
 
 
 def get(key, custom=None):

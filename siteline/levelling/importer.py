@@ -99,10 +99,12 @@ def _read_bytes(f):
     return data
 
 
-def _check_zip(data, max_unzipped=MAX_UNZIPPED):
+def _check_zip(data, max_unzipped=MAX_UNZIPPED, allow_macros=False):
     """
     Before openpyxl sees it: a real .xlsx zip, no VBA project, no DTD, not a zip bomb. The handover pack's
     pricing workbook reader (handoverpack/reader.py) uses it too, with a larger limit for a whole workbook.
+    allow_macros=True lets the VBA and ActiveX parts through, and only so that the handover pack can strip
+    them out of an .xlsm before anything opens it (reader.strip_macros); every other check still applies.
     """
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
@@ -113,7 +115,7 @@ def _check_zip(data, max_unzipped=MAX_UNZIPPED):
         if len(infos) > 500:
             raise WorkbookRefused('That workbook has too many parts to read safely.')
         names = [i.filename.lower() for i in infos]
-        if any(n.endswith('vbaproject.bin') or n.startswith('xl/activex') for n in names):
+        if not allow_macros and any(n.endswith('vbaproject.bin') or n.startswith('xl/activex') for n in names):
             raise WorkbookRefused('That workbook contains macros, so it was refused. Save it as an Excel workbook '
                                   '(.xlsx) without macros and upload that.')
         too_big = WorkbookRefused('That workbook is too large once unpacked. Copy the scope lines into a new '
@@ -148,7 +150,7 @@ def _check_zip(data, max_unzipped=MAX_UNZIPPED):
                                           'a new workbook and upload that.')
         if '[content_types].xml' in names:
             types = zf.read(next(i for i in infos if i.filename.lower() == '[content_types].xml'))
-            if b'macroEnabled' in types or b'vbaProject' in types:
+            if not allow_macros and (b'macroEnabled' in types or b'vbaProject' in types):
                 raise WorkbookRefused('That workbook is macro-enabled, so it was refused. Save it as an Excel '
                                       'workbook (.xlsx) and upload that.')
 

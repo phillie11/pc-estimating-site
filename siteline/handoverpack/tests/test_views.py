@@ -167,7 +167,8 @@ class UploadTests(Base):
 
     def test_refused_files_say_why(self):
         self.login(self.eve)
-        for name, data in (('book.xlsm', demo_bytes()), ('book.xls', b'x'), ('book.xlsx', b'not a zip')):
+        for name, data in (('book.xlsb', demo_bytes()), ('book.xls', b'x'), ('book.ods', b'x'), ('book.csv', b'a,b'),
+                           ('book.xlsx', b'not a zip')):
             with self.subTest(name):
                 r = self.client.post(self.url('hpack_upload', self.bid.pk), {'file': upload_file(data, name)},
                                      follow=True)

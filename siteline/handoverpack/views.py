@@ -102,6 +102,10 @@ def workbook_upload(request, org_slug, pk):
         return back
     log_activity(request, 'uploaded the pricing workbook', f'revision {wb.revision}', project=project,
                  url=_url('hpack_workbook', project), internal_only=True)
+    suggested = wb.result.get('suggested_layout')
+    if suggested:
+        messages.info(request, f'This workbook looks like the "{suggested["name"]}" layout. If its figures look wrong, '
+                               'an owner can choose that layout under Settings > Pricing workbook.')
     if wb.reconciled is False:
         messages.warning(request, f'Revision {wb.revision} uploaded, but its total does not match the pricing '
                                   'summary. See the reconciliation below.')

@@ -193,11 +193,12 @@ class MappingAndCodecTests(SimpleTestCase):
 
 class ReaderSafetyTests(SimpleTestCase):
     def test_names(self):
-        for name in ('a.xlsm', 'a.xls', 'a.xlsb', 'a.csv', 'a.ods', 'a.pdf'):
+        for name in ('a.xls', 'a.xlsb', 'a.csv', 'a.ods', 'a.pdf', 'a.xltm'):
             with self.subTest(name):
                 with self.assertRaises(reader.WorkbookRefused):
                     reader.check_name(name)
         self.assertEqual(reader.check_name('Rev C.XLSX'), '.xlsx')
+        self.assertEqual(reader.check_name('Rev C.xlsm'), '.xlsm')  # accepted, to be stripped of its macros
 
     def _zip(self, parts):
         buf = io.BytesIO()

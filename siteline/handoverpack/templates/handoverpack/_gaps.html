@@ -7,3 +7,7 @@
 {% for i in result.issues|slice:":200" %}<tr><td class="mono nowrap">{{ i.sheet }}!{{ i.cell }}</td><td>{{ i.what }}</td><td class="num nowrap">{% if i.excel is not None %}{{ i.excel|money_exact:currency }}{% else %}{{ i.excel_text|default:"blank" }}{% endif %}</td><td class="num nowrap">{% if i.computed is not None %}{{ i.computed|money_exact:currency }}{% else %}blank{% endif %}</td><td class="num nowrap">{% if i.difference %}{{ i.difference|money_exact:currency }}{% endif %}</td></tr>{% endfor %}
 </tbody></table></div></section>{% endif %}
 {% if result.notes %}<section class="card"><div class="card-body small">{% for n in result.notes|slice:":20" %}<p style="margin:0 0 6px">{{ n }}</p>{% endfor %}</div></section>{% endif %}
+{% if result.from_excel %}<section class="card" aria-labelledby="hp-from-excel"><div class="card-head"><h2 id="hp-from-excel">Taken from Excel</h2><span class="small dim">Not recalculated: they depend on functions Siteline doesn't reproduce</span></div>
+<div class="table-wrap"><table class="t"><thead><tr><th>Figures</th><th>Cells</th></tr></thead><tbody>
+{% for x in result.from_excel|slice:":60" %}<tr><td>{{ x.what }}</td><td class="mono small">{{ x.where }}</td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}
