@@ -330,6 +330,11 @@ JOBS_EMAIL_BODY_DAYS = int(env('JOBS_EMAIL_BODY_DAYS', '7'))  # sent emails' bod
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', '')
 STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', '')
+# The Stripe API version billing/views.py is written against (the one stripe-python 11.4 pinned).
+# Each stripe-python major release moves its own default, so this is sent explicitly. Change it only
+# after checking billing against Stripe's API changelog; webhook payloads follow the version set on
+# the webhook endpoint in the Stripe Dashboard, not this.
+STRIPE_API_VERSION = '2024-12-18.acacia'
 TRIAL_DAYS = int(env('TRIAL_DAYS', '14'))
 # Days a workspace keeps working after a failed payment before it locks.
 PAYMENT_GRACE_DAYS = int(env('PAYMENT_GRACE_DAYS', '7'))

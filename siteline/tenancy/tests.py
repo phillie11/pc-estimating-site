@@ -395,6 +395,56 @@ class BillingTests(Base):
         self.login(staff)
         self.assertEqual(self.client.post(self.url('billing_checkout', self.org_a), {'plan': 'team'}).status_code, 403)
 
+    def fake_stripe(self, subscription=None):
+        """Answer the SDK's HTTP calls locally, recording them, so its real objects come back."""
+        calls = []
+
+        class Fake(stripe.HTTPClient):
+            name = 'fake'
+
+            def request(self, method, url, headers, post_data=None):
+                calls.append((method, url, headers.get('Stripe-Version')))
+                if '/checkout/sessions' in url:
+                    body = {'id': 'cs_1', 'object': 'checkout.session', 'url': 'https://checkout.stripe.com/c/cs_1'}
+                else:
+                    body = subscription
+                return json.dumps(body), 200, {}
+
+            def close(self):
+                pass
+
+        previous = stripe.default_http_client
+        stripe.default_http_client = Fake()
+        self.addCleanup(setattr, stripe, 'default_http_client', previous)
+        return calls
+
+    @override_settings(STRIPE_SECRET_KEY='sk_test_x')
+    def test_checkout_sends_the_pinned_api_version(self):
+        calls = self.fake_stripe()
+        self.login(self.alice)
+        r = self.client.post(self.url('billing_checkout', self.org_a), {'plan': 'team'})
+        self.assertRedirects(r, 'https://checkout.stripe.com/c/cs_1', fetch_redirect_response=False)
+        self.assertEqual([(m, v) for m, _, v in calls], [('post', '2024-12-18.acacia')])
+
+    @override_settings(STRIPE_SECRET_KEY='sk_test_x')
+    def test_completed_checkout_reads_the_fetched_subscription(self):
+        """Subscription.retrieve gives a StripeObject (not a dict since stripe-python 15)."""
+        calls = self.fake_stripe({
+            'id': 'sub_9', 'object': 'subscription', 'customer': 'cus_9', 'status': 'active',
+            'metadata': {'org_id': str(self.org_a.pk)}, 'cancel_at_period_end': True,
+            'items': {'object': 'list', 'data': [{'id': 'si_1', 'object': 'subscription_item',
+                                                  'price': {'id': 'price_S', 'object': 'price'},
+                                                  'current_period_end': 1893456000}]}})
+        r = self.post_event({'id': 'evt_c1', 'type': 'checkout.session.completed', 'data': {'object': {
+            'id': 'cs_1', 'customer': 'cus_9', 'subscription': 'sub_9', 'client_reference_id': str(self.org_a.pk)}}})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([(m, u.rsplit('/', 1)[-1], v) for m, u, v in calls], [('get', 'sub_9', '2024-12-18.acacia')])
+        self.org_a.refresh_from_db()
+        self.assertEqual((self.org_a.subscription_status, self.org_a.plan, self.org_a.stripe_customer_id,
+                          self.org_a.stripe_subscription_id, self.org_a.cancel_at_period_end),
+                         ('active', 'starter', 'cus_9', 'sub_9', True))
+        self.assertEqual(self.org_a.current_period_end.year, 2030)
+
 
 class SecurityReviewRegressionTests(Base):
     """One test per finding from the independent access-control review."""
