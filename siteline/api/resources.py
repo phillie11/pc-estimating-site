@@ -170,8 +170,14 @@ def f_web():
     return Field('web_url', 'string', web_url, 'The page in Siteline (needs a staff login).', nullable=True)
 
 
+# The earliest time a filter takes. Anything earlier means "everything", and dates near year 1 overflow
+# once they are moved into UTC or back a month.
+EARLIEST = datetime(1900, 1, 1, tzinfo=dt_timezone.utc)
+MAX_ID_DIGITS = 18  # ids are 64-bit at most; a longer number is no record's id (and int() refuses 4,300+ digits)
+
+
 def _int(value, name):
-    if not value.isdigit() or not value.isascii():
+    if not value.isdigit() or not value.isascii() or len(value) > MAX_ID_DIGITS:
         raise BadParameter(f'{name} must be a whole number.')
     return int(value)
 
@@ -191,15 +197,22 @@ def project_filter(lookup='project'):
 
 
 def _since(value, name):
-    dt = parse_datetime(value)
-    if dt is None:
-        d = parse_date(value)
-        if d is None:
-            raise BadParameter(f'{name} must be a date (2026-11-01) or a date and time (2026-11-01T09:00:00Z).')
-        dt = datetime(d.year, d.month, d.day)
-    if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, dt_timezone.utc)
-    return dt
+    message = f'{name} must be a date (2026-11-01) or a date and time (2026-11-01T09:00:00Z).'
+    try:
+        # parse_* return None for text not shaped like a date and raise ValueError for one that is shaped
+        # right but doesn't exist (2026-02-30): both are the caller's mistake, never a server error
+        dt = parse_datetime(value)
+        if dt is None:
+            d = parse_date(value)
+            if d is None:
+                raise BadParameter(message)
+            dt = datetime(d.year, d.month, d.day)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, dt_timezone.utc)
+        dt = dt.astimezone(dt_timezone.utc)  # 9999-12-31T23:59-01:00 is past the last date there is
+    except (ValueError, OverflowError):
+        raise BadParameter(message)
+    return max(dt, EARLIEST)
 
 
 def updated_since(field_name='updated_at'):
@@ -278,7 +291,9 @@ def _projects():
 # ---------------------------------------------------------------------------
 
 def _overdue(obj, ctx):
-    return bool(obj.is_open and obj.due_date and obj.due_date < ctx.today)
+    """As the RFI's own page (RFI.is_overdue) and the overdue report: still waiting for a response, past its date."""
+    from rfis.models import RFI
+    return bool(obj.status == RFI.STATUS_OPEN and obj.due_date and obj.due_date < ctx.today)
 
 
 def _rfis():
@@ -673,7 +688,10 @@ def _sub_payments():
 
 
 def _date(value, name):
-    d = parse_date(value)
+    try:
+        d = parse_date(value)
+    except ValueError:  # shaped like a date but not one: 2026-02-30
+        d = None
     if d is None:
         raise BadParameter(f'{name} must be a date, e.g. 2026-11-01.')
     return d
@@ -691,6 +709,9 @@ def cvr_month(ctx):
         raise BadParameter('month must be a year and month, e.g. 2026-10.')
     if month > rules.month_start(ctx.today):
         raise BadParameter('month can\'t be in the future.')
+    if month < EARLIEST.date():
+        # The CVR compares with the month before, and there is none before January of year 1
+        raise BadParameter(f'month must be {EARLIEST:%Y-%m} or later.')
     return month
 
 

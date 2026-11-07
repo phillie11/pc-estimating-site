@@ -83,6 +83,13 @@ def _call(request, scope, handler):
             resp = error(400, str(exc))
         except PermissionDenied as exc:
             resp = error(403, str(exc) or 'This token can\'t read that.')
+        except Exception:
+            # A call that fails is still a call: log it, without letting the log hide the real error
+            try:
+                auth.record(token, request, 500)
+            except Exception:  # noqa: BLE001 - e.g. the database is what failed
+                pass
+            raise
         auth.record(token, request, resp.status_code)
     return resp
 
