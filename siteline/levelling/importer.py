@@ -99,8 +99,11 @@ def _read_bytes(f):
     return data
 
 
-def _check_zip(data):
-    """Before openpyxl sees it: a real .xlsx zip, no VBA project, not a zip bomb."""
+def _check_zip(data, max_unzipped=MAX_UNZIPPED):
+    """
+    Before openpyxl sees it: a real .xlsx zip, no VBA project, no DTD, not a zip bomb. The handover pack's
+    pricing workbook reader (handoverpack/reader.py) uses it too, with a larger limit for a whole workbook.
+    """
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
@@ -115,11 +118,12 @@ def _check_zip(data):
                                   '(.xlsx) without macros and upload that.')
         too_big = WorkbookRefused('That workbook is too large once unpacked. Copy the scope lines into a new '
                                   'workbook and upload that.')
-        if sum(i.file_size for i in infos) > MAX_UNZIPPED:
+        if sum(i.file_size for i in infos) > max_unzipped:
             raise too_big
+        parts = _capped_parts(zf, infos)
         for i in infos:
             name = i.filename.lower()
-            if i.file_size > MAX_PART.get(name, MAX_UNZIPPED):
+            if i.file_size > parts.get(name, (None, max_unzipped))[1]:
                 raise too_big
             # A part that unpacks to over 100 times its packed size is built to amplify, not to hold a bill
             if i.file_size > MAX_RATIO * max(i.compress_size, 1) and i.file_size > 64 * 1024:
@@ -134,7 +138,7 @@ def _check_zip(data):
             if DTD.search(data):
                 raise WorkbookRefused('That workbook contains a document type declaration, which Excel never writes, '
                                       'so it was refused. Save it again from Excel as .xlsx.')
-            if name == 'xl/sharedstrings.xml':
+            if parts.get(name, (None,))[0] == 'sharedstrings':
                 m = UNIQUE_COUNT.search(data[:4096])
                 if m and int(m.group(1)) > MAX_SHARED_STRINGS:
                     raise WorkbookRefused('That workbook has too much text to read safely. Copy the scope lines into '
@@ -147,6 +151,39 @@ def _check_zip(data):
             if b'macroEnabled' in types or b'vbaProject' in types:
                 raise WorkbookRefused('That workbook is macro-enabled, so it was refused. Save it as an Excel '
                                       'workbook (.xlsx) and upload that.')
+
+
+CONTENT_TYPES_MAX = 1024 * 1024
+OVERRIDE = re.compile(rb'<(?:\w+:)?(Override|Default)\b([^>]*)>', re.I)
+ATTR = re.compile(rb'(\w+)\s*=\s*["\']([^"\']*)["\']')
+# Parts openpyxl parses whole, found by their content type (that is how openpyxl finds them), not by name
+WHOLE = {b'sharedstrings+xml': 'sharedstrings', b'styles+xml': 'styles'}
+
+
+def _capped_parts(zf, infos):
+    """
+    {lower-case part name: (kind, size cap)} for the shared strings and styles parts. openpyxl finds them through
+    [Content_Types].xml, so a renamed part (xl/foo.xml declared as shared strings) gets the same caps; a Default
+    rule that would make every part with some extension shared strings or styles is refused outright.
+    """
+    caps = {name: (name.split('/')[-1].split('.')[0], cap) for name, cap in MAX_PART.items()}
+    info = next((i for i in infos if i.filename.lower() == '[content_types].xml'), None)
+    if info is None:
+        return caps
+    if info.file_size > CONTENT_TYPES_MAX:
+        raise WorkbookRefused('That workbook is too large to read safely once unpacked.')
+    for tag, attrs in OVERRIDE.findall(_read_part(zf, info)):
+        a = {k.lower(): v for k, v in ATTR.findall(attrs)}
+        ctype = a.get(b'contenttype', b'').lower()
+        kind = next((k for suffix, k in WHOLE.items() if ctype.endswith(suffix)), None)
+        if kind is None:
+            continue
+        if tag.lower() == b'default':
+            raise WorkbookRefused('That workbook isn\'t laid out the way Excel saves one, so it was refused. Save it '
+                                  'again from Excel as .xlsx.')
+        name = a.get(b'partname', b'').decode('utf-8', 'replace').lstrip('/').lower()
+        caps[name] = (kind, MAX_PART['xl/' + ('sharedstrings' if kind == 'sharedstrings' else 'styles') + '.xml'])
+    return caps
 
 
 def _read_part(zf, info):

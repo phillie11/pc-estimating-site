@@ -459,5 +459,7 @@ class Command(BaseCommand):
             seed_bid_discipline(owner, est)  # bid/no-bid scores, loss reviews, coverage (tenders/demo.py)
             from levelling.demo import seed as seed_levelling
             seed_levelling(est)  # Kingsway joinery levelled across three quotes (levelling/demo.py)
+            from handoverpack.demo import seed as seed_pricing
+            seed_pricing(est)  # Kingsway's pricing workbook, two revisions, and its handover pack (handoverpack/demo.py)
 
         self.stdout.write(self.style.SUCCESS(f'Demo workspace ready at /{SLUG}/  (password {PASSWORD})'))
