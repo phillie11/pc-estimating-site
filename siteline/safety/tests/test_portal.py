@@ -13,7 +13,6 @@ import datetime
 import io
 
 from django.core.management import call_command
-from django.test import override_settings
 from django.utils import timezone
 
 import actions
@@ -25,7 +24,7 @@ from tenancy.models import Membership
 from .. import rules
 from ..models import Incident, IncidentPhoto, SafetySettings, SiteAttendance
 from ..retention import purge_visitor_signins
-from .base import MEDIA, SafetyTestBase, jpeg, make_user
+from .base import SafetyTestBase, jpeg, make_user
 
 
 class Base(SafetyTestBase):
@@ -45,7 +44,6 @@ class Base(SafetyTestBase):
                                             'anyone_hurt': 'False', **data})
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class NearMissPortalTests(Base):
     def test_sub_reports_a_near_miss_and_it_goes_to_the_pm(self):
         r = self.report(self.sid, photo=jpeg())
@@ -129,7 +127,6 @@ class NearMissPortalTests(Base):
             self.assertIn(Incident.objects.get().ball_in_court_user, (self.alice, self.adam))
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class InvestigationTargetTests(Base):
     def test_company_sets_the_investigation_target(self):
         with org_context(self.org_a):
@@ -163,7 +160,6 @@ class InvestigationTargetTests(Base):
         self.assertEqual(rules.investigation_due(d), datetime.date(2026, 3, 17))
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class VisitorRetentionTests(Base):
     def attend(self, ago_days, kind=SiteAttendance.KIND_VISITOR, user=None, org=None, project=None, name='Vic'):
         with org_context(org or self.org_a):

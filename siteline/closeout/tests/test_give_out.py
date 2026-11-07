@@ -5,7 +5,6 @@ Needs me (red once it has passed). Weekends and the contract region's bank holid
 """
 from datetime import date, timedelta
 
-from django.test import override_settings
 from django.utils import timezone
 
 from projects.models import Issue
@@ -14,10 +13,9 @@ from tenancy.context import TenantContextMissing, org_context
 from .. import rules
 from ..models import CloseoutSettings
 from .base import CloseoutTestBase
-from .test_closeout import MEDIA, kinds
+from .test_closeout import kinds
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class GiveOutTargetTests(CloseoutTestBase):
     def reported(self, days_ago, **kw):
         i = self.issue(title=kw.pop('title', 'From client'), issue_type='DEFECT', created_by=self.carla, **kw)

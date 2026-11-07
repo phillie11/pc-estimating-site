@@ -7,7 +7,6 @@ Access: an appointed sub sees only their own company's items; a second appointed
 (Sue, Sparks Electrical) is refused theirs; clients, consultants and tendering subs get a 403; staff
 are sent to the staff page; another company gets a 404; no organisation fails closed.
 """
-from django.test import override_settings
 from django.urls import reverse
 
 import actions
@@ -22,7 +21,7 @@ from .. import rules
 from ..models import Penetration, Permit, QualityPhoto, QualitySettings
 from ..photos import add_photo
 from ..portal import sub_items
-from .base import MEDIA, QualityTestBase, jpeg, make_user, tearDownModule  # noqa: F401
+from .base import QualityTestBase, jpeg, make_user
 
 
 class PortalBase(QualityTestBase):
@@ -44,7 +43,6 @@ class PortalBase(QualityTestBase):
         return self.penetration(**kw)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PermitPortalTests(PortalBase):
     def test_sub_sees_only_their_own_companys_permits(self):
         mine = self.sid_permit(title='Weld Sid brackets')
@@ -105,7 +103,6 @@ class PermitPortalTests(PortalBase):
         self.assertNotContains(self.client.get(self.purl('portal_permits')), self.purl('portal_permit_create'))
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class FirestopPortalTests(PortalBase):
     def test_sub_records_fire_stopping_and_it_goes_to_the_pm(self):
         self.login(self.sid)
@@ -182,7 +179,6 @@ class FirestopPortalTests(PortalBase):
         self.assertEqual(self.client.get(self.purl('penetration_list')).status_code, 403)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PortalAccessTests(PortalBase):
     def setUp(self):
         super().setUp()
@@ -258,7 +254,6 @@ class PortalAccessTests(PortalBase):
                                           {'action': 'seal'}).status_code, 404)
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class OwnSealSignOffTests(PortalBase):
     def sealed_by(self, user):
         p = self.penetration(system='Collar')

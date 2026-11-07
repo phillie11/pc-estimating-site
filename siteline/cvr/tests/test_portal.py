@@ -9,13 +9,10 @@ Release 3 wave 2 defaults in commercial reporting (pending owner decision):
 Access for the portal: only the person asked sees and signs the sheet; other clients, subcontractors
 and tendering subs are refused; another company gets a 404; no organisation fails closed.
 """
-import shutil
-import tempfile
 from datetime import date
 from decimal import Decimal as D
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 
 from changes.tests.base import make_user
 from core.exceptions import InvalidTransition, TransitionForbidden
@@ -28,12 +25,6 @@ from tenancy.models import Membership
 
 from .base import CVRTestBase
 from .test_views import png
-
-MEDIA = tempfile.mkdtemp(prefix='cvr-portal-')
-
-
-def tearDownModule():
-    shutil.rmtree(MEDIA, ignore_errors=True)
 
 
 class SkippedMonthTests(CVRTestBase):
@@ -107,7 +98,6 @@ class SkippedMonthTests(CVRTestBase):
             self.assertEqual(rules.months_without_sign_off(first, month, signed), missing, (first, month, signed))
 
 
-@override_settings(MEDIA_ROOT=MEDIA)
 class PortalSigningTests(CVRTestBase):
     def setUp(self):
         super().setUp()
