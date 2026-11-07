@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, claude/r3b-qe-ci-probe]  # PROBE ONLY: timing run, branch deleted afterwards
 
 # Nothing in CI needs to write to the repository.
 permissions:
