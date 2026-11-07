@@ -294,6 +294,9 @@ class Command(BaseCommand):
                 ('Working at height: mobile towers', 'Bulkhead and high-level joinery', Rams.COMMENTS, 12,
                  'Approved. Add tower inspection record sheets to the site file.'),
                 ('Kitchen wall cladding', 'Hygienic cladding to first floor kitchen', Rams.SUBMITTED, 1, ''),
+                # Sent back to the sub: on their Needs me (RAMS to revise)
+                ('Back bar lifting operations', 'Lifting the back bar units into position', Rams.REJECTED, 4,
+                 'Revise and resubmit: add the lifting plan and name the appointed person for the lift.'),
             ]:
                 Rams.objects.create(project=leeds, subcontractor=s_join, package=join_pkg, title=title, scope=scope,
                                     status=status, file=ContentFile(demo_pdf(title, f'RAMS · {s_join}'), name='rams.pdf'),
