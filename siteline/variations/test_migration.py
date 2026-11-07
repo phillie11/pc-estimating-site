@@ -125,6 +125,9 @@ class VariationMigrationTests(MigrateMixin, TransactionTestCase):
         again = self.migrate(AFTER)
         self.assertEqual(again.get_model('core', 'RecordLink').objects.count(), 1)
 
+
+# Each of these takes over a minute, and the parallel runner hands out whole classes: a class each.
+class VariationMigrationEmptyDatabaseTests(MigrateMixin, TransactionTestCase):
     def test_empty_database_migrates_both_ways(self):
         self.migrate(BEFORE)
         apps = self.migrate(AFTER)

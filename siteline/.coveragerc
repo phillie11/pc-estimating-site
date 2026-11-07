@@ -1,6 +1,11 @@
 [run]
 branch = True
 source = .
+# The tests run in parallel processes (manage.py test --parallel). Each process writes its own
+# .coverage.<host>.<pid>.<random> file, and `coverage combine` merges them before the report.
+parallel = True
+concurrency = multiprocessing,thread
+sigterm = True
 omit =
     manage.py
     config/asgi.py

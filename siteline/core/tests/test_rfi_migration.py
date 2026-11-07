@@ -13,7 +13,7 @@ BEFORE = [('rfis', '0002_alter_rfi_project'), ('core', '0001_records')]  # core 
 AFTER = [('rfis', '0005_remove_rfi_is_shared'), ('core', '0002_audit_actor_name_retention')]
 
 
-class RFIMigrationTests(TransactionTestCase):
+class MigrateMixin:
     def migrate(self, targets):
         executor = MigrationExecutor(connection)
         executor.loader.build_graph()
@@ -25,6 +25,10 @@ class RFIMigrationTests(TransactionTestCase):
         self.migrate(executor.loader.graph.leaf_nodes())  # leave the schema as every other test expects
         super().tearDown()
 
+
+# Each migration test takes over a minute (it migrates the whole schema back and forth), and the parallel
+# runner hands out whole classes, so the two tests are in two classes to run side by side.
+class RFIMigrationTests(MigrateMixin, TransactionTestCase):
     def seed(self, apps):
         Organization = apps.get_model('tenancy', 'Organization')
         Project = apps.get_model('projects', 'Project')
@@ -88,6 +92,8 @@ class RFIMigrationTests(TransactionTestCase):
         for model in ('RecordIndex', 'AuditEntry', 'NumberSequence'):
             self.assertFalse(back.get_model('core', model).objects.exists(), model)
 
+
+class RFIMigrationEmptyDatabaseTests(MigrateMixin, TransactionTestCase):
     def test_empty_database_migrates_both_ways(self):
         self.migrate(BEFORE)
         apps = self.migrate(AFTER)

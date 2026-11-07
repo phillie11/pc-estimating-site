@@ -240,7 +240,8 @@ All in `security/`; the route lists are in `security/middleware.py` and `securit
 
 ## Performance and the end-to-end journey
 
-- `e2e/test_journey.py` drives one job through every module by HTTP only, as the estimator, PM, owner, two subcontractors and the client, and checks what each sees and their Needs me after every step. Run it after any change that crosses modules: `DEBUG=1 python manage.py test e2e`.
+- `e2e/test_journey.py` drives one job through every module by HTTP only, as the estimator, PM, owner, two subcontractors, the client and a visitor, and checks what each sees and their Needs me after every step: the bid, levelling and handover, procurement, diary, drawings, RFIs, variations and payments, then Release 3's inspections, permits, fire-stopping, incidents and QR sign-in, programme import and look-ahead, meetings, close-out and the handover pack, dayworks, and a month-end CVR whose cashflow adds up to the final account. The last step moves the clock to the next month (`travel_to`). Run it after any change that crosses modules: `DEBUG=1 python manage.py test e2e`.
+- `e2e/test_needs_me_providers.py` runs every registered Needs me provider on its own for every person in the demo company. CI runs it on SQLite, PostgreSQL and MySQL, so a provider whose query only works on one database (wave 1's untyped NULLs in a PostgreSQL UNION) fails CI and names itself. A new provider needs demo data that gives it something to list, or a line in its `NOT_IN_DEMO` saying why not.
 - `manage.py seed_scale` builds a company two years in on a throwaway database (200 jobs, 40 staff, 300 subcontractors, about 20,000 ledger entries, 3,000 RFIs, 5,000 diary entries, 12,500 documents and revisions, 2,000 applications; `tenancy/scale.py`). Use it to measure pages before a release.
 - Lists and the Needs me badge run on every page, so they take a fixed number of queries however much data there is. `e2e/test_query_counts.py` fails if a page takes more queries in a company three times the size. Things that help: `select_related`/`prefetch_related`, `projects.views.count_together()` for several counts in one query, and `tenancy.context.request_memo()` for a lookup several parts of one page repeat (it lasts one request and is cleared by any save).
 - `row.organization` costs no query inside the request's organisation (`tenancy.models.TenantOrganizationField`), so `get_absolute_url()` on a list is free.
@@ -273,7 +274,7 @@ Emails print to the console while `EMAIL_BACKEND` is unset.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`:
 
-- **Tests**, on Python 3.13, one job per database: `Tests (sqlite)`, `Tests (postgres)` (PostgreSQL 16, the planned AWS RDS database) and `Tests (mysql)` (MySQL 8.0, what PythonAnywhere runs in production today). Each job runs `manage.py check`, `manage.py makemigrations --check --dry-run` (fails if a model change has no migration), then the full test suite under `coverage`, with the report printed in the log and the job summary. There is no coverage threshold yet.
+- **Tests**, on Python 3.13, one job per database: `Tests (sqlite)`, `Tests (postgres)` (PostgreSQL 16, the planned AWS RDS database) and `Tests (mysql)` (MySQL 8.0, what PythonAnywhere runs in production today). Each job runs `manage.py check`, `manage.py makemigrations --check --dry-run` (fails if a model change has no migration), then the full test suite under `coverage` in four processes (`--parallel auto`; `.coveragerc` has `parallel = true` and `concurrency = multiprocessing`, and `coverage combine` merges the processes' files before the report), with the report printed in the log and the job summary, and the 25 slowest tests listed. There is no coverage threshold yet. The test runner (`security/testing.py`) gives each process its own `MEDIA_ROOT` folder and reports a failure in a worker as text, so one failing test never stops the run.
   - The MySQL job uses the `mysql:8.0` service container with the same settings as production (`DB_ENGINE=mysql`: utf8mb4, `STRICT_TRANS_TABLES`, `CONN_MAX_AGE=280`). It connects as root so the test runner can create `test_siteline`. It installs `pkg-config`, `default-libmysqlclient-dev` and `build-essential` from apt and compiles `mysqlclient`. It also checks that the server is 8.0 with utf8mb4 and strict mode, and runs `manage.py check --database default` for the MySQL-specific checks. Warnings there are printed but do not fail the job; the one known warning, `mysql.W003` on `projects.FileScan.path`, is fine on MySQL 8.0 InnoDB. Any migration that relies on database-specific behaviour, such as `SELECT ... FOR UPDATE SKIP LOCKED`, must pass this job before it is deployed to PythonAnywhere.
   - The SQLite and PostgreSQL jobs leave `mysqlclient` out of the install because it has to be compiled and they do not use it.
   - Branch protection: once `Tests (mysql)` has passed on `main`, add it to the required status checks next to `Tests (sqlite)` and `Tests (postgres)`.
@@ -285,7 +286,7 @@ To run the same checks locally:
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-DEBUG=1 MEDIA_ROOT=$(mktemp -d) python -m coverage run manage.py test && python -m coverage report
+DEBUG=1 MEDIA_ROOT=$(mktemp -d) python -m coverage run manage.py test --parallel auto && python -m coverage combine && python -m coverage report
 pip-audit -r requirements.txt --no-deps --disable-pip   # checks the pins without building mysqlclient
 bandit -r . -ll --exclude ./.venv
 ```

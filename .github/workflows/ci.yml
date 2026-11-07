@@ -21,7 +21,9 @@ jobs:
   test:
     name: Tests (${{ matrix.db }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 40  # the suite outgrew 20 on MySQL in Release 3
+    # The tests run in 4 processes (below) and take under 12 minutes on each database; 25 leaves room
+    # for a slow runner without letting a hung job sit for long.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -159,12 +161,27 @@ jobs:
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
 
+      # Django copies the empty test database once per CPU (the runner has 4) and hands each process
+      # whole test classes. On MySQL the copy is made with mysqldump and the mysql client, which the
+      # runner image ships with; they are installed here only if an image ever drops them.
+      - name: Check the MySQL client tools (for the parallel test databases)
+        if: ${{ matrix.db == 'mysql' }}
+        run: |
+          command -v mysqldump > /dev/null && command -v mysql > /dev/null || {
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 mysql-client
+          }
+          mysqldump --version
+
+      # Each process writes its own coverage file (.coveragerc: parallel = true, concurrency =
+      # multiprocessing); the report step combines them. --durations lists the slowest tests in the log.
       - name: Run tests with coverage
-        run: python -m coverage run manage.py test --noinput
+        run: python -m coverage run manage.py test --noinput --parallel auto --timing --durations 25
 
       - name: Coverage report
         if: ${{ !cancelled() }}
         run: |
+          python -m coverage combine
           python -m coverage report
           {
             echo "### Coverage (${{ matrix.db }})"
