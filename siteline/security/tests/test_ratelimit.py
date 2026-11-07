@@ -9,6 +9,7 @@ from django.urls import reverse
 
 from security import ratelimit
 from security.ip import client_ip
+from security.testing import hold_rate_limit_clock
 
 from .base import SecurityTestBase, code_for
 
@@ -38,14 +39,7 @@ class LimiterTests(SecurityTestBase):
 class RouteLimitTests(SecurityTestBase):
     def setUp(self):
         super().setUp()
-        # Windows are fixed (time // window). Hold the clock one second into an hour, which starts a window of
-        # every length used here, so two requests a test expects to share a window always do, however slowly
-        # the suite runs (on a busy CI runner a one-minute window could roll over between them).
-        import time
-        start = (int(time.time()) // 3600) * 3600 + 1
-        patcher = mock.patch('security.ratelimit.time', mock.Mock(time=mock.Mock(return_value=start)))
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        hold_rate_limit_clock(self)  # two requests a test expects to share a window always do
 
     def assert_limited(self, response):
         self.assertEqual(response.status_code, 429)

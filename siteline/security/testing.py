@@ -31,6 +31,21 @@ from django.test.runner import DiscoverRunner, ParallelTestSuite, RemoteTestResu
 from django.test.utils import override_settings
 
 
+def hold_rate_limit_clock(test):
+    """
+    For a test that counts requests against a rate limit: hold the limiter's clock one second into an hour,
+    which starts a window of every length the limits use (security/ratelimit.py: windows are time //
+    window), so the requests the test expects to share a window always do. On a busy CI runner a window
+    could otherwise roll over between them. Only the limiter's clock is held.
+    """
+    import time
+    from unittest import mock
+    start = (int(time.time()) // 3600) * 3600 + 1
+    patcher = mock.patch('security.ratelimit.time', mock.Mock(time=mock.Mock(return_value=start)))
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class RemoteFailure(AssertionError):
     """A failed assertion in a worker process, carrying its formatted traceback (counts as a failure)."""
 
