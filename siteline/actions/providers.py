@@ -255,8 +255,11 @@ def _bidding(request):
     from projects.models import ProjectMember
     if _staff(request):
         return []
-    return list(_my_memberships(request, [ProjectMember.ROLE_BIDDER, ProjectMember.ROLE_SUBCONTRACTOR])
-                .filter(subcontractor__isnull=False).values_list('project_id', 'subcontractor_id'))
+    from tenancy.context import request_memo  # the tender and addendum providers both ask, on every page
+
+    return request_memo(('needs_me_bidding', request.user.pk), lambda: list(
+        _my_memberships(request, [ProjectMember.ROLE_BIDDER, ProjectMember.ROLE_SUBCONTRACTOR])
+        .filter(subcontractor__isnull=False).values_list('project_id', 'subcontractor_id')))
 
 
 class TenderProvider:
