@@ -207,7 +207,7 @@ def seed(*, leeds, pm, owner):
     if joinery is not None and sub is not None:
         # Recorded by the joinery subcontractor in their portal, with photos: waiting for the PM to sign it off
         _penetration(leeds, sub, 'Ground floor, bar back wall behind the back bar', 'WALL', 30, 'CABLE',
-                     '20 mm cable bundle', 'Intumescent sealant', package=joinery, installer=sub.full_name,
+                     '20 mm bundle', 'Intumescent sealant', package=joinery, installer=sub.full_name,
                      n=24, before=True, after=True, seal=True, sealed_days_ago=1)
 
     # --- Salford ---------------------------------------------------------------------
