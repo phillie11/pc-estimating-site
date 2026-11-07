@@ -22,9 +22,10 @@ from tenancy.models import log_activity
 from tenancy.permissions import admin_required
 
 from . import services
-from .access import can_update_action, meetings_project, my_actions, visible_meetings
-from .forms import ActionForm, ActionUpdateForm, AgendaTemplateForm, AttendeesForm, MeetingDetailsForm, MeetingForm
-from .models import KIND_CHOICES, AgendaTemplate, Attendee, Meeting, MeetingAction
+from .access import SHARED_ACTIONS, can_update_action, meetings_project, my_actions, shared_items, visible_meetings
+from .forms import (ActionForm, ActionUpdateForm, AgendaTemplateForm, AttendeesForm, MeetingDetailsForm, MeetingForm,
+                    MeetingSettingsForm)
+from .models import KIND_CHOICES, AgendaTemplate, Attendee, Meeting, MeetingAction, MeetingSettings
 
 TRANSITION_BUTTONS = {
     'issue': ('Issue the minutes', 'primary'),
@@ -139,12 +140,14 @@ def meeting_detail(request, org_slug, pk, meeting_id):
     if request.method == 'POST':
         require_internal(request)
         return _post(request, project, meeting)
-    items = list(meeting.items.prefetch_related(
+    items = list(shared_items(request, meeting).prefetch_related(
         Prefetch('actions', queryset=MeetingAction.objects.select_related('owner', 'meeting'))))
-    raised = list(meeting.actions.select_related('owner', 'item'))
-    brought = meeting.brought_forward.select_related('owner', 'meeting').order_by('meeting__held_on', 'number')
-    if not internal:  # externals: only actions from minutes that were issued, never a draft's
-        brought = brought.filter(meeting__status=Meeting.STATUS_ISSUED)
+    raised = meeting.actions.select_related('owner', 'item')
+    brought = meeting.brought_forward.select_related('owner', 'meeting', 'item').order_by('meeting__held_on', 'number')
+    if not internal:  # externals: only actions from minutes that were issued, never a draft's, never internal ones
+        brought = brought.filter(meeting__status=Meeting.STATUS_ISSUED).filter(SHARED_ACTIONS)
+        raised = raised.filter(SHARED_ACTIONS)
+    raised = list(raised)
     brought = list(brought)
     attendees = list(meeting.attendees.select_related('user'))
     ctx = {'meeting': meeting, 'items': items, 'raised': raised, 'general': [a for a in raised if a.item_id is None],
@@ -153,6 +156,7 @@ def meeting_detail(request, org_slug, pk, meeting_id):
     if internal:
         ctx.update(
             action_form=ActionForm(meeting=meeting, prefix='act') if meeting.is_planned else None,
+            internal_headings=sum(1 for i in items if i.internal_only),
             buttons=[(t.name, *TRANSITION_BUTTONS.get(t.name, (t.label, '')))
                      for t in available_transitions(meeting, request.user)],
             recipients=len([1 for p, _, _ in services.recipients(meeting, attendees, raised + brought)
@@ -193,11 +197,19 @@ def _post(request, project, meeting):
             messages.error(request, 'Someone else saved these minutes since you opened the page. Your changes '
                                     'weren\'t saved: reload, check theirs, then add yours again.')
             return redirect(here + '#minutes')
+        internal = {int(x) for x in request.POST.getlist('internal') if x.isdigit()}
         for item in meeting.items.all():
             text = request.POST.get(f'item-{item.pk}')
+            changed = []
             if text is not None and text != item.minutes:
                 item.minutes = text[:20000]
-                item.save(update_fields=['minutes'])
+                changed.append('minutes')
+            # The tick boxes are only on the form when it lists them (older pages post none: leave them)
+            if request.POST.get('internal_listed') and item.internal_only != (item.pk in internal):
+                item.internal_only = item.pk in internal
+                changed.append('internal_only')
+            if changed:
+                item.save(update_fields=changed)
         notes = request.POST.get('notes')
         present = {int(x) for x in request.POST.getlist('present') if x.isdigit()}
         for att in meeting.attendees.all():
@@ -214,7 +226,7 @@ def _post(request, project, meeting):
         messages.success(request, f'{meeting.ref} minutes saved. Nothing is sent until you issue them.')
         return redirect(here + '#minutes')
     if what == 'add_action':
-        form = ActionForm(request.POST, meeting=meeting, prefix='act')
+        form = ActionForm(request.POST, meeting=meeting, prefix='act', staff_ids=services._staff_ids(meeting))
         if form.is_valid():
             a = form.save(commit=False)
             a.meeting, a.project = meeting, project
@@ -360,10 +372,18 @@ def agenda_settings(request, org_slug):
     forms_ = {kind: AgendaTemplateForm(request.POST if request.POST.get('kind') == kind else None, instance=t,
                                        prefix=kind.lower())
               for kind, t in sorted(templates.items())}
-    if request.method == 'POST':
+    settings_form = MeetingSettingsForm(request.POST if request.POST.get('kind') == 'settings' else None,
+                                        instance=MeetingSettings.for_org(request.org), prefix='settings')
+    if request.method == 'POST' and request.POST.get('kind') == 'settings':
+        if settings_form.is_valid():
+            settings_form.save()
+            messages.success(request, 'Saved. Meetings set up or changed from now on use the new due date for minutes.')
+            return redirect('meeting_agendas', org_slug=org_slug)
+    elif request.method == 'POST':
         f = forms_.get(request.POST.get('kind'))
         if f is not None and f.is_valid():
             f.save()
             messages.success(request, f'{f.instance.name} agenda saved. New meetings use it; existing ones keep theirs.')
             return redirect('meeting_agendas', org_slug=org_slug)
-    return render(request, 'meetings/agendas.html', {'forms': [(k, dict(KIND_CHOICES)[k], f) for k, f in forms_.items()]})
+    return render(request, 'meetings/agendas.html', {'forms': [(k, dict(KIND_CHOICES)[k], f) for k, f in forms_.items()],
+                                                     'settings_form': settings_form})

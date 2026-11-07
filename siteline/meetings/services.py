@@ -89,8 +89,9 @@ def create(project, user, *, kind, held_on, starts_at='', location='', chair=Non
                 chair=chair or user, title=title)
     m.save(actor=user)
     agendas = AgendaTemplate.for_org(project.organization)
-    items = agendas[kind].item_list if kind in agendas and kind != OTHER else OTHER_AGENDA
-    AgendaItem.objects.bulk_create([AgendaItem(meeting=m, position=i, heading=h[:200]) for i, h in enumerate(items)])
+    rows = agendas[kind].item_rows if kind in agendas and kind != OTHER else [(h, False) for h in OTHER_AGENDA]
+    AgendaItem.objects.bulk_create([AgendaItem(meeting=m, position=i, heading=h[:200], internal_only=internal)
+                                    for i, (h, internal) in enumerate(rows)])
     for u in attendees:
         Attendee.objects.create(meeting=m, user=u)
     for name, company in parse_others(others):
@@ -109,18 +110,19 @@ def recipients(meeting, attendees=None, actions=None, staff_ids=None):
     detail = reverse('meeting_detail', args=[org, pid, meeting.pk])
     mine = reverse('meeting_list', args=[org, pid])
     if actions is None:
-        actions = list(meeting.actions.select_related('owner')) + list(
-            meeting.brought_forward.filter(status=MeetingAction.OPEN).select_related('owner', 'meeting'))
+        actions = list(meeting.actions.select_related('owner', 'item')) + list(
+            meeting.brought_forward.filter(status=MeetingAction.OPEN).select_related('owner', 'meeting', 'item'))
     if attendees is None:
         attendees = list(meeting.attendees.select_related('user'))
-    by_owner = {}
-    for a in actions:
-        if a.owner_id and a.is_open:
-            by_owner.setdefault(a.owner_id, []).append(a)
-    out, seen = [], set()
     # Only people who can still open the job: active staff, or someone on it now (not a tendering sub)
     allowed = _staff_ids(meeting) if staff_ids is None else set(staff_ids)
     staff_ids = allowed.copy()
+    by_owner = {}
+    for a in actions:
+        # An action under an internal-only heading is never put in front of someone outside the company
+        if a.owner_id and a.is_open and (a.owner_id in staff_ids or not is_internal_action(a)):
+            by_owner.setdefault(a.owner_id, []).append(a)
+    out, seen = [], set()
     allowed |= set(ProjectMember.objects.filter(project_id=pid, role__in=EXTERNAL_ROLES)
                    .values_list('user_id', flat=True))
     for att in attendees:
@@ -134,6 +136,11 @@ def recipients(meeting, attendees=None, actions=None, staff_ids=None):
         # Someone not at the meeting sees their own actions; staff can open the minutes themselves
         out.append((owned[0].owner, detail if owner_id in staff_ids else mine, owned))
     return out
+
+
+def is_internal_action(action):
+    """Raised under an agenda heading marked internal only (the item must be loaded or cheap to fetch)."""
+    return action.item_id is not None and action.item.internal_only
 
 
 def _staff_ids(meeting):
