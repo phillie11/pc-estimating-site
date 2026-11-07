@@ -160,8 +160,19 @@ def enqueue(rev, tries=0, later=False, key='upload'):
 # Finding documents and saying what can be found
 # ---------------------------------------------------------------------------
 
+def openable(request, revisions):
+    """
+    Of the revisions this person may see (documents.access), those whose words they may be shown or
+    found by. An external sees a withdrawn revision listed but can't download or view it, so its words
+    must not find the document or be quoted back to them either.
+    """
+    from projects.access import is_internal
+    from projects.models import DocumentRevision
+    return revisions if is_internal(request) else revisions.exclude(status=DocumentRevision.WITHDRAWN)
+
+
 def matching_revisions(revisions, q):
-    """RevisionText rows among these revisions (a queryset) whose words contain q."""
+    """RevisionText rows among these revisions (a queryset, already passed through openable) whose words contain q."""
     from .models import RevisionText
     if len(q or '') < MIN_QUERY:
         return RevisionText.objects.none()

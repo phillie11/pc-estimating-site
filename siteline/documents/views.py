@@ -80,8 +80,9 @@ def register_rows(request, project, params):
         rows = [(d, r) for d, r in rows if d.naming in (Document.NAMING_UNPARSED, Document.NAMING_ACCEPTED)]
     if f['q']:
         q = f['q'].lower()
-        # Words inside the PDFs too (documents/textindex.py), only in revisions this person may see
-        inside = set(textindex.matching_revisions(visible_revisions(request, project), f['q'])
+        # Words inside the PDFs too (documents/textindex.py), only in revisions this person may open
+        inside = set(textindex.matching_revisions(textindex.openable(request, visible_revisions(request, project)),
+                                                  f['q'])
                      .values_list('revision__document_id', flat=True))
         for d, _ in rows:
             d.found_inside = d.pk in inside

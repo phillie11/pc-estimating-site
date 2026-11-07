@@ -135,7 +135,7 @@ def documents(request, q, limit):
                 revs = rpart if revs is None else revs | rpart
         finally:
             request.project_member = saved
-    inside = textindex.matching_revisions(revs, q)
+    inside = textindex.matching_revisions(textindex.openable(request, revs), q)  # never a withdrawn one for externals
     if len(q) >= textindex.MIN_QUERY:
         cond |= Q(pk__in=inside.values('revision__document_id'))
     rows = list(qs.filter(cond).select_related('project').order_by('-updated_at')[:limit])
