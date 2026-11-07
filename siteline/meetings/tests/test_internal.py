@@ -98,6 +98,9 @@ class InternalHeadingTests(MeetingTestBase):
         self.assertNotIn(hidden_sub.reference, refs)
 
     def test_staff_mark_a_heading_internal_on_the_minutes(self):
+        # Sid's action under it is done first: an open one for an external keeps it shared (test_review_repro2)
+        with org_context(self.org_a):
+            type(self.open).objects.filter(pk=self.open.pk).update(status=type(self.open).DONE)
         self.login(self.pat)
         r = self.client.post(self.m.get_absolute_url(), {
             'action': 'minutes', 'version': self.fresh_meeting().version, 'internal_listed': '1',

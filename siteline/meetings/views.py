@@ -198,6 +198,12 @@ def _post(request, project, meeting):
                                     'weren\'t saved: reload, check theirs, then add yours again.')
             return redirect(here + '#minutes')
         internal = {int(x) for x in request.POST.getlist('internal') if x.isdigit()}
+        # A heading with an open action for someone outside the company stays shared: marking it internal
+        # would take the action off their portal and Needs me, and (its ball being with them) off everyone's
+        external_owned = set(MeetingAction.objects.filter(item__meeting=meeting, status=MeetingAction.OPEN,
+                                                          owner__isnull=False)
+                             .exclude(owner_id__in=services._staff_ids(meeting)).values_list('item_id', flat=True))
+        kept_shared = []
         for item in meeting.items.all():
             text = request.POST.get(f'item-{item.pk}')
             changed = []
@@ -206,8 +212,11 @@ def _post(request, project, meeting):
                 changed.append('minutes')
             # The tick boxes are only on the form when it lists them (older pages post none: leave them)
             if request.POST.get('internal_listed') and item.internal_only != (item.pk in internal):
-                item.internal_only = item.pk in internal
-                changed.append('internal_only')
+                if item.pk in internal and item.pk in external_owned:
+                    kept_shared.append(item.heading)
+                else:
+                    item.internal_only = item.pk in internal
+                    changed.append('internal_only')
             if changed:
                 item.save(update_fields=changed)
         notes = request.POST.get('notes')
@@ -224,6 +233,13 @@ def _post(request, project, meeting):
             messages.error(request, 'Someone else changed this meeting at the same time. Check the minutes and save again.')
             return redirect(here)
         messages.success(request, f'{meeting.ref} minutes saved. Nothing is sent until you issue them.')
+        if kept_shared:
+            names = ', '.join(f'"{h}"' for h in kept_shared)
+            messages.error(request, f'{names} {"is" if len(kept_shared) == 1 else "are"} still shared: '
+                                    f'{"it has" if len(kept_shared) == 1 else "they have"} an open action for someone '
+                                    'outside our team, who would lose sight of it. Mark that action done or dropped, '
+                                    'or remove it and add it again for someone in our team, then mark the heading '
+                                    'internal only.')
         return redirect(here + '#minutes')
     if what == 'add_action':
         form = ActionForm(request.POST, meeting=meeting, prefix='act', staff_ids=services._staff_ids(meeting))
