@@ -16,7 +16,8 @@ the Leeds job's packages, drawings (documents/demo.py) and snags exist.
                  waiting for the PM to inspect (Needs me), one failed back with the PM to get
                  resealed (Needs me), two still to seal. The first three were marked sealed by the
                  installing subcontractor (the PM signs off; whoever sealed it can't). FS-007 was recorded
-                 by the joinery subcontractor in their portal and waits for the PM (Needs me).
+                 by the joinery subcontractor in their portal and waits for the PM (Needs me). FS-008 was
+                 sealed by the joinery subcontractor and failed by the PM: on the sub's Needs me to put right.
   Salford Quays (project 4): one passed inspection, an active permit and two penetrations.
 
 Photos are plain coloured placeholders (diary/demo.py), not real photos.
@@ -209,6 +210,11 @@ def seed(*, leeds, pm, owner):
         _penetration(leeds, sub, 'Ground floor, bar back wall behind the back bar', 'WALL', 30, 'CABLE',
                      '20 mm bundle', 'Intumescent sealant', package=joinery, installer=sub.full_name,
                      n=24, before=True, after=True, seal=True, sealed_days_ago=1)
+        # Sealed by the joinery subcontractor and failed by the PM: on the sub's Needs me (fire-stopping to put right)
+        _penetration(leeds, pm, 'Ground floor, bar store door head', 'WALL', 30, 'PIPE_PLASTIC', '32 mm waste',
+                     'Intumescent pipe collar', package=joinery, installer=sub.full_name, n=26, before=True,
+                     after=True, seal=True, sealer=sub, sealed_days_ago=3, fail_by=pm,
+                     fail_note='Collar not fixed to the wall; it moves by hand. Refix and reseal.')
 
     # --- Salford ---------------------------------------------------------------------
     salford = Project.objects.filter(name='Office CAT A, Salford Quays').first()

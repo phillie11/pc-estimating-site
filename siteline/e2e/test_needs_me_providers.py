@@ -35,11 +35,7 @@ DEMO_LOGINS = ('owner@demo.test', 'estimator@demo.test', 'pm@demo.test', 'client
 
 # Providers the demo data gives nobody anything to do for, with why. Their queries still run above for every
 # login (an empty result is still a query on this database); this only excuses them from listing something.
-NOT_IN_DEMO = {
-    'rams_revise': 'no demo RAMS has been sent back to a subcontractor to revise',
-    # e2e/test_journey.py phase 20 lists one: the sub's seal failed by the PM, on all three databases
-    'firestopping_sub': 'no demo fire-stopping recorded by a subcontractor has failed its inspection',
-}
+NOT_IN_DEMO = {}
 
 
 class EveryProviderForEveryDemoLoginTests(TestCase):

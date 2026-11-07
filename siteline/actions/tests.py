@@ -915,6 +915,7 @@ class SeedDemoTests(TestCase):
             self.assertIn('task', kinds('estimator@demo.test'))
             self.assertIn('task', kinds('owner@demo.test'))
             self.assertIn('addendum', kinds('sub@demo.test'))
+            self.assertIn('rams_revise', kinds('sub@demo.test'))
 
 
 class LiveHookTests(Base):
