@@ -125,6 +125,24 @@ class PrivacyTests(ApiTestBase):
                                    'Cut hand'):
                         self.assertNotIn(secret, body, f'{r.name} leaks {secret}')
 
+    def test_incident_free_text_never_leaves_through_the_api(self):
+        # Site reports name people ("Sam Example slipped..."): neither the description nor the title made from it
+        with org_context(self.org_a):
+            Incident.objects.filter(pk=self.a['incident'].pk).update(
+                title='Sam Example slipped by the lift', description='Sam Example slipped by the lift.\nRiley Sample saw it.')
+        pk = self.a['incident'].pk
+        listing = self.api('/api/v1/incidents/', self.text_a)
+        detail = self.api(f'/api/v1/incidents/{pk}/', self.text_a)
+        self.assertEqual((listing.status_code, detail.status_code), (200, 200))
+        for body in (listing.content.decode(), detail.content.decode()):
+            self.assertNotIn('Sam Example', body)
+            self.assertNotIn('Riley Sample', body)
+        row = detail.json()
+        self.assertNotIn('description', row)
+        self.assertNotIn('title', row)
+        self.assertEqual(row['ref'], self.a['incident'].reference)
+        self.assertTrue(row['web_url'])
+
     def test_names_only_for_people(self):
         row = self.api(f'/api/v1/projects/{self.pa.pk}/', self.text_a).json()
         self.assertEqual(row['project_manager'], 'Pat PM')
