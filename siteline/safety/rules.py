@@ -5,6 +5,9 @@ Everything here is ADVISORY: check your contract and your safety adviser. Siteli
 rules to help people remember them; it doesn't decide for anyone whether something must be
 reported or notified.
 
+The RIDDOR deadlines table and the CDM notifiable (F10) test below are confirmed by the owner as
+built (November 2026): change them only with a new decision, and the test tables with them.
+
 RIDDOR 2013 (Reporting of Injuries, Diseases and Dangerous Occurrences Regulations)
     The responsible person (normally the injured worker's employer; for a member of the public,
     whoever is in control of the site) reports to HSE. On a site that is often a subcontractor,
