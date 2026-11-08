@@ -3,7 +3,7 @@ Demo data for close-out, called by `manage.py seed_demo` inside the demo organis
 org_context, after the Leeds and Salford jobs, their packages, contracts and procurement exist.
 
   Leeds bar job (JCT IC, live): the ground floor bar was handed over 20 days ago (sectional
-      completion, 6-month Rectification Period from the contract). The client (client@demo.test)
+      completion, 12-month Rectification Period from the contract). The client (client@demo.test)
       has reported three defects in the bar: one waiting for the PM to give out, one with Lund
       Joinery (sub@demo.test) to fix, one fixed and waiting for the PM to check. The O&M manual is
       set up from the template: Lund's joinery O&M is accepted, the partitions O&M is still with

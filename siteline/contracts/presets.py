@@ -39,6 +39,11 @@ Where the terms come from (as published; amendments are common):
     claim is made if that is later (Part II para 4; the 30 days in para 5 is for the final
     payment); final date 17 days after the due date (para 8); pay less notice 7 days before the
     final date (para 10).
+
+Defects period: 12 months on every form (DEFECTS_PERIOD_MONTHS), the company default the owner
+confirmed, in place of each form's own fallback (3 months MW/MWD, 6 months IC/SBC/DB, none for NEC4,
+whose defects date is in Contract Data). It is a starting value: each contract's own figure overrides
+it on the contract set-up, and each completion section can override that (closeout).
 """
 import calendar
 from dataclasses import asdict, dataclass
@@ -48,6 +53,7 @@ from decimal import Decimal
 from holidays.calendar import DEFAULT_REGION, add_days, subtract_days
 
 ADVISORY = 'Advisory: check your contract.'
+DEFECTS_PERIOD_MONTHS = 12
 
 
 @dataclass(frozen=True)
@@ -59,7 +65,7 @@ class Preset:
     payment_notice_days: int = 5
     retention_percent: Decimal | None = None
     retention_released_at_pc_percent: Decimal = Decimal('50')
-    defects_period_months: int | None = None
+    defects_period_months: int | None = DEFECTS_PERIOD_MONTHS
     lads_period: str = 'WEEK'
     note: str = ''
     # The Scheme itself (Part II para 4(b)): an interim payment falls due on the later of the period's due
@@ -79,9 +85,9 @@ class Preset:
 
 
 _MW = dict(due_date_offset_days=0, final_date_offset_days=14, pay_less_notice_days=5,
-           retention_percent=Decimal('5'), defects_period_months=3)
+           retention_percent=Decimal('5'))
 _JCT = dict(due_date_offset_days=7, final_date_offset_days=14, pay_less_notice_days=5,
-            retention_percent=Decimal('3'), defects_period_months=6, valuation_dates=True)
+            retention_percent=Decimal('3'), valuation_dates=True)
 # IC/ICD: interim certificates are for 95% of the value before Practical Completion unless the
 # Contract Particulars state another percentage, i.e. 5% retention. Default confirmed by the product
 # owner (30 Oct 2026) for the 2016 and 2024 editions.
@@ -106,7 +112,7 @@ PRESETS = {
     'NEC4_ECC': Preset('NEC4 ECC with Option Y(UK)2', due_date_offset_days=7, final_date_offset_days=14,
                        pay_less_notice_days=7, payment_notice_days=0, lads_period='DAY', valuation_dates=True,
                        note='Assessment dates at intervals of no more than five weeks. Retention only under '
-                            'Option X16; the defects date is in Contract Data.'),
+                            'Option X16; the defects date is in Contract Data (12 months pre-filled).'),
     'BESPOKE': BESPOKE,
 }
 
