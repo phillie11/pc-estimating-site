@@ -7,6 +7,9 @@ is built (handoverpack/demo.py). Nothing here calls the AI service: the drafts a
   - five AI-drafted clarifications on the Kingsway pack, not yet approved (so not in the pack or its export)
   - a bid brief on Kingsway read from its three tender documents, one key date not yet accepted
   - two usage rows this month, so the usage page has something to show
+  - an AI mapping of a revised Kensal Interiors joinery quote (rev B, attached) onto the Kingsway levelling, still
+    to check. The quote value in Siteline is still their first one, so the page shows the two totals differ; it
+    prices the window boards they left out first time, and is £150.00 off their total, explained in a note
 
 Every name and figure is invented.
 """
@@ -17,7 +20,8 @@ from django.utils import timezone
 
 from projects.models import DocumentRevision, Project
 
-from .models import CLARIFICATIONS, TENDER_BRIEF, AISettings, AIUsage, BidBrief, BriefItem, Playbook
+from .models import (CLARIFICATIONS, QUOTE_MAPPING, TENDER_BRIEF, AISettings, AIUsage, BidBrief, BriefItem, Playbook,
+                     QuoteMapDraft, QuoteMapExclusion, QuoteMapLine)
 
 PLAYBOOK = """\
 Our clarifications
@@ -106,4 +110,54 @@ def seed(owner, estimator):
         AIUsage.objects.create(user=estimator, feature=feature, project=kings, model='claude-opus-5-5',
                                status=AIUsage.OK, input_tokens=tin, output_tokens=tout, cost_gbp=Decimal(cost),
                                note=note, created_at=now - timedelta(days=1))
+    seed_quote_map(kings, estimator, now)
     return brief
+
+
+# Kensal's revised quote: (line ref, rate, sum, included, source, note)
+KENSAL_REV_B = [
+    ('J1', None, '13800', False, 'Page 1, item 1', ''),
+    ('J2', '495', None, False, 'Page 1, item 2.1', ''),
+    ('J3', '395', None, False, 'Page 1, item 2.2', ''),
+    ('J4', '310', None, False, 'Page 1, item 2.3', 'They measure 8.5 m: £2,630.00 on their quote; our 8 m gives '
+                                                    '£2,480.00. That is the £150.00 difference.'),
+    ('J5', '655', None, False, 'Page 2, item 3', ''),
+    ('J6', '39', None, False, 'Page 2, item 4', 'New in this revision: left out of their first quote.'),
+    ('J7', None, None, True, 'Page 2, item 3', 'Their item 3 says ironmongery is included in the storage walls.'),
+]
+
+
+def seed_quote_map(kings, estimator, now):
+    from directory.models import Package
+    from levelling.models import LevellingSheet
+    sheet = LevellingSheet.objects.filter(project=kings, trade__name='Joinery').first()
+    package = Package.objects.filter(project=kings, subcontractor__company_name='Kensal Interiors').first()
+    if sheet is None or package is None:
+        return None
+    lines = {ln.ref: ln for ln in sheet.lines.all()}
+    # Their revised quote, attached to the package, so the draft matches the file (quotemap.stale)
+    import hashlib
+
+    from django.core.files.base import ContentFile
+    data = (b'%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n'
+            b'% Demo quote: Kensal Interiors joinery, revision B (invented)\n%%EOF\n')
+    package.quote_file.save('kensal-joinery-quote-rev-b.pdf', ContentFile(data), save=True)
+    draft = QuoteMapDraft.objects.create(
+        quote_name=package.quote_file.name, quote_size=len(data), quote_sha256=hashlib.sha256(data).hexdigest(),
+        project=kings, sheet=sheet, package=package, created_by=estimator, source_label='Kensal joinery quote rev B.pdf',
+        quote_total=Decimal('40438.00'), total_source='Page 2, summary', model_ties=False,
+        model_difference=Decimal('150.00'),
+        unmatched=[{'text': 'Optional: soft-close upgrade to the wall units', 'amount': '320.00',
+                    'source': 'Page 2, item 5'}])
+    for ref, rate, amount, included, source, note in KENSAL_REV_B:
+        if ref in lines:
+            QuoteMapLine.objects.create(draft=draft, line=lines[ref], rate=Decimal(rate) if rate else None,
+                                        amount=Decimal(amount) if amount else None, included=included,
+                                        source=source, note=note)
+    for text, source in (('Protection of finished joinery after handover to follow-on trades.', 'Page 2, notes'),
+                         ('Deliveries by appointment, two weeks\' notice.', 'Page 2, notes')):
+        QuoteMapExclusion.objects.create(draft=draft, text=text, source=source)
+    AIUsage.objects.create(user=estimator, feature=QUOTE_MAPPING, project=kings, model='claude-opus-5-5',
+                           status=AIUsage.OK, input_tokens=6100, output_tokens=3800, cost_gbp=Decimal('0.08'),
+                           note='7 scope lines, PDF', created_at=now - timedelta(hours=3))
+    return draft

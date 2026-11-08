@@ -147,7 +147,40 @@ class QueryCountsDontGrowTests(TestCase):
                     AIUsage.objects.create(user=m.user, feature='clarifications', project=bid, model='claude-opus-5-5',
                                            status=AIUsage.OK, cost_gbp='0.10')
         return [('owner', u('ai_settings')), ('owner', u('ai_usage')), ('owner', u('ai_playbook', 'tender_brief')),
-                ('owner', u('ai_brief', bid.pk))]
+                ('owner', u('ai_brief', bid.pk)), *self._quote_map_pages(built, bid, u)]
+
+    def _quote_map_pages(self, built, bid, u):
+        """A levelling sheet with a bidder and a scope line per live job, and an AI mapping of one quote onto it."""
+        from decimal import Decimal
+
+        from django.core.files.base import ContentFile
+
+        from ai.models import QuoteMapDraft, QuoteMapExclusion, QuoteMapLine
+        from directory.models import Package, Subcontractor, Trade
+        from levelling import services as levelling
+        n = len(built.live)
+        with org_context(built.org):
+            trade, _ = Trade.objects.get_or_create(name='AI mapped partitions')
+            pkgs = list(Package.objects.filter(project=bid, trade=trade).order_by('pk'))
+            if not pkgs:
+                for i in range(n):
+                    sub = Subcontractor.objects.create(company_name=f'Mapped Partitions {i}')
+                    p = Package.objects.create(project=bid, subcontractor=sub, trade=trade, status=Package.QUOTED,
+                                               quote_value=Decimal('1000.00') + i)
+                    p.quote_file.save(f'q{i}.pdf', ContentFile(b'%PDF-1.4\n'), save=True)
+                    pkgs.append(p)
+                sheet = levelling.ensure_saved(levelling.sheet_for(bid, trade))
+                lines = [levelling.add_line(sheet, f'P{i}', f'Line {i}', Decimal('10'), 'm2') for i in range(n)]
+                for p in pkgs[1:]:
+                    for ln in lines:
+                        levelling.set_cell(ln, p, rate=Decimal('12.50'))
+                draft = QuoteMapDraft.objects.create(project=bid, sheet=sheet, package=pkgs[0], quote_total=Decimal('1000'),
+                                                     unmatched=[{'text': f'Extra {i}', 'amount': '5.00', 'source': 'p1'}
+                                                                for i in range(n)])
+                for ln in lines:
+                    QuoteMapLine.objects.create(draft=draft, line=ln, rate=Decimal('10'), source='p1')
+                    QuoteMapExclusion.objects.create(draft=draft, text=f'Exclusion {ln.ref}', source='p2')
+        return [('owner', u('levelling_sheet', bid.pk, trade.pk)), ('owner', u('ai_quote_map', bid.pk, trade.pk, pkgs[0].pk))]
 
     def _meeting(self, built, job):
         """The job's latest issued meeting (the one with the most brought forward)."""

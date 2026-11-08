@@ -106,8 +106,8 @@ class ReadTests(Setup):
         self.assertEqual(client.requests, [])
         self.assertFalse(AIRun.all_objects.exists())
         # And the worker itself drops any id that isn't this bid's, whatever it is given
-        with org_context(self.org_a):
-            docs, _ = briefs.gather(self.bid, [self.spec.pk, self.other.pk, self.bravo.pk])
+        with fake_ai(), org_context(self.org_a):
+            docs, _ = briefs.gather(self.bid, [self.spec.pk, self.other.pk, self.bravo.pk], self.eve)
         self.assertEqual([d[1] for d in docs], [self.spec])
 
     def test_blocked_or_unscanned_files_are_never_read(self):

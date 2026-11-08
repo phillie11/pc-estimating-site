@@ -1,0 +1,50 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block title %}AI quote mapping: {{ package.subcontractor }} · {{ trade }} · {{ project.name }}{% endblock %}
+{% block project_content %}
+<div class="crumbs small"><a href="{{ sheet_url }}">Level quotes: {{ trade }}</a> / {{ package.subcontractor }}</div>
+<div class="page-head" style="margin-top:4px"><div><h2 style="margin:0 0 4px">{{ package.subcontractor }}'s quote, mapped by AI</h2>
+<p class="small dim" style="margin:0">A draft for you to check against the quote. Nothing reaches the levelling until you accept it.{% if draft %} Read from {{ draft.source_label|default:"the attached quote" }}, {{ draft.created_at|date:"d/m/Y H:i" }}{% if draft.created_by %}, asked for by {{ draft.created_by.full_name|default:draft.created_by.email }}{% endif %}.{% endif %}</p></div></div>
+
+{% if run and run.is_open %}<div class="card"><div class="card-body"><p style="margin:0">{% badge run.get_status_display "info" %} Reading the quote, started {{ run.created_at|date:"d/m/Y H:i" }}. Refresh this page in a minute or two.</p></div></div>
+{% elif run and run.message and run.status == 'failed' %}<div class="card"><div class="card-body"><p style="margin:0">{% badge run.get_status_display run.tone %} {{ run.message }}</p></div></div>{% endif %}
+
+{% if draft %}
+{% if stale %}<div class="card" style="margin-top:14px"><div class="card-body"><p style="margin:0">{% badge "Out of date" "bad" %} {{ stale }} Nothing from this mapping can be accepted.</p>{% if can_map_again %}<form method="post" action="{{ start_url }}" style="margin-top:8px">{% csrf_token %}<button class="btn primary">Map the new quote</button></form>{% endif %}</div></div>{% endif %}
+{% if declined %}<div class="card" style="margin-top:14px"><div class="card-body"><p style="margin:0">{% badge "Declined" "muted" %} {{ package.subcontractor }} has declined, so nothing from this mapping can be accepted.</p></div></div>{% endif %}
+<section class="card" aria-labelledby="tie-h" style="margin-top:14px"><div class="card-body">
+<h3 id="tie-h" style="margin:0 0 8px">Does it tie to the quote total?</h3>
+{% if tie.total is None %}<p style="margin:0">{% badge "No total" "warn" %} No quote value is typed in Siteline and none was read from the quote, so the mapping can't be tied.</p>
+{% elif tie.ties %}<p style="margin:0">{% badge "Ties exactly" "good" %} Mapped lines {{ tie.mapped|money_exact }}{% if tie.extra %} plus unmatched items {{ tie.extra|money_exact }}{% endif %} come to the {% if tie.from_package %}quote value of{% else %}quote total read of{% endif %} {{ tie.total|money_exact }}.</p>
+{% else %}<p style="margin:0;font-size:1.1em">{% badge "Doesn't tie" "bad" %} {% if tie.difference %}<strong>Difference {{ tie.difference|money_exact }}</strong>: the {% if tie.from_package %}quote value{% else %}quote total read{% endif %} is {{ tie.total|money_exact }}; mapped lines come to {{ tie.mapped|money_exact }}{% if tie.extra %} and unmatched items to {{ tie.extra|money_exact }}{% endif %}.{% endif %}{% if tie.totals_differ %} <strong>The quote value in Siteline ({{ package.quote_value|money_exact }}) and the total read from the quote ({{ tie.read_total|money_exact }}) differ.</strong>{% endif %} Find the cause before accepting.</p>{% endif %}
+<p class="small dim" style="margin:6px 0 0">Worked out by Siteline from the lines below at our quantities, against {% if tie.from_package %}the quote value on the package{% else %}the total the AI read{% endif %}.{% if tie.read_total is not None %} Total read from the quote: {{ tie.read_total|money_exact }}{% if draft.total_source %} ({{ draft.total_source }}){% endif %}.{% endif %}{% if draft.model_ties is not None %} The AI said it {% if draft.model_ties %}ties{% else %}doesn't tie{% endif %}{% if draft.model_difference %} (difference {{ draft.model_difference|money_exact }}){% endif %}.{% endif %}</p>
+</div></section>
+
+<section class="card" style="margin-top:14px" aria-labelledby="lines-h"><div class="card-body">
+<div class="row" style="justify-content:space-between;align-items:center"><h3 id="lines-h" style="margin:0">Mapped lines</h3>
+{% if editable %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="accept_all"><button class="btn primary">Accept everything still to check</button><span class="sub">Lines that already hold a different price keep it.</span></form>{% endif %}</div>
+{% if lines %}<div class="table-wrap"><table class="t"><thead><tr><th>Our line</th><th class="num">Qty</th><th class="num">Their rate</th><th class="num">Their sum</th><th class="num">Value</th><th class="num">In the levelling now</th><th>Source and note</th><th></th></tr></thead><tbody>
+{% for m in lines %}<tr id="m-{{ m.pk }}"><td><span class="mono small">{{ m.line.ref }}</span> {{ m.line.description }}</td><td class="num">{{ m.line.qty|default_if_none:"" }} {{ m.line.unit }}</td>
+<td class="num">{% if m.rate is not None %}{{ m.rate|money_exact }}{% endif %}</td><td class="num">{% if m.amount is not None %}{{ m.amount|money_exact }}{% elif m.included %}Included elsewhere{% endif %}</td><td class="num">{% if m.value is not None %}{{ m.value|money_exact }}{% endif %}</td>
+<td class="num">{% if m.current_value is not None %}{{ m.current_value|money_exact }}{% elif m.current.included %}Included elsewhere{% else %}<span class="dim">Blank</span>{% endif %}{% if m.overwrites %}<span class="sub">differs</span>{% endif %}</td>
+<td class="small">{{ m.source|default:"No source given" }}{% if m.note %}<span class="sub">{{ m.note }}</span>{% endif %}</td>
+<td class="small">{% if m.status == 'pending' %}{% if editable %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="item" value="{{ m.pk }}"><button class="btn sm" name="action" value="accept_line"{% if m.overwrites %} data-confirm="This replaces the price already in the levelling for {{ package.subcontractor }}. Replace it?"{% endif %}>{% if m.overwrites %}Replace{% else %}Accept{% endif %}</button> <button class="linkbtn" name="action" value="reject_line">Don't use</button></form>{% else %}To check{% endif %}{% else %}{{ m.get_status_display }}{% if m.decided_by %}<span class="sub">{{ m.decided_by.full_name|default:m.decided_by.email }}</span>{% endif %}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<p class="small dim">The AI matched none of our lines.</p>{% endif %}
+{% if unpriced %}<p class="small" style="margin:8px 0 0"><strong>Not priced in this quote ({{ unpriced|length }}):</strong> {% for ln in unpriced %}{{ ln.ref|default:ln.description|truncatechars:50 }}{% if not forloop.last %}; {% endif %}{% endfor %}.</p>{% endif %}
+</div></section>
+
+<section class="card" style="margin-top:14px" aria-labelledby="unm-h"><div class="card-body"><h3 id="unm-h" style="margin:0 0 8px">In the quote but not in our scope</h3>
+{% if draft.unmatched %}<div class="table-wrap"><table class="t"><thead><tr><th>Item</th><th class="num">Amount</th><th>Source</th></tr></thead><tbody>
+{% for u in draft.unmatched %}<tr><td>{{ u.text }}</td><td class="num">{% if u.amount %}{{ u.amount|money_exact }}{% endif %}</td><td class="small">{{ u.source }}</td></tr>{% endfor %}
+</tbody></table></div><p class="small dim" style="margin:6px 0 0">Extras, alternatives or provisional sums: decide on them in the levelling (an adjustment) if they matter.</p>{% else %}<p class="small dim" style="margin:0">Nothing.</p>{% endif %}
+</div></section>
+
+<section class="card" id="exclusions" style="margin-top:14px" aria-labelledby="exc-h"><div class="card-body"><h3 id="exc-h" style="margin:0 0 8px">Exclusions and qualifications, word for word</h3>
+{% if exclusions %}<div class="table-wrap"><table class="t"><tbody>
+{% for x in exclusions %}<tr><td>{{ x.text }}</td><td class="small">{{ x.source }}</td><td class="small">{% if x.status == 'pending' %}{% if editable %}<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="item" value="{{ x.pk }}"><button class="btn sm" name="action" value="accept_exclusion">Add to register</button> <button class="linkbtn" name="action" value="reject_exclusion">Don't add</button></form>{% else %}To check{% endif %}{% else %}{{ x.get_status_display }}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<p class="small dim" style="margin:0">None found.</p>{% endif %}
+</div></section>
+
+{% if editable %}<div class="row" style="margin-top:14px"><form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="finish"><button class="btn">Finished checking</button></form>
+<form method="post" class="inline">{% csrf_token %}<input type="hidden" name="action" value="discard"><button class="btn ghost">Discard this mapping</button></form></div>{% endif %}
+{% elif not run %}<div class="card" style="margin-top:14px"><div class="empty left"><p>No mapping yet. Use Map with AI on the levelling sheet.</p></div></div>{% endif %}
+{% endblock %}
