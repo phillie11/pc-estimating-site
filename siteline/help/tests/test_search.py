@@ -11,6 +11,7 @@ from directory.models import Subcontractor
 from help import search
 from projects.models import Document, Project, ProjectMember
 from rfis.models import RFI
+from security.testing import hold_rate_limit_clock
 from tenancy.context import TenantContextMissing, org_context
 from variations.models import Variation
 
@@ -191,6 +192,12 @@ class IsolationTests(SearchBase):
 
 
 class SpeedTests(SearchBase):
+    def setUp(self):
+        super().setUp()
+        # Search counts each request against a rate limit, and the first request of a new window takes extra
+        # queries. Held in one window, the two loads compared below are measured alike on a slow runner.
+        hold_rate_limit_clock(self)
+
     def test_query_count_is_fixed(self):
         for user in (self.alice, self.carla):
             self.client.logout()
