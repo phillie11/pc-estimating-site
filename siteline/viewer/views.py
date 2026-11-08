@@ -27,8 +27,8 @@ from tenancy.models import log_activity
 
 from . import markup
 from . import pins as pinlib
-from .access import (best_revision, can_mark_up, can_raise_snag, can_remove, can_view, get_doc_and_revision, is_pdf,
-                     share_choices, viewable_revisions, visible_issues, visible_layers, visible_pins,
+from .access import (best_revision, can_mark_up, can_raise_snag, can_remove, can_view, effective_share,
+                     get_doc_and_revision, is_pdf, share_choices, viewable_revisions, visible_issues, visible_layers, visible_pins,
                      visible_revision_ids, visible_rfis)
 from .models import InvalidPin, MarkupLayer, PinLocked
 
@@ -196,6 +196,7 @@ def layer_info(request, project, layer, rev=None):
     """What the viewer needs to list a layer. Words only: the browser shows them as text, never as HTML."""
     mine = layer.owner_id == request.user.pk
     who = 'You' if mine else (layer.owner.full_name or layer.owner.email)
+    share = effective_share(request, layer)
     return {
         'id': layer.pk,
         'mine': mine,
@@ -203,8 +204,8 @@ def layer_info(request, project, layer, rev=None):
         'rev': layer.revision_id,
         'revision': layer.revision.revision,
         'here': rev is not None and layer.revision_id == rev.pk,
-        'share': layer.share,
-        'share_label': layer.get_share_display(),
+        'share': share,
+        'share_label': dict(MarkupLayer.SHARE_CHOICES)[share],
         'summary': markup.summary(layer.shapes),
         'count': layer.shape_count,
         'version': layer.version,

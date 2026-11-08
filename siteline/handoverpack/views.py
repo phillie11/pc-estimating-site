@@ -102,8 +102,15 @@ def workbook_upload(request, org_slug, pk):
         return back
     log_activity(request, 'uploaded the pricing workbook', f'revision {wb.revision}', project=project,
                  url=_url('hpack_workbook', project), internal_only=True)
-    suggested = wb.result.get('suggested_layout')
-    if suggested:
+    suggested, switched = wb.result.get('suggested_layout'), wb.result.get('switched_layout')
+    if switched and getattr(wb, 'default_changed', False):
+        messages.info(request, services.switch_message(switched) + f' No workbook had been read with the '
+                               f'"{switched["from_name"]}" layout yet, so it is now your company\'s default.')
+        log_activity(request, 'changed the pricing workbook layout to', switched['name'], project=project,
+                     url=reverse('hpack_settings', kwargs={'org_slug': org_slug}), internal_only=True)
+    elif switched:
+        messages.info(request, services.switch_message(switched))
+    elif suggested:
         messages.info(request, f'This workbook looks like the "{suggested["name"]}" layout. If its figures look wrong, '
                                'an owner can choose that layout under Settings > Pricing workbook.')
     if wb.reconciled is False:

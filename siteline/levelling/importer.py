@@ -272,7 +272,8 @@ def parse(rows):
     Scope rows from raw rows: (lines, skipped) where skipped counts headings and total rows.
     A row needs a description or a ref. A row with a description but no ref, qty, unit or price
     is a heading; a row whose description starts "Total", "Sub-total", "Carried to..." with no
-    ref is a total row. Both are skipped.
+    ref is a total row; a row with only a ref (no description, qty, unit or price), such as a
+    "T&Cs" link under a quote's priced lines, is a note. All three are skipped.
     """
     head, cols = find_columns(rows)
     get = lambda row, name: row[cols[name]] if name in cols and cols[name] < len(row) else None  # noqa: E731
@@ -287,8 +288,13 @@ def parse(rows):
         r.included = r.rate is None and r.total is None and (is_included(rate_v) or is_included(total_v))
         if not r.description and not r.ref:
             continue
-        if not r.ref and (TOTAL_ROW.match(r.description) or
-                          (r.qty is None and not r.unit and not r.priced)):
+        bare = r.qty is None and not r.unit and not r.priced  # no qty, unit, rate, total or "Incl"
+        if not r.ref and (TOTAL_ROW.match(r.description) or bare):
+            skipped += 1
+            continue
+        if bare and not r.description:
+            # A lone word in the ref column below the lines ("T&Cs" as a hyperlink, "Notes", "E&OE"): not a line.
+            # A lump sum keeps its total, an "Incl" row its word, so neither is caught here.
             skipped += 1
             continue
         if not r.description:

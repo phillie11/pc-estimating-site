@@ -31,6 +31,8 @@ Fire-stopping penetrations (FS-)
   the company keeps "Someone else signs off fire-stopping" on (the default; pending owner decision).
   Ball in court: the PM (else an admin; never the person who sealed it while that setting is on) to
   inspect once sealed; whoever recorded it once failed (the PM when that was a subcontractor).
+  Turning that setting back on moves any seal still waiting on the person who sealed it to someone
+  else (reroute_own_seals), so no seal is left with the one person who may not sign it off.
 """
 from django.utils import timezone
 
@@ -203,6 +205,25 @@ def inspector_for(project, sealer):
     if independent_sign_off(project):
         return permit_approver_for(project, sealer)
     return approver_for(project)
+
+
+def reroute_own_seals(org):
+    """
+    When a company turns "Someone else signs off fire-stopping" back on: a seal recorded while it was off has
+    its sign-off with the person who recorded it (the approver sealed it), who may no longer sign it off, and
+    nobody else is told. Move each such seal to someone else to inspect (inspector_for, never the sealer;
+    nobody when there is no one else, until the setting is turned off again). Returns how many moved.
+    """
+    from django.db.models import F as Col
+    moved = 0
+    stuck = Penetration.objects.filter(organization=org, status=Penetration.SEALED, sealed_by__isnull=False,
+                                       ball_in_court_user_id=Col('sealed_by_id')) \
+        .select_related('project', 'project__manager', 'sealed_by')
+    for record in stuck:
+        record.ball_in_court_user = inspector_for(record.project, record.sealed_by)
+        record.save(update_fields=['ball_in_court_user', 'updated_at'])
+        moved += 1
+    return moved
 
 
 def may_sign_off(record, user):

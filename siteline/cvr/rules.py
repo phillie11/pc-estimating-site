@@ -12,6 +12,10 @@ CVR (cost value reconciliation) for a month, all "to date" figures as at the mon
                          or before the month (submitted, certified or paid; drafts and withdrawn
                          ones don't count): work done + approved variations + materials, before
                          retention (payments.rules.valuation)
+                         (the owner confirmed: value is applied, not certified)
+  certified to date      shown beside the value, never part of it (cvr.figures.certified_at); the
+                         latest certified application's amount due less its notified sum is
+                         flagged as under-certified when above nil (cvr.figures.Figures.under_certified)
   CVR value              value to date + this month's value adjustments
   cost to date           every actual cost on the cost ledger dated on or before the month's end
                          (invoices, timesheets, sub payments at gross before CIS, less reversals)

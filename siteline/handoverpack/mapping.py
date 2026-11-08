@@ -11,7 +11,8 @@ reader. Two layouts are built in:
 
 A company whose workbook is laid out differently gets its own mapping (PricingSettings.custom_mapping,
 the same shape as one of these), checked by validate() before it is used. There is no editor for it
-yet. detect() suggests which built-in layout an uploaded file looks like; the company's setting decides.
+yet. detect_layout() says which built-in layout an uploaded file looks like: when it is confident and the
+company's setting is a different preset, the upload is read with the detected layout (services.read).
 
 `calc` names how the workbook calculates (which formulas its cells hold): standard-v1 is engine.py,
 select-v1 is supplier_select.py. A mapping can move cells around but must keep the same arithmetic until
@@ -26,6 +27,12 @@ CELL = re.compile(r'^\$?([A-Z]{1,3})\$?([1-9][0-9]{0,5})$')
 COLUMN = re.compile(r'^[A-Z]{1,3}$')
 
 CALC_STANDARD = 'standard-v1'
+
+# Words in a £0 line's Comments that mean someone else provides it (By others, on the pack's Not allowed list),
+# not that it is included. Matched without regard to case, as whole words anywhere in the comment. Estimators
+# write "client direct" and "by others" against £0 lines; both must stay.
+BY_OTHERS_WORDS = ('by others', 'by client', 'by the client', 'by landlord', 'by the landlord', 'by tenant',
+                   'by the tenant', 'client direct', 'excluded', 'exclusion', 'not included', 'omitted', 'nic')
 
 TRADE_TABS = [
     'Builderswork', 'BWIC', 'Cladding', 'Cleaning', 'Civils Groundworks', 'Decoration', 'Demolition', 'Electrical',
@@ -107,6 +114,7 @@ STANDARD = {
     },
     # The words the workbook uses in its Yes/No and status cells (compared without regard to case, as Excel does)
     'words': {'yes': 'Yes', 'no': 'No', 'priced': 'Priced', 'review': 'Review', 'excluded': 'Excluded'},
+    'by_others_words': list(BY_OTHERS_WORDS),
 }
 
 CALC_SELECT = 'select-v1'
@@ -198,6 +206,7 @@ SUPPLIER_SELECT = {
     # A selected supplier with one of these names is the estimator's own allowance or a provisional sum
     'allowance_words': ['allowance'],
     'ps_words': ['provisional sum', 'prov sum', 'client ps', 'ps'],
+    'by_others_words': list(BY_OTHERS_WORDS),
 }
 
 PRESETS = {STANDARD['key']: STANDARD, SUPPLIER_SELECT['key']: SUPPLIER_SELECT}
@@ -285,7 +294,14 @@ def validate(m):
         for letter in sec['total_cols'].values():
             col(letter)
     _need(m['words'], 'words.', ('yes', 'no', 'priced', 'review', 'excluded'))
+    _word_list(m, 'by_others_words')
     return m
+
+
+def _word_list(m, key):
+    v = m.get(key, [])
+    if not isinstance(v, list) or not all(isinstance(w, str) and w.strip() for w in v):
+        raise MappingError(f'{key} is a list of words.')
 
 
 def _rows(*rows):
@@ -364,21 +380,37 @@ def validate_select(m):
     for key in ('allowance_words', 'ps_words'):
         if not isinstance(m.get(key, []), list):
             raise MappingError(f'{key} is a list of words.')
+    _word_list(m, 'by_others_words')
     return m
 
 
 def detect(sheetnames, summary_cells):
     """
     Which built-in layout a workbook looks like, from its sheet names and the top of its summary sheet, or None.
-    summary_cells: the text of the summary's first rows. A suggestion only: the company's setting decides.
+    summary_cells: the text of the summary's first rows. See detect_layout() for how sure it is.
+    """
+    return detect_layout(sheetnames, summary_cells)[0]
+
+
+def detect_layout(sheetnames, summary_cells):
+    """
+    (key, confident): the built-in layout the workbook looks like (or None) and whether the evidence is strong
+    enough to read the file that way without asking. Confident means the summary carries the one header only
+    that layout has (Include? for standard, Subcontractor Markup for supplier-select) and not the other's. A
+    supplier-select guess from numbered sheets alone is a suggestion, never a switch.
     """
     words = {str(v).strip().casefold() for v in summary_cells if isinstance(v, str)}
-    if 'include?' in words:
-        return STANDARD['key']
+    include, sub_markup = 'include?' in words, 'subcontractor markup' in words
+    if include:
+        return STANDARD['key'], not sub_markup
     numbered = any(re.match(SUPPLIER_SELECT['workshops']['pattern'], n or '') for n in sheetnames)
-    if STANDARD['summary']['sheet'] in sheetnames and (numbered or 'subcontractor markup' in words):
-        return SUPPLIER_SELECT['key']
-    return None
+    if STANDARD['summary']['sheet'] in sheetnames and (numbered or sub_markup):
+        return SUPPLIER_SELECT['key'], sub_markup
+    return None, False
+
+
+# How an upload message names a layout it switched to ("Read as the supplier-select layout")
+SHORT_NAMES = {STANDARD['key']: 'standard', SUPPLIER_SELECT['key']: 'supplier-select'}
 
 
 def get(key, custom=None):

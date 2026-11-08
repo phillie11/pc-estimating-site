@@ -126,6 +126,7 @@ class CVRPeriod(RecordBase):
     # The figures, frozen when it is submitted (cvr.figures.Figures). Blank while it is being prepared.
     value_to_date = models.DecimalField(**MONEY, null=True, blank=True, editable=False)
     certified_to_date = models.DecimalField(**MONEY, null=True, blank=True, editable=False)
+    under_certified = models.DecimalField(**MONEY, null=True, blank=True, editable=False)
     paid_to_date = models.DecimalField(**MONEY, null=True, blank=True, editable=False)
     retention_held = models.DecimalField(**MONEY, null=True, blank=True, editable=False)
     cost_to_date = models.DecimalField(**MONEY, null=True, blank=True, editable=False)

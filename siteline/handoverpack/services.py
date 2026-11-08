@@ -30,23 +30,38 @@ def settings_for(org):
 
 
 def read(data, org):
-    """Run the engine over a workbook's bytes with the company's mapping. Raises reader.WorkbookRefused."""
+    """
+    Run the engine over a workbook's bytes with the company's mapping. Raises reader.WorkbookRefused.
+
+    When the file is confidently the other built-in layout (mapping.detect_layout), it is read with that layout
+    instead and result['switched_layout'] says so; the company's setting is not changed here (see adopt_layout).
+    A company with its own custom mapping is never switched.
+    """
     from .mapping import MappingError
     s = settings_for(org)
     try:
         m = s.mapping()
     except MappingError as e:
         raise reader.WorkbookRefused(f'Your company\'s workbook layout can\'t be used: {e}')
+    tolerance = (s.margin_tolerance or 0) / 100
     book = reader.open_book(data, engine.extents(m))
-    suggested = _suggest(book, m)
+    suggested, confident = _suggest(book, m)
+    if suggested and confident and not s.custom_mapping:
+        result = _read_as(data, suggested['key'], tolerance)
+        if result is not None:
+            result['switched_layout'] = {**suggested, 'from_key': m['key'], 'from_name': m['name']}
+            result['suggested_layout'] = None
+            result['notes'].insert(0, switch_message(result['switched_layout']))
+            return result
     try:
-        result = engine.run(book, m, (s.margin_tolerance or 0) / 100)
+        result = engine.run(book, m, tolerance)
     except ValueError as e:  # not the pricing workbook (no summary sheet, or not this layout)
         if suggested:
             e = f'{e} It looks like the "{suggested["name"]}" layout: an owner can choose that under Settings > ' \
                 'Pricing workbook.'
         raise reader.WorkbookRefused(str(e))
     result['suggested_layout'] = suggested
+    result['switched_layout'] = None
     if suggested:
         result['gaps'].append({
             'code': 'layout_mismatch', 'title': f'This looks like the "{suggested["name"]}" layout',
@@ -56,15 +71,52 @@ def read(data, org):
     return result
 
 
+def switch_message(switched):
+    """What the uploader is told when the file was read with the detected layout, not the company's."""
+    from .mapping import SHORT_NAMES
+    return f'Read as the {SHORT_NAMES.get(switched["key"], switched["name"])} layout; change the default in ' \
+           'Settings > Pricing workbook.'
+
+
+def _read_as(data, key, tolerance):
+    """The engine's result reading the file with built-in layout `key`, or None if it can't be read that way."""
+    from .mapping import get
+    m = get(key)
+    try:
+        return engine.run(reader.open_book(data, engine.extents(m)), m, tolerance)
+    except ValueError:  # WorkbookRefused included: fall back to the company's own layout
+        return None
+
+
 def _suggest(book, m):
-    """The built-in layout the file looks like, when it isn't the one in use: {key, name} or None."""
-    from .mapping import PRESETS, detect
+    """
+    The built-in layout the file looks like, when it isn't the one in use, and whether detect_layout() is
+    confident of it: ({key, name} or None, bool).
+    """
+    from .mapping import PRESETS, detect_layout
     summary = m['summary']['sheet']
     cells = [book.value(summary, r, c) for r in range(1, 13) for c in range(1, 12)]
-    key = detect(book.sheetnames, cells)
+    key, confident = detect_layout(book.sheetnames, cells)
     if key is None or key == m['key'] or key not in PRESETS:
-        return None
-    return {'key': key, 'name': PRESETS[key]['name']}
+        return None, False
+    return {'key': key, 'name': PRESETS[key]['name']}, confident
+
+
+def adopt_layout(org, switched):
+    """
+    Make the layout a file was switched to the company's default, but only while no workbook in the company has
+    been read with the old one (nothing already uploaded depended on the setting that is changing). Called inside
+    upload's transaction. True if the default changed.
+    """
+    if PricingWorkbook.objects.filter(organization=org, mapping_key=switched['from_key']).exists():
+        return False
+    s = PricingSettings.objects.select_for_update().filter(organization=org).first() or \
+        PricingSettings(organization=org)
+    if s.custom_mapping or s.preset != switched['from_key']:
+        return False
+    s.preset = switched['key']
+    s.save()
+    return True
 
 
 class Busy(reader.WorkbookRefused):
@@ -118,6 +170,8 @@ def upload(project, user, f):
             else:
                 pack.workbook = wb
                 pack.save(update_fields=['workbook', 'updated_at'])
+            switched = result.get('switched_layout')
+            wb.default_changed = bool(switched) and adopt_layout(project.organization, switched)
             sync_clarifications(pack, result)
             sync_items(pack, wb, result)
             if project.stage not in Project.ESTIMATING_STAGES and pack.released_at is None:
