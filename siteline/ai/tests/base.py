@@ -28,9 +28,15 @@ def message(data, stop='end_turn', model='claude-opus-5-5', tokens=(1000, 500, 0
 
 
 class FakeClient:
-    def __init__(self, replies):
+    """
+    replies: what each stream returns (a message, or an exception to raise). counts: what each token count
+    returns (an int, or an exception); with none given, counting fails as it would without network.
+    """
+    def __init__(self, replies, counts=None):
         self.replies = list(replies)
+        self.counts = list(counts) if counts is not None else None
         self.requests = []
+        self.count_requests = []
         outer = self
 
         class _Stream:
@@ -48,15 +54,28 @@ class FakeClient:
             def __exit__(self, *exc):
                 return False
 
+            def __iter__(self):
+                return iter(getattr(self.reply, 'events', ()))
+
             def get_final_message(self):
                 return self.reply
 
+        def count_tokens(**params):
+            outer.count_requests.append(params)
+            if outer.counts is None:
+                raise ConnectionError('no network in tests')
+            n = outer.counts.pop(0)
+            if isinstance(n, Exception):
+                raise n
+            return SimpleNamespace(input_tokens=n)
+
         self.beta = SimpleNamespace(messages=SimpleNamespace(stream=lambda **params: _Stream(params)))
+        self.messages = SimpleNamespace(count_tokens=count_tokens)
 
 
 @contextmanager
-def fake_ai(*replies, key='sk-test-not-a-real-key'):
-    client = FakeClient(replies)
+def fake_ai(*replies, key='sk-test-not-a-real-key', counts=None):
+    client = FakeClient(replies, counts)
     env = {'ANTHROPIC_API_KEY': key} if key else {}
     with mock.patch.dict(os.environ, env, clear=False), mock.patch('ai.service.get_client', return_value=client):
         if not key:

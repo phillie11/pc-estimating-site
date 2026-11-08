@@ -8,4 +8,4 @@ class AIConfig(AppConfig):
     verbose_name = 'AI drafting'
 
     def ready(self):
-        from . import tasks  # noqa: F401 - registers the worker task ai.run
+        from . import checks, tasks  # noqa: F401 - the ANTHROPIC_LOG check, and the worker task ai.run

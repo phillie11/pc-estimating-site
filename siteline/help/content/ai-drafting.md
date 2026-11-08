@@ -8,9 +8,8 @@ AI drafting is **off** until an owner or admin switches it on under **Settings â
 
 What is sent to the AI service (Anthropic), and nothing more:
 
-- **Handover pack clarifications**: the pack's workbook lines, exclusions, gaps, provisional sums, site rules and existing clarifications. No costs, margins or supplier names; email addresses and phone numbers are taken out.
-- **Bid brief**: the PDFs you choose, as they are, and the project name.
-- Your company's playbook and profile.
+- **Handover pack clarifications**: each workbook line's trade, description, quantity, status and comment; the amounts of provisional sums and own allowances; excluded trades, gaps, site rules and existing clarifications; your playbook. Supplier names, email addresses, phone numbers, and amounts in comments are taken out. No costs or margins.
+- **Bid brief**: the PDFs you choose, as they are, the project name, your playbook and company profile.
 
 Anthropic says data sent through its API is not used to train its models without the customer's express permission.
 

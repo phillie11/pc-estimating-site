@@ -87,7 +87,7 @@ class CallTests(Base):
         params = client.requests[0]
         self.assertEqual(params['model'], 'claude-opus-5-5')
         self.assertEqual(params['output_config']['format']['schema'], registry.get(CLARIFICATIONS).schema)
-        self.assertEqual(params['fallbacks'], 'default')
+        self.assertNotIn('fallbacks', params)  # the refusal fallback is off unless switched on (AI_REFUSAL_FALLBACK)
         self.assertNotIn('temperature', params)
         self.assertEqual(params['system'][0]['cache_control'], {'type': 'ephemeral'})
         with org_context(self.org_a):
@@ -137,9 +137,12 @@ class CallTests(Base):
             self.call()
         self.assertEqual(client.requests, [])
 
-    def test_errors_become_plain_messages_and_cost_nothing(self):
+    def test_errors_refused_before_any_work_cost_nothing(self):
         req = httpx2.Request('POST', 'https://api.anthropic.com/v1/messages')
-        errors = [anthropic.APIConnectionError(request=req), anthropic.APITimeoutError(request=req)]
+        resp = httpx2.Response(429, request=req)
+        bad = httpx2.Response(400, request=req)
+        errors = [anthropic.RateLimitError('busy', response=resp, body=None),
+                  anthropic.BadRequestError('bad', response=bad, body=None)]
         with fake_ai(*errors):
             for _ in errors:
                 with self.assertRaises(service.CallFailed):

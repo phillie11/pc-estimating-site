@@ -75,8 +75,12 @@ def _month(request):
     """The month asked for (?month=2026-10), else this one: (start, end, 'YYYY-MM')."""
     start = service.month_start()
     raw = request.GET.get('month', '')
-    if len(raw) == 7 and raw[:4].isdigit() and raw[5:].isdigit() and raw[4] == '-' and 1 <= int(raw[5:]) <= 12:
-        start = timezone.make_aware(datetime.combine(datetime(int(raw[:4]), int(raw[5:]), 1).date(), time.min))
+    if (len(raw) == 7 and raw.isascii() and raw[:4].isdigit() and raw[5:].isdigit() and raw[4] == '-'
+            and 2000 <= int(raw[:4]) <= 2100 and 1 <= int(raw[5:]) <= 12):
+        try:
+            start = timezone.make_aware(datetime.combine(datetime(int(raw[:4]), int(raw[5:]), 1).date(), time.min))
+        except (ValueError, OverflowError):  # anything else asked for shows this month
+            pass
     nxt = start.replace(year=start.year + (start.month == 12), month=start.month % 12 + 1)
     return start, nxt, start.strftime('%Y-%m')
 

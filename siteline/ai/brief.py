@@ -8,9 +8,14 @@ read(), which:
   - takes only the chosen revisions of this bid, in this company;
   - skips any file the virus check hasn't cleared (or blocked), any that isn't a real PDF, and any over the size
     limit, saying which and why;
-  - stops adding files once the run would pass settings.AI_TENDER_MAX_PAGES pages or AI_TENDER_MAX_MB, and says
-    which were left out. Siteline has no PDF text reader switched on (documents/textindex.py), so the PDFs go to
-    the model as documents, which reads both the text and the page images;
+  - measures each file in a way that can't be understated: Anthropic's own count of its tokens (the free
+    token-counting endpoint, which reads PDFs as the model does), or, if that can't be had, the larger of the
+    pages found in the file and one page per 30 KB. A page count read from the file alone can be understated
+    (pages kept in compressed object streams), so it is never trusted on its own for the limit or the cost;
+  - stops adding files once the run would pass AI_TENDER_MAX_PAGES pages' worth (5,000 tokens a page) or
+    AI_TENDER_MAX_MB, and says which were left out. Siteline has no PDF text reader switched on
+    (documents/textindex.py), so the PDFs go to the model as documents, which reads both the text and the page
+    images, and the budget is held for the counted tokens;
   - sends the PDFs with the project's name, and nothing else from Siteline;
   - checks the answer against the schema again, caps every length, and saves it as BriefItem rows, each naming
     the document and page it came from.
@@ -31,7 +36,7 @@ from .models import BidBrief, BriefItem, TENDER_BRIEF
 MAX_ITEMS = 90
 MAX_TEXT = 2000
 MAX_SUMMARY = 3000
-BYTES_PER_PAGE_GUESS = 100 * 1024  # when a PDF's pages can't be counted, a generous guess from its size
+BYTES_PER_PAGE_FLOOR = 30 * 1024  # without a token count, a file is taken as at least one page per 30 KB
 SEVERITY_ORDER = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, '': 4}
 
 
@@ -51,19 +56,36 @@ def label(rev):
     return f'{d.reference + " " if d.reference else ""}{d.title} rev {rev.revision}'[:200]
 
 
+def _block(data):
+    return {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf',
+                                           'data': base64.standard_b64encode(data).decode('ascii')}}
+
+
+def robust_pages(data, found=None):
+    """Pages to assume without a token count: never fewer than one per 30 KB of file."""
+    import io
+
+    from documents.services import pdf_page_count
+    found = found or pdf_page_count(io.BytesIO(data)) or 0
+    return max(found, -(-len(data) // BYTES_PER_PAGE_FLOOR), 1)
+
+
 def gather(project, revision_ids):
     """
-    ([(n, revision, bytes, pages)], [notes]) for the chosen revisions that may be sent, in the order chosen,
-    within the page and size limits. Notes say, in plain words, what was left out and why.
+    ([(n, revision, bytes, pages, tokens)], [notes]) for the chosen revisions that may be sent, in the order
+    chosen, within the limits. tokens is Anthropic's count of the file (plus a margin), or the cautious estimate
+    from robust_pages when there's no count. Notes say, in plain words, what was left out and why.
     """
-    from documents.services import pdf_page_count
     from projects.files import scan_status
     from projects.models import DocumentRevision, FileScan
+
+    from . import service
     max_pages, max_bytes = settings.AI_TENDER_MAX_PAGES, settings.AI_TENDER_MAX_MB * 1024 * 1024
+    max_tokens = max_pages * service.TOKENS_PER_PAGE
     revs = {r.pk: r for r in DocumentRevision.objects.filter(
         document__project=project, organization=project.organization, pk__in=revision_ids,
     ).exclude(status=DocumentRevision.WITHDRAWN).select_related('document')}
-    docs, notes, pages_total, bytes_total = [], [], 0, 0
+    docs, notes, tokens_total, bytes_total = [], [], 0, 0
     for pk in revision_ids:
         rev = revs.get(pk)
         if rev is None:
@@ -87,26 +109,29 @@ def gather(project, revision_ids):
         if not data.startswith(b'%PDF') or len(data) > max_bytes:
             notes.append(f'{name}: not a readable PDF, so it wasn\'t read.')
             continue
-        pages = rev.page_count
-        if not pages:
-            import io
-            pages = pdf_page_count(io.BytesIO(data)) or max(1, len(data) // BYTES_PER_PAGE_GUESS)
-        if pages_total + pages > max_pages or bytes_total + len(data) > max_bytes:
-            notes.append(f'{name}: left out, because this reading is limited to {max_pages} pages and '
-                         f'{settings.AI_TENDER_MAX_MB} MB in all. Read it on its own, or with fewer others.')
+        pages = robust_pages(data, rev.page_count)
+        too_big = (f'{name}: left out, because one reading is limited to about {max_pages} pages and '
+                   f'{settings.AI_TENDER_MAX_MB} MB in all. Read it on its own, or with fewer others.')
+        if bytes_total + len(data) > max_bytes:
+            notes.append(too_big)
             continue
-        pages_total += pages
+        counted = service.count_tokens([_block(data)])
+        tokens = counted if counted is not None else pages * service.TOKENS_PER_PAGE
+        if tokens_total + tokens > max_tokens:
+            notes.append(too_big)
+            continue
+        tokens_total += tokens
         bytes_total += len(data)
-        docs.append((len(docs) + 1, rev, data, pages))
+        shown = rev.page_count or (-(-tokens // service.TOKENS_PER_PAGE) if counted is not None else pages)
+        docs.append((len(docs) + 1, rev, data, shown, tokens))
     return docs, notes
 
 
 def build_content(project, docs):
     content = []
-    for n, rev, data, pages in docs:
-        content.append({'type': 'text', 'text': f'Document {n}: {label(rev)} ({pages} pages)'})
-        content.append({'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf',
-                                                        'data': base64.standard_b64encode(data).decode('ascii')}})
+    for n, rev, data, pages, _ in docs:
+        content.append({'type': 'text', 'text': f'Document {n}: {label(rev)} (about {pages} pages)'})
+        content.append(_block(data))
     content.append({'type': 'text', 'text': f'Project: {project.name[:200]}\n'
                                             'Read the documents above and fill in the bid brief.'})
     return content
@@ -132,7 +157,7 @@ def save(project, data, docs, user=None):
     """Validate the answer and save the brief. Returns the BidBrief."""
     if not isinstance(data, dict) or not isinstance(data.get('items'), list):
         raise ValueError('no items')
-    by_n = {n: (rev, pages) for n, rev, _, pages in docs}
+    by_n = {n: (rev, pages) for n, rev, _, pages, _ in docs}
     sections = set(BriefItem.SECTIONS)
     kinds = {k for k, _ in BriefItem.DATE_KINDS}
     severities = {k for k, _ in BriefItem.SEVERITY_CHOICES}
@@ -146,7 +171,7 @@ def save(project, data, docs, user=None):
             brief.summary = _str(data.get('summary'), MAX_SUMMARY)
             brief.value_basis = _str(data.get('value_basis'), MAX_TEXT)
         brief.ai_drafted = True
-        brief.sources = [{'revision': rev.pk, 'label': label(rev), 'pages': pages} for _, rev, _, pages in docs]
+        brief.sources = [{'revision': rev.pk, 'label': label(rev), 'pages': pages} for _, rev, _, pages, _ in docs]
         brief.generated_at, brief.generated_by = timezone.now(), user
         brief.save()
         rows = []
@@ -181,10 +206,14 @@ def read(project, user, revision_ids, run=None):
     docs, notes = gather(project, revision_ids)
     if not docs:
         raise service.CallFailed(' '.join(notes) or 'None of the chosen documents could be read.')
-    pages = sum(d[3] for d in docs)
+    pages, doc_tokens = sum(d[3] for d in docs), sum(d[4] for d in docs)
+    system = service.system_for(project.organization, TENDER_BRIEF)
+    # The counted documents, plus a generous estimate for the instructions and labels around them
+    tokens = doc_tokens + service.input_estimate(chars=len(system) + 400 * len(docs))
     data = service.call(org=project.organization, user=user, task=TENDER_BRIEF, project=project, run=run,
-                        content=build_content(project, docs), pages=pages,
-                        note=f'{len(docs)} document{"s" if len(docs) != 1 else ""}, {pages} pages')
+                        content=build_content(project, docs), input_tokens=tokens, system=system,
+                        note=f'{len(docs)} document{"s" if len(docs) != 1 else ""}, about {pages} pages, '
+                             f'{doc_tokens:,} tokens held')
     try:
         brief = save(project, data, docs, user)
     except ValueError:

@@ -7,12 +7,20 @@ ai/service.call with the company's clarifications playbook, and saves each sugge
 source DRAFT and approved=False. A person edits, approves or deletes each one. An unapproved draft never shows
 in the pack, its export or an issued pack (HandoverPack.visible_clarifications).
 
-What is sent, and only this (data minimisation): the latest revision's trade lines (trade, the workbook's line
-ref, description, quantity, unit, whether priced, included, excluded, provisional or an own allowance, and the
-line's comment), the charge on provisional sums and own allowances only (no cost, margin, markup or supplier
-names), the excluded trades, the gaps Siteline found (not the margin or markup ones), the site rules, and the clarifications already in the pack
-so they aren't repeated. Email addresses and phone numbers are taken out of all of it. Nothing from any other
-project or company.
+What is sent, and only this (data minimisation), from the latest revision of this one pack:
+
+  - each line's trade, the workbook's line ref, description, quantity, unit and status (priced, included,
+    excluded, provisional sum, own allowance, by others, review), and its comment (joinery notes, prelims basis);
+  - the charge on provisional sums and own allowances, and no other money: no cost, margin or markup;
+  - the trades not included in the price;
+  - the gaps Siteline found, except the margin and markup ones;
+  - the site rules, and the clarifications already in the pack so they aren't repeated;
+  - the company's clarifications playbook (ai/registry.py). Not the company profile or overheads and profit:
+    those go only with tender readings.
+
+In all of that text, every supplier name in the workbook's bidder slots becomes [supplier], email addresses
+[email] and UK phone numbers [phone]; in comments, notes and basis, money and percentages become [amount].
+Nothing from any other project or company.
 
 Drafting again replaces only drafts nobody has touched: an edited or approved row is never overwritten.
 """
@@ -30,14 +38,42 @@ MAX_TEXT = 2000
 COMMERCIAL_GAPS = {'margin_below_target', 'no_target_margin', 'zero_markup'}
 
 EMAIL = re.compile(r'[\w.+-]+@[\w-]+(\.[\w-]+)+')
-PHONE = re.compile(r'(?<!\w)(?:\+44\s?|0)(?:\d[\s-]?){9,10}(?!\w)')
+# A UK number in any usual layout: +44 20 7946 0000, +44 (0)20 7946 0000, (020) 7946 0001, 07700-900123...
+PHONE = re.compile(r'(?<![\w+])(?:\+\s?44[\s-]*(?:\(0\)[\s-]*)?|\(?0)[\d\s()\-]{8,18}\d(?!\w)')
+MONEY = re.compile(r'£\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|bn)\b)?|\b\d[\d,]*(?:\.\d+)?\s?%|\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b'
+                   r'|\b\d+\.\d{2}\b|\b\d{4,}\b|\b(?:GBP|gbp)\s?\d[\d,.]*', re.I)
 
 
-def scrub(text, limit=None):
-    """Plain text with email addresses and UK phone numbers taken out, and capped."""
-    text = PHONE.sub('[phone]', EMAIL.sub('[email]', str(text or '')))
+def _phone(m):
+    digits = re.sub(r'\D', '', m.group(0))
+    return '[phone]' if 10 <= len(digits) <= 13 else m.group(0)
+
+
+def scrub(text, limit=None, names=None, money=False):
+    """
+    Plain text with email addresses and UK phone numbers taken out, and capped. `names` (a compiled pattern of
+    supplier names) become [supplier]; with money=True, amounts and percentages become [amount].
+    """
+    text = PHONE.sub(_phone, EMAIL.sub('[email]', str(text or '')))
+    if names is not None:
+        text = names.sub('[supplier]', text)
+    if money:
+        text = MONEY.sub('[amount]', text)
     text = ' '.join(text.split()) if '\n' not in text else '\n'.join(' '.join(x.split()) for x in text.splitlines())
     return text[:limit] if limit else text
+
+
+def supplier_names(result):
+    """A pattern matching every supplier named in the workbook's bidder slots (longest first), or None."""
+    names = set()
+    for tr in result['trades']:
+        for name in [*tr.get('suppliers', []), tr.get('supplier') or '']:
+            name = ' '.join(str(name or '').split())
+            if len(name) >= 3:
+                names.add(name)
+    if not names:
+        return None
+    return re.compile('|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True)), re.I)
 
 
 def available():
@@ -70,14 +106,22 @@ def build_input(pack):
     """(text for the model, {line key: "Trade row N"}) from the pack's latest revision. See the module notes."""
     from . import engine
     r = pack.workbook.result
+    names = supplier_names(r)
+
+    def text(v, limit):  # descriptions, refs, trade names, rules: no personal details or supplier names
+        return scrub(v, limit, names=names)
+
+    def note(v):  # comments, joinery notes, prelims basis: no money either
+        return scrub(v, 200, names=names, money=True)
+
     refs, out, n = {}, [], 0
-    out.append(f'Project: {scrub(pack.project.name, 200)}')
+    out.append(f'Project: {text(pack.project.name, 200)}')
     out.append('\nWorkbook lines (key | trade | ref | description | quantity | status | comment):')
     for tr in r['trades']:
         if not tr['lines']:
             continue
         if not tr['include']:
-            out.append(f'Trade not included in the price: {scrub(tr["name"], 80)}')
+            out.append(f'Trade not included in the price: {text(tr["name"], 80)}')
         for ln in tr['lines']:
             if not ln['description'] or n >= MAX_LINES:
                 continue
@@ -88,8 +132,8 @@ def build_input(pack):
             status = engine.CLASS_LABELS[ln['cls']]
             if ln['cls'] in (engine.PROVISIONAL, engine.ALLOWANCE) and ln['charge'] is not None:
                 status += f' {_money(ln["charge"])}'
-            out.append(' | '.join([key, scrub(tr['name'], 80), scrub(ln['ref'], 20), scrub(ln['description'], MAX_DESC),
-                                   f'{qty} {ln["unit"] or ""}'.strip(), status, scrub(ln['comment'], 200)]))
+            out.append(' | '.join([key, text(tr['name'], 80), text(ln['ref'], 20), text(ln['description'], MAX_DESC),
+                                   text(f'{qty} {ln["unit"] or ""}'.strip(), 40), status, note(ln['comment'])]))
     for ln in r['joinery']['lines']:
         if not ln['description'] or n >= MAX_LINES:
             continue
@@ -97,30 +141,31 @@ def build_input(pack):
         key = f'L{n}'
         refs[key] = f'Joinery row {ln["row"]}'
         qty = f'{ln["qty"]}' if ln['qty'] is not None else ''
-        out.append(' | '.join([key, 'Joinery', scrub(ln['ref'], 20), scrub(ln['description'], MAX_DESC),
-                               f'{qty} {ln["unit"] or ""}'.strip(), engine.CLASS_LABELS[ln['cls']],
-                               scrub(ln['notes'], 200)]))
+        out.append(' | '.join([key, 'Joinery', text(ln['ref'], 20), text(ln['description'], MAX_DESC),
+                               text(f'{qty} {ln["unit"] or ""}'.strip(), 40), engine.CLASS_LABELS[ln['cls']],
+                               note(ln['notes'])]))
     for ln in r['prelims']['lines']:
         if not ln['description'] or n >= MAX_LINES:
             continue
         n += 1
         key = f'L{n}'
         refs[key] = f'Preliminaries row {ln["row"]}'
-        out.append(' | '.join([key, 'Preliminaries', '', scrub(ln['description'], MAX_DESC),
-                               f'{ln["qty"] if ln["qty"] is not None else ""} {ln["unit"] or ""}'.strip(),
-                               engine.CLASS_LABELS[ln['cls']], scrub(ln['basis'], 200)]))
+        out.append(' | '.join([key, 'Preliminaries', '', text(ln['description'], MAX_DESC),
+                               text(f'{ln["qty"] if ln["qty"] is not None else ""} {ln["unit"] or ""}'.strip(), 40),
+                               engine.CLASS_LABELS[ln['cls']], note(ln['basis'])]))
     gaps = [g for g in r['gaps'] if g['code'] not in COMMERCIAL_GAPS]
     if gaps:
         out.append('\nGaps Siteline found in the workbook:')
         for g in gaps[:80]:
-            out.append(f'- {scrub(g["title"], 200)}: {scrub(g["detail"], 300)}')
+            out.append(f'- {scrub(g["title"], 200, names=names, money=True)}: '
+                       f'{scrub(g["detail"], 300, names=names, money=True)}')
     if pack.site_rules.strip():
-        out.append('\nSite rules:\n' + scrub(pack.site_rules, MAX_RULES))
+        out.append('\nSite rules:\n' + text(pack.site_rules, MAX_RULES))
     existing = [c for c in pack.all_clarifications() if not (c.is_ai_draft and not c.approved and not c.edited)]
     if existing:
         out.append('\nExisting clarifications (don\'t repeat these):')
         for c in existing[:150]:
-            out.append(f'- {scrub(c.trade, 80)}: {scrub(c.text, 400)}')
+            out.append(f'- {text(c.trade, 80)}: {text(c.text, 400)}')
     return '\n'.join(out), refs
 
 

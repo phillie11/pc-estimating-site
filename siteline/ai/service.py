@@ -3,13 +3,20 @@ The one way Siteline calls the AI model. Every feature goes through call(), whic
 
   1. checks, holding the company's AISettings row locked, that AI drafting is on, that this person may use it,
      and that this month's spend plus the most this call could cost stays inside the cap. Anything missing or
-     unclear refuses (fail closed). The most it could cost is reserved straight away as an AIUsage row, so two
-     calls at once can't both squeeze under the cap;
-  2. calls the model with a timeout and the SDK's limited retries (settings.AI_TIMEOUT_SECONDS,
-     AI_MAX_RETRIES), streaming, with structured output so the reply is JSON of a fixed shape;
-  3. writes what the call really cost (tokens, cached tokens, model, pounds) over the reservation, and logs
-     who, what and when. Prompt and reply text are never stored or logged here: a feature keeps only the
-     draft it saves for a person to edit.
+     unclear refuses (fail closed). The most it could cost is held straight away as an AIUsage row, so two
+     calls at once can't both squeeze under the cap. The hold is every output token the call may write plus its
+     input: counted exactly by Anthropic's free token-counting endpoint when the feature asks (the tender
+     reader does, because a PDF's size in tokens can't be told from the file), otherwise a generous estimate.
+     With the refusal fallback on, a declined attempt and the fallback are both billed, so the hold adds a
+     second attempt at the dearest rates in the table;
+  2. calls the model, streaming, with structured output so the reply is JSON of a fixed shape. Each wait for
+     the next part of the answer is limited by AI_TIMEOUT_SECONDS (10 seconds to connect) and the SDK retries a
+     failed connection up to AI_MAX_RETRIES times; the whole answer must arrive within AI_DEADLINE_SECONDS;
+  3. writes what the call really cost over the hold: every attempt in usage.iterations at its own model's rate
+     (a refusal fallback bills the declined attempt too), tokens, cached tokens, model and pounds; and logs who,
+     what and when. When the request was sent but no answer came back (a timeout, a dropped connection, a
+     server error), what it cost can't be known, so the held amount is kept as its cost. Prompt and reply text
+     are never stored or logged here: a feature keeps only the draft it saves for a person to edit.
 
 The API key comes from the ANTHROPIC_API_KEY environment variable and nowhere else: it is not a setting, not
 stored in the database, and not logged. Without it every feature says it isn't set up and nothing is sent.
@@ -20,6 +27,7 @@ Tests replace get_client() with a fake; nothing in the test suite reaches the ne
 import json
 import logging
 import os
+import time as clock
 from datetime import datetime, time
 from decimal import Decimal
 
@@ -34,10 +42,13 @@ from .models import AISettings, AIUsage
 logger = logging.getLogger(__name__)
 
 FALLBACK_BETA = 'server-side-fallback-2026-07-01'
-# Reserving against the budget: a PDF page is 1,500 to 3,000 text tokens plus the page image (Anthropic's PDF
-# guide), so 5,000 a page over-reserves rather than under; text is about 4 characters a token, so 3 over-reserves.
+# Estimating input without a token count: a PDF page is 1,500 to 3,000 text tokens plus the page image
+# (Anthropic's PDF guide), so 5,000 a page over-holds rather than under; text is about 4 characters a token.
 TOKENS_PER_PAGE = 5000
 CHARS_PER_TOKEN = 3
+COUNT_MARGIN = Decimal('1.10')  # the token count is an estimate that "might differ by a small amount"
+SDK_LOGGERS = ('anthropic', 'anthropic._base_client', 'httpx2', 'httpx', 'httpcore')
+UNKNOWN_COST_NOTE = 'cost unknown, held amount kept'
 
 
 class Unavailable(Exception):
@@ -52,8 +63,15 @@ def server_ready():
     return bool(os.environ.get('ANTHROPIC_API_KEY', '').strip())
 
 
+def quiet_sdk_logs():
+    """The SDK sets its own log level from ANTHROPIC_LOG when imported; never let request details reach the logs."""
+    for name in SDK_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 def get_client():
     import anthropic
+    quiet_sdk_logs()
     return anthropic.Anthropic(
         api_key=os.environ.get('ANTHROPIC_API_KEY', '').strip(),
         timeout=anthropic.Timeout(float(settings.AI_TIMEOUT_SECONDS), connect=10.0),
@@ -99,10 +117,34 @@ def status(org, membership, ai=None):
     return True, ''
 
 
-def estimate(model, max_tokens, chars=0, pages=0):
-    """The most a call could cost, in pounds: every output token used, and a generous count of input tokens."""
-    tokens_in = chars // CHARS_PER_TOKEN + pages * TOKENS_PER_PAGE + 2000
-    return rates.cost_gbp(model, input_tokens=tokens_in, output_tokens=max_tokens)
+def input_estimate(chars=0, pages=0):
+    return chars // CHARS_PER_TOKEN + pages * TOKENS_PER_PAGE + 2000
+
+
+def estimate(model, max_tokens, chars=0, pages=0, input_tokens=None):
+    """The most a call could cost, in pounds: every output token used, and the input counted or estimated."""
+    tokens_in = input_tokens if input_tokens is not None else input_estimate(chars, pages)
+    held = rates.cost_gbp(model, input_tokens=tokens_in, output_tokens=max_tokens)
+    if settings.AI_REFUSAL_FALLBACK:
+        # A declined attempt is billed, then the fallback runs on a model this table may not price: hold for both
+        held += rates.dearest_cost_gbp(input_tokens=tokens_in, output_tokens=max_tokens)
+    return held
+
+
+def count_tokens(content, system=''):
+    """
+    Input tokens for this content, counted by Anthropic (free; base64 PDFs supported), plus a margin, or None
+    if the count couldn't be had. Sends only material the call itself would send.
+    """
+    kwargs = {'system': system} if system else {}
+    try:
+        resp = get_client().messages.count_tokens(model=settings.AI_MODEL, **kwargs,
+                                                  messages=[{'role': 'user', 'content': content}])
+        n = int(getattr(resp, 'input_tokens', 0) or 0)
+    except Exception:  # noqa: BLE001 - no count: the caller falls back to its own, more cautious, estimate
+        logger.warning('ai: token count failed; using an estimate from the file sizes', exc_info=False)
+        return None
+    return int(Decimal(n) * COUNT_MARGIN) if n > 0 else None
 
 
 def _reserve(org, user, feature, project, run, model, held, note):
@@ -130,22 +172,32 @@ def _text(message):
     return ''.join(getattr(b, 'text', '') for b in message.content if getattr(b, 'type', '') == 'text')
 
 
-def call(*, org, user, task, project, run, content, chars=0, pages=0, note='', effort=None):
+def system_for(org, task):
+    from . import registry
+    return registry.system_prompt(org, task)
+
+
+def call(*, org, user, task, project, run, content, chars=0, pages=0, input_tokens=None, note='', effort=None,
+         system=None):
     """
     Ask the model to do one registered task (ai/registry.py) on `content`, the inputs the feature built, and
     return its structured reply as a dict (not yet validated: the feature checks it). The system prompt is the
-    task's fixed rules plus the company's playbook (registry.system_prompt). Raises Unavailable before anything
-    is sent, or CallFailed after.
+    task's fixed rules plus the company's playbook (registry.system_prompt). input_tokens, when the feature has
+    counted the request (count_tokens), replaces the estimate from chars and pages. Raises Unavailable before
+    anything is sent, or CallFailed after.
     """
     import anthropic
+    import httpx2
 
     from . import registry
     t = registry.get(task)
     feature, schema, max_tokens = t.feature, t.schema, t.max_tokens
-    system = registry.system_prompt(org, task)
-    chars += len(system)
+    system = system or system_for(org, task)
+    if input_tokens is None:
+        chars += len(system)
     model = settings.AI_MODEL
-    usage = _reserve(org, user, feature, project, run, model, estimate(model, max_tokens, chars, pages), note)
+    usage = _reserve(org, user, feature, project, run, model,
+                     estimate(model, max_tokens, chars, pages, input_tokens), note)
     params = {
         'model': model, 'max_tokens': max_tokens,
         # The rules and playbook are the same for every call of this task in this company, so they are cached
@@ -159,29 +211,39 @@ def call(*, org, user, task, project, run, content, chars=0, pages=0, note='', e
         # If the model's safety checks decline a request, the API re-runs it on Anthropic's recommended fallback
         params.update(betas=[FALLBACK_BETA], fallbacks='default')
     message = None
+    deadline = clock.monotonic() + float(settings.AI_DEADLINE_SECONDS)
     try:
         with get_client().beta.messages.stream(**params) as stream:
+            for _ in stream:  # read the answer as it streams, so a slow trickle can't run past the deadline
+                if clock.monotonic() > deadline:
+                    raise TimeoutError('deadline')
             message = stream.get_final_message()
-    except anthropic.RateLimitError:
+    except anthropic.RateLimitError:  # refused before any work: nothing billed
         _finish(usage, None, AIUsage.FAILED)
         raise CallFailed('The AI service is busy. Try again in a few minutes.')
-    except anthropic.APITimeoutError:
-        _finish(usage, None, AIUsage.FAILED)
-        raise CallFailed('The AI service took too long to answer. Try again, or with fewer pages.')
     except anthropic.AuthenticationError:
         _finish(usage, None, AIUsage.FAILED)
         logger.error('ai: the AI service refused the API key (feature %s, company %s)', feature, org.pk)
         raise CallFailed('The AI service refused this server\'s key. Tell whoever runs your Siteline server.')
+    except (anthropic.APITimeoutError, httpx2.TimeoutException, TimeoutError):
+        _unknown(usage)
+        raise CallFailed('The AI service took too long to answer. Try again, or with fewer pages.')
     except anthropic.APIStatusError as e:
-        _finish(usage, None, AIUsage.FAILED)
         logger.warning('ai: call failed with HTTP %s (feature %s, company %s, request %s)', e.status_code, feature,
                        org.pk, getattr(e, 'request_id', ''))
+        if e.status_code >= 500:
+            _unknown(usage)
+        else:
+            _finish(usage, None, AIUsage.FAILED)
         if e.status_code == 413:
             raise CallFailed('That is too much to send in one go. Choose fewer or smaller documents.')
         raise CallFailed('The AI service couldn\'t do this just now. Try again later.')
-    except anthropic.APIConnectionError:
-        _finish(usage, None, AIUsage.FAILED)
-        raise CallFailed('Siteline couldn\'t reach the AI service. Try again later.')
+    except (anthropic.APIConnectionError, httpx2.TransportError):
+        _unknown(usage)
+        raise CallFailed('Siteline lost its connection to the AI service. Try again later.')
+    except Exception:
+        _unknown(usage)
+        raise
 
     stop = getattr(message, 'stop_reason', None)
     _finish(usage, message, AIUsage.REFUSED if stop == 'refusal' else AIUsage.OK)
@@ -198,19 +260,40 @@ def call(*, org, user, task, project, run, content, chars=0, pages=0, note='', e
     return data
 
 
-def _finish(usage, message, status):
-    u = getattr(message, 'usage', None)
-    tokens = {
+def _tokens(u):
+    return {
         'input_tokens': int(getattr(u, 'input_tokens', 0) or 0),
         'output_tokens': int(getattr(u, 'output_tokens', 0) or 0),
         'cache_write_tokens': int(getattr(u, 'cache_creation_input_tokens', 0) or 0),
         'cache_read_tokens': int(getattr(u, 'cache_read_input_tokens', 0) or 0),
     }
+
+
+def _unknown(usage):
+    """The request went out but no answer came back: what it cost can't be known, so the hold stays as its cost."""
+    usage.status = AIUsage.FAILED
+    usage.note = f'{usage.note}; {UNKNOWN_COST_NOTE}'.lstrip('; ')[:200]
+    usage.save(update_fields=['status', 'note'])
+    logger.warning('ai: %s for company %s by user %s: no answer, %s (£%s)', usage.feature, usage.organization_id,
+                   usage.user_id, UNKNOWN_COST_NOTE, usage.cost_gbp)
+
+
+def _finish(usage, message, status):
+    u = getattr(message, 'usage', None)
+    tokens = _tokens(u)
     model = str(getattr(message, 'model', '') or usage.model)[:60]
+    iterations = [i for i in (getattr(u, 'iterations', None) or []) if hasattr(i, 'input_tokens')]
+    if iterations:
+        # Every attempt is billed at its own model's rate: a refusal fallback bills the declined attempt too
+        parts = [(str(getattr(i, 'model', '') or model), _tokens(i)) for i in iterations]
+        cost = sum((rates.cost_gbp(m, **t) for m, t in parts), Decimal('0'))
+        tokens = {k: sum(t[k] for _, t in parts) for k in tokens}
+    else:
+        cost = rates.cost_gbp(model, **tokens)
     usage.model, usage.status = model, status
     for k, v in tokens.items():
         setattr(usage, k, v)
-    usage.cost_gbp = rates.cost_gbp(model, **tokens)
+    usage.cost_gbp = cost
     usage.request_id = str(getattr(message, '_request_id', '') or getattr(message, 'id', '') or '')[:100]
     usage.save()
     logger.info('ai: %s for company %s by user %s on project %s: %s, model %s, %s in (%s cached) / %s out tokens, '

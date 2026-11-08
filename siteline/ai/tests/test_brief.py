@@ -132,7 +132,7 @@ class ReadTests(Setup):
         self.assertNotIn(b'PRELIMS-MARKER', sent)
         with org_context(self.org_a):
             run = AIRun.objects.get()
-        self.assertIn('limited to 4 pages', run.message)
+        self.assertIn('limited to about 4 pages', run.message)
 
     def test_nothing_readable_sends_nothing(self):
         with org_context(self.org_a):

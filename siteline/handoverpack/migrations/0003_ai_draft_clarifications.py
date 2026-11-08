@@ -5,6 +5,15 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def hide_unapproved_drafts(apps, schema_editor):
+    """
+    Going back to before approval existed: an unapproved AI draft would otherwise become an ordinary clarification
+    and show in the pack and its export. Hide them first (hidden rows are never shown), while the column exists.
+    """
+    PackClarification = apps.get_model('handoverpack', 'PackClarification')
+    PackClarification._base_manager.filter(source='DRAFT', approved=False).update(hidden=True)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -52,4 +61,6 @@ class Migration(migrations.Migration):
                 max_length=10,
             ),
         ),
+        # Last, so that on the way back it runs first, before the approved column is removed
+        migrations.RunPython(migrations.RunPython.noop, hide_unapproved_drafts),
     ]

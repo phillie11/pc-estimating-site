@@ -10,7 +10,8 @@ and its default playbook. The prompt sent for a task is always, in this order:
      or admin has written one under Settings > AI drafting, otherwise the default below. It guides judgement and
      wording only: the schema is enforced by the API, the inputs are built by code from data the person may open,
      and the access checks run before any of this, so no playbook can widen what is sent or change the output.
-  3. The company profile (sectors, usual contract size, overheads and profit) from AISettings, when set.
+  3. The company profile (sectors, usual contract size, overheads and profit) from AISettings, when set, and
+     only for a task that needs it (uses_profile: the tender reader, not the clarifications drafter).
   4. The inputs, in the user message, built by the feature's own code (handoverpack/clarifications.py,
      ai/brief.py) from one project in one company.
 
@@ -185,6 +186,7 @@ class AITask:
     schema: dict
     max_tokens: int
     playbook_help: str = ''
+    uses_profile: bool = False  # the company profile and overheads and profit go only with tasks that need them
 
     def system_prompt(self, playbook, profile=''):
         parts = [RULES, self.rules,
@@ -200,7 +202,7 @@ TASKS = {t.key: t for t in (
            CLARIFICATIONS_PLAYBOOK, _clarifications_schema(), max_tokens=16000,
            playbook_help='How your company writes clarifications: what to state, how plainly, what to challenge.'),
     AITask(TENDER_BRIEF, 'Tender reader (bid brief)', TENDER_BRIEF, TENDER_RULES, TENDER_PLAYBOOK, _tender_schema(),
-           max_tokens=32000,
+           max_tokens=32000, uses_profile=True,
            playbook_help='How your company reviews a tender for bid/no-bid: what to read first, what to flag, '
                          'how to rate risks.'),
 )}
@@ -223,4 +225,5 @@ def system_prompt(org, key):
     from .models import AISettings
     ai = AISettings.for_org(org)
     text, _ = playbook_for(org, key)
-    return TASKS[key].system_prompt(text[:PLAYBOOK_MAX_CHARS], ai.profile_text()[:PROFILE_MAX_CHARS])
+    t = TASKS[key]
+    return t.system_prompt(text[:PLAYBOOK_MAX_CHARS], ai.profile_text()[:PROFILE_MAX_CHARS] if t.uses_profile else '')
