@@ -8,6 +8,10 @@ AI drafting: a company switch, a monthly budget, a record of every call, and the
   Playbook     a company's own version of an AI task's playbook (how it wants the work done), every save kept
   AIUsage      one call to the model: who, which feature, which project, the model, tokens and what it cost
                in pounds. No prompt or reply text is stored here: only what a feature saves as its draft
+  QuoteMapDraft  one subcontractor's quote read against a levelling sheet's scope lines: a rate or sum per
+  / Line /       line with its source, the quote's own total and whether the mapping ties to it, items that
+  Exclusion      match no line, and the quote's exclusions word for word. Nothing reaches the levelling
+                 (QuoteCell, Exclusion) until an estimator accepts a line, an exclusion, or all of them
   BidBrief /   the tender reader's structured brief on a bid, one line per finding with the document and page
   BriefItem    it came from. Every line can be edited, and nothing reaches the project's own fields until
                someone accepts that value
@@ -67,8 +71,9 @@ class AISettings(TenantModel):
         return '\n'.join(lines)
 
 
-CLARIFICATIONS, TENDER_BRIEF = 'clarifications', 'tender_brief'
-FEATURE_CHOICES = [(CLARIFICATIONS, 'Handover pack clarifications'), (TENDER_BRIEF, 'Tender reader')]
+CLARIFICATIONS, TENDER_BRIEF, QUOTE_MAPPING = 'clarifications', 'tender_brief', 'quote_mapping'
+FEATURE_CHOICES = [(CLARIFICATIONS, 'Handover pack clarifications'), (TENDER_BRIEF, 'Tender reader'),
+                   (QUOTE_MAPPING, 'Quote mapping')]
 
 
 class Playbook(TenantModel):
@@ -232,3 +237,69 @@ class BriefItem(TenantModel):
         if not self.source_label:
             return ''
         return f'{self.source_label}, page {self.source_page}' if self.source_page else self.source_label
+
+
+class QuoteMapDraft(TenantModel):
+    """One AI reading of one subcontractor's quote against one levelling sheet. Internal only, like levelling."""
+    OPEN, DONE, DISCARDED = 'open', 'done', 'discarded'
+    STATUS_CHOICES = [(OPEN, 'To review'), (DONE, 'Reviewed'), (DISCARDED, 'Discarded')]
+
+    project = models.ForeignKey('projects.Project', on_delete=models.CASCADE, related_name='+')
+    sheet = models.ForeignKey('levelling.LevellingSheet', on_delete=models.CASCADE, related_name='ai_maps')
+    package = models.ForeignKey('directory.Package', on_delete=models.CASCADE, related_name='ai_maps')
+    run = models.ForeignKey(AIRun, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OPEN)
+    source_label = models.CharField('Read from', max_length=200, blank=True)
+    # The quote's own total as the model read it, and where
+    quote_total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    total_source = models.CharField(max_length=200, blank=True)
+    # What the model said about the tie; Siteline's own arithmetic is worked out on the page from the lines
+    model_ties = models.BooleanField(null=True, blank=True)
+    model_difference = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    unmatched = models.JSONField(default=list, blank=True)  # [{"text", "amount", "source"}]
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['sheet', 'package', 'status'], name='ai_qmap_sheet_pkg')]
+
+    def __str__(self):
+        return f'AI quote map of {self.package_id} on sheet {self.sheet_id}'
+
+
+class QuoteMapLine(TenantModel):
+    PENDING, ACCEPTED, REJECTED = 'pending', 'accepted', 'rejected'
+    STATUS_CHOICES = [(PENDING, 'To check'), (ACCEPTED, 'Accepted'), (REJECTED, 'Not used')]
+
+    draft = models.ForeignKey(QuoteMapDraft, on_delete=models.CASCADE, related_name='lines')
+    line = models.ForeignKey('levelling.ScopeLine', on_delete=models.CASCADE, related_name='+')
+    rate = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    amount = models.DecimalField('Sum', max_digits=14, decimal_places=2, null=True, blank=True)
+    included = models.BooleanField('Included elsewhere', default=False)
+    source = models.CharField(max_length=200, blank=True)
+    note = models.CharField(max_length=500, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ['line__position', 'line__pk']
+        constraints = [models.UniqueConstraint(fields=['draft', 'line'], name='ai_qmap_one_per_line')]
+
+
+class QuoteMapExclusion(TenantModel):
+    PENDING, ACCEPTED, REJECTED = QuoteMapLine.PENDING, QuoteMapLine.ACCEPTED, QuoteMapLine.REJECTED
+    STATUS_CHOICES = QuoteMapLine.STATUS_CHOICES
+
+    draft = models.ForeignKey(QuoteMapDraft, on_delete=models.CASCADE, related_name='exclusions')
+    text = models.CharField(max_length=500)
+    source = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ['pk']

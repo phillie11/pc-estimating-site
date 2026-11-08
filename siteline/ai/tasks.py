@@ -12,7 +12,7 @@ from django.utils import timezone
 
 import jobs
 
-from .models import AIRun, CLARIFICATIONS, TENDER_BRIEF
+from .models import AIRun, CLARIFICATIONS, QUOTE_MAPPING, TENDER_BRIEF
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,25 @@ def run_job(payload):
             _, notes = briefs.read(project, run.requested_by, [int(i) for i in run.params.get('revisions', [])],
                                    run=run)
             message = ' '.join(['Bid brief drafted for you to check.', *notes])
+        elif run.feature == QUOTE_MAPPING:
+            from directory.models import Package
+            from levelling import services as levelling
+            from levelling.models import LevellingSheet
+
+            from . import quotemap
+            if project.stage not in project.PIPELINE_STAGES:
+                raise service.Unavailable(f'{project.name} is no longer an open bid, so the quote wasn\'t mapped.')
+            if stand_in is None or not stand_in.membership.can_estimate:
+                raise service.Unavailable('You can no longer work on this bid, so the quote wasn\'t mapped.')
+            sheet = LevellingSheet.objects.filter(project=project, pk=run.params.get('sheet')).first()
+            package = Package.objects.filter(project=project, pk=run.params.get('package')).exclude(
+                status__in=levelling.NOT_PRICING).first()
+            if sheet is None or package is None or package.trade_id != sheet.trade_id:
+                raise service.Unavailable('That quote or levelling sheet has gone, so nothing was mapped.')
+            draft, notes = quotemap.read(sheet, package, run.requested_by, run=run)
+            n = draft.lines.count()
+            message = ' '.join([f'{n} line{"s" if n != 1 else ""} mapped from {package.subcontractor}\'s quote for '
+                                'you to check. Nothing is in the levelling until you accept it.', *notes])
         else:
             raise service.Unavailable('Unknown kind of draft.')
     except (service.Unavailable, service.CallFailed) as e:

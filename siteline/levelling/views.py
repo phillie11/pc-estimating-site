@@ -245,6 +245,10 @@ def _render(request, project, trade, view, editable, forms):
     columns = [c.package for c in view.columns]
     pricing = services.trade_packages(project, trade)
     carry_initial = {'package': view.sheet.carried_id} if view.sheet.carried_id else {}
+    from ai import quotemap  # "Map with AI" per quote, and drafts to review (ai/quotemap.py)
+    ai_map = quotemap.sheet_state(request, project, trade, view.sheet, pricing, editable)
+    for c in view.columns:
+        c.ai = ai_map['rows'].get(c.package.pk) if ai_map else None
     return render(request, 'levelling/sheet.html', project_context(
         request, project, 'packages', trade=trade, view=view, editable=editable,
         submitting=request.GET.get('submit') == '1',
@@ -255,7 +259,7 @@ def _render(request, project, trade, view, editable, forms):
                                                    prefix='carry', initial=carry_initial),
         import_form=forms.get('import') or ImportForm(packages=pricing, prefix='imp'),
         quote_files=[p for p in pricing if p.quote_file and importer._ext(p.quote_file.name) in importer.ALLOWED],
-        exclusion_choices=Exclusion.STATUS_CHOICES))
+        exclusion_choices=Exclusion.STATUS_CHOICES, ai_map=ai_map))
 
 
 def levelling_rates(request, org_slug, pk, trade_id, package_id):

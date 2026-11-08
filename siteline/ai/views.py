@@ -122,8 +122,11 @@ def usage_page(request, org_slug):
 
 # --- Handover pack clarifications -----------------------------------------------------------------------------------
 
-def _open_run(project, feature):
-    return AIRun.objects.filter(project=project, feature=feature, status__in=(AIRun.QUEUED, AIRun.RUNNING)).first()
+def _open_run(project, feature, package=None):
+    qs = AIRun.objects.filter(project=project, feature=feature, status__in=(AIRun.QUEUED, AIRun.RUNNING))
+    if package is not None:
+        qs = qs.filter(params__package=package)
+    return qs.first()
 
 
 def _start(request, project, feature, params=None):
@@ -131,7 +134,7 @@ def _start(request, project, feature, params=None):
     if not usable:
         messages.error(request, reason or 'AI drafting isn\'t available to you.')
         return None
-    if _open_run(project, feature):
+    if _open_run(project, feature, (params or {}).get('package')):
         messages.info(request, 'A draft is already on its way. This page shows when it is done.')
         return None
     run = AIRun.objects.create(project=project, feature=feature, requested_by=request.user, params=params or {})

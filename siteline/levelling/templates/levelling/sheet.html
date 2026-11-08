@@ -47,7 +47,7 @@
 <div class="card" id="lines">
   <div class="card-head"><h2>Scope lines</h2><span class="small dim">{{ view.lines|length }} line{{ view.lines|length|pluralize }} · blank cells are missing items</span></div>
   {% if view.lines %}<div class="table-wrap"><table class="t lv-grid"><thead><tr><th>Ref</th><th>Description</th><th class="num">Qty</th>
-    {% for c in view.columns %}<th class="num">{{ c.package.subcontractor }}{% if editable %}<span class="sub"><a href="{% url 'levelling_rates' org.slug project.pk trade.pk c.package.pk %}">Enter prices</a></span>{% endif %}</th>{% endfor %}{% if editable %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead><tbody>
+    {% for c in view.columns %}<th class="num">{{ c.package.subcontractor }}{% if editable %}<span class="sub"><a href="{% url 'levelling_rates' org.slug project.pk trade.pk c.package.pk %}">Enter prices</a></span>{% endif %}{% if c.ai %}<span class="sub">{% if c.ai.draft %}<a href="{{ c.ai.review }}">AI mapping{% if c.ai.draft.status == 'open' %} to check{% endif %}</a>{% elif c.ai.mappable and ai_map.usable %}<form method="post" class="inline" action="{{ c.ai.start }}">{% csrf_token %}<button class="linkbtn">Map with AI</button></form>{% endif %}</span>{% endif %}</th>{% endfor %}{% if editable %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead><tbody>
   {% for row in view.lines %}<tr>
     <td class="mono small nowrap">{{ row.line.ref|default:"—" }}</td>
     <td style="min-width:180px">{{ row.line.description }}</td>
@@ -114,6 +114,15 @@
   </div>{% endif %}
 </div>
 </div>
+
+{% if ai_map and ai_map.rows %}<div class="card" id="ai-map">
+  <div class="card-head"><h2>Map quotes with AI</h2><span class="small dim">A draft for you to check: nothing reaches the levelling until you accept it</span></div>
+  <div class="card-body">{% if not ai_map.usable and ai_map.reason %}<p class="small" style="margin-top:0">{{ ai_map.reason }}</p>{% endif %}
+    <div class="table-wrap"><table class="t"><tbody>{% for pk, r in ai_map.rows.items %}<tr><td>{{ r.package.subcontractor }}</td>
+      <td>{% if r.draft %}<a href="{{ r.review }}">{% if r.draft.status == 'open' %}Check the mapping{% else %}See the mapping{% endif %}</a> <span class="small dim">{{ r.draft.created_at|date:"d/m/Y H:i" }}</span>{% endif %}</td>
+      <td>{% if r.mappable and ai_map.usable %}<form method="post" class="inline" action="{{ r.start }}">{% csrf_token %}<button class="btn sm">{% if r.draft %}Map again{% else %}Map with AI{% endif %}</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+</div>{% endif %}
 
 {% if editable %}<div class="card" id="import">
   <div class="card-head"><h2>Import</h2><span class="small dim">Excel (.xlsx) or CSV</span></div>

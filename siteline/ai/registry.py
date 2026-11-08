@@ -22,7 +22,7 @@ usage records and worker pick it up from the registry.
 """
 from dataclasses import dataclass
 
-from .models import CLARIFICATIONS, TENDER_BRIEF
+from .models import CLARIFICATIONS, QUOTE_MAPPING, TENDER_BRIEF
 
 PLAYBOOK_MAX_CHARS = 8000
 PROFILE_MAX_CHARS = 1500
@@ -176,6 +176,81 @@ def _tender_schema():
     }
 
 
+QUOTE_RULES = """\
+Task: map one subcontractor's quote onto our scope lines for one trade. Our lines are given as keys (S1, S2...)
+with ref, description, quantity and unit. For each of our lines the quote prices, give one entry in lines with
+scope_key set to that key and nothing else. Money is in whole pence; -1 means not given. Give a rate when the
+quote prices the line per unit; give amount when it is a lump sum or a total for that line. included_elsewhere is
+true only when the quote says the line is included in another of its items. source names where in the quote the
+figure is (page and item for a PDF, sheet and cell for a workbook). Leave out our lines the quote doesn't price.
+quote_total_pence is the quote's own total (-1 if it gives none); difference_pence is the quote total less the
+total of your mapping. Exclusions and qualifications are copied word for word.
+"""
+
+QUOTE_PLAYBOOK = """\
+How we map a subcontractor's quote
+
+- Map rate by rate. Where our line is measured (m2, m, nr) and the quote gives a rate, use the quoted rate, not an
+  extended total: we multiply by our quantity so every bidder is compared on the same quantities.
+- Several quote items for one of our lines: add them up, and say in the note which items and figures make the
+  total ("items 4.1 to 4.3: 7,924.24 + 7,924.24 + 850").
+- One quote item covering several of our lines: put it on the closest line, and mark the others included
+  elsewhere, with a note saying where it sits.
+- Quantity differences: never change our quantity. Use their rate, and note their quantity in the note.
+- A line the quote doesn't price: leave it out. Don't guess a figure.
+- Every figure names its source: page and item, or sheet and cell. A bare number can't be checked.
+- Tie to the quote total. The mapping plus anything left unmatched should come to the quote's own total. Where
+  it doesn't, say why in the notes (quantity differences, items carried from an earlier revision, arithmetic in
+  the quote). An unexplained difference usually means a line is mapped wrongly.
+- Quote items that match none of our lines go to unmatched_quote_items with their amount: extras, alternatives,
+  provisional sums or optional items. Don't force them onto a line.
+- Exclusions and qualifications that carry cost are copied word for word: working hours, what falls to us
+  (attendance, access, protection, waste), provisional sums, named suppliers, validity, lead times.
+- Note when the quote is a budget figure, out of validity, or a revision of an earlier one.
+"""
+
+
+def _quote_schema():
+    line = {
+        'type': 'object',
+        'properties': {
+            'scope_key': {'type': 'string'},
+            'rate_pence': {'type': 'integer'},
+            'amount_pence': {'type': 'integer'},
+            'included_elsewhere': {'type': 'boolean'},
+            'source': {'type': 'string'},
+            'note': {'type': 'string'},
+        },
+        'required': ['scope_key', 'rate_pence', 'amount_pence', 'included_elsewhere', 'source', 'note'],
+        'additionalProperties': False,
+    }
+    item = {
+        'type': 'object',
+        'properties': {'text': {'type': 'string'}, 'amount_pence': {'type': 'integer'}, 'source': {'type': 'string'}},
+        'required': ['text', 'amount_pence', 'source'], 'additionalProperties': False,
+    }
+    exclusion = {
+        'type': 'object',
+        'properties': {'text': {'type': 'string'}, 'source': {'type': 'string'}},
+        'required': ['text', 'source'], 'additionalProperties': False,
+    }
+    return {
+        'type': 'object',
+        'properties': {
+            'quote_total_pence': {'type': 'integer'},
+            'total_source': {'type': 'string'},
+            'lines': {'type': 'array', 'items': line},
+            'unmatched_quote_items': {'type': 'array', 'items': item},
+            'exclusions': {'type': 'array', 'items': exclusion},
+            'ties_to_total': {'type': 'boolean'},
+            'difference_pence': {'type': 'integer'},
+        },
+        'required': ['quote_total_pence', 'total_source', 'lines', 'unmatched_quote_items', 'exclusions',
+                     'ties_to_total', 'difference_pence'],
+        'additionalProperties': False,
+    }
+
+
 @dataclass(frozen=True)
 class AITask:
     key: str
@@ -205,6 +280,10 @@ TASKS = {t.key: t for t in (
            max_tokens=32000, uses_profile=True,
            playbook_help='How your company reviews a tender for bid/no-bid: what to read first, what to flag, '
                          'how to rate risks.'),
+    AITask(QUOTE_MAPPING, 'Quote mapping (levelling)', QUOTE_MAPPING, QUOTE_RULES, QUOTE_PLAYBOOK, _quote_schema(),
+           max_tokens=32000,
+           playbook_help='How your company reads a subcontractor\'s quote into the levelling: rates or sums, '
+                         'notes, tying to the total, exclusions.'),
 )}
 
 

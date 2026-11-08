@@ -4,12 +4,15 @@ its urlpatterns (the archived-project test walks that list).
 """
 from django.urls import path
 
-from . import views
+from . import views, views_quotemap
 
 
 def project_patterns(P):
     B = P + 'bid-brief/'
+    Q = P + 'levelling/<int:trade_id>/ai-map/<int:package_id>/'
     return [
+        path(Q, views_quotemap.quote_map, name='ai_quote_map'),
+        path(Q + 'start/', views_quotemap.quote_map_start, name='ai_quote_map_start'),
         path(B, views.brief_page, name='ai_brief'),
         path(B + 'read/', views.brief_read, name='ai_brief_read'),
         path(B + 'items/<int:item_id>/', views.brief_item, name='ai_brief_item'),
