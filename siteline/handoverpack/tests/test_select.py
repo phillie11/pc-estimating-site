@@ -441,17 +441,86 @@ class SelectUploadTests(Base):
             pack.refresh_from_db()
             self.assertTrue(pack.is_issued)
 
-    def test_the_other_layout_is_suggested_and_the_setting_decides(self):
-        self.login(self.eve)  # the company is on the standard layout
+    def std_file(self):
+        return SimpleUploadedFile('std.xlsx', sample.build(sample.DEMO))
+
+    def preset(self):
+        with org_context(self.org_a):
+            s = PricingSettings.objects.filter(organization=self.org_a).first()
+            return s.preset if s else 'standard'
+
+    def test_a_confident_match_is_read_with_the_detected_layout_and_becomes_the_default(self):
+        self.login(self.eve)  # the company is on the standard layout and has uploaded nothing
+        r = self.client.post(self.url('hpack_upload', self.bid.pk), {'file': xlsm_file()}, follow=True)
+        with org_context(self.org_a):
+            wb = PricingWorkbook.objects.get(project=self.bid)
+        self.assertRedirects(r, wb.get_absolute_url())
+        self.assertEqual(wb.mapping_key, 'supplier-select')
+        self.assertTrue(wb.reconciled)
+        self.assertEqual(wb.result['switched_layout']['from_key'], 'standard')
+        self.assertIsNone(wb.result['suggested_layout'])
+        self.assertContains(r, 'Read as the supplier-select layout; change the default in Settings')
+        self.assertIn('Read as the supplier-select layout; change the default in Settings > Pricing workbook.',
+                      wb.result['notes'])
+        self.assertEqual(self.preset(), 'supplier-select')
+
+    def test_the_default_stays_once_a_workbook_was_read_with_it(self):
+        self.seed(self.pa, self.pat)  # a standard workbook on another job
+        self.login(self.eve)
+        r = self.client.post(self.url('hpack_upload', self.bid.pk), {'file': xlsm_file()}, follow=True)
+        with org_context(self.org_a):
+            wb = PricingWorkbook.objects.get(project=self.bid)
+        self.assertEqual(wb.mapping_key, 'supplier-select')
+        self.assertContains(r, 'Read as the supplier-select layout; change the default in Settings')
+        self.assertNotContains(r, 'now your company')
+        self.assertEqual(self.preset(), 'standard')
+
+    def test_the_other_way_round(self):
+        self.use_layout()
+        self.login(self.eve)
+        r = self.client.post(self.url('hpack_upload', self.bid.pk), {'file': self.std_file()}, follow=True)
+        with org_context(self.org_a):
+            wb = PricingWorkbook.objects.get(project=self.bid)
+        self.assertEqual(wb.mapping_key, 'standard')
+        self.assertTrue(wb.reconciled)
+        self.assertContains(r, 'Read as the standard layout; change the default in Settings')
+
+    def test_a_custom_mapping_is_never_switched(self):
+        with org_context(self.org_a):
+            PricingSettings.objects.update_or_create(organization=self.org_a,
+                                                     defaults={'custom_mapping': mapping.get('standard')})
+        self.login(self.eve)
         r = self.client.post(self.url('hpack_upload', self.bid.pk), {'file': xlsm_file()}, follow=True)
         with org_context(self.org_a):
             wb = PricingWorkbook.objects.filter(project=self.bid).first()
+            self.assertEqual(PricingSettings.objects.get(organization=self.org_a).preset, 'standard')
+        self.assertNotContains(r, 'Read as the')
         if wb is not None:
             self.assertEqual(wb.mapping_key, 'standard')
-            self.assertEqual(wb.result['suggested_layout']['key'], 'supplier-select')
-        self.assertContains(r, 'Pricing document (supplier-select layout)')
-        # And the other way round
-        self.use_layout()
+
+    def test_a_guess_from_numbered_sheets_alone_is_only_a_suggestion(self):
+        book = openpyxl.load_workbook(io.BytesIO(demo()))
+        book['PRICING SUMMARY']['F3'] = 'Markup'  # no SUBCONTRACTOR MARKUP header: only the workshop sheets
+        out = io.BytesIO()
+        book.save(out)
+        cells = [book['PRICING SUMMARY'].cell(r, c).value for r in range(1, 13) for c in range(1, 12)]
+        self.assertEqual(mapping.detect_layout(book.sheetnames, cells), ('supplier-select', False))
+        self.login(self.eve)
         r = self.client.post(self.url('hpack_upload', self.bid.pk),
-                             {'file': SimpleUploadedFile('std.xlsx', sample.build(sample.DEMO))}, follow=True)
-        self.assertContains(r, 'Standard pricing workbook')
+                             {'file': SimpleUploadedFile('p.xlsx', out.getvalue())}, follow=True)
+        self.assertNotContains(r, 'Read as the')
+        self.assertContains(r, 'Pricing document (supplier-select layout)')
+        self.assertEqual(self.preset(), 'standard')
+
+
+class DetectTests(SimpleTestCase):
+    def test_confidence(self):
+        self.assertEqual(mapping.detect_layout(['PRICING SUMMARY'], ['Include?']), ('standard', True))
+        self.assertEqual(mapping.detect_layout(['PRICING SUMMARY', '1'], ['SUBCONTRACTOR MARKUP']),
+                         ('supplier-select', True))
+        self.assertEqual(mapping.detect_layout(['PRICING SUMMARY', '1'], ['Cost']), ('supplier-select', False))
+        # Both headers: not sure which, so never switch
+        self.assertEqual(mapping.detect_layout(['PRICING SUMMARY'], ['Include?', 'Subcontractor markup']),
+                         ('standard', False))
+        self.assertEqual(mapping.detect_layout(['Sheet1'], ['Cost']), (None, False))
+

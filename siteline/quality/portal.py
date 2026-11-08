@@ -44,7 +44,7 @@ from . import photos as photo_files
 from . import rules
 from .forms import PackageChoice, PenetrationForm, PenetrationPhotoForm, PermitForm
 from .models import Penetration, Permit, QualityPhoto, QualitySettings
-from .workflow import inspector_for, permit_approver_for
+from .workflow import inspector_for, is_installer, permit_approver_for
 
 PORTAL_SIZES = ('thumb', 'display')  # never the original, which keeps the camera's data
 
@@ -265,6 +265,7 @@ def penetration_detail(request, org_slug, pk, pen_id):
     names = {t.name for t in available_transitions(p, request.user)} if not project.is_archived else set()
     return render(request, 'quality/portal_firestop_detail.html', _ctx(
         request, project, 'firestopping', p=p, transitions=names & {'seal', 'reseal'},
+        can_add_photos=not project.is_archived and is_installer(p, request.user),
         before=[x for x in photos if x.stage == QualityPhoto.BEFORE],
         after=[x for x in photos if x.stage == QualityPhoto.AFTER],
         photo_form=PenetrationPhotoForm(initial={'stage': 'BEFORE' if p.status == Penetration.TO_SEAL else 'AFTER'})))
@@ -276,6 +277,12 @@ def penetration_photo(request, org_slug, pk, pen_id):
     project = sub_project(request, pk, 'penetration_list')
     p = _penetration(request, project, pen_id)
     back = redirect('portal_firestop_detail', org_slug=org_slug, pk=pk, pen_id=p.pk)
+    # Only while they still hold the work: the package still appointed to their company and them still on the
+    # job as its subcontractor (the same test as sealing it). A sub who lost the package keeps read access to
+    # what they recorded, never adds to it.
+    if project.is_archived or not is_installer(p, request.user):
+        raise PermissionDenied('This fire-stopping is no longer on a package appointed to you, so you can\'t add '
+                               'photos to it.')
     if p.status in (Penetration.SEALED, Penetration.SIGNED_OFF):
         messages.error(request, f'{p.ref} is with the site team now, so its photos are fixed.' if
                        p.status == Penetration.SEALED else f'{p.ref} is signed off, so its photos are part of the record.')

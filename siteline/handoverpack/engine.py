@@ -54,9 +54,9 @@ CLASS_LABELS = {
 }
 CLASS_TONES = {PRICED: 'good', INCLUDED: 'info', EXCLUDED: 'muted', REVIEW: 'bad', PROVISIONAL: 'warn',
                ALLOWANCE: 'warn', BY_OTHERS: 'muted'}
-# Words in a zero-rated line's comment that mean someone else provides it, not that it is included
-BY_OTHERS_WORDS = ('by others', 'by client', 'by the client', 'by landlord', 'by the landlord', 'by tenant',
-                   'by the tenant', 'client direct', 'excluded', 'exclusion', 'not included', 'omitted', 'nic')
+# Words in a zero-rated line's comment that mean someone else provides it: the fallback for a custom mapping
+# without its own list (both presets carry it as 'by_others_words')
+BY_OTHERS_WORDS = maps.BY_OTHERS_WORDS
 
 
 def num(v):

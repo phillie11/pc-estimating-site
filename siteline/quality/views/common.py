@@ -21,6 +21,7 @@ from projects.views import project_context
 from tenancy.permissions import admin_required
 
 from .. import photos as photo_files
+from .. import workflow
 from ..access import can_edit_library, is_pm_or_admin, quality_project, require_library_editor
 from ..forms import SettingsForm, TemplateForm
 from ..library import ensure_library
@@ -159,10 +160,17 @@ def template_edit(request, org_slug, template_id):
 @admin_required
 def quality_settings(request, org_slug):
     obj = QualitySettings.for_org(request.org)
+    was_independent = obj.fs_independent_sign_off
     form = SettingsForm(request.POST or None, instance=obj)
     if request.method == 'POST' and form.is_valid():
-        form.save()
+        with transaction.atomic():
+            form.save()
+            moved = 0
+            if obj.fs_independent_sign_off and not was_independent:
+                moved = workflow.reroute_own_seals(request.org)
         messages.success(request, 'Quality settings saved. Permit times apply to permits asked for from now on; '
-                                  'the fire-stopping sign-off rule applies straight away.')
+                                  'the fire-stopping sign-off rule applies straight away.'
+                         + (f' Seals waiting on the person who recorded them to sign off: {moved}, moved to '
+                            'someone else to inspect.' if moved else ''))
         return redirect('quality_settings', org_slug=org_slug)
     return render(request, 'quality/settings.html', {'form': form})

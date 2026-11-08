@@ -796,15 +796,18 @@ def _incidents():
     from safety.models import Incident
     return Resource(
         name='incidents', title='Incidents', scope=SCOPE_SAFETY,
+        # No free text: the description (and the title, which is its first line) is written on site and often
+        # names the people involved, so neither leaves Siteline through the API. The record's web link opens it
+        # for someone allowed to read it on screen.
         description='Incidents and near misses on every job (owners and admins see these on screen). Never the '
-                    'name, employer or injury of anyone hurt. RIDDOR dates are advisory: check with your safety '
-                    'adviser.',
+                    'name, employer or injury of anyone hurt, and never the free-text title or description, which '
+                    'can name people: follow web_url to read those. RIDDOR dates are advisory: check with your '
+                    'safety adviser.',
         queryset=lambda ctx: on_visible(Incident.objects.all()).select_related('project').order_by('pk'),
         filters=[project_filter(), status_filter(Incident), updated_since()],
         fields=[
             f_id(), f_project(), f_project_ref(),
             Field('ref', 'string', attr('reference'), 'e.g. INC-002.'),
-            Field('title', 'string', attr('title')),
             Field('status', 'string', attr('status'), enum=choices(Incident, 'status')),
             Field('status_label', 'string', display('status')),
             Field('kind', 'string', attr('kind'), enum=choices(Incident, 'kind')),
@@ -823,7 +826,6 @@ def _incidents():
             Field('riddor_reported_on', 'date', attr('riddor_reported_on', iso), nullable=True),
             Field('closed_at', 'date-time', attr('closed_at', iso), nullable=True),
             Field('updated_at', 'date-time', attr('updated_at', iso)),
-            Field('description', 'string', attr('description'), 'What happened.', detail_only=True),
             f_web(),
         ])
 
