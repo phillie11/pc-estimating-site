@@ -238,3 +238,11 @@ class ReaderSafetyTests(SimpleTestCase):
         m = mapping.get('standard')
         with self.assertRaises(ValueError):
             engine.run(reader.open_book(buf.getvalue(), engine.extents(m)), m)
+
+
+class UploadPickerTests(SimpleTestCase):
+    def test_the_file_box_has_no_type_filter(self):
+        # iPhone Safari won't open the picker when the filter names a type it doesn't know, and an .xlsx-only
+        # filter greys out .xlsm. The reader checks the file instead.
+        from handoverpack.forms import UploadForm
+        self.assertNotIn('accept', UploadForm().fields['file'].widget.attrs)
