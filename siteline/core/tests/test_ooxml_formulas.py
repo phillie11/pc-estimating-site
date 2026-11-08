@@ -158,8 +158,8 @@ class FormulaCostTests(SimpleTestCase):
     """N1: one linear pass per formula, every formula and defined name capped, the formula text in a part capped."""
 
     def test_adversarial_formulas_are_linear(self):
-        # Growth, not wall-clock time: four times the text must take well under the sixteen times a quadratic
-        # scan would. Best of three runs at each size, so a busy CI runner doesn't decide the result.
+        # Growth, not wall-clock time: eight times the text must take well under the 64 times a quadratic scan
+        # would. Best of five runs at each size, and a wide margin, so a busy parallel runner doesn't decide it.
         shapes = {
             'a|': lambda n: 'a|' * (n // 2), 'quotes': lambda n: '"' * (n - 1), 'apostrophes': lambda n: "'" * (n - 1),
             'brackets': lambda n: '[' * n, 'SUM(': lambda n: 'SUM(' * (n // 4), 'A': lambda n: 'A' * n,
@@ -171,16 +171,16 @@ class FormulaCostTests(SimpleTestCase):
 
         def best(text):
             times = []
-            for _ in range(3):
+            for _ in range(5):
                 t = time.perf_counter()
                 ooxml.formula_problem(text)
                 times.append(time.perf_counter() - t)
             return min(times)
 
         for label, make in shapes.items():
-            small, large = best(make(2048)), best(make(8192))
+            small, large = best(make(1024)), best(make(8192))
             with self.subTest(label):
-                self.assertLess(large, small * 8 + 0.002, f'{label}: {small:.4f}s at 2 KB, {large:.4f}s at 8 KB')
+                self.assertLess(large, small * 24 + 0.005, f'{label}: {small:.4f}s at 1 KB, {large:.4f}s at 8 KB')
                 self.assertLess(large, 1.0)
 
     def test_long_defined_names_and_too_much_formula_text(self):
