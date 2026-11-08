@@ -32,17 +32,18 @@ The arithmetic, cell for cell (Decimal throughout, nothing rounded until it is s
 Error values (#VALUE!, #NAME?...) anywhere they matter are reconciliation issues or gaps, never a crash.
 """
 import re
-from decimal import Decimal, DivisionByZero, InvalidOperation
+from decimal import Decimal, DecimalException, DivisionByZero
 
 from . import engine
 from . import mapping as maps
 from .engine import (ALLOWANCE, BY_OTHERS, EXCLUDED, HALF_PENNY, INCLUDED, ONE, PRICED, PROVISIONAL, REF, REVIEW,
-                     XL_ERRORS, ZERO, blank, cell, margin, num, same, text)
+                     SUM_FORMULA, XL_ERRORS, ZERO, blank, cell, margin, num, same, text)
 
 TOKEN = re.compile(r"\s*(?:(?P<ref>(?:'(?:[^']|'')+'!|[A-Za-z0-9_.]+!)?\$?[A-Z]{1,3}\$?[0-9]{1,6}(?![0-9A-Za-z_(]))"
                    r"|(?P<num>[0-9]+(?:\.[0-9]*)?(?:[eE][+-]?[0-9]+)?|\.[0-9]+)|(?P<op>[-+*/()]))")
 CELLREF = re.compile(r"^(?:(?:'((?:[^']|'')+)'|([A-Za-z0-9_.]+))!)?\$?([A-Z]{1,3})\$?([0-9]{1,6})$")
 MAX_FORMULA = 400
+MAX_MONEY = Decimal('1e13')  # services.MAX_MONEY: any bigger is a typo or an attack
 
 
 def is_error(v):
@@ -72,6 +73,8 @@ class SelectRun(engine.Run):
         self.tolerance = Decimal(margin_tolerance or 0)
         self.issues, self.gaps, self.notes, self.from_excel = [], [], [], []
         self.cached = True
+        self.stale = self.form_bad = False
+        self.trades_below = []
 
     # --- reading -------------------------------------------------------------------------
     def col(self, letter):
@@ -96,6 +99,8 @@ class SelectRun(engine.Run):
         A cell's value as Excel would work it out, when its formula is plain arithmetic of numbers and cells
         (+ - * / and brackets): blank counts 0, text or an error value is #VALUE!. Raises XLError or Unsupported.
         """
+        if not self.book.within(sheet, row, col):
+            raise Unsupported(f'{sheet}!{cell(row, col)}')  # beyond what was read: its value isn't known
         f = self.book.formula(sheet, row, col)
         saved = self.book.value(sheet, row, col)
         if not (isinstance(f, str) and f.startswith('=')) or f == saved:
@@ -105,6 +110,8 @@ class SelectRun(engine.Run):
             if isinstance(v, bool):
                 return ONE if v else ZERO
             if isinstance(v, Decimal):
+                if abs(v) >= MAX_MONEY:
+                    raise Unsupported(f'{sheet}!{cell(row, col)}')
                 return v
             raise XLError(v)
         if depth > 6 or len(f) > MAX_FORMULA:
@@ -138,7 +145,10 @@ class SelectRun(engine.Run):
                 x = factor()
                 return -x if v == '-' else x
             if kind == 'num':
-                return Decimal(v)
+                x = Decimal(v)
+                if not x.is_finite() or abs(x) >= MAX_MONEY:
+                    raise Unsupported(v)
+                return x
             if kind == 'ref':
                 m = CELLREF.match(v.replace('$', ''))
                 target = ((m.group(1) or '').replace("''", "'") or (m.group(2) or '')) or sheet
@@ -175,9 +185,13 @@ class SelectRun(engine.Run):
 
         try:
             out = expr_()
-        except (InvalidOperation, DivisionByZero, IndexError):
+        except (DivisionByZero, IndexError):
             raise XLError('#VALUE!')
+        except DecimalException:  # overflow, underflow, an invalid operation: nothing Excel would hold
+            raise Unsupported(expr)
         if i != len(tokens):
+            raise Unsupported(expr)
+        if abs(out) >= MAX_MONEY:
             raise Unsupported(expr)
         return out
 
@@ -199,36 +213,70 @@ class SelectRun(engine.Run):
             return saved, True
 
     # --- the summary's rows --------------------------------------------------------------------
+    @staticmethod
+    def label_is(label, word):
+        """The label is the word, or starts with it as a whole word ('Prelims (see prelim book)')."""
+        return label == word or (label.startswith(word) and not label[len(word)].isalnum())
+
     def locate(self):
         s = self.m['summary']
         sheet = s['sheet']
         c = {k: maps.col(v) for k, v in s['cols'].items()}
         labels = {k: v.casefold() for k, v in s['labels'].items()}
-        rows, trades, special = {}, [], {self.m['prelims']['sheet'], self.m['joinery']['sheet'],
-                                         self.m['clarifications']['sheet'], sheet}
+        found, trades, special = {k: [] for k in labels}, [], {self.m['prelims']['sheet'], self.m['joinery']['sheet'],
+                                                               self.m['clarifications']['sheet'], sheet}
         sheets = set(self.book.sheetnames)
         for r in range(s['first_row'], s['scan_to'] + 1):
             name_v = self.book.value(sheet, r, c['name'])
             target = self.link(sheet, r, c['name'])
             label = text(name_v).casefold()
-            if 'total' not in rows and target and target[0] != sheet and target[0] not in special:
+            if target and target[0] != sheet and target[0] not in special:
                 trades.append({'row': r, 'sheet': target[0]})
                 continue
-            hit = next((k for k, v in labels.items() if k not in rows and label.startswith(v)), None)
+            hit = next((k for k, v in labels.items() if self.label_is(label, v)), None)
             if hit:
-                rows[hit] = r
+                found[hit].append(r)
                 continue
-            if 'total' not in rows and label and text(name_v) in sheets and text(name_v) not in special:
+            if label and text(name_v) in sheets and text(name_v) not in special:
                 trades.append({'row': r, 'sheet': text(name_v)})
+        rows = {}
+        # The total is the Total row whose charge sums the block of trade rows above it
+        candidates = found['total']
+        for r in candidates:
+            span = self.sum_span(sheet, r, c['charge'])
+            above = [t['row'] for t in trades if t['row'] < r]
+            if span and above and span[0] <= min(above) and span[1] >= max(above) and span[1] < r:
+                rows['total'] = r
+                break
+        if 'total' not in rows and candidates:
+            rows['total'] = candidates[0]
+        total = rows.get('total')
+        for key, hits in found.items():
+            if key == 'total' or not hits:
+                continue
+            below = key in ('profit', 'percentage')
+            pick = [r for r in hits if total is None or (r > total if below else r < total)]
+            if pick:
+                rows[key] = pick[0]
+        self.trades_below = [t for t in trades if total is not None and t['row'] > total]
+        trades = [t for t in trades if total is None or t['row'] < total]
         checks = {}
         lc, vc = maps.col(s['check_label_col']), maps.col(s['check_value_col'])
         wanted = {k: v.casefold() for k, v in s['check_labels'].items()}
-        for r in range((rows.get('total') or s['first_row']) + 1, s['scan_to'] + 1):
+        for r in range((total or s['first_row']) + 1, s['scan_to'] + 1):
             label = text(self.book.value(sheet, r, lc)).casefold()
             hit = next((k for k, v in wanted.items() if k not in checks and label == v), None)
             if hit:
                 checks[hit] = (r, vc)
         return rows, trades, checks
+
+    def sum_span(self, sheet, row, col):
+        """(first row, last row) when the cell is =SUM(X a:X b) over its own column, else None."""
+        f = self.book.formula(sheet, row, col)
+        m = SUM_FORMULA.match(f) if isinstance(f, str) else None
+        if not m or maps.col(m.group(1)) != col or maps.col(m.group(3)) != col:
+            return None
+        return int(m.group(2)), int(m.group(4))
 
     # --- trades ---------------------------------------------------------------------------------
     def total_row(self, sheet, srow):
@@ -322,6 +370,15 @@ class SelectRun(engine.Run):
                 z = ZERO if blank(z_raw) else num(z_raw)
                 if (y, z) != emulated:
                     mismatched.append(row)
+                    for k, got, want in (('rate', y, emulated[0]), ('adj', z, emulated[1])):
+                        if got != want:
+                            self.issues.append({
+                                'sheet': sheet, 'cell': cell(row, sel[k]), 'computed': want, 'excel': got,
+                                'what': f'{name} line {ref or row} selected {"rate" if k == "rate" else "Est Adj"} '
+                                        f'(Excel\'s copy of {w2 or "no supplier"})',
+                                'excel_text': '' if got is not None else 'not a number',
+                                'difference': abs((got or ZERO) - (want or ZERO))})
+                            self.stale = True
             else:
                 y, z = emulated
             s_ = y + z if y is not None and z is not None else None
@@ -356,8 +413,8 @@ class SelectRun(engine.Run):
             self.notes.append(f'{name}: Excel\'s copy of the selected supplier\'s rates (columns '
                               f'{t["selected"]["rate"]} and {t["selected"]["adj"]}) differs from the "{w2 or "blank"}" '
                               f'columns at row{"s" if len(mismatched) != 1 else ""} '
-                              f'{", ".join(str(r) for r in mismatched[:8])}. Excel\'s values were used; recalculate '
-                              'and save the workbook in Excel.')
+                              f'{", ".join(str(r) for r in mismatched[:8])}, so the workbook was not recalculated '
+                              'after a change. Recalculate it in Excel, save, and upload it again.')
         if self.cached and out['lines']:
             out['from_excel'] = True
             self.excel(f'{name}: the selected supplier\'s rates and Est Adj (Excel\'s FILTER)',
@@ -387,6 +444,10 @@ class SelectRun(engine.Run):
             for key in ('cost', 'charge'):
                 saved = num(self.book.value(summary, srow, sc[key]))
                 out[key] = saved if saved is not None else ZERO
+            if out['cost'] or out['charge']:
+                out['from_excel'] = True
+                self.excel(f'{name}: its tab is missing, so the summary\'s own cost and charge',
+                           f'{summary}!{s["cols"]["cost"]}{srow}:{s["cols"]["charge"]}{srow}')
         else:
             self.check(summary, srow, sc['cost'], out['cost'], f'Summary {name} cost')
             self.check(summary, srow, sc['charge'], out['charge'], f'Summary {name} charge')
@@ -726,6 +787,11 @@ class SelectRun(engine.Run):
                              'to trade tabs, or no Total row. Check the workbook layout chosen in Settings > Pricing '
                              'workbook.')
         trow = rows['total']
+        for t in self.trades_below:
+            self.gap('trade_below_total', f'Summary row {t["row"]} ({t["sheet"]}) is below the total',
+                     'A trade row under the Total row is not in the tender. Move it above the total, or into the '
+                     'block the total sums.', sheet, f'{s["cols"]["charge"]}{t["row"]}', t['sheet'],
+                     num(self.book.value(sheet, t['row'], sc['charge'])), 'bad')
         self.cached = not (self.book.is_formula(sheet, trow, sc['charge']) and blank(self.book.value(sheet, trow,
                                                                                                     sc['charge'])))
         if not self.cached:
@@ -785,6 +851,7 @@ class SelectRun(engine.Run):
                          'joinery, installation or prelims row, so Siteline takes Excel\'s figures for it.', sheet,
                          f'{s["cols"]["charge"]}{r}', '', num(cg))
 
+        self.check_total_form(sheet, trow, (s['cols']['cost'], s['cols']['charge']), [p[0] for p in parts])
         cost = sum((p[1] for p in parts), ZERO)
         charge = sum((p[2] for p in parts), ZERO)
         profit = charge - cost
@@ -850,6 +917,7 @@ class SelectRun(engine.Run):
         else:
             totals['difference'] = charge - excel['charge']
             totals['reconciled'] = abs(totals['difference']) < HALF_PENNY
+        self.settle(totals)
         if target is not None and our_margin is not None and our_margin < target - self.tolerance:
             short = (totals['price_at_target'] - charge) if totals['price_at_target'] is not None else None
             r = rows['percentage']

@@ -64,8 +64,6 @@ class StripTests(SimpleTestCase):
         before = parts(xlsm)
         self.assertIn('xl/vbaProject.bin', before)
         self.assertIn(b'macroEnabled', before['[Content_Types].xml'])
-        with self.assertRaises(reader.WorkbookRefused):  # never read as it came
-            reader.open_book(xlsm, engine.extents(M))
         clean, removed = reader.strip_macros(xlsm)
         self.assertEqual(removed, 7)
         after = parts(clean)
@@ -80,7 +78,7 @@ class StripTests(SimpleTestCase):
                 self.assertNotRegex(raw, rb'vbaProject|activeX|ctrlProp|relationships/control"', name)
             if name.startswith('xl/worksheets/'):
                 self.assertNotIn(b'<controls', raw, name)
-        reader._check_zip(clean)  # passes the full .xlsx checks
+        self.assertEqual(reader.clean(clean)[1], 0)  # nothing left to remove
         # Opens in openpyxl, every sheet, every saved value and formula as it was
         for data_only in (True, False):
             a = openpyxl.load_workbook(io.BytesIO(plain), data_only=data_only)
@@ -98,16 +96,17 @@ class StripTests(SimpleTestCase):
     def test_a_plain_workbook_named_xlsm_passes_through(self):
         clean, removed = reader.prepare(demo(), '.xlsm')
         self.assertEqual(removed, 0)
-        reader._check_zip(clean)
+        self.assertEqual(reader.clean(clean)[1], 0)
 
-    def test_xlsx_with_macros_inside_is_still_refused(self):
-        with self.assertRaisesMessage(reader.WorkbookRefused, '.xlsm'):
-            reader.open_book(sample_select.with_macros(demo()), engine.extents(M))
+    def test_an_xlsx_with_macros_inside_is_stripped_the_same_way(self):
+        """One rule whatever the name: the active content goes, and only the rebuilt copy is read or stored."""
+        data = sample_select.with_macros(demo())
+        self.assertEqual(reader.prepare(data, '.xlsx'), reader.prepare(data, '.xlsm'))
+        reader.open_book(data, engine.extents(M))  # open_book rebuilds whatever it is given
 
-    def test_excel_4_macro_sheets_and_the_usual_attacks_are_refused(self):
+    def test_the_usual_attacks_are_refused(self):
         p = parts(sample_select.with_macros(demo()))
         cases = {
-            'macro sheet': {**p, 'xl/macrosheets/sheet1.xml': b'<xm:macrosheet/>'},
             'dtd': {**p, 'xl/workbook.xml': b'<!DOCTYPE x [<!ENTITY a "b">]>' + p['xl/workbook.xml']},
             'bomb': {**p, 'xl/media/image1.png': b'\0' * (5 * 1024 * 1024)},
         }

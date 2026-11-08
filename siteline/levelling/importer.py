@@ -13,7 +13,6 @@ import csv
 import io
 import os
 import re
-import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -22,15 +21,10 @@ MAX_ROWS = 2000
 MAX_COLS = 26             # A to Z
 MAX_BYTES = 5 * 1024 * 1024
 MAX_UNZIPPED = 25 * 1024 * 1024
-MAX_PART = {'xl/sharedstrings.xml': 5 * 1024 * 1024, 'xl/styles.xml': 5 * 1024 * 1024}  # parsed whole by openpyxl
-MAX_RATIO = 100           # unpacked : packed, per part
-MAX_SHARED_STRINGS = 50000
 HEADER_SCAN = 15          # rows searched for the header row
 MAX_CELL_TEXT = 500
 MAX_MONEY = Decimal('1000000000000')  # anything this big is a typo or an attack; DECIMAL(14, 2) holds < 10^12
 MAX_QTY = Decimal('100000000000')     # ScopeLine.qty is DECIMAL(14, 3): < 10^11
-DTD = re.compile(rb'<!\s*(DOCTYPE|ENTITY)', re.I)
-UNIQUE_COUNT = re.compile(rb'uniqueCount\s*=\s*["\'](\d+)', re.I)
 
 ALLOWED = {'.xlsx', '.csv'}
 REFUSED = {
@@ -99,102 +93,24 @@ def _read_bytes(f):
     return data
 
 
-def _check_zip(data, max_unzipped=MAX_UNZIPPED, allow_macros=False):
+def _check_zip(data, max_unzipped=MAX_UNZIPPED):
     """
-    Before openpyxl sees it: a real .xlsx zip, no VBA project, no DTD, not a zip bomb. The handover pack's
-    pricing workbook reader (handoverpack/reader.py) uses it too, with a larger limit for a whole workbook.
-    allow_macros=True lets the VBA and ActiveX parts through, and only so that the handover pack can strip
-    them out of an .xlsm before anything opens it (reader.strip_macros); every other check still applies.
+    Before openpyxl sees it, the package is rebuilt from its allowlisted parts (core.ooxml.clean, which the
+    handover pack's pricing workbook reader uses too): a real Excel zip, sizes and ratios capped, no DTD,
+    macros, controls, OLE objects, external links and connections removed, macro sheets and auto-run names
+    refused. Returns the rebuilt bytes, which are what is read. Raises WorkbookRefused.
     """
+    from core import ooxml
     try:
-        zf = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile:
-        raise WorkbookRefused('That file isn\'t a readable Excel workbook. Save it as .xlsx and try again.')
-    with zf:
-        infos = zf.infolist()
-        if len(infos) > 500:
-            raise WorkbookRefused('That workbook has too many parts to read safely.')
-        names = [i.filename.lower() for i in infos]
-        if not allow_macros and any(n.endswith('vbaproject.bin') or n.startswith('xl/activex') for n in names):
-            raise WorkbookRefused('That workbook contains macros, so it was refused. Save it as an Excel workbook '
-                                  '(.xlsx) without macros and upload that.')
-        too_big = WorkbookRefused('That workbook is too large once unpacked. Copy the scope lines into a new '
-                                  'workbook and upload that.')
-        if sum(i.file_size for i in infos) > max_unzipped:
-            raise too_big
-        parts = _capped_parts(zf, infos)
-        for i in infos:
-            name = i.filename.lower()
-            if i.file_size > parts.get(name, (None, max_unzipped))[1]:
-                raise too_big
-            # A part that unpacks to over 100 times its packed size is built to amplify, not to hold a bill
-            if i.file_size > MAX_RATIO * max(i.compress_size, 1) and i.file_size > 64 * 1024:
-                raise too_big
-        for i in infos:
-            name = i.filename.lower()
-            if not (name.endswith('.xml') or name.endswith('.rels')):
-                continue
-            data = _read_part(zf, i)
-            if data[:2] in (b'\xff\xfe', b'\xfe\xff'):
-                data = data.decode('utf-16', errors='replace').encode('utf-8')
-            if DTD.search(data):
-                raise WorkbookRefused('That workbook contains a document type declaration, which Excel never writes, '
-                                      'so it was refused. Save it again from Excel as .xlsx.')
-            if parts.get(name, (None,))[0] == 'sharedstrings':
-                m = UNIQUE_COUNT.search(data[:4096])
-                if m and int(m.group(1)) > MAX_SHARED_STRINGS:
-                    raise WorkbookRefused('That workbook has too much text to read safely. Copy the scope lines into '
-                                          'a new workbook and upload that.')
-                if data.count(b'<si') > MAX_SHARED_STRINGS:
-                    raise WorkbookRefused('That workbook has too much text to read safely. Copy the scope lines into '
-                                          'a new workbook and upload that.')
-        if '[content_types].xml' in names:
-            types = zf.read(next(i for i in infos if i.filename.lower() == '[content_types].xml'))
-            if not allow_macros and (b'macroEnabled' in types or b'vbaProject' in types):
-                raise WorkbookRefused('That workbook is macro-enabled, so it was refused. Save it as an Excel '
-                                      'workbook (.xlsx) and upload that.')
-
-
-CONTENT_TYPES_MAX = 1024 * 1024
-OVERRIDE = re.compile(rb'<(?:\w+:)?(Override|Default)\b([^>]*)>', re.I)
-ATTR = re.compile(rb'(\w+)\s*=\s*["\']([^"\']*)["\']')
-# Parts openpyxl parses whole, found by their content type (that is how openpyxl finds them), not by name
-WHOLE = {b'sharedstrings+xml': 'sharedstrings', b'styles+xml': 'styles'}
-
-
-def _capped_parts(zf, infos):
-    """
-    {lower-case part name: (kind, size cap)} for the shared strings and styles parts. openpyxl finds them through
-    [Content_Types].xml, so a renamed part (xl/foo.xml declared as shared strings) gets the same caps; a Default
-    rule that would make every part with some extension shared strings or styles is refused outright.
-    """
-    caps = {name: (name.split('/')[-1].split('.')[0], cap) for name, cap in MAX_PART.items()}
-    info = next((i for i in infos if i.filename.lower() == '[content_types].xml'), None)
-    if info is None:
-        return caps
-    if info.file_size > CONTENT_TYPES_MAX:
-        raise WorkbookRefused('That workbook is too large to read safely once unpacked.')
-    for tag, attrs in OVERRIDE.findall(_read_part(zf, info)):
-        a = {k.lower(): v for k, v in ATTR.findall(attrs)}
-        ctype = a.get(b'contenttype', b'').lower()
-        kind = next((k for suffix, k in WHOLE.items() if ctype.endswith(suffix)), None)
-        if kind is None:
-            continue
-        if tag.lower() == b'default':
-            raise WorkbookRefused('That workbook isn\'t laid out the way Excel saves one, so it was refused. Save it '
-                                  'again from Excel as .xlsx.')
-        name = a.get(b'partname', b'').decode('utf-8', 'replace').lstrip('/').lower()
-        caps[name] = (kind, MAX_PART['xl/' + ('sharedstrings' if kind == 'sharedstrings' else 'styles') + '.xml'])
-    return caps
-
-
-def _read_part(zf, info):
-    """One part, never more than its declared (already checked) size, whatever the stream really holds."""
-    try:
-        with zf.open(info) as fh:
-            return fh.read(info.file_size + 1)[:info.file_size]
-    except Exception:  # bad CRC, sizes that lie, unsupported compression: all a damaged or crafted file
-        raise WorkbookRefused('That workbook couldn\'t be read. Save it as .xlsx from Excel and try again.')
+        return ooxml.clean(data, max_unzipped=max_unzipped, max_parts=500)[0]
+    except ooxml.Refused as e:
+        messages = {
+            'size': 'That workbook is too large once unpacked. Copy the scope lines into a new workbook and upload '
+                    'that.',
+            'strings': 'That workbook has too much text to read safely. Copy the scope lines into a new workbook and '
+                       'upload that.',
+        }
+        raise WorkbookRefused(messages.get(e.kind, str(e)))
 
 
 def _clean(text):
@@ -218,7 +134,7 @@ def _cell(v):
 
 
 def _xlsx_rows(data):
-    _check_zip(data)
+    data = _check_zip(data)
     import openpyxl
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True, keep_vba=False,

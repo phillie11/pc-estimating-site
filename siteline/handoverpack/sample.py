@@ -13,6 +13,7 @@ formula with a typed number (someone overtyping a total), to test reconciliation
 Every name in DEMO is invented.
 """
 import io
+import re
 import zipfile
 from datetime import date
 from decimal import Decimal as D
@@ -354,6 +355,8 @@ def inject_cached(data, values):
         for info in zin.infolist():
             raw = zin.read(info)
             sheet = paths.get(info.filename)
+            if info.filename == "xl/workbook.xml":  # Excel, unlike openpyxl, saves without asking for a recalculation
+                raw = re.sub(rb"<calcPr[^>]*/>", b"<calcPr calcId=\"191029\"/>", raw)
             if sheet and values.get(sheet):
                 root = fromstring(raw)
                 want = values[sheet]

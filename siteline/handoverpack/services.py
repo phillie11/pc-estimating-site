@@ -172,13 +172,23 @@ def item_rows(wb, result):
     if t['reconciled'] is False:
         saved = f'{pennies(t["excel_charge"]):,}' if t['excel_charge'] is not None else \
             f'"{t.get("excel_text") or "blank"}"'
+        same_total = t['difference'] is not None and abs(t['difference']) < Decimal('0.005')
         rows.append(('rec:total', {
             'kind': OpenItem.RECONCILE, 'code': 'total_differs', 'severity': 'bad', 'trade': '',
-            'title': 'Pack total does not match the pricing summary',
-            'detail': f'Recalculated total charge {pennies(t["charge"]):,} against {saved} on the summary '
-                      f'({t["charge_cell"]}). The pack can\'t be issued until they agree.',
+            'title': 'The workbook does not reconcile cell by cell' if same_total else
+                     'Pack total does not match the pricing summary',
+            'detail': ('The totals agree, but cells listed with the reconciliation (a stale copy of a supplier\'s '
+                       'rates, or a total that isn\'t the sum of its rows) don\'t. Recalculate in Excel, correct the '
+                       'workbook, save and upload it again.' if same_total else
+                       f'Recalculated total charge {pennies(t["charge"]):,} against {saved} on the summary '
+                       f'({t["charge_cell"]}). The pack can\'t be issued until they agree.'),
             'source': _where('PRICING SUMMARY', t['charge_cell']),
-            'amount': pennies(abs(t['difference'])) if t['difference'] is not None else None}))
+            'amount': pennies(abs(t['difference'])) if t['difference'] is not None and not same_total else None}))
+    if t['reconciled'] is None and t.get('unchecked_reason'):
+        rows.append(('rec:calc', {
+            'kind': OpenItem.RECONCILE, 'code': 'not_calculated', 'severity': 'bad', 'trade': '',
+            'title': 'The workbook\'s saved values may be out of date', 'detail': t['unchecked_reason'],
+            'source': '', 'amount': None}))
     for issue in result['issues'][:MAX_RECONCILE_ITEMS]:
         saved = f'{pennies(issue["excel"]):,}' if issue['excel'] is not None else (issue['excel_text'] or 'blank')
         worked = f'{pennies(issue["computed"]):,}' if issue['computed'] is not None else 'blank'
@@ -290,6 +300,9 @@ def why_not_issue(pack, wb, project):
     if wb.reconciled is True:
         return None
     if wb.reconciled is None:
+        reason = (wb.result.get('totals') or {}).get('unchecked_reason')
+        if reason:  # manual calculation: the saved values are suspect, whatever the setting for unchecked files
+            return reason
         if settings_for(project.organization).unchecked_issue == PricingSettings.WARN:
             return None
         return ('The workbook has no values saved by Excel, so its total can\'t be checked against the pricing '
@@ -297,6 +310,9 @@ def why_not_issue(pack, wb, project):
     if wb.difference is None:
         return 'The pricing summary\'s total isn\'t a number (an error or text in Excel). Correct the workbook and ' \
                'upload it again.'
+    if abs(wb.difference) < Decimal('0.005'):
+        return 'The totals agree, but the workbook doesn\'t reconcile cell by cell (see the reconciliation). ' \
+               'Recalculate it in Excel, correct it, save, and upload it again.'
     return f'The pack total is {abs(wb.difference):,} out from the pricing summary. Correct the workbook and upload ' \
            'it again.'
 

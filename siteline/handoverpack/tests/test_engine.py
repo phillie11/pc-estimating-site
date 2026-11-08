@@ -212,7 +212,6 @@ class ReaderSafetyTests(SimpleTestCase):
         with zipfile.ZipFile(io.BytesIO(good)) as z:
             parts = {i.filename: z.read(i) for i in z.infolist()}
         cases = {
-            'macros': {**parts, 'xl/vbaProject.bin': b'x' * 100},
             'dtd': {**parts, 'xl/workbook.xml': b'<!DOCTYPE x [<!ENTITY a "b">]>' + parts['xl/workbook.xml']},
             'bomb': {**parts, 'xl/media/image1.png': b'\0' * (5 * 1024 * 1024)},
         }
@@ -223,6 +222,10 @@ class ReaderSafetyTests(SimpleTestCase):
                     reader.open_book(self._zip(p), engine.extents(m))
         with self.assertRaises(reader.WorkbookRefused):
             reader.open_book(b'not a zip at all', engine.extents(m))
+        # A VBA project in an .xlsx is left behind in the rebuild, never opened (handoverpack/tests/test_package.py)
+        clean, removed = reader.prepare(self._zip({**parts, 'xl/vbaProject.bin': b'x' * 100}), '.xlsx')
+        self.assertEqual(removed, 1)
+        self.assertNotIn(b'vbaProject', clean)
 
     def test_size_cap(self):
         with self.assertRaises(reader.WorkbookRefused):

@@ -122,16 +122,22 @@ class MaliciousWorkbookTests(SimpleTestCase):
                 z.writestr(name, data)
         return SimpleUploadedFile('innocent.xlsx', out.getvalue())
 
-    def test_vba_project_inside_an_xlsx_is_refused(self):
+    def test_vba_project_inside_an_xlsx_is_removed_before_reading(self):
         f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), extra={'xl/vbaProject.bin': b'\x00' * 64})
-        with self.assertRaisesMessage(WorkbookRefused, 'macros'):
-            importer.read(f)
+        data = f.read()
+        self.assertNotIn(b'vbaProject', importer._check_zip(data))
+        f.seek(0)
+        lines, _ = importer.read(f)
+        self.assertEqual([x.ref for x in lines], ['J1'])
 
-    def test_macro_enabled_content_type_is_refused(self):
-        patch = lambda d: d.replace(b'spreadsheetml.sheet.main+xml',  # noqa: E731
-                                    b'sheet.macroEnabled.main+xml')
-        f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), types_patch=patch)
-        with self.assertRaisesMessage(WorkbookRefused, 'macro-enabled'):
+    def test_macro_enabled_content_type_is_relabelled_and_a_made_up_one_refused(self):
+        real = lambda d: d.replace(b'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',  # noqa: E731
+                                   b'application/vnd.ms-excel.sheet.macroEnabled.main+xml')
+        f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), types_patch=real)
+        self.assertNotIn(b'macroEnabled', importer._check_zip(f.read()))
+        made_up = lambda d: d.replace(b'spreadsheetml.sheet.main+xml', b'sheet.macroEnabled.main+xml')  # noqa: E731
+        f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), types_patch=made_up)
+        with self.assertRaisesMessage(WorkbookRefused, 'recognise'):
             importer.read(f)
 
     def test_zip_bomb_refused_before_opening(self):

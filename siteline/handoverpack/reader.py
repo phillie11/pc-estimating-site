@@ -1,10 +1,11 @@
 """
 Opening an uploaded pricing workbook safely and reading the cells a mapping names.
 
-The file is untrusted. Before openpyxl sees it the zip is checked by the same code as quote
-levelling's importer (levelling.importer._check_zip): a real .xlsx, no VBA project or ActiveX,
-no document type declaration (so no XML entities), not a zip bomb (total and per-part unpacked
-size, and the unpacked-to-packed ratio). openpyxl parses with defusedxml (installed, see
+The file is untrusted. Before openpyxl sees it the package is rebuilt from its allowlisted parts by
+core.ooxml.clean, the same code quote levelling uses: zip checks (sizes, ratios, duplicate names,
+paths), [Content_Types].xml and every .rels parsed, macros, controls, OLE objects, external links and
+connections dropped with every reference to them, Excel 4 macro sheets and auto-run names refused.
+openpyxl parses with defusedxml (installed, see
 requirements.txt). The workbook is opened twice, read-only: once for the values Excel last
 saved (data_only) and once for the formulas, so the engine can tell a typed figure from a
 calculated one and follow simple references. No formula is ever evaluated by openpyxl, macros
@@ -13,27 +14,23 @@ are never loaded (keep_vba=False) and external links are dropped (keep_links=Fal
 Only the sheets the mapping names are read, each only as far as the mapping's last row and
 column, so a sheet that claims a million rows costs nothing.
 
-A macro-enabled workbook (.xlsm) is accepted only to be stripped (strip_macros): the same zip checks
-run with the VBA and ActiveX parts let through, those parts and everything that points at them are
-dropped, the workbook is relabelled with the macro-free content type, and the result must then pass
-the full checks as an ordinary .xlsx. Only that stripped copy is read and stored, named .xlsx; the
-original is never kept. Nothing in the VBA project is read or run.
+An .xlsx and an .xlsm get the same treatment: whatever active content either holds is removed, and
+only the rebuilt copy is read and stored, named .xlsx; the original is never kept. Nothing in a VBA
+project is read or run.
 """
 import hashlib
 import io
 import os
-import posixpath
-import re
-import zipfile
 from datetime import date, datetime
 from decimal import Decimal
 
-from levelling import importer
+from core import ooxml
 
 MAX_BYTES = 15 * 1024 * 1024
 MAX_UNZIPPED = 100 * 1024 * 1024
 MAX_TEXT = 2000
 MAX_SHEETS = 200
+MAX_PARTS = 2000
 
 ALLOWED = {'.xlsx', '.xlsm'}
 REFUSED = {
@@ -45,27 +42,6 @@ REFUSED = {
     '.ods': 'OpenDocument spreadsheets can\'t be read. Save it as an Excel Workbook (.xlsx) and upload that.',
     '.csv': 'A CSV file holds one sheet. Upload the whole pricing workbook (.xlsx or .xlsm).',
 }
-
-# What strip_macros drops from an .xlsm (lower-case part names): the VBA project and its signatures, ActiveX
-# controls, form control properties and a custom ribbon (whose buttons call macros)
-MACRO_PARTS = re.compile(r'^(xl/vbaproject\.bin|xl/vbaprojectsignature[^/]*\.bin|xl/vbadata\.xml'
-                         r'|xl/_rels/vbaproject\.bin\.rels|xl/activex/|xl/ctrlprops/|customui/)')
-MACRO_REL_TYPES = (b'/vbaproject', b'/vbaprojectsignature', b'/vbaprojectsignatureagile', b'/vbaprojectsignaturev3',
-                   b'/ctrlprop', b'/control', b'/activexcontrol', b'/activexcontrolbinary', b'/ui/extensibility',
-                   b'/ui/2007/extensibility')
-XLSX_MAIN = b'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'
-MACRO_MAIN = re.compile(rb'application/vnd\.ms-excel\.(?:sheet|template)\.macroEnabled\.main\+xml', re.I)
-RELATIONSHIP = re.compile(rb'<Relationship\b[^>]*?(?:/>|>\s*</Relationship\s*>)', re.I)
-CT_ENTRY = re.compile(rb'<(?:Override|Default)\b[^>]*?(?:/>|>\s*</(?:Override|Default)\s*>)', re.I)
-ATTR = re.compile(rb'([\w:]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')')
-# A sheet's <controls> element holds its ActiveX and form controls, with an mc:AlternateContent inside or around it
-CONTROLS = re.compile(rb'<((?:\w+:)?controls)\b[^>]*?(?:/>|>.*?</\1\s*>)', re.S)
-EMPTY_ALTERNATE = re.compile(rb'<(\w+):AlternateContent\b[^>]*>\s*(?:<\1:Choice\b[^>]*>\s*</\1:Choice>\s*)?'
-                             rb'(?:<\1:Fallback\s*>\s*</\1:Fallback>\s*)?</\1:AlternateContent>', re.S)
-VML_MACRO = re.compile(rb'<x:FmlaMacro>.*?</x:FmlaMacro>', re.S)
-PRINTER_BIN = (b'<Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.'
-               b'printerSettings"/>')
-
 
 class WorkbookRefused(ValueError):
     """The file can't be read safely, or isn't the pricing workbook. The message is for the estimator."""
@@ -103,104 +79,25 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _check_zip(data, allow_macros=False):
+def clean(data, verify=True):
+    """
+    The package rebuilt from its allowlisted parts (core.ooxml.clean), as every upload is before anything opens
+    it, .xlsx or .xlsm: (bytes, parts removed). Raises WorkbookRefused.
+    """
     try:
-        importer._check_zip(data, max_unzipped=MAX_UNZIPPED, allow_macros=allow_macros)
-    except importer.WorkbookRefused as e:
-        msg = str(e)
-        if 'scope lines' in msg:  # the levelling wording; same check, words for this upload
-            msg = 'That workbook is too large to read safely once unpacked. Delete pasted pictures and unused ' \
-                  'sheets, save, and try again.'
-        elif 'macro' in msg:
-            msg = 'That workbook contains macros but isn\'t named .xlsm, so it was refused. Upload the .xlsm as ' \
-                  'Excel saved it (its macros are removed), or save it as an Excel Workbook (.xlsx).'
-        raise WorkbookRefused(msg)
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:  # opened (and its size checked) just above
-        if any(i.filename.lower().startswith(('xl/macrosheets/', 'xl/dialogsheets/')) for i in zf.infolist()):
-            raise WorkbookRefused('That workbook has Excel 4 macro sheets, so it was refused. Copy the pricing sheets '
-                                  'into a new workbook, save it as .xlsx, and upload that.')
-
-
-def _attrs(tag):
-    """An element's attributes, {local name lower-case: value}, from its raw bytes."""
-    return {m.group(1).split(b':')[-1].lower(): m.group(2) if m.group(2) is not None else m.group(3)
-            for m in ATTR.finditer(tag)}
-
-
-def _rel_target(rels_name, target):
-    """Where a relationship points, as a lower-case part name. xl/worksheets/_rels/sheet1.xml.rels + ../a.xml."""
-    if target.startswith('/'):
-        path = target.lstrip('/')
-    else:
-        path = posixpath.join(posixpath.dirname(posixpath.dirname(rels_name)), target)
-    return posixpath.normpath(path).lower()
+        return ooxml.clean(data, max_unzipped=MAX_UNZIPPED, max_parts=MAX_PARTS, verify=verify)
+    except ooxml.Refused as e:
+        raise WorkbookRefused(str(e))
 
 
 def strip_macros(data):
-    """
-    An .xlsm's bytes -> (.xlsx bytes, number of parts removed). Runs the zip checks with the macro parts allowed,
-    drops those parts and every relationship, content type and <controls> element that points at them, switches
-    the workbook to the macro-free content type, and checks the result again as an ordinary .xlsx. Raises
-    WorkbookRefused. Nothing is opened as a spreadsheet and nothing in the VBA project is read.
-    """
-    _check_zip(data, allow_macros=True)
-    out = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(data)) as zin:
-        infos = zin.infolist()
-        dropped = {i.filename.lower() for i in infos if MACRO_PARTS.match(i.filename.lower())}
-        bins_left = any(i.filename.lower().endswith('.bin') and i.filename.lower() not in dropped for i in infos)
-
-        def keep_rel(rels_name):
-            def sub(m):
-                a = _attrs(m.group(0))
-                if a.get(b'targetmode', b'').lower() == b'external':
-                    return m.group(0)
-                path = _rel_target(rels_name, a.get(b'target', b'').decode('utf-8', 'replace'))
-                if path in dropped or MACRO_PARTS.match(path) or a.get(b'type', b'').lower().endswith(MACRO_REL_TYPES):
-                    return b''
-                return m.group(0)
-            return sub
-
-        def keep_type(m):
-            a = _attrs(m.group(0))
-            part = a.get(b'partname', b'').decode('utf-8', 'replace').lstrip('/').lower()
-            ctype = a.get(b'contenttype', b'').lower()
-            if (part and (part in dropped or MACRO_PARTS.match(part))) or b'vbaproject' in ctype \
-                    or b'activex' in ctype or b'controlproperties' in ctype:
-                return b''
-            return MACRO_MAIN.sub(XLSX_MAIN, m.group(0))
-
-        with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
-            for info in infos:
-                name = info.filename.lower()
-                if name in dropped or info.is_dir():
-                    continue
-                raw = importer._read_part(zin, info)
-                if name.endswith('.rels'):
-                    raw = RELATIONSHIP.sub(keep_rel(name), raw)
-                elif name == '[content_types].xml':
-                    raw = CT_ENTRY.sub(keep_type, raw)
-                    if bins_left and not re.search(rb'<Default\b[^>]*Extension\s*=\s*["\']bin["\']', raw, re.I):
-                        raw = raw.replace(b'</Types>', PRINTER_BIN + b'</Types>')
-                elif name.startswith('xl/worksheets/') and name.endswith('.xml'):
-                    raw = EMPTY_ALTERNATE.sub(b'', CONTROLS.sub(b'', raw))
-                elif name.endswith('.vml'):
-                    raw = VML_MACRO.sub(b'', raw)
-                zout.writestr(info, raw)
-    clean = out.getvalue()
-    try:
-        _check_zip(clean)
-    except WorkbookRefused:
-        raise WorkbookRefused('Siteline couldn\'t take the macros out of that workbook safely. In Excel use File > '
-                              'Save a copy > Excel Workbook (.xlsx) and upload that.')
-    return clean, len(dropped)
+    """An .xlsm (or any workbook): the copy without its macros, controls and links. -> (bytes, parts removed)"""
+    return clean(data)
 
 
 def prepare(data, ext):
-    """The bytes to read and store: an .xlsm stripped of its macros, anything else as it came. -> (bytes, removed)"""
-    if ext == '.xlsm':
-        return strip_macros(data)
-    return data, 0
+    """The bytes to read and store: the rebuilt package, whatever it was saved as. -> (bytes, parts removed)"""
+    return clean(data)
 
 
 def _value(v):
@@ -236,11 +133,34 @@ class Grid:
 class Book:
     """
     values[sheet] and formulas[sheet]: Grids. `formulas` holds the formula text ('=SUM(...)') where a cell
-    has one and the typed value otherwise. `sheetnames` is every sheet in the file, read or not.
+    has one and the typed value otherwise. `sheetnames` is every sheet in the file, read or not. `extents`
+    is how far each sheet was read; `calc` the workbook's calculation settings (calcPr).
     """
 
-    def __init__(self, values, formulas, sheetnames):
+    def __init__(self, values, formulas, sheetnames, extents=None, calc=None):
         self.values, self.formulas, self.sheetnames = values, formulas, sheetnames
+        self.extents, self.calc = extents or {}, calc or {}
+
+    def within(self, sheet, row, col):
+        """Whether the cell was read (a cell beyond the extent has a value Siteline doesn't know)."""
+        if sheet not in self.values:
+            return False
+        ext = self.extents.get(sheet)
+        return ext is None or (row <= ext[0] and col <= ext[1])
+
+    def calc_problem(self):
+        """Why Excel's saved values can't be trusted to be calculated, or ''."""
+        mode = str(self.calc.get('calcMode') or '').strip().lower()
+        full = str(self.calc.get('fullCalcOnLoad') or '').strip().lower() in ('1', 'true')
+        if mode == 'manual':
+            return ('The workbook is set to manual calculation, so the values Excel saved may be out of date and the '
+                    'total can\'t be checked. In Excel set calculation to automatic (Formulas > Calculation Options), '
+                    'recalculate, save, and upload it again.')
+        if full:
+            return ('The workbook asks to be recalculated when it is next opened, so the values saved in it may be out '
+                    'of date and the total can\'t be checked. Open it in Excel with calculation set to automatic, '
+                    'recalculate, save, and upload it again.')
+        return ''
 
     def has(self, sheet):
         return sheet in self.values
@@ -282,8 +202,8 @@ def open_book(data, extents):
     to that extent (for a layout whose trade tabs are found from its summary). Sheets the file doesn't have are
     left out of the Book (the engine reports them). Raises WorkbookRefused.
     """
-    _check_zip(data)
-    out = {}
+    data, _ = clean(data, verify=False)  # whatever the caller passed, openpyxl only sees the rebuilt package
+    out, read = {}, {}
     rest = extents.get('*')
     for data_only in (True, False):
         wb = _load(data, data_only)
@@ -294,6 +214,7 @@ def open_book(data, extents):
                 ext = extents.get(sheet) or rest
                 if ext is not None:
                     grids[sheet] = _grid(wb[sheet], *ext)
+                    read[sheet] = ext
             out[data_only] = (grids, names)
         except WorkbookRefused:
             raise
@@ -301,4 +222,8 @@ def open_book(data, extents):
             raise WorkbookRefused('That workbook couldn\'t be read. Save it as .xlsx from Excel and try again.')
         finally:
             wb.close()
-    return Book(out[True][0], out[False][0], out[True][1])
+    try:
+        calc = ooxml.calc_properties(data)
+    except ooxml.Refused as e:
+        raise WorkbookRefused(str(e))
+    return Book(out[True][0], out[False][0], out[True][1], read, calc)

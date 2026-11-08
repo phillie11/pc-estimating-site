@@ -6,7 +6,7 @@
 {% include "handoverpack/_nav.html" %}
 {% if not ctx %}{% url 'hpack_workbook' org.slug project.pk as up_url %}{% include "partials/empty_state.html" with title="No handover pack yet" message="The pack is built from the pricing workbook. Upload the completed workbook and it appears here; when the bid is won the projects team gets it." cta_url=up_url cta_label="Go to the pricing workbook" %}
 {% else %}{% with t=ctx.totals h=ctx.header wb=ctx.workbook %}
-{% include "handoverpack/_recon.html" %}
+{% include "handoverpack/_recon.html" with result=ctx.result %}
 <nav class="hp-sections" aria-label="Pack sections">{% for code, label in ctx.sections %}<a class="chip" href="#{{ code }}">{{ forloop.counter }}. {{ label }}</a>{% endfor %}</nav>
 
 <section id="cover" class="card hp-section hp-cover" aria-labelledby="h-cover"><div class="card-body">

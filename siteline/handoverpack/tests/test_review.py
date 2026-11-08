@@ -17,6 +17,7 @@ from unittest import mock
 from django.db import IntegrityError
 from django.test import SimpleTestCase
 
+from core import ooxml
 from handoverpack import engine, mapping, reader, sample, services
 from handoverpack.access import possible_owners
 from handoverpack.models import HandoverPack, OpenItem, PackClarification, PricingSettings, PricingWorkbook
@@ -149,7 +150,7 @@ class RenamedPartTests(SimpleTestCase):
         cls.base = sample.build(small())
 
     def test_too_many_strings_in_a_renamed_part(self):
-        data = _with_renamed_shared_strings(self.base, 'xl/notes.xml', n=importer.MAX_SHARED_STRINGS + 10)
+        data = _with_renamed_shared_strings(self.base, 'xl/notes.xml', n=ooxml.MAX_SHARED_STRINGS + 10)
         with self.assertRaises(importer.WorkbookRefused):
             importer._check_zip(data)
         m = mapping.get('standard')
@@ -159,7 +160,7 @@ class RenamedPartTests(SimpleTestCase):
     def test_size_cap_applies_to_a_renamed_part(self):
         data = _with_renamed_shared_strings(self.base, 'xl/notes.xml', n=2000)
         importer._check_zip(data)  # small: fine
-        with mock.patch.dict(importer.MAX_PART, {'xl/sharedstrings.xml': 1000}):
+        with mock.patch.object(ooxml, 'MAX_WHOLE', 1000):
             with self.assertRaises(importer.WorkbookRefused):
                 importer._check_zip(data)
 

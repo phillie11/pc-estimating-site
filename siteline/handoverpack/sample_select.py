@@ -24,6 +24,7 @@ from datetime import date
 from decimal import Decimal as D
 
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.formula import ArrayFormula
 
@@ -394,6 +395,8 @@ def build(spec, cached=True, stale=None, typed=None, break_formulas=None):
     for (sheet, coord), v in (typed or {}).items():
         wb[sheet][coord] = _xl(v)
         values.setdefault(sheet, {}).pop(coord, None)
+    if spec.get('note', True):  # a cell comment, so the sheet has a legacy VML drawing as Excel writes it
+        wb.worksheets[4]['A2'].comment = Comment('Checked against the quotes', 'Estimator')
     buf = io.BytesIO()
     wb.save(buf)
     data = buf.getvalue()
@@ -431,6 +434,15 @@ ACTIVEX_RELS = (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Rela
 CTRLPROP = (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<formControlPr xmlns="http://schemas.microsoft'
             b'.com/office/spreadsheetml/2009/9/main" objectType="CheckBox" fmlaLink="$A$31" lockText="1" noThreeD="1"/>')
 REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+# A form-control check box as Excel draws it in the sheet's legacy VML, with the macro it runs
+VML_CHECKBOX = (b'<v:shape xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" '
+                b'xmlns:x="urn:schemas-microsoft-com:office:excel" id="_x0000_s2049" type="#_x0000_t201" '
+                b'style="position:absolute;margin-left:300pt;'
+                b'margin-top:20pt;width:120pt;height:14pt;z-index:5" o:button="t" filled="f" stroked="f">'
+                b'<v:textbox><div style="text-align:left"><font face="Segoe UI" size="160">Include trade</font></div>'
+                b'</v:textbox><x:ClientData ObjectType="Checkbox"><x:Anchor>9, 25, 48, 3, 9, 197, 49, 2</x:Anchor>'
+                b'<x:FmlaMacro>[0]!ToggleTrade</x:FmlaMacro><x:FmlaLink>$A$31</x:FmlaLink><x:NoThreeD/>'
+                b'</x:ClientData></v:shape>')
 CONTROLS = ('<controls><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
             '<mc:Choice Requires="x14"><control shapeId="1025" r:id="rIdAx1" name="CommandButton1" xmlns:r="' + REL +
             '"><controlPr defaultSize="0" print="0" autoFill="0" autoLine="0"/></control></mc:Choice><mc:Fallback>'
@@ -449,9 +461,16 @@ def with_macros(data, sheet_index=5):
     sheet = f'xl/worksheets/sheet{sheet_index}.xml'
     sheet_rels = f'xl/worksheets/_rels/sheet{sheet_index}.xml.rels'
     names = [i.filename for i in zin.infolist()]
+    vml = None
+    if sheet_rels in names:  # the sheet's legacy VML drawing (its comment boxes): the check box goes in it
+        m = re.search(rb'Target="/?(?:\.\./)?([^"]+\.vml)"', zin.read(sheet_rels))
+        if m:
+            vml = 'xl/' + m.group(1).decode().removeprefix('xl/')
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
         for info in zin.infolist():
             raw = zin.read(info)
+            if info.filename == vml:
+                raw = raw.replace(b'</xml>', VML_CHECKBOX + b'</xml>')
             if info.filename == '[Content_Types].xml':
                 raw = raw.replace(b'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',
                                   b'application/vnd.ms-excel.sheet.macroEnabled.main+xml')
