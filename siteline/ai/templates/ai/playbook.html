@@ -1,0 +1,15 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}{{ t.title }} playbook{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / <a href="{% url 'ai_settings' org.slug %}">AI drafting</a></div><h1>{{ t.title }}: playbook</h1><p class="dim" style="margin:4px 0 0">{{ t.playbook_help }} {% if own %}{% badge "Your own" "info" %}{% else %}{% badge "Siteline's default" "muted" %}{% endif %}</p></div></div>
+<div class="card" style="max-width:900px"><div class="card-body">
+<p class="small dim" style="margin:0 0 10px">Write it as you would brief a new estimator. It is sent with every draft of this kind, so leave out anything personal. It can't change what Siteline sends, the shape of the answer or who sees it.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button>{% if own %}<button class="btn ghost" name="reset" value="1">Go back to Siteline's default</button>{% endif %}<a class="btn ghost" href="{% url 'ai_settings' org.slug %}">Cancel</a></div></form>
+</div></div>
+{% if history %}<div class="card" style="max-width:900px;margin-top:14px"><div class="card-body"><h2 style="margin:0 0 8px">Changes</h2>
+<div class="table-wrap"><table class="t"><thead><tr><th>Version</th><th>When</th><th>Who</th><th>What</th></tr></thead><tbody>
+{% for p in history %}<tr><td class="mono">{{ p.version }}</td><td class="small">{{ p.created_at|date:"d/m/Y H:i" }}</td><td class="small">{{ p.created_by.full_name|default:p.created_by.email|default:"" }}</td><td class="small">{% if p.text %}{{ p.text|length }} characters{% else %}Back to the default{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></div></div>{% endif %}
+<details class="card" style="max-width:900px;margin-top:14px"><summary class="card-body">Siteline's default playbook</summary><div class="card-body"><pre style="white-space:pre-wrap;margin:0" class="small">{{ t.default_playbook }}</pre></div></details>
+{% endblock %}

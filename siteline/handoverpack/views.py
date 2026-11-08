@@ -209,8 +209,14 @@ def clarifications(request, org_slug, pk):
             return redirect('hpack_clarifications', org_slug=org_slug, pk=pk)
     from . import clarifications as drafting
     return render(request, 'handoverpack/clarifications.html', _context(
-        request, project, 'clarifications', pack=pack, form=form, rows=list(pack.visible_clarifications()),
-        drafting=drafting.available()))
+        request, project, 'clarifications', pack=pack, form=form, rows=list(pack.all_clarifications().select_related("approved_by")),
+        ai=drafting.page_state(request, project, pack)))
+
+
+def _approve(request, project, c):
+    c.approved, c.approved_by, c.approved_at = True, request.user, timezone.now()
+    log_activity(request, 'approved an AI-drafted clarification', c.trade or c.text[:60], project=project,
+                 url=_url('hpack_clarifications', project), internal_only=True)
 
 
 def clarification_edit(request, org_slug, pk, cl_id):
@@ -231,11 +237,21 @@ def clarification_edit(request, org_slug, pk, cl_id):
                 c.delete()
             messages.success(request, 'Clarification removed.')
             return redirect('hpack_clarifications', org_slug=org_slug, pk=pk)
+        if request.POST.get('approve_only'):  # the Approve button on the list: approve the draft as it stands
+            if c.is_ai_draft and not c.approved:
+                _approve(request, project, c)
+                c.save(update_fields=['approved', 'approved_by', 'approved_at', 'updated_at'])
+                messages.success(request, 'Clarification approved: it is now in the pack.')
+            return redirect(reverse('hpack_clarifications', args=[org_slug, pk]) + f'#cl-{c.pk}')
         if form.is_valid():
             c = form.save(commit=False)
             c.edited = True
+            approving = request.POST.get('approve') and c.is_ai_draft and not c.approved
+            if approving:
+                _approve(request, project, c)
             c.save()
-            messages.success(request, 'Clarification saved.')
+            messages.success(request, 'Clarification saved and approved: it is now in the pack.' if approving
+                             else 'Clarification saved.')
             return redirect('hpack_clarifications', org_slug=org_slug, pk=pk)
     return render(request, 'handoverpack/clarification_form.html', _context(
         request, project, 'clarifications', pack=pack, form=form, row=c))

@@ -84,6 +84,7 @@ def project_context(request, project, tab, **extra):
                  ('team', 'Team', url('project_team'), None)]
         if request.membership.can_estimate:  # the pricing workbook and handover pack preview (handoverpack/)
             tabs.append(('pricing', 'Pricing', url('hpack_workbook'), None))
+            tabs.append(('brief', 'Bid brief', url('ai_brief'), None))  # the tender reader's brief (ai/)
         return {**base, **arrange(request, project, tabs, tab)}
 
     from rfis.models import RFI

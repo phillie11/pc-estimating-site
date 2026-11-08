@@ -42,7 +42,7 @@
       <a href="{% url 'activity' org.slug %}" class="{% if u == 'activity' %}on{% endif %}">{% icon 'activity' %} Activity</a>
       {% if is_org_admin %}
       <a href="{% url 'reports_home' org.slug %}" class="{% if u == 'reports_home' or u == 'report_margin' or u == 'report_cash' or u == 'report_overdue' or u == 'report_safety' or u == 'report_subcontractors' %}on{% endif %}">{% icon 'chart' %} Reports</a>
-      <a href="{% url 'org_settings' org.slug %}" class="{% if u == 'org_settings' or u == 'api_settings' or u == 'api_docs' or u == 'api_token_detail' or u == 'tender_settings' or u == 'cost_settings' or u == 'cost_code_edit' or u == 'subpay_settings' or u == 'subpay_tax_list' or u == 'subpay_tax' or u == 'subpay_cis' or u == 'diary_settings' %}on{% endif %}">{% icon 'settings' %} Settings</a>
+      <a href="{% url 'org_settings' org.slug %}" class="{% if u == 'org_settings' or u == 'api_settings' or u == 'api_docs' or u == 'api_token_detail' or u == 'tender_settings' or u == 'cost_settings' or u == 'cost_code_edit' or u == 'subpay_settings' or u == 'subpay_tax_list' or u == 'subpay_tax' or u == 'subpay_cis' or u == 'diary_settings' or u == 'ai_settings' or u == 'ai_usage' or u == 'ai_playbook' %}on{% endif %}">{% icon 'settings' %} Settings</a>
       <a href="{% url 'billing' org.slug %}" class="{% if u == 'billing' %}on{% endif %}">{% icon 'billing' %} Billing</a>
       {% endif %}
     </nav>

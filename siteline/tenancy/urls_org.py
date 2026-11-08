@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 from actions import views as actions
+from ai import urls as ai_urls
 from api import urls as api_urls
 from billing import views as billing
 from changes import urls as changes_urls
@@ -151,6 +152,9 @@ urlpatterns = [
     # Pricing workbook on a bid and the internal handover pack, Settings > Pricing workbook (handoverpack/urls.py)
     *handoverpack_urls.project_patterns(P),
     *handoverpack_urls.org_patterns,
+    # Bid brief (tender reader) on a bid, AI-drafted clarifications, Settings > AI drafting (ai/urls.py)
+    *ai_urls.project_patterns(P),
+    *ai_urls.org_patterns,
     # Meetings tab: minutes, actions and agenda templates (meetings/urls.py)
     *meetings_urls.project_patterns(P),
     *meetings_urls.org_patterns,

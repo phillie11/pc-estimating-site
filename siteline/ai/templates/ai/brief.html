@@ -1,0 +1,45 @@
+{% extends "project_base.html" %}{% load ui %}
+{% block title %}Bid brief · {{ project.name }}{% endblock %}
+{% block project_content %}
+<div class="page-head" style="margin-top:0"><div><h2 style="margin:0 0 4px">Bid brief</h2>
+<p class="small dim" style="margin:0">What the tender documents say, for the bid/no-bid call: recommendation, value range, dates, contract terms and ranked risks, each with the document and page it came from. Check every line against the page before relying on it.</p></div>
+{% if brief %}<div class="actions"><a class="btn ghost" href="?export=csv">Export CSV</a></div>{% endif %}</div>
+
+{% if run and run.is_open %}<div class="card"><div class="card-body"><p style="margin:0">{% badge run.get_status_display "info" %} Reading the documents, started {{ run.created_at|date:"d/m/Y H:i" }}. Refresh this page in a minute or two.</p></div></div>
+{% elif run and run.message %}<div class="card"><div class="card-body"><p style="margin:0">{% badge run.get_status_display run.tone %} {{ run.message }}</p></div></div>{% endif %}
+
+{% if brief %}
+<section class="card" style="margin-top:14px"><div class="card-body">
+<p style="margin:0 0 6px">{% badge brief.get_recommendation_display brief.recommendation_tone %}{% if brief.ai_drafted %} <span class="small dim">AI draft{% if brief.generated_at %}, {{ brief.generated_at|date:"d/m/Y H:i" }}{% endif %}{% if brief.edited %}, changed by hand{% endif %}</span>{% endif %}</p>
+<p style="margin:0 0 6px">{{ brief.summary|linebreaksbr }}</p>
+{% if brief.value_basis %}<p class="small dim" style="margin:0">Value basis: {{ brief.value_basis }}</p>{% endif %}
+{% if brief.sources %}<p class="small dim" style="margin:6px 0 0">Read from: {% for s in brief.sources %}{{ s.label }} ({{ s.pages }} page{{ s.pages|pluralize }}){% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+{% if editable and form %}<details style="margin-top:10px"><summary class="small">Change the recommendation or summary</summary>
+<form method="post" style="margin-top:8px">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Save</button></div></form></details>{% endif %}
+</div></section>
+{% for s in sections %}
+<section class="card" style="margin-top:14px" aria-labelledby="sec-{{ s.key }}"><div class="card-body"><h3 id="sec-{{ s.key }}" style="margin:0 0 8px">{{ s.title }}</h3>
+<div class="table-wrap"><table class="t"><tbody>
+{% for i in s.rows %}<tr id="item-{{ i.pk }}"><td style="width:26%">{% if i.severity %}{% badge i.get_severity_display i.severity_tone %} {% endif %}{{ i.label }}{% if i.date %}<span class="sub">{{ i.date|date:"d/m/Y" }}{% if i.date_kind %} · {{ i.get_date_kind_display }}{% endif %}</span>{% endif %}</td>
+<td>{{ i.text|linebreaksbr }}{% if i.value_low or i.value_high %}<span class="sub">£{{ i.value_low|default:0|floatformat:0 }} to £{{ i.value_high|default:0|floatformat:0 }}</span>{% endif %}</td>
+<td class="small" style="width:22%">{{ i.source_text|default:"No source given" }}{% if i.ai_drafted %}<span class="sub">AI draft{% if i.edited %}, changed{% endif %}</span>{% endif %}</td>
+<td class="small" style="width:16%">{% if editable %}<a class="rowlink" href="{% url 'ai_brief_item' org.slug project.pk i.pk %}">Edit</a>{% endif %}
+{% if i.project_field %}{% if i.accepted_at %}<span class="sub">Accepted {{ i.accepted_at|date:"d/m/Y" }}</span>{% elif editable %}<form method="post" action="{% url 'ai_brief_accept' org.slug project.pk i.pk %}" style="display:inline">{% csrf_token %}<button class="btn small">Use as {{ i.get_date_kind_display|lower }}</button></form>{% endif %}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></div></section>
+{% endfor %}
+{% else %}
+<div class="card" style="margin-top:14px"><div class="empty left"><p>No brief yet.</p></div></div>
+{% endif %}
+
+{% if editable %}
+<section class="card" style="margin-top:14px" aria-labelledby="read-h"><div class="card-body"><h3 id="read-h" style="margin:0 0 6px">Read tender documents with AI</h3>
+{% if usable %}
+{% if read_form %}<p class="small dim" style="margin:0 0 8px">Choose the PDFs from this bid's Documents. Up to {{ max_pages }} pages and {{ max_mb }} MB in one reading. The documents you choose are sent to the AI service as they are. Reading again replaces the AI lines nobody has changed.</p>
+<form method="post" action="{% url 'ai_brief_read' org.slug project.pk %}">{% csrf_token %}{{ read_form.revisions }}<div class="form-actions"><button class="btn primary">Read and draft the brief</button></div></form>
+{% else %}<p class="small" style="margin:0">There are no PDFs on this bid yet. <a href="{% url 'document_list' org.slug project.pk %}">Upload the tender documents to Documents</a> first.</p>{% endif %}
+{% else %}<p class="small" style="margin:0">{{ reason }}</p>{% endif %}
+</div></section>
+<details class="card" style="margin-top:14px"><summary class="card-body">Add a line by hand</summary><div class="card-body">
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="add">{% with form=add %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Add</button></div></form></div></details>
+{% endif %}
+{% endblock %}
