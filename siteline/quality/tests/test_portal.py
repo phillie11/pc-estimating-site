@@ -148,6 +148,26 @@ class FirestopPortalTests(PortalBase):
         self.client.post(self.purl('portal_firestop_action', p.pk), {'action': 'reseal'})
         self.assertEqual(self.fresh(p).status, Penetration.SEALED)
 
+    def test_no_photos_once_the_package_is_lost(self):
+        p = self.sid_pen(system='Collar')
+        self.login(self.sid)
+        self.assertContains(self.client.get(self.purl('portal_firestop_detail', p.pk)), 'q-photo-form')
+        with org_context(self.org_a):
+            Package.objects.filter(pk=p.package_id).update(status=Package.UNSUCCESSFUL)
+        r = self.client.post(self.purl('portal_firestop_photo', p.pk), {'stage': 'AFTER', 'photo': jpeg()})
+        self.assertEqual(r.status_code, 403)
+        with org_context(self.org_a):
+            self.assertFalse(QualityPhoto.objects.filter(penetration=p).exists())
+        self.assertNotContains(self.client.get(self.purl('portal_firestop_detail', p.pk)), 'q-photo-form')
+        # Package back, but they are off the job: still refused
+        with org_context(self.org_a):
+            Package.objects.filter(pk=p.package_id).update(status=Package.APPOINTED)
+            ProjectMember.objects.filter(project=self.pa, user=self.sid).delete()
+        r = self.client.post(self.purl('portal_firestop_photo', p.pk), {'stage': 'AFTER', 'photo': jpeg()})
+        self.assertIn(r.status_code, (403, 404))
+        with org_context(self.org_a):
+            self.assertFalse(QualityPhoto.objects.filter(penetration=p).exists())
+
     def test_sub_sees_only_their_own_companys_fire_stopping(self):
         mine = self.sid_pen(location='Sid wall')
         theirs = self.penetration(package=self.sue_pkg, location='Sparks riser')
