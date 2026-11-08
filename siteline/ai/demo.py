@@ -7,7 +7,8 @@ is built (handoverpack/demo.py). Nothing here calls the AI service: the drafts a
   - five AI-drafted clarifications on the Kingsway pack, not yet approved (so not in the pack or its export)
   - a bid brief on Kingsway read from its three tender documents, one key date not yet accepted
   - two usage rows this month, so the usage page has something to show
-  - an AI mapping of a revised Kensal Interiors joinery quote onto the Kingsway levelling, still to check: it
+  - an AI mapping of a revised Kensal Interiors joinery quote (rev B, attached) onto the Kingsway levelling, still
+    to check. The quote value in Siteline is still their first one, so the page shows the two totals differ; it
     prices the window boards they left out first time, and is £150.00 off their total, explained in a note
 
 Every name and figure is invented.
@@ -134,7 +135,15 @@ def seed_quote_map(kings, estimator, now):
     if sheet is None or package is None:
         return None
     lines = {ln.ref: ln for ln in sheet.lines.all()}
+    # Their revised quote, attached to the package, so the draft matches the file (quotemap.stale)
+    import hashlib
+
+    from django.core.files.base import ContentFile
+    data = (b'%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n'
+            b'% Demo quote: Kensal Interiors joinery, revision B (invented)\n%%EOF\n')
+    package.quote_file.save('kensal-joinery-quote-rev-b.pdf', ContentFile(data), save=True)
     draft = QuoteMapDraft.objects.create(
+        quote_name=package.quote_file.name, quote_size=len(data), quote_sha256=hashlib.sha256(data).hexdigest(),
         project=kings, sheet=sheet, package=package, created_by=estimator, source_label='Kensal joinery quote rev B.pdf',
         quote_total=Decimal('40438.00'), total_source='Page 2, summary', model_ties=False,
         model_difference=Decimal('150.00'),
