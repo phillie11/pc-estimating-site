@@ -28,7 +28,8 @@ from costs.money import default_forecast, pennies
 from . import rules
 
 ZERO = Decimal('0.00')
-SNAPSHOT_FIELDS = ('value_to_date', 'certified_to_date', 'paid_to_date', 'retention_held', 'cost_to_date',
+SNAPSHOT_FIELDS = ('value_to_date', 'certified_to_date', 'under_certified', 'paid_to_date', 'retention_held',
+                   'cost_to_date',
                    'committed_to_date', 'budget_to_date', 'contract_sum', 'approved_variations', 'forecast_cost_base',
                    'value_adjustments', 'cost_adjustments', 'final_account_adjustments', 'final_cost_adjustments')
 ADJ_FIELD = {'VALUE': 'value_adjustments', 'COST': 'cost_adjustments', 'FINAL_ACCOUNT': 'final_account_adjustments',
@@ -41,6 +42,9 @@ class Figures:
     month: date
     value_to_date: Decimal = ZERO
     certified_to_date: Decimal = ZERO
+    # The latest certified application's amount due less what was certified for it (its notified sum). Each
+    # application's valuation is cumulative, so this is the whole shortfall to date; negative if over-certified.
+    under_certified: Decimal = ZERO
     paid_to_date: Decimal = ZERO
     retention_held: Decimal = ZERO
     cost_to_date: Decimal = ZERO
@@ -102,14 +106,24 @@ def certified_at(app, day, today):
     from payments import rules as pay_rules
     if day >= today:
         return app.notified_sum if app.is_certified else ZERO
+    if not certified_by(app, day, today):
+        return ZERO
     notice_on = app.payment_notice_on if app.payment_notice_on and app.payment_notice_on <= day else None
     less_on = app.pay_less_on if app.pay_less_on and app.pay_less_on <= day else None
-    paid = app.paid_in_full_on is not None and app.paid_in_full_on <= day
-    if not (notice_on or less_on or paid or pay_rules.stands_as_notified(day, app.payment_notice_by, notice_on)):
-        return ZERO
     return pay_rules.notified_sum(app.amount_due, app.payment_notice_amount if notice_on else None, notice_on,
                                   app.payment_notice_by, app.pay_less_amount if less_on else None, less_on,
                                   app.pay_less_by)[0]
+
+
+def certified_by(app, day, today):
+    """Had the application been certified by `day` (certified_at's test)?"""
+    from payments import rules as pay_rules
+    if day >= today:
+        return app.is_certified
+    notice_on = app.payment_notice_on if app.payment_notice_on and app.payment_notice_on <= day else None
+    less_on = app.pay_less_on if app.pay_less_on and app.pay_less_on <= day else None
+    paid = app.paid_in_full_on is not None and app.paid_in_full_on <= day
+    return bool(notice_on or less_on or paid or pay_rules.stands_as_notified(day, app.payment_notice_by, notice_on))
 
 
 def live_figures(projects, month, periods=None):
@@ -156,17 +170,24 @@ def live_figures_months(projects, months, periods=None):
         application__in=[a.pk for a in apps], reversed_at__isnull=True).values('application_id')
         .annotate(**by_month('amount', lambda e: Q(received_on__lte=e)))} if apps else {}
     for i, (m, e) in enumerate(zip(months, ends)):
-        latest = {}
+        latest, latest_certified = {}, {}
         for a in apps:
             if a.valuation_date > e:
                 continue
             f = out[m][a.project_id]
             f.has_activity = True
-            f.certified_to_date += certified_at(a, e, today)
+            certified = certified_at(a, e, today)
+            f.certified_to_date += certified
+            key = (a.valuation_date, a.number)
+            if certified_by(a, e, today) and (a.project_id not in latest_certified
+                                              or key > latest_certified[a.project_id][0]):
+                latest_certified[a.project_id] = (key, pennies(a.amount_due) - pennies(certified))
             f.paid_to_date += ex_vat((paid.get(a.pk) or {}).get(f'm{i}') or ZERO, a.vat_rate, a.reverse_charge)
             key = (a.valuation_date, a.number)
             if a.project_id not in latest or key > latest[a.project_id][0]:
                 latest[a.project_id] = (key, a)
+        for pid, (_, short) in latest_certified.items():
+            out[m][pid].under_certified = short
         for pid, (_, a) in latest.items():
             out[m][pid].value_to_date = pennies(a.gross_valuation)
             out[m][pid].retention_held = pennies(a.retention)

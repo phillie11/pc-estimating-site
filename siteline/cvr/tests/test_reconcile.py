@@ -56,6 +56,36 @@ class ThisMonthReconcilesTests(CVRTestBase):
         self.assertEqual(f.forecast_margin_pct, report['margin_pct'])
         self.assertEqual(f.margin, D('38250.00'))
 
+    def test_value_is_applied_and_under_certification_is_flagged(self):
+        from core.workflow import apply_transition
+        from cvr import services
+        from cvr.models import CVRPeriod
+        ap2 = self.rows['ap2']
+        with org_context(self.org_a):
+            f = figures.live_figures([self.pa], self.today)[self.pa.pk]
+            self.assertEqual(f.under_certified, D('0.00'))  # ap1 paid in full; ap2 not certified yet
+            ap2.refresh_from_db()
+            applied = ap2.amount_due
+            apply_transition(ap2, 'payment_notice_on_behalf', self.alice, amount=applied - D('1500'),
+                             basis='Joinery not complete', given_on=ap2.payment_notice_by)  # in time
+            f = figures.live_figures([self.pa], self.today)[self.pa.pk]
+            certified, _ = certified_and_paid(self.pa)
+        # The value is what was applied for (the gross valuation), not what was certified
+        self.assertEqual(f.value_to_date, D('56000.00'))
+        self.assertEqual(f.certified_to_date, certified)
+        self.assertEqual(f.under_certified, D('1500.00'))
+        # Frozen with the month, and shown on the CVR beside the value
+        with org_context(self.org_a):
+            period, _ = services.start_period(self.pa, self.today, self.pat, self.today)
+            figures.freeze(period, f)
+            period.save(update_fields=list(figures.SNAPSHOT_FIELDS))
+            period = CVRPeriod.objects.get(pk=period.pk)
+            self.assertEqual(figures.frozen_figures(period).under_certified, D('1500.00'))
+        self.login(self.pat)
+        r = self.client.get(self.url('cvr_period', self.pa.pk, period.pk))
+        self.assertContains(r, 'Certified to date')
+        self.assertContains(r, 'Under-certified')
+
     def test_cost_to_date_matches_the_ledger_after_a_reversal(self):
         with org_context(self.org_a):
             entry = LedgerEntry.objects.filter(project=self.pa, kind='ACTUAL').order_by('-pk').first()
