@@ -51,7 +51,8 @@ def existing_subjects(project):
 def draft(project, user, revision_ids, use_brief=False, run=None):
     """Draft RFIs from the chosen documents and save them as internal drafts. Returns (rfis, notes)."""
     from . import brief, service
-    docs, notes = brief.gather(project, revision_ids)
+    service.preflight(project.organization, user)  # switched on, allowed, budget left: before anything is sent
+    docs, notes = brief.gather(project, revision_ids, user)
     if not docs:
         raise service.CallFailed(' '.join(notes) or 'None of the chosen documents could be read.')
     extra = [f'Project: {project.name[:200]}']

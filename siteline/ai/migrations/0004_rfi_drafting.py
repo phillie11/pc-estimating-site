@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("ai", "0002_quote_mapping"),
+        ("ai", "0003_quote_map_identity"),
     ]
 
     operations = [

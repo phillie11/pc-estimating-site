@@ -104,6 +104,15 @@ class DraftTests(Setup):
         self.assertEqual(client.requests, [])
         self.assertEqual(self.rfis(), [])
 
+    def test_switched_off_after_queueing_makes_no_call_of_any_kind(self):
+        self.login(self.eve)
+        with fake_ai(reply(rfi()), counts=[3000]) as client:
+            self.client.post(self.url('ai_rfi_draft', self.bid.pk), {'revisions': [self.spec.pk]})
+            self.switch_on(enabled=False)
+            run_worker()
+        self.assertEqual((client.requests, client.count_requests), ([], []))
+        self.assertEqual(self.rfis(), [])
+
     def test_bid_no_longer_open_is_refused_at_run_time(self):
         self.login(self.eve)
         with fake_ai(reply(rfi())) as client:

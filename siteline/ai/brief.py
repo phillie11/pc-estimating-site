@@ -70,7 +70,7 @@ def robust_pages(data, found=None):
     return max(found, -(-len(data) // BYTES_PER_PAGE_FLOOR), 1)
 
 
-def gather(project, revision_ids):
+def gather(project, revision_ids, user=None):
     """
     ([(n, revision, bytes, pages, tokens)], [notes]) for the chosen revisions that may be sent, in the order
     chosen, within the limits. tokens is Anthropic's count of the file (plus a margin), or the cautious estimate
@@ -115,7 +115,7 @@ def gather(project, revision_ids):
         if bytes_total + len(data) > max_bytes:
             notes.append(too_big)
             continue
-        counted = service.count_tokens([_block(data)])
+        counted = service.count_tokens([_block(data)], org=project.organization, user=user)
         tokens = counted if counted is not None else pages * service.TOKENS_PER_PAGE
         if tokens_total + tokens > max_tokens:
             notes.append(too_big)
@@ -203,7 +203,8 @@ def save(project, data, docs, user=None):
 def read(project, user, revision_ids, run=None):
     """Read the chosen documents into the bid's brief (the worker calls this). Returns (brief, notes)."""
     from . import service
-    docs, notes = gather(project, revision_ids)
+    service.preflight(project.organization, user)  # before reading or counting anything
+    docs, notes = gather(project, revision_ids, user)
     if not docs:
         raise service.CallFailed(' '.join(notes) or 'None of the chosen documents could be read.')
     pages, doc_tokens = sum(d[3] for d in docs), sum(d[4] for d in docs)

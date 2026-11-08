@@ -227,6 +227,8 @@ class TieTests(Setup):
         self.start(answer(ties_to_total=False, difference_pence=99999))
         page = self.client.get(self.url('ai_quote_map', self.bid.pk, self.trade.pk, self.pkg.pk))
         self.assertContains(page, 'Ties exactly')
+        with org_context(self.org_a):
+            Package.objects.filter(pk=self.pkg.pk).update(quote_value=None)  # nothing typed: tie to the total read
         self.start(answer(quote_total_pence=1_215_000))
         page = self.client.get(self.url('ai_quote_map', self.bid.pk, self.trade.pk, self.pkg.pk))
         self.assertContains(page, 'Difference £150.00')
@@ -311,5 +313,7 @@ class DemoTests(Base):
         lines = [SimpleNamespace(line=line, rate=D('310'), amount=None, included=False)]
         draft = SimpleNamespace(unmatched=[{'amount': '320.00'}], quote_total=D('3000.00'),
                                 package=SimpleNamespace(quote_value=None))
-        self.assertEqual(quotemap.tie(draft, lines), (D('2480.00'), D('320.00'), D('200.00'), D('3000.00')))
+        t = quotemap.tie(draft, lines)
+        self.assertEqual((t['mapped'], t['extra'], t['difference'], t['total'], t['ties']),
+                         (D('2480.00'), D('320.00'), D('200.00'), D('3000.00'), False))
         self.assertEqual(json.loads(json.dumps(draft.unmatched))[0]['amount'], '320.00')

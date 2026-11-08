@@ -131,11 +131,31 @@ def estimate(model, max_tokens, chars=0, pages=0, input_tokens=None):
     return held
 
 
-def count_tokens(content, system=''):
+def preflight(org, user):
+    """
+    The eligibility half of the hold, before anything leaves Siteline (a token count sends the documents too):
+    AI drafting on, the key set, this person allowed, and some of this month's budget left. Raises Unavailable.
+    """
+    from tenancy.models import Membership
+    ai = AISettings.objects.filter(organization=org).first()
+    if ai is None or not ai.enabled:
+        raise Unavailable('AI drafting is switched off for your company.')
+    if not server_ready():
+        raise Unavailable('AI drafting isn\'t set up on this Siteline server yet.')
+    membership = Membership.objects.filter(organization=org, user=user, is_active=True).first() if user else None
+    if not may_use(membership, ai):
+        raise Unavailable('You can\'t use AI drafting: ask an owner or admin.')
+    if month_spend(org) >= ai.monthly_cap:
+        raise Unavailable(f'This month\'s AI budget of £{ai.monthly_cap:,.2f} has been used.')
+
+
+def count_tokens(content, *, org, user, system=''):
     """
     Input tokens for this content, counted by Anthropic (free; base64 PDFs supported), plus a margin, or None
-    if the count couldn't be had. Sends only material the call itself would send.
+    if the count couldn't be had. Sends only material the call itself would send, and only once preflight()
+    passes for this company and person (it raises Unavailable otherwise, sending nothing).
     """
+    preflight(org, user)
     kwargs = {'system': system} if system else {}
     try:
         resp = get_client().messages.count_tokens(model=settings.AI_MODEL, **kwargs,

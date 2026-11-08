@@ -122,10 +122,14 @@ def csv_text(data):
     except UnicodeDecodeError:
         text = data.decode('latin-1')
     rows = []
-    for i, row in enumerate(csv.reader(io.StringIO(text.replace('\x00', '')))):
-        if i >= MAX_ROWS:
-            break
-        rows.append(row[:MAX_COLS])
+    try:
+        for i, row in enumerate(csv.reader(io.StringIO(text.replace('\x00', '')))):
+            if i >= MAX_ROWS:
+                break
+            rows.append(row[:MAX_COLS])
+    except csv.Error:  # a field over the csv module's limit, a stray quote: unreadable to us either way
+        raise ValueError('That CSV couldn\'t be read: a cell is too long or a quote mark is out of place. Save it '
+                         'again from Excel, or attach the PDF.')
     return _rows_to_text([('CSV', rows)])
 
 
@@ -141,10 +145,27 @@ def scope_text(lines):
     return '\n'.join(out), keys
 
 
-def gather(package):
+def identity(package, data=None):
+    """{name, size, sha256} of the package's quote file (sha256 only when the bytes are given)."""
+    import hashlib
+    f = package.quote_file
+    out = {'name': (f.name or '')[:200] if f else '', 'size': None, 'sha256': ''}
+    if data is not None:
+        out['size'], out['sha256'] = len(data), hashlib.sha256(data).hexdigest()
+    elif f:
+        try:
+            out['size'] = f.size
+        except OSError:
+            out['size'] = None
+    return out
+
+
+def gather(package, user):
     """
-    (content blocks, notes, size) for the package's quote file, or raises service.CallFailed with a plain
-    message. size is {'tokens': n} for a PDF (counted or cautiously estimated) or {'chars': n} for a workbook.
+    (content blocks, notes, tokens, identity) for the package's quote file, or raises service.CallFailed with a
+    plain message (or service.Unavailable, before anything is sent). tokens is Anthropic's count of the quote
+    (PDF or text), or a cautious estimate when there is no count: one token per character of text, or the
+    larger of the pages found and one page per 30 KB for a PDF. identity is the file's name, size and sha256.
     """
     from projects.files import scan_status
     from projects.models import FileScan
@@ -169,13 +190,13 @@ def gather(package):
     if kind == 'pdf':
         if not data.startswith(b'%PDF'):
             raise service.CallFailed('The quote isn\'t a readable PDF.')
-        counted = service.count_tokens([brief._block(data)])
+        blocks = [{'type': 'text', 'text': f'The subcontractor\'s quote: {name}'}, brief._block(data)]
+        counted = service.count_tokens(blocks[1:], org=package.organization, user=user)
         tokens = counted if counted is not None else brief.robust_pages(data) * service.TOKENS_PER_PAGE
         if tokens > settings.AI_TENDER_MAX_PAGES * service.TOKENS_PER_PAGE:
             raise service.CallFailed(f'The quote is longer than one reading allows (about '
                                      f'{settings.AI_TENDER_MAX_PAGES} pages). Attach just the priced pages.')
-        return [{'type': 'text', 'text': f'The subcontractor\'s quote: {name}'}, brief._block(data)], notes, \
-            {'tokens': tokens}
+        return blocks, notes, tokens, identity(package, data)
     try:
         text, cut = workbook_text(data) if kind == 'xlsx' else csv_text(data)
     except ValueError as e:
@@ -184,8 +205,13 @@ def gather(package):
         raise service.CallFailed('The quote workbook is empty. Ask for it to be saved again.')
     if cut:
         notes.append('The quote workbook is long: only its first part was read. Check the lines further down.')
-    return [{'type': 'text', 'text': f'The subcontractor\'s quote ({name}), cell by cell:\n{text}'}], notes, \
-        {'chars': len(text)}
+    blocks = [{'type': 'text', 'text': f'The subcontractor\'s quote ({name}), cell by cell:\n{text}'}]
+    counted = service.count_tokens(blocks, org=package.organization, user=user)
+    tokens = counted if counted is not None else len(blocks[0]['text'])  # without a count: a token a character
+    if tokens > settings.AI_TENDER_MAX_PAGES * service.TOKENS_PER_PAGE:
+        raise service.CallFailed('The quote workbook is longer than one reading allows. Attach just the priced '
+                                 'sheet.')
+    return blocks, notes, tokens, identity(package, data)
 
 
 def read(sheet, package, user, run=None):
@@ -194,21 +220,20 @@ def read(sheet, package, user, run=None):
     lines = list(sheet.lines.all())
     if not lines:
         raise service.CallFailed('The sheet has no scope lines to map onto. Add or import them first.')
-    blocks, notes, size = gather(package)
+    service.preflight(sheet.organization, user)  # switched on, allowed, budget left: before anything is read or sent
+    blocks, notes, size, ident = gather(package, user)
     scope, keys = scope_text(lines)
     typed = (f'The quote total typed in Siteline: £{package.quote_value:,.2f}' if package.quote_value is not None
              else 'No quote total has been typed in Siteline.')
     content = [*blocks, {'type': 'text', 'text': f'{scope}\n\n{typed}\nMap the quote onto our lines.'}]
     system = service.system_for(sheet.organization, QUOTE_MAPPING)
-    tokens = None
-    if 'tokens' in size:
-        tokens = size['tokens'] + service.input_estimate(chars=len(system) + len(scope) + 400)
+    tokens = size + service.input_estimate(chars=len(system) + len(scope) + 400)
     data = service.call(org=sheet.organization, user=user, task=QUOTE_MAPPING, project=sheet.project, run=run,
-                        content=content, input_tokens=tokens, chars=size.get('chars', 0) + len(scope),
-                        system=system, note=f'{len(keys)} scope lines, {"PDF" if "tokens" in size else "workbook"}')
+                        content=content, input_tokens=tokens, system=system,
+                        note=f'{len(keys)} scope lines, {kind_of(package.quote_file.name)}, {size:,} tokens held')
     try:
         draft = save(sheet, package, data, keys, user, run=run,
-                     source_label=(package.quote_file.name or '').rsplit('/', 1)[-1][:200])
+                     source_label=(package.quote_file.name or '').rsplit('/', 1)[-1][:200], ident=ident)
     except ValueError:
         raise service.CallFailed('The AI model\'s answer wasn\'t in the expected shape. Nothing was saved.')
     return draft, notes
@@ -231,7 +256,7 @@ def _s(v, limit):
     return ' '.join(v.split())[:limit] if isinstance(v, str) else ''
 
 
-def save(sheet, package, data, keys, user=None, run=None, source_label=''):
+def save(sheet, package, data, keys, user=None, run=None, source_label='', ident=None):
     """Validate the model's answer and save it as a draft. Earlier open drafts for this quote are discarded."""
     if not isinstance(data, dict) or not isinstance(data.get('lines'), list):
         raise ValueError('no lines')
@@ -250,7 +275,9 @@ def save(sheet, package, data, keys, user=None, run=None, source_label=''):
             source_label=source_label, quote_total=_pounds(data.get('quote_total_pence')),
             total_source=_s(data.get('total_source'), 200),
             model_ties=data.get('ties_to_total') if isinstance(data.get('ties_to_total'), bool) else None,
-            model_difference=diff, unmatched=unmatched, created_by=user)
+            model_difference=diff, unmatched=unmatched, created_by=user,
+            quote_name=(ident or {}).get('name', '')[:200], quote_size=(ident or {}).get('size'),
+            quote_sha256=(ident or {}).get('sha256', ''))
         seen, rows = set(), []
         for item in data['lines']:
             if not isinstance(item, dict):
@@ -279,16 +306,66 @@ def save(sheet, package, data, keys, user=None, run=None, source_label=''):
 
 def tie(draft, lines):
     """
-    Siteline's own check of the mapping against the quote total: (mapped total, unmatched total, difference).
-    difference is quote total less mapped and unmatched items; None when the quote gave no total.
+    Siteline's own check of the mapping against the quote, from the lines at our quantities:
+      total        what the mapping is tied to: the quote value on the package (the formal tender figure) when
+                   set, else the total the AI read from the quote
+      mapped       the mapped lines; extra: unmatched quote items with an amount
+      difference   total less mapped and extra; None with no total to tie to
+      read_total   the total the AI read, shown as a second check
+      totals_differ  the package's quote value and the total read from the quote disagree
+      ties         difference is nil and the two totals don't disagree
     """
     from levelling import maths
     mapped = sum((maths.line_value(m.line.qty, m.rate, m.amount, m.included) or Decimal('0') for m in lines),
                  Decimal('0'))
     extra = sum((Decimal(u['amount']) for u in draft.unmatched if u.get('amount')), Decimal('0'))
-    total = draft.quote_total if draft.quote_total is not None else draft.package.quote_value
+    typed, read = draft.package.quote_value, draft.quote_total
+    total = typed if typed is not None else read
     diff = None if total is None else maths.pennies(total - mapped - extra)
-    return maths.pennies(mapped), maths.pennies(extra), diff, total
+    differ = typed is not None and read is not None and maths.pennies(typed) != maths.pennies(read)
+    return {'total': total, 'from_package': typed is not None, 'mapped': maths.pennies(mapped),
+            'extra': maths.pennies(extra), 'difference': diff, 'read_total': read, 'totals_differ': differ,
+            'ties': diff is not None and diff == 0 and not differ}
+
+
+def stale(draft, deep=False):
+    """
+    Why the draft no longer matches the package's quote file, or '' if it still does. The name and size are
+    checked on every view; with deep=True (before accepting anything) the file's sha256 too.
+    """
+    import hashlib
+    f = draft.package.quote_file
+    if not f:
+        return 'The quote file it was read from has been removed.'
+    if draft.quote_name and f.name != draft.quote_name:
+        return 'The subcontractor\'s quote file has been replaced since this was mapped.'
+    now = identity(draft.package)
+    if draft.quote_size is not None and now['size'] is not None and now['size'] != draft.quote_size:
+        return 'The subcontractor\'s quote file has changed since this was mapped.'
+    if deep and draft.quote_sha256:
+        h = hashlib.sha256()
+        try:
+            with f.open('rb') as fh:
+                for chunk in iter(lambda: fh.read(1024 * 1024), b''):
+                    h.update(chunk)
+        except OSError:
+            return 'The quote file it was read from can\'t be opened now.'
+        if h.hexdigest() != draft.quote_sha256:
+            return 'The subcontractor\'s quote file has changed since this was mapped.'
+    return ''
+
+
+def current_cells(draft, lines):
+    """{scope line id: the QuoteCell this subcontractor has now} for the mapped lines."""
+    from levelling.models import QuoteCell
+    return {c.line_id: c for c in QuoteCell.objects.filter(package=draft.package, line__in=[m.line_id for m in lines])}
+
+
+def differs(m, cell):
+    """The levelling already holds a different price for this line (so accepting would overwrite it)."""
+    if cell is None or cell.is_blank:
+        return False
+    return (cell.rate, cell.amount, cell.included) != (m.rate, m.amount, m.included)
 
 
 def _decide(obj, status, user):
@@ -297,7 +374,7 @@ def _decide(obj, status, user):
 
 
 def accept_line(m, user, dropped=None):
-    """Write one mapped line into the levelling as this subcontractor's price."""
+    """Write one mapped line into the levelling as this subcontractor's price (overwriting what is there)."""
     from levelling import services
     services.set_cell(m.line, m.draft.package, rate=m.rate, amount=m.amount, included=m.included, dropped=dropped)
     _decide(m, QuoteMapLine.ACCEPTED, user)
@@ -315,22 +392,32 @@ def accept_exclusion(x, user):
 
 
 def reject(obj, user):
-    _decide(obj, obj.REJECTED if hasattr(obj, 'REJECTED') else QuoteMapLine.REJECTED, user)
+    _decide(obj, obj.REJECTED, user)
 
 
 def accept_all(draft, user):
-    """Every line and exclusion still to check. Returns (lines, exclusions, plugs dropped)."""
-    dropped = []
-    with transaction.atomic():
-        lines = list(draft.lines.filter(status=QuoteMapLine.PENDING).select_related('line', 'draft__package'))
-        for m in lines:
+    """
+    Every line and exclusion still to check. A line where the levelling already holds a different price for
+    this subcontractor is left as it is ("kept your price"): only an individual accept overwrites one.
+    Returns (lines accepted, exclusions accepted, lines kept, plugs dropped). Call inside the draft's lock.
+    """
+    dropped, kept = [], []
+    lines = list(draft.lines.filter(status=QuoteMapLine.PENDING).select_related('line', 'draft__package'))
+    cells = current_cells(draft, lines)
+    accepted = 0
+    for m in lines:
+        if differs(m, cells.get(m.line_id)):
+            _decide(m, QuoteMapLine.KEPT, user)
+            kept.append(m)
+        else:
             accept_line(m, user, dropped)
-        excs = list(draft.exclusions.filter(status=QuoteMapExclusion.PENDING).select_related('draft'))
-        for x in excs:
-            accept_exclusion(x, user)
-        draft.status = QuoteMapDraft.DONE
-        draft.save(update_fields=['status'])
-    return len(lines), len(excs), dropped
+            accepted += 1
+    excs = list(draft.exclusions.filter(status=QuoteMapExclusion.PENDING).select_related('draft'))
+    for x in excs:
+        accept_exclusion(x, user)
+    draft.status = QuoteMapDraft.DONE
+    draft.save(update_fields=['status'])
+    return accepted, len(excs), kept, dropped
 
 
 def sheet_state(request, project, trade, sheet, packages, editable):

@@ -251,6 +251,11 @@ class QuoteMapDraft(TenantModel):
     run = models.ForeignKey(AIRun, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OPEN)
     source_label = models.CharField('Read from', max_length=200, blank=True)
+    # The file that was read: if the package's quote file is replaced afterwards the draft is stale, and nothing
+    # in it can be accepted (quotemap.stale)
+    quote_name = models.CharField(max_length=200, blank=True)
+    quote_size = models.PositiveBigIntegerField(null=True, blank=True)
+    quote_sha256 = models.CharField(max_length=64, blank=True)
     # The quote's own total as the model read it, and where
     quote_total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     total_source = models.CharField(max_length=200, blank=True)
@@ -270,8 +275,9 @@ class QuoteMapDraft(TenantModel):
 
 
 class QuoteMapLine(TenantModel):
-    PENDING, ACCEPTED, REJECTED = 'pending', 'accepted', 'rejected'
-    STATUS_CHOICES = [(PENDING, 'To check'), (ACCEPTED, 'Accepted'), (REJECTED, 'Not used')]
+    PENDING, ACCEPTED, REJECTED, KEPT = 'pending', 'accepted', 'rejected', 'kept'
+    STATUS_CHOICES = [(PENDING, 'To check'), (ACCEPTED, 'Accepted'), (REJECTED, 'Not used'),
+                      (KEPT, 'Kept your price')]
 
     draft = models.ForeignKey(QuoteMapDraft, on_delete=models.CASCADE, related_name='lines')
     line = models.ForeignKey('levelling.ScopeLine', on_delete=models.CASCADE, related_name='+')
@@ -292,7 +298,7 @@ class QuoteMapLine(TenantModel):
 
 class QuoteMapExclusion(TenantModel):
     PENDING, ACCEPTED, REJECTED = QuoteMapLine.PENDING, QuoteMapLine.ACCEPTED, QuoteMapLine.REJECTED
-    STATUS_CHOICES = QuoteMapLine.STATUS_CHOICES
+    STATUS_CHOICES = QuoteMapLine.STATUS_CHOICES[:3]
 
     draft = models.ForeignKey(QuoteMapDraft, on_delete=models.CASCADE, related_name='exclusions')
     text = models.CharField(max_length=500)
