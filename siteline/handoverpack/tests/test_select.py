@@ -65,7 +65,7 @@ class StripTests(SimpleTestCase):
         self.assertIn('xl/vbaProject.bin', before)
         self.assertIn(b'macroEnabled', before['[Content_Types].xml'])
         clean, removed = reader.strip_macros(xlsm)
-        self.assertEqual(removed, 7)
+        self.assertEqual(removed, 5)  # VBA project, its signature, ActiveX control and binary, form control
         after = parts(clean)
         names = [n.lower() for n in after]
         self.assertFalse([n for n in names if 'vba' in n or n.startswith(('xl/activex/', 'xl/ctrlprops/'))])
