@@ -7,6 +7,7 @@ is built (handoverpack/demo.py). Nothing here calls the AI service: the drafts a
   - five AI-drafted clarifications on the Kingsway pack, not yet approved (so not in the pack or its export)
   - a bid brief on Kingsway read from its three tender documents, one key date not yet accepted
   - two usage rows this month, so the usage page has something to show
+  - two AI-drafted RFIs on Kingsway, internal drafts not yet issued
   - an AI mapping of a revised Kensal Interiors joinery quote onto the Kingsway levelling, still to check: it
     prices the window boards they left out first time, and is £150.00 off their total, explained in a note
 
@@ -19,8 +20,8 @@ from django.utils import timezone
 
 from projects.models import DocumentRevision, Project
 
-from .models import (CLARIFICATIONS, QUOTE_MAPPING, TENDER_BRIEF, AISettings, AIUsage, BidBrief, BriefItem, Playbook,
-                     QuoteMapDraft, QuoteMapExclusion, QuoteMapLine)
+from .models import (CLARIFICATIONS, QUOTE_MAPPING, RFI_DRAFTING, TENDER_BRIEF, AISettings, AIUsage, BidBrief,
+                     BriefItem, Playbook, QuoteMapDraft, QuoteMapExclusion, QuoteMapLine)
 
 PLAYBOOK = """\
 Our clarifications
@@ -110,7 +111,32 @@ def seed(owner, estimator):
                                status=AIUsage.OK, input_tokens=tin, output_tokens=tout, cost_gbp=Decimal(cost),
                                note=note, created_at=now - timedelta(days=1))
     seed_quote_map(kings, estimator, now)
+    seed_rfis(kings, estimator, spec, rcp)
     return brief
+
+
+def seed_rfis(kings, estimator, spec, rcp):
+    """Two AI-drafted RFIs on Kingsway, internal drafts waiting to be checked and issued."""
+    from rfis.models import RFI
+    for title, question, why, category, priority, rev, page in (
+        ('Ceiling system: grid or plasterboard?',
+         'The specification names a 600 x 600 grid ceiling, but reflected ceiling plan KW-A-300 shows plasterboard MF '
+         'throughout levels 2 and 3. We have priced the plasterboard shown on the drawing. Which is correct?',
+         'Changes the ceiling rate on about 410 m2 and the decorating allowance.', 'DRAWING', 'HIGH', rcp, 1),
+        ('Fire rating of the core partitions',
+         'The specification calls for fire-rated partitions to the core but gives no rating, and KW-A-100 shows no '
+         'fire line. We have allowed 60 minutes. What rating is required, and where does it run?',
+         'A 90 or 120 minute rating changes the partition build-up and board quantities.', 'SPECIFICATION',
+         'NORMAL', spec, 1),
+    ):
+        r = RFI(project=kings, title=title, question=question, category=category, priority=priority,
+                status=RFI.STATUS_DRAFT, visibility=RFI.VIS_INTERNAL, ai_drafted=True, ai_basis=why,
+                document_reference=(f'{rev.document.reference} {rev.document.title} rev {rev.revision}, page {page}'
+                                    if rev else ''))
+        r.save(actor=estimator)
+    AIUsage.objects.create(user=estimator, feature=RFI_DRAFTING, project=kings, model='claude-opus-5-5',
+                           status=AIUsage.OK, input_tokens=15800, output_tokens=4100, cost_gbp=Decimal('0.11'),
+                           note='3 documents, 15,800 tokens held', created_at=timezone.now() - timedelta(hours=2))
 
 
 # Kensal's revised quote: (line ref, rate, sum, included, source, note)
