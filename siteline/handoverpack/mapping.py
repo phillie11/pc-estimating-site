@@ -28,6 +28,12 @@ COLUMN = re.compile(r'^[A-Z]{1,3}$')
 
 CALC_STANDARD = 'standard-v1'
 
+# Words in a £0 line's Comments that mean someone else provides it (By others, on the pack's Not allowed list),
+# not that it is included. Matched without regard to case, as whole words anywhere in the comment. Estimators
+# write "client direct" and "by others" against £0 lines; both must stay.
+BY_OTHERS_WORDS = ('by others', 'by client', 'by the client', 'by landlord', 'by the landlord', 'by tenant',
+                   'by the tenant', 'client direct', 'excluded', 'exclusion', 'not included', 'omitted', 'nic')
+
 TRADE_TABS = [
     'Builderswork', 'BWIC', 'Cladding', 'Cleaning', 'Civils Groundworks', 'Decoration', 'Demolition', 'Electrical',
     'External Spraying', 'Fire Security', 'Firestopping', 'Flooring', 'Solar Film', 'Hoarding', 'Kitchen Extraction',
@@ -108,6 +114,7 @@ STANDARD = {
     },
     # The words the workbook uses in its Yes/No and status cells (compared without regard to case, as Excel does)
     'words': {'yes': 'Yes', 'no': 'No', 'priced': 'Priced', 'review': 'Review', 'excluded': 'Excluded'},
+    'by_others_words': list(BY_OTHERS_WORDS),
 }
 
 CALC_SELECT = 'select-v1'
@@ -199,6 +206,7 @@ SUPPLIER_SELECT = {
     # A selected supplier with one of these names is the estimator's own allowance or a provisional sum
     'allowance_words': ['allowance'],
     'ps_words': ['provisional sum', 'prov sum', 'client ps', 'ps'],
+    'by_others_words': list(BY_OTHERS_WORDS),
 }
 
 PRESETS = {STANDARD['key']: STANDARD, SUPPLIER_SELECT['key']: SUPPLIER_SELECT}
@@ -286,7 +294,14 @@ def validate(m):
         for letter in sec['total_cols'].values():
             col(letter)
     _need(m['words'], 'words.', ('yes', 'no', 'priced', 'review', 'excluded'))
+    _word_list(m, 'by_others_words')
     return m
+
+
+def _word_list(m, key):
+    v = m.get(key, [])
+    if not isinstance(v, list) or not all(isinstance(w, str) and w.strip() for w in v):
+        raise MappingError(f'{key} is a list of words.')
 
 
 def _rows(*rows):
@@ -365,6 +380,7 @@ def validate_select(m):
     for key in ('allowance_words', 'ps_words'):
         if not isinstance(m.get(key, []), list):
             raise MappingError(f'{key} is a list of words.')
+    _word_list(m, 'by_others_words')
     return m
 
 
