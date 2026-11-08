@@ -210,7 +210,7 @@ def brief_page(request, org_slug, pk):
 def _ai_rfis(project):
     """The AI-drafted RFIs on this bid still waiting to be issued (staff only: the brief page is)."""
     from rfis.models import RFI
-    return list(RFI.objects.filter(project=project, ai_drafted=True, status=RFI.STATUS_DRAFT).order_by('number')[:100])
+    return list(RFI.objects.filter(project=project, ai_drafted=True, status=RFI.STATUS_DRAFT).order_by('pk')[:100])
 
 
 def _settings():

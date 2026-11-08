@@ -35,8 +35,8 @@ def dashboard(request, org_slug):
     user = request.user
     portal = portal_projects(request)
     plate = _my_plate(request, portal)
-    plate['my_rfis'] = RFI.objects.filter(ball_in_court_user=user, status=RFI.STATUS_OPEN, project__in=portal,
-                                          visibility=RFI.VIS_SHARED) \
+    plate['my_rfis'] = RFI.for_externals(RFI.objects.filter(ball_in_court_user=user, status=RFI.STATUS_OPEN,
+                                                            project__in=portal)) \
         .select_related('project')[:8]
     subs = user.project_memberships.filter(organization=request.org, subcontractor__isnull=False) \
         .values_list('subcontractor_id', flat=True)

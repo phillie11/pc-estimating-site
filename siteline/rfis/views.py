@@ -19,11 +19,27 @@ from .models import RFI
 
 
 def _visible(request, project):
-    qs = RFI.objects.filter(project=project).select_related('ball_in_court_user', 'created_by')
-    if not is_internal(request):
-        # Shared, and never a draft: a draft (an AI draft, say) reaches nobody outside until staff issue it
-        qs = qs.filter(visibility=RFI.VIS_SHARED).exclude(status=RFI.STATUS_DRAFT)
-    return qs
+    # Shared, and never a draft, for anyone outside: a draft reaches nobody outside until staff issue it
+    return RFI.visible_to(request, RFI.objects.filter(project=project).select_related('ball_in_court_user',
+                                                                                      'created_by'))
+
+
+def _tell_ball_in_court(request, rfi, project, warn=False):
+    """
+    Notify whoever has the ball, only if they can see the RFI: staff always, an external only when it is shared
+    (and issued: a draft notifies nobody). Otherwise, with warn, tell the person acting that they can't see it.
+    """
+    from tenancy.models import Membership
+    user = rfi.ball_in_court_user
+    if user is None or rfi.status == RFI.STATUS_DRAFT:
+        return
+    staff = Membership.objects.filter(organization=project.organization, user=user, is_active=True,
+                                      role__in=Membership.INTERNAL_ROLES).exists()
+    if staff or rfi.is_shared:
+        notify_assignee(request, user, f'{rfi.reference}: {rfi.title}', project, rfi.get_absolute_url())
+    elif warn:
+        messages.warning(request, f'{user.full_name or user.email} can\'t see this RFI while it is internal, so they '
+                                  'weren\'t told. Share it, or pass the ball to someone in your team.')
 
 
 def rfi_list(request, org_slug, pk):
@@ -78,7 +94,7 @@ def rfi_create(request, org_slug, pk):
         if external:
             rfi.is_shared = True
         rfi.save(actor=request.user)
-        notify_assignee(request, rfi.ball_in_court_user, f'{rfi.reference}: {rfi.title}', project, rfi.get_absolute_url())
+        _tell_ball_in_court(request, rfi, project, warn=True)
         log_activity(request, 'raised', f'{rfi.reference} {rfi.title}', project=project, url=rfi.get_absolute_url(),
                      internal_only=not rfi.is_shared)
         if pending:
@@ -118,8 +134,7 @@ def rfi_detail(request, org_slug, pk, rfi_id):
                 apply_transition(rfi, 'issue', request.user)
                 log_activity(request, 'issued', f'{rfi.reference} {rfi.title}', project=project,
                              url=rfi.get_absolute_url(), internal_only=not rfi.is_shared)
-                notify_assignee(request, rfi.ball_in_court_user, f'{rfi.reference}: {rfi.title}', project,
-                                rfi.get_absolute_url())
+                _tell_ball_in_court(request, rfi, project, warn=True)
                 messages.success(request, f'{rfi.reference} issued.' + ('' if rfi.is_shared else
                                  ' It is internal only: edit it to share it with the project collaborators.'))
             elif action in ('close', 'reopen', 'void') and internal:
@@ -131,8 +146,7 @@ def rfi_detail(request, org_slug, pk, rfi_id):
                 if form.is_valid():
                     rfi.ball_in_court_user = form.cleaned_data['ball_in_court_user']
                     rfi.save(actor=request.user, audit_action='reassigned')
-                    notify_assignee(request, rfi.ball_in_court_user, f'{rfi.reference}: {rfi.title}', project,
-                                    rfi.get_absolute_url())
+                    _tell_ball_in_court(request, rfi, project, warn=True)
                     log_activity(request, f'passed to {rfi.ball_in_court_user}', rfi.reference, project=project,
                                  url=rfi.get_absolute_url(), internal_only=not rfi.is_shared)
         except (InvalidTransition, RecordConflict) as e:
@@ -175,8 +189,7 @@ def rfi_register(request, org_slug):
     """Every live RFI across the projects this user can see."""
     rfis = RFI.objects.filter(project__in=portal_projects(request), status__in=RFI.LIVE_STATUSES) \
         .select_related('project', 'ball_in_court_user')
-    if not is_internal(request):
-        rfis = rfis.filter(visibility=RFI.VIS_SHARED)
+    rfis = RFI.visible_to(request, rfis)
     if request.GET.get('mine'):
         rfis = rfis.filter(ball_in_court_user=request.user)
     # The filters the projects dashboard's RFI numbers link to

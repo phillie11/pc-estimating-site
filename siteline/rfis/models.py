@@ -30,6 +30,9 @@ class RFI(RecordBase):
     LIVE_STATUSES = (STATUS_OPEN, STATUS_RESPONDED)
     IMPACT_CHOICES = [('NONE', 'None'), ('POSSIBLE', 'Possible'), ('YES', 'Yes'), ('TBC', 'TBC')]
 
+    # No number while a draft: an RFI takes its register number when it is issued (takes_number), so drafts
+    # that are voided never leave gaps in the client's register. Raised straight in as open, it is numbered at once.
+    number = models.PositiveIntegerField(null=True, blank=True, editable=False)
     question = models.TextField()
     category = models.CharField(max_length=14, choices=CATEGORY_CHOICES, default='DESIGN')
     priority = models.CharField(max_length=7, choices=PRIORITY_CHOICES, default='NORMAL')
@@ -59,6 +62,31 @@ class RFI(RecordBase):
 
     def __str__(self):
         return f'{self.reference} {self.title}'
+
+    def takes_number(self):
+        # A draft has none; nor does a draft that was voided before it was ever issued
+        return self.status not in (self.STATUS_DRAFT, self.STATUS_VOID)
+
+    @property
+    def reference(self):
+        return self.ref or 'Draft'
+
+    # --- who may see which RFIs: every list, picker and count that filters RFIs goes through one of these ---
+    @classmethod
+    def for_externals(cls, qs):
+        """Of these RFIs, those a client, consultant or subcontractor may see: shared, and issued (never a draft)."""
+        return qs.filter(visibility=cls.VIS_SHARED).exclude(status=cls.STATUS_DRAFT)
+
+    @classmethod
+    def visible_to(cls, request, qs):
+        """Staff see every RFI here; anyone else what for_externals allows."""
+        from projects.access import is_internal
+        return qs if is_internal(request) else cls.for_externals(qs)
+
+    @classmethod
+    def issued(cls, qs):
+        """RFIs that have been issued (not drafts): what a variation, change or diary entry may refer to."""
+        return qs.exclude(status=cls.STATUS_DRAFT)
 
     def get_absolute_url(self):
         return reverse('rfi_detail', args=[self.organization.slug, self.project_id, self.pk])

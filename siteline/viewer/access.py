@@ -72,7 +72,7 @@ def visible_issues(request, project):
 
 def visible_rfis(request, project):
     qs = RFI.objects.filter(project=project)
-    return qs if is_internal(request) else qs.filter(visibility=RFI.VIS_SHARED)
+    return RFI.visible_to(request, qs)  # shared and issued for anyone outside: never a draft
 
 
 def visible_pins(request, project, doc=None):
