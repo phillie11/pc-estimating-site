@@ -164,6 +164,9 @@ FETCH = re.compile(r'(?<![A-Za-z0-9_.])(?:_xlfn\.|_xlws\.|_xludf\.)*(WEBSERVICE|
 DDE = re.compile(r"[A-Za-z0-9_.]+\|'?[^'!|]{0,255}'?!")
 HYPERLINK_FN = re.compile(r'(?<![A-Za-z0-9_.])HYPERLINK\s*\(\s*("(?:[^"]|"")*")?', re.I)
 FORMULA_TAGS = {'f', 'formula', 'formula1', 'formula2'}
+TEXT_ESCAPE = str.maketrans({'&': '&amp;', '<': '&lt;', '>': '&gt;'})
+ATTR_ESCAPE = str.maketrans({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\n': '&#10;', '\r': '&#13;',
+                             '\t': '&#9;'})
 
 
 class Refused(ValueError):
@@ -591,7 +594,9 @@ def _walk(pkg, notes):
             if rtype in REFUSE:
                 refuse('macrosheet')
             if external:
-                if rtype == HYPERLINK and source_type in HYPERLINK_SOURCES and safe_url(target):
+                link = target.strip()
+                inside = link.startswith('#') and '\\' not in link and not any(ord(ch) < 32 for ch in link)
+                if rtype == HYPERLINK and source_type in HYPERLINK_SOURCES and (inside or safe_url(link)):
                     rows.append((rid, written, target.strip(), True))
                 else:
                     gone.add(rid)
@@ -712,18 +717,17 @@ class _Writer:
     """Buffers text and writes it to a zip entry in blocks."""
 
     def __init__(self, fh):
-        self.fh, self.buf, self.size = fh, [], 0
+        self.fh, self.buf = fh, []
 
     def __call__(self, s):
         self.buf.append(s)
-        self.size += len(s)
-        if self.size > 64 * 1024:
+        if len(self.buf) > 8192:
             self.flush()
 
     def flush(self):
         if self.buf:
             self.fh.write(''.join(self.buf).encode('utf-8'))
-            self.buf, self.size = [], 0
+            self.buf = []
 
 
 class _SheetFilter:
@@ -739,6 +743,20 @@ class _SheetFilter:
         self.passing, self.builder, self.cell, self.formula = False, None, '', None
 
     def start(self, name, flat):
+        if self.passing and self.builder is None and 'xmlns' not in ' '.join(flat[0::2]):
+            # A cell, the common case: no new namespaces, so the parent's scope; written straight out
+            ns = self.scopes[-1]
+            self.scopes.append(ns)
+            prefix, _, local = name.rpartition(':')
+            if ns.get(prefix, '') != MAIN_NS:
+                refuse('layout')  # only cells in a sheet's cells
+            if local == 'c':
+                self.cell = next((flat[i + 1] for i in range(0, len(flat), 2) if flat[i] == 'r'), '')
+            elif local == 'f':
+                self.formula, self.flen = [], 0
+            self.out('<' + name + ''.join(f' {flat[i]}="{flat[i + 1].translate(ATTR_ESCAPE)}"'
+                                          for i in range(0, len(flat), 2)) + '>')
+            return
         depth = len(self.scopes)
         attrs = _pairs(flat)
         if self.builder is not None:
@@ -772,6 +790,8 @@ class _SheetFilter:
             self.passing = True
             self.out('<' + name + ''.join(f' {k}={quoteattr(v)}' for k, v in attrs) + '>')
             return
+        if local == 'sheetData':
+            refuse('layout')  # a sheetData in another namespace, or anywhere but the top of the sheet
         self.scopes[-1] = None
         self.builder = _Builder(parent, depth=1)
         self.builder.count = self.count
@@ -804,6 +824,8 @@ class _SheetFilter:
         if local in SHEET_DROP or _rel_refs(node, self.gone):
             self.removed += 1
             return
+        if any(n.name()[1] == 'sheetData' for n in node.walk()):
+            refuse('layout')  # cells anywhere but the sheet's one sheetData
         _formulas(node, self.where)
         self.removed += _prune(node, lambda n: _rel_refs(n, self.gone) or n.name()[1] in SHEET_DROP, self.gone)
         if node.is_(MC_NS, 'AlternateContent') and not any(c.elements() for c in node.elements()):
@@ -820,7 +842,7 @@ class _SheetFilter:
             self.flen += len(data)
             if self.flen > MAX_FORMULA:
                 refuse('layout')
-        self.out(escape(data))
+        self.out(data.translate(TEXT_ESCAPE))
 
 
 def _entry(name):
