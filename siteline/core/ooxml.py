@@ -37,13 +37,17 @@ The rebuilt package is written with fresh zip entries and checked again from the
 find nothing to remove or change. Worksheets are streamed (cells written straight through, everything else
 parsed); other parsed parts are capped at a few MB, so memory stays near the size of the upload.
 """
+import functools
 import io
 import posixpath
 import re
 import zipfile
 from urllib.parse import unquote, urlsplit
-from xml.parsers import expat  # nosec B410: DTDs, entity declarations and external entities are refused (_parser)
-from xml.sax.saxutils import escape, quoteattr
+from xml.parsers import expat
+from xml.sax.saxutils import escape, quoteattr  # nosec B406: only escaping for output; nothing is parsed with it
+
+from .excel_functions import ALLOWED as FUNCTIONS
+from .excel_functions import NEVER
 
 MAX_PARTS = 500
 MAX_UNZIPPED = 25 * 1024 * 1024
@@ -159,10 +163,10 @@ AUTO_RUN = re.compile(r'^\s*(_xlnm\.)?auto_', re.I)
 # A sheet's top-level elements that only hold active content (and its legacy VML drawings, which go)
 SHEET_DROP = {'controls', 'oleObjects', 'webPublishItems', 'legacyDrawing', 'legacyDrawingHF'}
 # Formulas that fetch from the web, run code or talk to another program
-FETCH = re.compile(r'(?<![A-Za-z0-9_.])(?:_xlfn\.|_xlws\.|_xludf\.)*(WEBSERVICE|IMAGE|RTD|CALL|REGISTER\.ID|REGISTER|'
-                   r'EXEC|EXECUTE)\s*\(', re.I)
-DDE = re.compile(r"[A-Za-z0-9_.]+\|'?[^'!|]{0,255}'?!")
-HYPERLINK_FN = re.compile(r'(?<![A-Za-z0-9_.])HYPERLINK\s*\(\s*("(?:[^"]|"")*")?', re.I)
+# A name in a formula: a function, a defined name, a cell, a sheet (matched from a known start: no backtracking)
+IDENT = re.compile(r'[A-Za-z_\\][A-Za-z0-9_.\\]*')
+SPACES = re.compile(r'[ \t\r\n]*')
+MAX_FORMULA_CHARS = 16 * 1024 * 1024  # formula text checked in one part (repeats are remembered, so cost nothing)
 FORMULA_TAGS = {'f', 'formula', 'formula1', 'formula2'}
 TEXT_ESCAPE = str.maketrans({'&': '&amp;', '<': '&lt;', '>': '&gt;'})
 ATTR_ESCAPE = str.maketrans({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\n': '&#10;', '\r': '&#13;',
@@ -252,21 +256,105 @@ def safe_url(url):
     return (scheme in ('http', 'https') and bool(parts.netloc)) or (scheme == 'mailto' and bool(parts.path))
 
 
+def _refuse_function(name, where, why):
+    refuse('fetch', f'{where} uses {name[:60]}, {why}, so the workbook was refused. Replace the formula with its '
+                    'value, save, and upload it again.')
+
+
+@functools.lru_cache(maxsize=8192)
+def formula_problem(text):
+    """
+    Why a formula can't be accepted, or None. Every function it calls (and every function passed by name with
+    _xleta.) must be one of Excel's own worksheet functions (core.excel_functions), and never one that fetches from
+    the internet, runs code or calls another program; no add-in functions (_xludf.); no DDE links (app|topic!item);
+    HYPERLINK only to a web or mail address typed into it. One pass over the text: strings, quoted sheet names and
+    brackets are skipped by finding where they end, names matched from where they start.
+    """
+    if len(text) > MAX_FORMULA:
+        return ('layout', '')
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '"' or ch == "'":
+            j = i + 1
+            while True:
+                k = text.find(ch, j)
+                if k < 0:
+                    return ('layout', '')
+                if k + 1 < n and text[k + 1] == ch:  # a doubled quote inside
+                    j = k + 2
+                    continue
+                break
+            i = k + 1
+            continue
+        if ch == '[':  # a structured or external reference: brackets may nest
+            depth, j = 0, i
+            while j < n:
+                if text[j] == '[':
+                    depth += 1
+                elif text[j] == ']':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            i = j + 1
+            continue
+        if ch == '|':
+            return ('fetch', 'a link to another program (DDE)', 'which runs another program')
+        m = IDENT.match(text, i)
+        if not m:
+            i += 1
+            continue
+        name, end = m.group(0).upper(), m.end()
+        after = SPACES.match(text, end).end()
+        called = after < n and text[after] == '('
+        if name.startswith('_XLETA.'):
+            name, called = name[7:], True  # a function passed by name (MAP(..., _xleta.SUM))
+        if called:
+            base = name
+            while base.startswith(('_XLFN.', '_XLWS.')):
+                base = base[6:]
+            if base.startswith('_XLUDF.'):
+                return ('fetch', m.group(0), 'an add-in function')
+            if base.startswith('_XLPM.'):
+                pass  # a LAMBDA's own parameter
+            elif base in NEVER:
+                return ('fetch', base, 'which fetches from the internet or a database, or runs another program')
+            elif base not in FUNCTIONS:
+                return ('unknown', m.group(0), 'which isn\'t one of Excel\'s worksheet functions')
+            elif base == 'HYPERLINK':
+                k = SPACES.match(text, after + 1).end()
+                url = None
+                if k < n and text[k] == '"':
+                    e, j = None, k + 1
+                    while True:
+                        q = text.find('"', j)
+                        if q < 0:
+                            break
+                        if q + 1 < n and text[q + 1] == '"':
+                            j = q + 2
+                            continue
+                        e = q
+                        break
+                    if e is not None:
+                        rest = SPACES.match(text, e + 1).end()
+                        if rest < n and text[rest] in ',)':
+                            url = text[k + 1:e].replace('""', '"')
+                if url is None or not (url.startswith('#') or safe_url(url)):
+                    return ('fetch', 'HYPERLINK', 'to something other than a web or mail address typed into it')
+        i = end
+    return None
+
+
 def check_formula(text, where):
-    """Refuse a formula that fetches from the web, runs code or opens a link that isn't a web or mail address."""
+    """Refuse a formula that calls anything but Excel's own worksheet functions (see formula_problem)."""
     if not text:
         return
-    m = FETCH.search(text) or DDE.search(text)
-    if m:
-        refuse('fetch', f'{where} uses {m.group(0).split("(")[0].strip()[:40]}, which fetches from the internet or '
-                        'runs another program, so the workbook was refused. Replace it with its value, save, and '
-                        'upload it again.')
-    for m in HYPERLINK_FN.finditer(text):
-        literal = m.group(1)
-        url = literal[1:-1].replace('""', '"') if literal else None
-        if url is None or not (url.startswith('#') or safe_url(url)):
-            refuse('fetch', f'{where} has a HYPERLINK to something other than a web or mail address, so the workbook '
-                            'was refused. Replace it with its value, save, and upload it again.')
+    problem = formula_problem(text)
+    if problem:
+        if problem[0] == 'layout':
+            refuse('layout')
+        _refuse_function(problem[1], where, problem[2])
 
 
 # --- the parsed tree ------------------------------------------------------------------------------
@@ -315,7 +403,7 @@ class Node:
 
 def _parser():
     """expat with no DTD, no entity declarations and no external entities: any of them refuses the part."""
-    p = expat.ParserCreate(encoding='UTF-8')  # nosec B318: see the handlers below
+    p = expat.ParserCreate(encoding='UTF-8')
     p.buffer_text = True
     p.buffer_size = 64 * 1024
     p.ordered_attributes = True
@@ -344,7 +432,8 @@ class _Builder:
         self.stack, self.root = [], None
         self.base_ns = base_ns or {'xml': XML_NS}
         self.depth0 = depth
-        self.count = self.ns_count = self.text = 0
+        self.count = self.text = 0
+        self.namespaces = set()
 
     def start(self, name, flat):
         self.count += 1
@@ -355,9 +444,9 @@ class _Builder:
         attrs = _pairs(flat)
         parent = self.stack[-1] if self.stack else None
         ns = _scope(parent.ns if parent else self.base_ns, attrs)
-        if parent is None or ns is not parent.ns:
-            self.ns_count += sum(1 for k, _ in attrs if k == 'xmlns' or k.startswith('xmlns:'))
-            if self.ns_count > MAX_NAMESPACES:
+        if parent is None or ns is not parent.ns:  # distinct declarations: Excel repeats xmlns:xm on every x14 rule
+            self.namespaces.update((k, v) for k, v in attrs if k == 'xmlns' or k.startswith('xmlns:'))
+            if len(self.namespaces) > MAX_NAMESPACES:
                 refuse('size')
         _check_mc(attrs, ns)
         node = Node(name, attrs, ns)
@@ -676,11 +765,11 @@ def _prune(node, drop, gone=frozenset()):
 
 def _formulas(root, where):
     for n in root.walk():
-        if n.name()[1] in FORMULA_TAGS:
-            text = n.text()
-            if len(text) > MAX_FORMULA:
-                refuse('layout')
-            check_formula(text, where)
+        local = n.name()[1]
+        if local in FORMULA_TAGS:
+            check_formula(n.text(), where)
+        elif local == 'cfvo' and (dict(n.attrs).get('type') or '').lower() == 'formula':
+            check_formula(dict(n.attrs).get('val') or '', where)
 
 
 def _workbook(root, gone):
@@ -741,6 +830,8 @@ class _SheetFilter:
         self.out, self.gone, self.where = out, gone, where
         self.scopes, self.removed, self.sheet_data, self.count = [], 0, 0, 0
         self.passing, self.builder, self.cell, self.formula = False, None, '', None
+        self.fchars = 0
+        self.f_tag, self.f_attrs, self.dropped_shared, self.neutralised = '', [], set(), []
 
     def start(self, name, flat):
         if self.passing and self.builder is None and 'xmlns' not in ' '.join(flat[0::2]):
@@ -750,12 +841,16 @@ class _SheetFilter:
             prefix, _, local = name.rpartition(':')
             if ns.get(prefix, '') != MAIN_NS:
                 refuse('layout')  # only cells in a sheet's cells
+            if ':' in ' '.join(flat[0::2]):
+                _check_mc(_pairs(flat), ns)
             if local == 'c':
                 self.cell = next((flat[i + 1] for i in range(0, len(flat), 2) if flat[i] == 'r'), '')
-            elif local == 'f':
-                self.formula, self.flen = [], 0
-            self.out('<' + name + ''.join(f' {flat[i]}="{flat[i + 1].translate(ATTR_ESCAPE)}"'
-                                          for i in range(0, len(flat), 2)) + '>')
+            tag = '<' + name + ''.join(f' {flat[i]}="{flat[i + 1].translate(ATTR_ESCAPE)}"'
+                                       for i in range(0, len(flat), 2)) + '>'
+            if local == 'f':  # held back until its text is checked
+                self.formula, self.flen, self.f_tag, self.f_attrs = [], 0, tag, _pairs(flat)
+                return
+            self.out(tag)
             return
         depth = len(self.scopes)
         attrs = _pairs(flat)
@@ -778,9 +873,11 @@ class _SheetFilter:
                 _check_mc(attrs, ns)
             if local == 'c':
                 self.cell = dict(attrs).get('r', '')
-            elif local == 'f':
-                self.formula, self.flen = [], 0
-            self.out('<' + name + ''.join(f' {k}={quoteattr(v)}' for k, v in attrs) + '>')
+            tag = '<' + name + ''.join(f' {k}={quoteattr(v)}' for k, v in attrs) + '>'
+            if local == 'f':
+                self.formula, self.flen, self.f_tag, self.f_attrs = [], 0, tag, attrs
+                return
+            self.out(tag)
             return
         if depth == 1 and (uri, local) == (MAIN_NS, 'sheetData'):
             self.sheet_data += 1
@@ -808,12 +905,40 @@ class _SheetFilter:
                 self.finish(node)
             return
         if self.passing and self.formula is not None and _qname(name, ns)[1] == 'f':
-            text = ''.join(self.formula)
-            self.formula = None
-            check_formula(text, f'{self.where} cell {self.cell or "?"}')
+            self.end_formula(name)
+            return
         if depth == 1 and self.passing:
             self.passing = False
         self.out(f'</{name}>')
+
+    def end_formula(self, name):
+        """
+        A cell's formula: written if it only calls Excel's own functions. One that calls a function Excel doesn't
+        have (a macro's, say, which the rebuild has removed: it could only ever show #NAME?) is taken out, and the
+        value Excel saved stays in the cell; the result notes it. Anything that fetches or runs something is refused.
+        """
+        text, self.formula = ''.join(self.formula), None
+        self.fchars += len(text)
+        if self.fchars > MAX_FORMULA_CHARS:
+            refuse('size')
+        attrs = dict(self.f_attrs)
+        where = f'{self.where} cell {self.cell or "?"}'
+        problem = formula_problem(text) if text else None
+        si = attrs.get('si')
+        if problem is None and attrs.get('t') == 'shared' and si in self.dropped_shared:
+            problem = ('unknown', '', 'the shared formula it repeats was taken out')
+        if problem is None:
+            self.out(self.f_tag + text.translate(TEXT_ESCAPE) + f'</{name}>')
+            return
+        if problem[0] != 'unknown':
+            if problem[0] == 'layout':
+                refuse('layout')
+            _refuse_function(problem[1], where, problem[2])
+        if attrs.get('t') == 'shared' and si is not None:
+            self.dropped_shared.add(si)
+        self.removed += 1
+        if problem[1]:
+            self.neutralised.append(f'{where} ({problem[1][:40]})')
 
     def finish(self, node):
         uri, local = node.name()
@@ -842,6 +967,7 @@ class _SheetFilter:
             self.flen += len(data)
             if self.flen > MAX_FORMULA:
                 refuse('layout')
+            return
         self.out(data.translate(TEXT_ESCAPE))
 
 
@@ -862,6 +988,61 @@ def _copy_xml(pkg, key, fh):
             refuse('dtd')
         tail = block[-64:]
         fh.write(block)
+
+
+FORMULA_PARTS = {SML + 'table+xml': 'Table', SML + 'pivotcachedefinition+xml': 'Pivot cache'}
+FORMULA_ELEMENTS = {'calculatedColumnFormula', 'totalsRowFormula'}
+
+
+class _FormulaScan:
+    """Checks a table's or pivot cache's formulas (element text, cacheField formula="..."), capped like any part."""
+
+    def __init__(self, where):
+        self.where, self.depth, self.text, self.chars = where, 0, None, 0
+
+    def start(self, name, flat):
+        self.depth += 1
+        if self.depth > MAX_DEPTH:
+            refuse('layout')
+        local = name.rpartition(':')[2]
+        if local in FORMULA_ELEMENTS:
+            self.text = []
+        attrs = dict(_pairs(flat))
+        if local == 'cacheField' and attrs.get('formula'):
+            self.count(attrs['formula'])
+            check_formula(attrs['formula'], self.where)
+
+    def end(self, name):
+        self.depth -= 1
+        if self.text is not None and name.rpartition(':')[2] in FORMULA_ELEMENTS:
+            text, self.text = ''.join(self.text), None
+            check_formula(text, self.where)
+
+    def chars_(self, data):
+        if self.text is not None:
+            self.text.append(data)
+            self.count(data)
+
+    def count(self, data):
+        self.chars += len(data)
+        if self.chars > MAX_FORMULA_CHARS:
+            refuse('size')
+
+
+def _scan_copy(pkg, key, fh, where):
+    """Copy the part as it is, parsing it as it goes: UTF-8, no DTD, its formulas checked."""
+    scan = _FormulaScan(where)
+    p = _parser()
+    p.StartElementHandler, p.EndElementHandler, p.CharacterDataHandler = scan.start, scan.end, scan.chars_
+    try:
+        for i, block in enumerate(pkg.chunks(key)):
+            if i == 0:
+                check_encoding(block[:512])
+            p.Parse(block, False)
+            fh.write(block)
+        p.Parse(b'', True)
+    except expat.ExpatError:
+        refuse('unreadable')
 
 
 def _rels_xml(rows):
@@ -936,7 +1117,10 @@ def _clean(data, max_unzipped, max_parts):
                     w('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
                     root.write(w)
                 elif ctype in (WORKSHEET, CHARTSHEET):
-                    changes += _stream_sheet(pkg, key, w, gone, names.get(key) or name)
+                    changes += _stream_sheet(pkg, key, w, gone, names.get(key) or name, notes)
+                elif ctype in FORMULA_PARTS:
+                    w.flush()
+                    _scan_copy(pkg, key, fh, f'{FORMULA_PARTS[ctype]} {name.rsplit("/", 1)[-1]}')
                 elif ctype.endswith('xml'):
                     w.flush()
                     _copy_xml(pkg, key, fh)
@@ -947,7 +1131,7 @@ def _clean(data, max_unzipped, max_parts):
     return out.getvalue(), removed, changes, notes
 
 
-def _stream_sheet(pkg, key, w, gone, where):
+def _stream_sheet(pkg, key, w, gone, where, notes):
     w('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
     f = _SheetFilter(w, gone, f'Sheet {where}')
     p = _parser()
@@ -962,6 +1146,7 @@ def _stream_sheet(pkg, key, w, gone, where):
         refuse('unreadable')
     if not f.sheet_data and pkg.ctype(key) == WORKSHEET:
         refuse('layout')
+    notes.setdefault('formulas', []).extend(f.neutralised)
     return f.removed
 
 
@@ -976,6 +1161,11 @@ def clean_report(data, max_unzipped=MAX_UNZIPPED, max_parts=MAX_PARTS):
     if again or more:
         refuse('unknown')
     messages = []
+    taken = notes.get('formulas') or []
+    if taken:
+        messages.append(f'{len(taken)} formula{"s" if len(taken) != 1 else ""} calling a function Excel doesn\'t have '
+                        '(a macro\'s, which was removed) taken out, keeping the value Excel saved: '
+                        + '; '.join(taken[:5]) + ('…' if len(taken) > 5 else '') + '.')
     if notes.get('pictures'):
         n = notes['pictures']
         messages.append(f'{n} picture{"s" if n != 1 else ""} in a format other than PNG, JPEG or GIF '
