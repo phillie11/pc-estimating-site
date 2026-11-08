@@ -167,7 +167,7 @@ SHEET_DROP = {'controls', 'oleObjects', 'webPublishItems', 'legacyDrawing', 'leg
 # Formulas that fetch from the web, run code or talk to another program
 # A name in a formula: a function, a defined name, a cell, a sheet (matched from a known start: no backtracking)
 IDENT = re.compile(r'[A-Za-z_\\][A-Za-z0-9_.\\]*')
-SPACES = re.compile(r'\s*')  # any Unicode space, a no-break one included
+SPACES = re.compile('[\\s\u200b-\u200d\u2060\ufeff]*')  # any Unicode space (no-break, zero-width too)
 MAX_FORMULA_CHARS = 16 * 1024 * 1024  # formula text checked in one part (repeats are remembered, so cost nothing)
 FORMULA_TAGS = {'f', 'formula', 'formula1', 'formula2'}
 NUMBER = re.compile(r'^[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?$')
@@ -339,7 +339,10 @@ def _skip(text, i):
     return -1
 
 
-def _never_anywhere(text):
+BARE_BEFORE = ('', '(', ',', '@', '+', '-')
+
+
+def _never_anywhere(text, plain=frozenset()):
     """
     The conservative check, for the never-allowed functions only: a name (Unicode letters too; compared after NFKC,
     case folding and dropping marks, after stripping any _xl...: prefixes) that is one of them, in function
@@ -375,7 +378,15 @@ def _never_anywhere(text):
             while k >= 0 and text[k].isspace():  # only the space just before this name: linear overall
                 k -= 1
             before = text[k] if k >= 0 else ''
-            if nxt != '!' and (nxt == '(' or prefixed or (before in ('(', ',') and nxt in (',', ')'))):
+            if before == '=' and k == 0:
+                before = ''  # the formula's own =
+            if nxt == '!':
+                pass  # a sheet called that: PY!B2
+            elif nxt == '(' or prefixed:
+                return ('fetch', name, 'which fetches from the internet or a database, or runs another program')
+            elif before in BARE_BEFORE and nxt in ('', ',', ')') and raw.casefold() not in plain:
+                # Standing alone (the whole formula, or a whole argument, which is how a function is passed by
+                # name): refused, unless the workbook itself defines that name or a table of it (SUM(Register))
                 return ('fetch', name, 'which fetches from the internet or a database, or runs another program')
         i = end
     return None
@@ -397,11 +408,11 @@ def _link_ok(url, whole):
     return scheme in ('', 'http', 'https', 'mailto') and not (scheme == '' and ':' in low)
 
 
-def _problem(text, names):
+def _problem(text, names, plain=frozenset()):
     """Why a formula can't be accepted, or None: (kind, name, why). See formula_problem."""
     if len(text) > MAX_FORMULA:
         return ('layout', '')
-    never = _never_anywhere(text)
+    never = _never_anywhere(text, plain)
     if never:
         return never
     i, n = 0, len(text)
@@ -500,12 +511,12 @@ def formula_problem(text, names=frozenset()):
     ctx = _context.get()
     if ctx is None:
         return _problem(text, names)
-    cache, names, checking = ctx
+    cache, names, checking, plain = ctx
     if not checking:
         return None  # the verify pass: the same text the first pass checked
     if len(text) < CACHE_TEXT and text in cache:
         return cache[text]
-    problem = _problem(text, names)
+    problem = _problem(text, names, plain)
     if len(text) < CACHE_TEXT and len(cache) < CACHE_ENTRIES:
         cache[text] = problem
     return problem
@@ -1262,17 +1273,26 @@ XML_TYPES_PARSED_WHEN_POINTING = {CHART, CHARTSHAPES}
 
 
 def _defined_names(pkg, keep):
-    """The workbook's names (case folded) that hold a LAMBDA: a formula may call one of those, and nothing else the
-    workbook defines (a name called EVALUATE defined as =1 must not unlock EVALUATE(...))."""
-    out = set()
+    """
+    (LAMBDA names, plain names), case folded. A formula may call a name holding a LAMBDA, and nothing else the
+    workbook defines (a name called EVALUATE defined as =1 must not unlock EVALUATE(...)). Plain names, and tables'
+    names, may stand as a value where a never-allowed function's name would otherwise be refused (SUM(Register)).
+    """
+    lambdas, plain = set(), set()
     for key in keep:
-        if key and pkg.ctype(key) in MAINS:
+        ctype = pkg.ctype(key) if key else ''
+        if ctype in MAINS:
             for n in parse(pkg.read(key)).walk():
                 if n.is_(MAIN_NS, 'definedName'):
+                    name = (dict(n.attrs).get('name') or '').casefold()
                     body = n.text().strip().lstrip('=').lstrip().casefold()
-                    if body.startswith('_xlfn.lambda('):
-                        out.add((dict(n.attrs).get('name') or '').casefold())
-    return frozenset(out)
+                    (lambdas if body.startswith('_xlfn.lambda(') else plain).add(name)
+        elif ctype == SML + 'table+xml':
+            root = parse(pkg.read(key))
+            for attr in ('displayName', 'name'):
+                if dict(root.attrs).get(attr):
+                    plain.add(dict(root.attrs)[attr].casefold())
+    return frozenset(lambdas), frozenset(plain - lambdas)
 
 
 def _clean(data, max_unzipped, max_parts, check_formulas=True):
@@ -1280,7 +1300,8 @@ def _clean(data, max_unzipped, max_parts, check_formulas=True):
     pkg = _Package(data, max_unzipped, max_parts)
     notes = {}
     keep, kept_rels, dropped = _walk(pkg, notes)
-    token = _context.set(({}, _defined_names(pkg, keep), check_formulas))
+    lambdas, plain = _defined_names(pkg, keep)
+    token = _context.set(({}, lambdas, check_formulas, plain))
     try:
         return _clean_parts(pkg, keep, kept_rels, dropped, notes)
     finally:

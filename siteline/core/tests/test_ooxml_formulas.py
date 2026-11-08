@@ -73,7 +73,7 @@ class FunctionAllowlistTests(SimpleTestCase):
         tracemalloc.stop()
         self.assertLess(current, 2 * 1024 * 1024)  # 3,000 distinct 8 KB formulas: none of them kept
         cache = {}
-        token = ooxml._context.set((cache, frozenset(), True))
+        token = ooxml._context.set((cache, frozenset(), True, frozenset()))
         try:
             for i in range(ooxml.CACHE_ENTRIES + 500):
                 ooxml.formula_problem(f'SUM({i})')
