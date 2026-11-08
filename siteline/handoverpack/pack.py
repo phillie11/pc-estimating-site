@@ -64,7 +64,8 @@ def build(project, pack, wb, request=None, clarifications=None, items=None):
     for tr in trades:
         prices.append({'name': tr['name'], 'include': tr['include'], 'supplier': tr['supplier'], 'cost': tr['cost'],
                        'charge': tr['charge'], 'profit': tr['profit'], 'margin': tr['margin'],
-                       'markup': tr['markup'], 'provisional': tr['provisional']})
+                       'markup': tr['markup'], 'provisional': tr['provisional'],
+                       'from_excel': tr.get('from_excel', False)})
     for name, part, markup in (('Joinery', r['joinery'], None), ('Preliminaries', r['prelims'],
                                                                  r['prelims'].get('markup'))):
         prices.append({'name': name, 'include': True, 'supplier': 'Own cost build-up', 'cost': part['cost'],
@@ -83,7 +84,8 @@ def build(project, pack, wb, request=None, clarifications=None, items=None):
                    'label': engine.CLASS_LABELS[ln['cls']], 'tone': engine.CLASS_TONES[ln['cls']],
                    'source': f'{tr["sheet"]} row {ln["row"]}'}
             if ln['cls'] == engine.EXCLUDED:
-                row['why'] = f'{tr["name"]} not included (Include? is "{tr["include_text"] or "blank"}")'
+                why = tr.get('why_excluded') or f'Include? is "{tr["include_text"] or "blank"}"'
+                row['why'] = f'{tr["name"]} not included ({why})'
                 excluded.append(row)
             elif ln['cls'] == engine.BY_OTHERS:
                 row['why'] = ln['comment'] or 'By others'
@@ -105,7 +107,7 @@ def build(project, pack, wb, request=None, clarifications=None, items=None):
                'tone': engine.CLASS_TONES[ln['cls']], 'source': f'{r["prelims"]["sheet"]} row {ln["row"]}',
                'periods': ln['periods']}
         if ln['cls'] == engine.EXCLUDED:
-            row['why'] = 'Marked No' + (' (it had figures in it)' if ln['has_inputs'] else '')
+            row['why'] = ln.get('why') or ('Marked No' + (' (it had figures in it)' if ln['has_inputs'] else ''))
             row['had_inputs'] = ln['has_inputs']
             prelims_no.append(row)
         else:

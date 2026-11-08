@@ -22,6 +22,9 @@ Where the file holds Excel's saved values, every recomputed cell is compared wit
 a difference over 1p is a reconciliation issue naming the sheet and cell. Without saved values (a file
 written by a tool that doesn't calculate) the recomputed figures are used and the result says so.
 
+The supplier-select layout (calc 'select-v1') has its own arithmetic in supplier_select.py; run() and
+extents() hand it over.
+
 Markups are inputs that the template fills by formula (='PRICING SUMMARY'!F11, =$J$4). A formula
 that is just a reference to another cell is followed; anything else falls back to Excel's saved value
 and is noted.
@@ -37,6 +40,10 @@ PENNY = Decimal('0.01')
 HALF_PENNY = Decimal('0.005')
 ZERO = Decimal('0')
 ONE = Decimal('1')
+XL_ERRORS = ('#VALUE!', '#NAME?', '#REF!', '#DIV/0!', '#N/A', '#NUM!', '#NULL!', '#SPILL!', '#CALC!', '#FIELD!',
+             '#BLOCKED!', '#UNKNOWN!', '#CONNECT!', '#BUSY!', '#GETTING_DATA')
+SUM_FORMULA = re.compile(r'^=\s*SUM\(\s*\$?([A-Z]{1,3})\$?([0-9]{1,6})\s*:\s*\$?([A-Z]{1,3})\$?([0-9]{1,6})'
+                         r'\s*\)\s*$', re.I)
 REF = re.compile(r"^=\s*(?:(?:'((?:[^']|'')+)'|([A-Za-z0-9_.]+))!)?\$?([A-Z]{1,3})\$?([0-9]{1,6})\s*$")
 
 PRICED, INCLUDED, EXCLUDED, REVIEW, PROVISIONAL, ALLOWANCE, BY_OTHERS = (
@@ -84,6 +91,10 @@ def margin(profit, charge):
 
 def extents(m):
     """{sheet: (max_row, max_col)} the reader needs for this mapping."""
+    if m['calc'] == maps.CALC_SELECT:
+        from .supplier_select import extents as select_extents
+        return select_extents(m)
+
     def far(refs, cols, last_row):
         rows = [maps.split(r)[0] for r in refs] + [last_row]
         columns = [maps.split(r)[1] for r in refs] + [maps.col(c) for c in cols]
@@ -113,6 +124,7 @@ class Run:
         self.by_others = tuple(w.casefold() for w in m.get('by_others_words', BY_OTHERS_WORDS))
         self.tolerance = Decimal(margin_tolerance or 0)
         self.issues, self.gaps, self.notes = [], [], []
+        self.stale = self.form_bad = False
         summary = m['summary']['sheet']
         g50 = maps.split(f"{m['summary']['cols']['charge']}{m['summary']['total_row']}")
         # Without saved values the total's formula cell comes back blank. Anything else (a number, an error such
@@ -135,8 +147,10 @@ class Run:
         m = REF.match(f)
         if m and depth < 6:
             target = (m.group(1) or '').replace("''", "'") or (m.group(2) or '').strip() or sheet
-            if self.book.has(target):
-                return self.resolve(target, int(m.group(4)), maps.col(m.group(3)), depth + 1)
+            row_, col_ = int(m.group(4)), maps.col(m.group(3))
+            within = getattr(self.book, 'within', None)
+            if self.book.has(target) and (within is None or within(target, row_, col_)):
+                return self.resolve(target, row_, col_, depth + 1)
         saved = self.book.value(sheet, row, col)
         self.notes.append(f'{sheet}!{cell(row, col)} holds a formula Siteline doesn\'t follow ({f[:60]}); '
                           f'Excel\'s saved value ({text(saved) or "blank"}) was used.')
@@ -174,6 +188,44 @@ class Run:
                                 'excel': None, 'excel_text': f'Excel shows "{text(saved)[:30]}", the workbook\'s '
                                                               f'rules give "{computed or "blank"}"',
                                 'difference': ZERO})
+
+    def check_total_form(self, sheet, total_row, cols, rows):
+        """
+        The design limit: the summary's total must be =SUM over its own column from the first row in it to the last
+        (trades, joinery, installation, prelims) and stop above the total. Anything else, a reconciliation issue.
+        """
+        if not rows:
+            return
+        first, last = min(rows), max(rows)
+        for letter in cols:
+            c = maps.col(letter)
+            f = self.book.formula(sheet, total_row, c)
+            m = SUM_FORMULA.match(f) if isinstance(f, str) else None
+            ok = bool(m) and maps.col(m.group(1)) == c and maps.col(m.group(3)) == c and \
+                int(m.group(2)) <= first and last <= int(m.group(4)) < total_row
+            if not ok:
+                self.form_bad = True
+                self.issues.append({
+                    'sheet': sheet, 'cell': cell(total_row, c), 'computed': None, 'excel': None, 'difference': ZERO,
+                    'what': 'Total formula',
+                    'excel_text': f'The total isn\'t =SUM({letter}{first}:{letter}{last}) or a sum over at least those '
+                                  f'rows ({str(f or "blank")[:40]}), so Siteline can\'t vouch that it adds up the '
+                                  'summary.'})
+
+    def settle(self, totals):
+        """
+        The last word on reconciled: a stale copy of a supplier's rates or a total that isn't the sum of its rows
+        means it isn't; a workbook set to manual calculation, or flagged to recalculate when opened, isn't checked.
+        """
+        if totals['reconciled'] and (self.stale or self.form_bad):
+            totals['reconciled'] = False
+        totals['unchecked_reason'] = ''
+        reason = self.book.calc_problem() if hasattr(self.book, 'calc_problem') else ''
+        if reason and self.cached:
+            totals['reconciled'] = None
+            totals['unchecked_reason'] = reason
+            self.notes.insert(0, reason)
+        return totals
 
     def gap(self, code, title, detail='', sheet='', ref='', trade='', amount=None, severity='warn'):
         self.gaps.append({'code': code, 'title': title, 'detail': detail, 'sheet': sheet, 'cell': ref,
@@ -494,6 +546,11 @@ class Run:
             raise ValueError(f'This doesn\'t look like the pricing workbook: it has no "{sheet}" sheet. Check the '
                              'workbook layout chosen in Settings > Pricing workbook.')
         header = {k: text(self.raw(sheet, ref)) for k, ref in s['header'].items()}
+        for k, ref in s['header'].items():
+            if header[k].upper() in XL_ERRORS:  # an error in Excel (#VALUE!, #NAME?): a gap, not the project's name
+                self.gap('header_error', f'The summary\'s {k} shows {header[k]}', f'{sheet}!{ref} is an error in '
+                         f'Excel, so the pack has no {k}. Correct the formula or type the value.', sheet, ref, '', None)
+                header[k] = ''
         default_markup = num(self.resolve_ref(sheet, s['default_markup'])) or ZERO
         prelim_markup = num(self.resolve_ref(sheet, s['prelim_markup']))
         target = num(self.resolve_ref(sheet, s['target_margin']))
@@ -531,6 +588,9 @@ class Run:
         else:
             totals['difference'] = charge - excel['charge']
             totals['reconciled'] = abs(totals['difference']) < HALF_PENNY
+        self.check_total_form(sheet, trow, (s['cols']['cost'], s['cols']['charge']),
+                              [x['row'] for x in s['trades']] + [s['joinery_row'], s['prelims_row']])
+        self.settle(totals)
         if target is not None and totals['margin'] is not None and totals['margin'] < target - self.tolerance:
             short = (totals['price_at_target'] - charge) if totals['price_at_target'] is not None else None
             self.gap('margin_below_target', f'Margin {totals["margin"] * 100:.1f}% is below the {target * 100:.1f}% '
@@ -547,8 +607,12 @@ class Run:
             'issues': sorted(self.issues, key=lambda i: -i['difference']),
             'gaps': sorted(self.gaps, key=lambda g: (g['amount'] is None, -(g['amount'] or ZERO))),
             'notes': list(dict.fromkeys(self.notes)), 'sheetnames': self.book.sheetnames[:200],
+            'from_excel': [],  # every figure here is recalculated (the supplier-select layout lists its own)
         }
 
 
 def run(book, m, margin_tolerance=ZERO):
+    if m['calc'] == maps.CALC_SELECT:
+        from .supplier_select import SelectRun
+        return SelectRun(book, m, margin_tolerance).run()
     return Run(book, m, margin_tolerance).run()

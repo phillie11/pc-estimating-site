@@ -8,13 +8,14 @@ from .models import OpenItem, PackClarification, PricingSettings
 
 
 class UploadForm(forms.Form):
-    file = forms.FileField(label='Pricing workbook (.xlsx)',
+    file = forms.FileField(label='Pricing workbook (.xlsx or .xlsm)',
                            help_text=f'The completed internal pricing workbook, up to {reader.MAX_BYTES // 2 ** 20} MB. '
                                      'Each upload is a new revision; earlier ones are kept.')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['file'].widget.attrs['accept'] = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        self.fields['file'].widget.attrs['accept'] = ('.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.'
+                                                      'spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12')
         style_widgets(self)
 
     def clean_file(self):

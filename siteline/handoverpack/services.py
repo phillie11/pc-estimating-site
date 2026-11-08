@@ -38,10 +38,33 @@ def read(data, org):
     except MappingError as e:
         raise reader.WorkbookRefused(f'Your company\'s workbook layout can\'t be used: {e}')
     book = reader.open_book(data, engine.extents(m))
+    suggested = _suggest(book, m)
     try:
-        return engine.run(book, m, (s.margin_tolerance or 0) / 100)
-    except ValueError as e:  # not the pricing workbook (no summary sheet)
+        result = engine.run(book, m, (s.margin_tolerance or 0) / 100)
+    except ValueError as e:  # not the pricing workbook (no summary sheet, or not this layout)
+        if suggested:
+            e = f'{e} It looks like the "{suggested["name"]}" layout: an owner can choose that under Settings > ' \
+                'Pricing workbook.'
         raise reader.WorkbookRefused(str(e))
+    result['suggested_layout'] = suggested
+    if suggested:
+        result['gaps'].append({
+            'code': 'layout_mismatch', 'title': f'This looks like the "{suggested["name"]}" layout',
+            'detail': f'Settings > Pricing workbook is set to "{m["name"]}". If the figures here look wrong, an owner '
+                      'can change the layout there and the workbook can be uploaded again.',
+            'sheet': '', 'cell': '', 'trade': '', 'amount': None, 'severity': 'info'})
+    return result
+
+
+def _suggest(book, m):
+    """The built-in layout the file looks like, when it isn't the one in use: {key, name} or None."""
+    from .mapping import PRESETS, detect
+    summary = m['summary']['sheet']
+    cells = [book.value(summary, r, c) for r in range(1, 13) for c in range(1, 12)]
+    key = detect(book.sheetnames, cells)
+    if key is None or key == m['key'] or key not in PRESETS:
+        return None
+    return {'key': key, 'name': PRESETS[key]['name']}
 
 
 class Busy(reader.WorkbookRefused):
@@ -60,9 +83,15 @@ def _check_size(t):
 def upload(project, user, f):
     """Read the file, store it as the next revision, and bring the pack up to date. Returns the PricingWorkbook."""
     from django.db import IntegrityError, OperationalError
-    reader.check_name(getattr(f, 'name', ''))
-    data = reader.read_bytes(f)
+    ext = reader.check_name(getattr(f, 'name', ''))
+    # An .xlsm is stripped of its macros and controls first; only that .xlsx copy is read and stored
+    data, removed, cleaned_notes = reader.prepare_report(reader.read_bytes(f), ext)
     result = read(data, project.organization)
+    if ext == '.xlsm':
+        result['notes'].insert(0, f'Uploaded as a macro-enabled workbook (.xlsm). Its macros and controls ({removed} '
+                                  'part' + ('s' if removed != 1 else '') + ') were removed before it was read, and only '
+                                  'that copy, saved as .xlsx, is kept.')
+    result['notes'][:0] = cleaned_notes
     t = result['totals']
     _check_size(t)
     stored = []
@@ -75,7 +104,7 @@ def upload(project, user, f):
             n = (PricingWorkbook.objects.filter(project=project).aggregate(n=Max('revision'))['n'] or 0) + 1
             wb = PricingWorkbook(
                 organization=project.organization, project=project, revision=n,
-                original_name=(getattr(f, 'name', '') or 'workbook.xlsx')[-200:], size=len(data),
+                original_name=(reader.xlsx_name(getattr(f, 'name', '')) or 'workbook.xlsx')[-200:], size=len(data),
                 sha256=reader.sha256(data), uploaded_by=user, mapping_key=result['mapping'],
                 label=result['header'].get('revision', '')[:40], cost=pennies(t['cost']), charge=pennies(t['charge']),
                 profit=pennies(t['profit']), excel_charge=pennies(t['excel_charge']),
@@ -144,13 +173,23 @@ def item_rows(wb, result):
     if t['reconciled'] is False:
         saved = f'{pennies(t["excel_charge"]):,}' if t['excel_charge'] is not None else \
             f'"{t.get("excel_text") or "blank"}"'
+        same_total = t['difference'] is not None and abs(t['difference']) < Decimal('0.005')
         rows.append(('rec:total', {
             'kind': OpenItem.RECONCILE, 'code': 'total_differs', 'severity': 'bad', 'trade': '',
-            'title': 'Pack total does not match the pricing summary',
-            'detail': f'Recalculated total charge {pennies(t["charge"]):,} against {saved} on the summary '
-                      f'({t["charge_cell"]}). The pack can\'t be issued until they agree.',
+            'title': 'The workbook does not reconcile cell by cell' if same_total else
+                     'Pack total does not match the pricing summary',
+            'detail': ('The totals agree, but cells listed with the reconciliation (a stale copy of a supplier\'s '
+                       'rates, or a total that isn\'t the sum of its rows) don\'t. Recalculate in Excel, correct the '
+                       'workbook, save and upload it again.' if same_total else
+                       f'Recalculated total charge {pennies(t["charge"]):,} against {saved} on the summary '
+                       f'({t["charge_cell"]}). The pack can\'t be issued until they agree.'),
             'source': _where('PRICING SUMMARY', t['charge_cell']),
-            'amount': pennies(abs(t['difference'])) if t['difference'] is not None else None}))
+            'amount': pennies(abs(t['difference'])) if t['difference'] is not None and not same_total else None}))
+    if t['reconciled'] is None and t.get('unchecked_reason'):
+        rows.append(('rec:calc', {
+            'kind': OpenItem.RECONCILE, 'code': 'not_calculated', 'severity': 'bad', 'trade': '',
+            'title': 'The workbook\'s saved values may be out of date', 'detail': t['unchecked_reason'],
+            'source': '', 'amount': None}))
     for issue in result['issues'][:MAX_RECONCILE_ITEMS]:
         saved = f'{pennies(issue["excel"]):,}' if issue['excel'] is not None else (issue['excel_text'] or 'blank')
         worked = f'{pennies(issue["computed"]):,}' if issue['computed'] is not None else 'blank'
@@ -166,10 +205,18 @@ def item_rows(wb, result):
                                   'title': f'{more} more cells do not reconcile',
                                   'detail': 'See the revision page for the full list.', 'source': '',
                                   'amount': None}))
+    keys = set()
     for g in result['gaps']:
         if g['severity'] == 'info':
             continue
-        rows.append((f'gap:{g["code"]}:{g["trade"]}:{g["cell"]}'[:200], {
+        key = f'gap:{g["code"]}:{g["trade"]}:{g["cell"]}'[:200]
+        if key in keys:  # two gaps of a kind with no trade or cell (two missing tabs): tell them apart by sheet
+            key = f'{key}:{g["sheet"]}'[:190]
+            n = 2
+            while key in keys:
+                key, n = f'{key.rsplit("#", 1)[0]}#{n}', n + 1
+        keys.add(key)
+        rows.append((key, {
             'kind': OpenItem.GAP, 'code': g['code'], 'severity': g['severity'], 'trade': g['trade'][:80],
             'title': g['title'][:200], 'detail': g['detail'], 'source': _where(g['sheet'], g['cell'])[:120],
             'amount': pennies(g['amount'])}))
@@ -254,6 +301,9 @@ def why_not_issue(pack, wb, project):
     if wb.reconciled is True:
         return None
     if wb.reconciled is None:
+        reason = (wb.result.get('totals') or {}).get('unchecked_reason')
+        if reason:  # manual calculation: the saved values are suspect, whatever the setting for unchecked files
+            return reason
         if settings_for(project.organization).unchecked_issue == PricingSettings.WARN:
             return None
         return ('The workbook has no values saved by Excel, so its total can\'t be checked against the pricing '
@@ -261,6 +311,9 @@ def why_not_issue(pack, wb, project):
     if wb.difference is None:
         return 'The pricing summary\'s total isn\'t a number (an error or text in Excel). Correct the workbook and ' \
                'upload it again.'
+    if abs(wb.difference) < Decimal('0.005'):
+        return 'The totals agree, but the workbook doesn\'t reconcile cell by cell (see the reconciliation). ' \
+               'Recalculate it in Excel, correct it, save, and upload it again.'
     return f'The pack total is {abs(wb.difference):,} out from the pricing summary. Correct the workbook and upload ' \
            'it again.'
 

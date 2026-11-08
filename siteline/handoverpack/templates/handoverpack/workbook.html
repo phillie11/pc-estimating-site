@@ -14,7 +14,7 @@
 {% endif %}
 {% if can_upload %}<section class="card" aria-labelledby="hp-up"><div class="card-body">
   <h2 id="hp-up" style="margin:0 0 6px">{% if latest %}Upload a new revision{% else %}Upload the pricing workbook{% endif %}</h2>
-  <p class="small dim" style="margin:0 0 10px">Siteline reads every trade tab, the prelim book, joinery and clarifications, recalculates each line, and checks the total against the pricing summary to the penny. Macro-enabled files are refused; save as .xlsx.</p>
+  <p class="small dim" style="margin:0 0 10px">Siteline reads every trade tab, the prelim book, joinery and clarifications, recalculates each line, and checks the total against the pricing summary to the penny. An .xlsm is fine: its macros are removed and only a copy without them is kept.</p>
   <form method="post" action="{% url 'hpack_upload' org.slug project.pk %}" enctype="multipart/form-data">{% csrf_token %}{% include "partials/form_fields.html" %}<div class="form-actions"><button class="btn primary">Upload and check</button></div></form>
 </div></section>{% elif pack.is_issued %}<p class="small dim">The pack was issued {{ pack.issued_at|date:"j M Y" }}, so the workbook is fixed.</p>{% endif %}
 {% if latest %}
