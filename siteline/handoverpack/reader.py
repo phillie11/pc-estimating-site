@@ -100,6 +100,14 @@ def prepare(data, ext):
     return clean(data)
 
 
+def prepare_report(data, ext):
+    """As prepare(), with notes on what was taken out for the estimator. -> (bytes, parts removed, notes)"""
+    try:
+        return ooxml.clean_report(data, max_unzipped=MAX_UNZIPPED, max_parts=MAX_PARTS)
+    except ooxml.Refused as e:
+        raise WorkbookRefused(str(e))
+
+
 def _value(v):
     """openpyxl values as Decimal, text, ISO date or None. Floats go through their shortest repr, never kept as float."""
     if v is None:

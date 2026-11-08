@@ -120,7 +120,7 @@ class EncodedTypesTests(Assertions):
         for ext in ('.xlsm', '.xlsx'):
             with self.subTest(ext):
                 clean, removed = reader.prepare(data, ext)
-                self.assertEqual(removed, 1)
+                self.assertEqual(removed, 2)  # the VBA part, and the comment's VML drawing
                 self.assertNoActiveContent(clean)
                 self.assertEqual(types(clean)['/xl/workbook.xml'],
                                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml')
@@ -288,7 +288,7 @@ class RelationshipTests(Assertions):
 
     def test_an_unreferenced_part_is_not_kept(self):
         clean, removed = reader.prepare(rebuild(plain(), extra=[('xl/stray.bin', VBA)]), '.xlsx')
-        self.assertEqual(removed, 1)
+        self.assertEqual(removed, 2)  # the stray part, and the comment's VML drawing
         self.assertNotIn('xl/stray.bin', parts(clean))
 
 
@@ -319,19 +319,19 @@ class LinearTimeTests(SimpleTestCase):
 
 class FormControlTests(SimpleTestCase):
     """F8: a realistic form control (VML check box with its macro, the control in the sheet, ActiveX) comes out
-    cleanly: the comment beside it survives and the stored copy opens and saves in openpyxl without complaint."""
+    cleanly: the comment beside it survives (its VML box doesn't) and the stored copy opens and saves in openpyxl
+    without complaint."""
 
-    def test_vml_checkbox_removed_comment_kept(self):
+    def test_legacy_vml_goes_whole_and_the_comment_stays(self):
+        """Review 2, item 8: VML is dropped entirely, the comment box with it; the comment's text is kept."""
         before = parts(xlsm())
         vml_name = next(n for n in before if n.endswith('.vml'))
         self.assertIn(b'ObjectType="Checkbox"', before[vml_name])
         clean, _ = reader.strip_macros(xlsm())
         p = parts(clean)
-        vml = p[vml_name]
-        self.assertNotIn(b'Checkbox', vml)
-        self.assertNotIn(b'FmlaMacro', vml)
-        self.assertIn(b'ObjectType="Note"', vml)
-        self.assertIn(b'legacyDrawing', p['xl/worksheets/sheet5.xml'])
+        self.assertFalse([n for n in p if n.endswith('.vml')])
+        self.assertNotIn(b'legacyDrawing', p['xl/worksheets/sheet5.xml'])
+        self.assertNotIn(b'FmlaMacro', b''.join(p.values()))
         import warnings
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
@@ -339,17 +339,6 @@ class FormControlTests(SimpleTestCase):
             wb.save(io.BytesIO())
         self.assertEqual([str(x.message) for x in w], [])
         self.assertEqual(wb.worksheets[4]['A2'].comment.text, 'Checked against the quotes')
-
-    def test_vml_with_only_controls_goes_with_its_reference(self):
-        def e(f):
-            name = next(n for n in f if n.endswith('.vml'))
-            f[name] = re.sub(rb'<ns1:shape .*?</ns1:shape>', b'', f[name], flags=re.S)  # the comment box out
-            return f
-        clean, _ = reader.strip_macros(rebuild(xlsm(), e))
-        p = parts(clean)
-        self.assertFalse([n for n in p if n.endswith('.vml')])
-        self.assertNotIn(b'legacyDrawing', p['xl/worksheets/sheet5.xml'])
-        openpyxl.load_workbook(io.BytesIO(clean)).save(io.BytesIO())
 
     def test_drawing_form_controls_and_macro_buttons(self):
         xml = (b'<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="'

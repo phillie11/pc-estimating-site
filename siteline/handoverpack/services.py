@@ -85,12 +85,13 @@ def upload(project, user, f):
     from django.db import IntegrityError, OperationalError
     ext = reader.check_name(getattr(f, 'name', ''))
     # An .xlsm is stripped of its macros and controls first; only that .xlsx copy is read and stored
-    data, removed = reader.prepare(reader.read_bytes(f), ext)
+    data, removed, cleaned_notes = reader.prepare_report(reader.read_bytes(f), ext)
     result = read(data, project.organization)
     if ext == '.xlsm':
         result['notes'].insert(0, f'Uploaded as a macro-enabled workbook (.xlsm). Its macros and controls ({removed} '
                                   'part' + ('s' if removed != 1 else '') + ') were removed before it was read, and only '
                                   'that copy, saved as .xlsx, is kept.')
+    result['notes'][:0] = cleaned_notes
     t = result['totals']
     _check_size(t)
     stored = []

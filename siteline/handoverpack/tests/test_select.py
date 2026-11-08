@@ -65,7 +65,7 @@ class StripTests(SimpleTestCase):
         self.assertIn('xl/vbaProject.bin', before)
         self.assertIn(b'macroEnabled', before['[Content_Types].xml'])
         clean, removed = reader.strip_macros(xlsm)
-        self.assertEqual(removed, 5)  # VBA project, its signature, ActiveX control and binary, form control
+        self.assertEqual(removed, 6)  # VBA project, signature, ActiveX control and binary, form control, VML
         after = parts(clean)
         names = [n.lower() for n in after]
         self.assertFalse([n for n in names if 'vba' in n or n.startswith(('xl/activex/', 'xl/ctrlprops/'))])
@@ -95,7 +95,7 @@ class StripTests(SimpleTestCase):
 
     def test_a_plain_workbook_named_xlsm_passes_through(self):
         clean, removed = reader.prepare(demo(), '.xlsm')
-        self.assertEqual(removed, 0)
+        self.assertEqual(removed, 1)  # the comment's VML drawing (the comment stays)
         self.assertEqual(reader.clean(clean)[1], 0)
 
     def test_an_xlsx_with_macros_inside_is_stripped_the_same_way(self):
