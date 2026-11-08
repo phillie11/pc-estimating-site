@@ -78,6 +78,29 @@ class ParseTests(SimpleTestCase):
         rows, _ = importer.read(csv_file('Ref,Description,Qty,Unit\nJ1,Desk – oak,1,nr\n', enc='cp1252'))
         self.assertEqual(rows[0].description, 'Desk – oak')
 
+    def test_a_hyperlink_note_below_the_lines_is_not_a_line_but_lump_sums_are(self):
+        def setup(ws):
+            ws['A12'] = 'T&Cs'
+            ws['A12'].hyperlink = 'https://example.com/terms'
+            ws['A13'] = 'E&OE'
+        f = xlsx([['Acme Joinery quotation'], [], HEAD,
+                  ['J1', 'Reception desk', 1, 'nr', 1450.5, 1450.5], ['J2', 'Base units', 8, 'm', 520, 4160],
+                  ['J3', 'Delivery and install', None, None, None, 850],      # lump sum, total only
+                  ['J4', 'Design', None, 'Item', 'Incl', None],               # included, no figure
+                  ['J5', None, None, None, None, 300],                        # ref and a sum, no description
+                  ['J6', 'Spare doors', 2, 'nr', None, None]],                # their copy, not priced: still a line
+                 name='quote.xlsx', setup=setup)
+        rows, skipped = importer.read(f)
+        self.assertEqual([(r.ref, r.description, r.qty, r.rate, r.total, r.included) for r in rows], [
+            ('J1', 'Reception desk', D('1'), D('1450.50'), D('1450.50'), False),
+            ('J2', 'Base units', D('8'), D('520.00'), D('4160.00'), False),
+            ('J3', 'Delivery and install', None, None, D('850.00'), False),
+            ('J4', 'Design', None, None, None, True),
+            ('J5', 'J5', None, None, D('300.00'), False),
+            ('J6', 'Spare doors', D('2'), None, None, False)])
+        self.assertNotIn('T&Cs', [r.ref for r in rows] + [r.description for r in rows])
+        self.assertEqual(skipped, 2)
+
     def test_nothing_usable(self):
         with self.assertRaises(WorkbookRefused):
             importer.read(xlsx([HEAD]))
