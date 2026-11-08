@@ -63,13 +63,18 @@ def scrub(text, limit=None, names=None, money=False):
     return text[:limit] if limit else text
 
 
+# Words a bidder slot holds when no company is named: kept, since they say what the line is
+NOT_A_SUPPLIER = {'own allowance', 'own rate', 'provisional sum', 'provisional', 'prov sum', 'ps', 'tbc', 'tba',
+                  'n/a', 'na', 'none', 'by others', 'by client', 'client', 'allowance', 'bidder'}
+
+
 def supplier_names(result):
     """A pattern matching every supplier named in the workbook's bidder slots (longest first), or None."""
     names = set()
     for tr in result['trades']:
         for name in [*tr.get('suppliers', []), tr.get('supplier') or '']:
             name = ' '.join(str(name or '').split())
-            if len(name) >= 3:
+            if len(name) >= 3 and name.casefold() not in NOT_A_SUPPLIER and not name.casefold().startswith('bidder '):
                 names.add(name)
     if not names:
         return None

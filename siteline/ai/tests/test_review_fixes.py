@@ -125,6 +125,8 @@ class F3WhatClarificationsSend(ClarSetup):
             self.assertNotIn(leak, text)
         self.assertIn('186', text)  # quantities in the line itself still go
         self.assertIn('£5,000', text)  # and the provisional sum's own amount
+        self.assertIn('Provisional sum: landlord', text)  # a placeholder in a bidder slot isn't a supplier
+        self.assertIn('Own allowance £2,865', text)
 
     def test_profile_and_overheads_go_only_with_the_tender_reader(self):
         self.switch_on(overheads_profit=D('12.50'), profile='Offices and retail, £400k to £2.5m')
