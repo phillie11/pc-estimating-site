@@ -1377,7 +1377,7 @@ class JourneyTest(TestCase):
         from procurement.models import Submittal
         from projects.models import Issue
         client_user = User.objects.get(email='cara@northerntaverns.test')
-        # Practical completion on the whole works: the JCT IC defects period runs from it
+        # Practical completion on the whole works: the defects period (12 months, the default) runs from it
         r = self.get('pm', self.pu('closeout_section', 'whole'))
         data = form_data(r, 'pc_date')
         data.update({'pc_date': TODAY().isoformat(), 'made_good_on': ''})
@@ -1385,7 +1385,7 @@ class JourneyTest(TestCase):
         page = text(r)
         # JCT IC's rectification period is 6 months unless the contract says otherwise (advisory)
         from closeout.rules import add_months
-        self.assertIn(f'The defects period ends on {add_months(TODAY(), 6):%d %b %Y}.', page)
+        self.assertIn(f'The defects period ends on {add_months(TODAY(), 12):%d %b %Y}.', page)
         self.assertIn('advisory', page.lower())
 
         # The client reports a defect in the portal: it goes to the PM to give to someone
