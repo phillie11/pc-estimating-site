@@ -305,6 +305,33 @@ class OwnSealSignOffTests(PortalBase):
             apply_transition(p, 'sign_off', self.pat)
         self.assertEqual(self.fresh(p).status, Penetration.SIGNED_OFF)
 
+    def test_turning_it_back_on_moves_seals_left_with_the_person_who_sealed_them(self):
+        with org_context(self.org_a):
+            s = QualitySettings.for_org(self.org_a)
+            s.fs_independent_sign_off = False
+            s.save()
+        stuck = self.sealed_by(self.pat)      # self sign-off allowed: the PM sealed it and it waits on the PM
+        other = self.sealed_by(self.sam)      # waits on the PM, who didn't seal it: left alone
+        self.assertEqual((stuck.ball_in_court_user, other.ball_in_court_user), (self.pat, self.pat))
+        self.login(self.alice)
+        r = self.client.post(self.url('quality_settings'), {'permit_hours': 8, 'expiry_warning_hours': 2,
+                                                           'fire_watch_minutes': 60, 'fs_independent_sign_off': 'on'},
+                             follow=True)
+        self.assertContains(r, 'Seals waiting on the person who recorded them to sign off: 1')
+        stuck, other = self.fresh(stuck), self.fresh(other)
+        self.assertIn(stuck.ball_in_court_user, (self.alice, self.adam))
+        self.assertEqual(other.ball_in_court_user, self.pat)
+        with org_context(self.org_a):
+            with self.assertRaises(Exception):
+                apply_transition(stuck, 'sign_off', self.pat)
+            apply_transition(self.fresh(stuck), 'sign_off', stuck.ball_in_court_user)
+        self.assertEqual(self.fresh(stuck).status, Penetration.SIGNED_OFF)
+        # Saving again with it already on moves nothing
+        r = self.client.post(self.url('quality_settings'), {'permit_hours': 8, 'expiry_warning_hours': 2,
+                                                           'fire_watch_minutes': 60, 'fs_independent_sign_off': 'on'},
+                             follow=True)
+        self.assertNotContains(r, 'Seals waiting on')
+
     def test_the_setting_is_on_the_quality_settings_page(self):
         self.login(self.alice)
         r = self.client.get(self.url('quality_settings'))
