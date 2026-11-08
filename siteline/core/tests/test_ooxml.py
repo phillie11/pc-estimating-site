@@ -218,7 +218,7 @@ class FormulaTests(SimpleTestCase):
                 e = refused(self, edited(lambda f, x=formula: f.__setitem__(S, f[S].replace(b'<f>1+1</f>',
                                                                                           b'<f>' + x + b'</f>'))),
                             'fetch')
-                self.assertIn('Sheet Sheet cell B1', str(e))
+                self.assertIn("Sheet 'Sheet', cell B1", str(e))
         ooxml.clean(edited(lambda f: f.__setitem__(S, f[S].replace(
             b'<f>1+1</f>', b'<f>HYPERLINK("https://example.com/spec","Spec")</f>'))))
 

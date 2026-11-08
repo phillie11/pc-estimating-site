@@ -45,7 +45,8 @@ import unicodedata
 import zipfile
 from urllib.parse import unquote, urlsplit
 from xml.parsers import expat
-from xml.sax.saxutils import escape, quoteattr  # nosec B406 - only escapes output; nothing is parsed with it
+# saxutils is only used to escape output; nothing is parsed with it
+from xml.sax.saxutils import escape, quoteattr  # nosec B406
 
 from .excel_functions import ALLOWED as FUNCTIONS
 from .excel_functions import NEVER
@@ -267,6 +268,14 @@ def _refuse_function(name, where, why):
 ANY_NAME = re.compile(r'[^\W\d][\w.\\]*')
 XL_PREFIX = re.compile(r'_xl[a-z]*\.', re.I)
 NEVER_FOLDED = frozenset(n.casefold() for n in NEVER)
+# Excel 4 macro functions: a defined name may not take one of these names either
+XLM_FUNCTIONS = frozenset('''
+ALERT APP.ACTIVATE CALL CANCEL.KEY DIRECTORY ECHO ERROR EVALUATE EXEC EXECUTE FCLOSE FILES FOPEN FORMULA FORMULA.ARRAY
+FORMULA.FILL FORMULA.FIND FPOS FREAD FREADLN FSIZE FWRITE FWRITELN GET.BAR GET.CELL GET.CHART.ITEM GET.DEF
+GET.DOCUMENT GET.FORMULA GET.LINK.INFO GET.NAME GET.NOTE GET.OBJECT GET.PIVOT.FIELD GET.PIVOT.ITEM GET.PIVOT.TABLE
+GET.TOOL GET.TOOLBAR GET.WINDOW GET.WORKBOOK GET.WORKSPACE HALT INITIATE INPUT ON.KEY ON.TIME POKE REGISTER
+REGISTER.ID REQUEST RESTART RETURN RUN SEND.KEYS SET.NAME SET.VALUE SHELL TERMINATE UNREGISTER
+'''.split())
 CACHE_TEXT = 1024          # formulas shorter than this are remembered within one clean()
 CACHE_ENTRIES = 20000      # and at most this many
 
@@ -300,25 +309,75 @@ def _without_strings(text):
     return ''.join(out)
 
 
+def _skip(text, i):
+    """Where the string, quoted name or bracketed reference starting at i ends (just after it), or -1 if it never
+    does. Quotes double to escape; inside brackets ' escapes the next character and brackets nest."""
+    n, ch = len(text), text[i]
+    if ch in '"\'':
+        j = i + 1
+        while True:
+            k = text.find(ch, j)
+            if k < 0:
+                return -1
+            if k + 1 < n and text[k + 1] == ch:
+                j = k + 2
+                continue
+            return k + 1
+    depth, j = 0, i
+    while j < n:
+        c = text[j]
+        if c == "'":
+            j += 2
+            continue
+        if c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    return -1
+
+
 def _never_anywhere(text):
     """
-    The deliberately conservative check: any run that could be a name, anywhere outside a string literal (inside
-    brackets and quoted sheet names too, and after any _xl...: prefix), that is one of the never-allowed functions.
-    A table column literally called WEBSERVICE is refused with it; that is accepted.
+    The conservative check, for the never-allowed functions only: a name (Unicode letters too; compared after NFKC,
+    case folding and dropping marks, after stripping any _xl...: prefixes) that is one of them, in function
+    position: followed by ( after any space; or carrying an _xl...: prefix; or standing bare as a whole argument
+    (between ( or , and , or ), which is how one is passed by name). Strings, quoted sheet names and bracketed
+    references are skipped, and a name followed by ! is a sheet, so 'Risk Register'!B2, PY!B2 and T1[Call] pass.
     """
-    bare = _without_strings(text)
-    if bare is None:
-        return ('layout', '')
-    for m in ANY_NAME.finditer(bare):
-        name = m.group(0)
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch in '"\'[':
+            end = _skip(text, i)
+            if end < 0:
+                return ('layout', '')
+            i = end
+            continue
+        m = ANY_NAME.match(text, i)
+        if not m:
+            i += 1
+            continue
+        raw, end = m.group(0), m.end()
+        name, prefixed = raw, False
         while True:
             p = XL_PREFIX.match(name)
             if not p:
                 break
-            name = name[p.end():]
+            name, prefixed = name[p.end():], True
         folded = _fold(name)
         if folded in NEVER_FOLDED or folded.startswith('get.'):
-            return ('fetch', name, 'which fetches from the internet or a database, or runs another program')
+            after = SPACES.match(text, end).end()
+            nxt = text[after] if after < n else ''
+            k = i - 1
+            while k >= 0 and text[k].isspace():  # only the space just before this name: linear overall
+                k -= 1
+            before = text[k] if k >= 0 else ''
+            if nxt != '!' and (nxt == '(' or prefixed or (before in ('(', ',') and nxt in (',', ')'))):
+                return ('fetch', name, 'which fetches from the internet or a database, or runs another program')
+        i = end
     return None
 
 
@@ -402,6 +461,7 @@ def _problem(text, names):
             if name in NEVER:
                 return ('fetch', name, 'which fetches from the internet or a database, or runs another program')
             if name not in FUNCTIONS and not (called and not prefixed and raw.casefold() in names):
+                # (names holds only the workbook's names whose definition is a LAMBDA)
                 return ('unknown', raw, 'which isn\'t one of Excel\'s worksheet functions')
             if called and name == 'HYPERLINK':
                 k = SPACES.match(text, after + 1).end()
@@ -890,6 +950,13 @@ def _workbook(root, gone):
             name = dict(n.attrs).get('name') or ''
             if AUTO_RUN.match(name):
                 refuse('autorun')
+            bare = name.upper()
+            lam = n.text().strip().lstrip('=').lstrip().casefold().startswith('_xlfn.lambda(')
+            # Only a LAMBDA name can be called (see _defined_names), so only one could shadow a function; a plain
+            # name such as Register, Rate or N refers to cells or a value and stays
+            if lam and (bare in FUNCTIONS or bare in NEVER or bare in XLM_FUNCTIONS):
+                refuse('fetch', f'The workbook defines a name {name[:60]}, which is also the name of a function, so '
+                                'the workbook was refused. Rename it, save, and upload it again.')
             check_formula(n.text(), f'The name {name[:60]}')
     return _prune(root, lambda n: n.is_(MAIN_NS, 'externalReferences') or n.is_(MAIN_NS, 'webPublishObjects')
                   or _rel_refs(n, gone), gone)
@@ -1035,7 +1102,7 @@ class _SheetFilter:
         if self.fchars > MAX_FORMULA_CHARS:
             refuse('size')
         attrs = dict(self.f_attrs)
-        where = f'{self.where} cell {self.cell or "?"}'
+        where = f'{self.where}, cell {self.cell or "?"}'
         problem = formula_problem(text) if text else None
         si = attrs.get('si')
         if attrs.get('t') == 'shared' and si is not None:
@@ -1195,13 +1262,16 @@ XML_TYPES_PARSED_WHEN_POINTING = {CHART, CHARTSHAPES}
 
 
 def _defined_names(pkg, keep):
-    """The names the workbook defines (case folded): a formula may call one (a LAMBDA bound to a name)."""
+    """The workbook's names (case folded) that hold a LAMBDA: a formula may call one of those, and nothing else the
+    workbook defines (a name called EVALUATE defined as =1 must not unlock EVALUATE(...))."""
     out = set()
     for key in keep:
         if key and pkg.ctype(key) in MAINS:
             for n in parse(pkg.read(key)).walk():
                 if n.is_(MAIN_NS, 'definedName'):
-                    out.add((dict(n.attrs).get('name') or '').casefold())
+                    body = n.text().strip().lstrip('=').lstrip().casefold()
+                    if body.startswith('_xlfn.lambda('):
+                        out.add((dict(n.attrs).get('name') or '').casefold())
     return frozenset(out)
 
 
@@ -1272,7 +1342,7 @@ def _clean_parts(pkg, keep, kept_rels, dropped, notes):
 
 def _stream_sheet(pkg, key, w, gone, where, notes):
     w('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
-    f = _SheetFilter(w, gone, f'Sheet {where}')
+    f = _SheetFilter(w, gone, f"Sheet '{where}'")
     p = _parser()
     p.StartElementHandler, p.EndElementHandler, p.CharacterDataHandler = f.start, f.end, f.chars
     try:

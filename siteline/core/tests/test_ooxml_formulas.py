@@ -44,7 +44,7 @@ class FunctionAllowlistTests(SimpleTestCase):
             # Round 3: escapes in a structured reference, a bracket left open, names never called, a LAMBDA's
             # parameter called, a no-break space, lower case, a dotted capital I
             "T1[a'[]+_xlfn.WEBSERVICE(\"http://x.invalid/\")+T1[c']]": 'WEBSERVICE',
-            '[+_xlfn.WEBSERVICE("http://x.invalid/")': 'WEBSERVICE', '_xlfn.MAP(A1:A2,WEBSERVICE)': 'WEBSERVICE',
+            '_xlfn.MAP(A1:A2,WEBSERVICE)': 'WEBSERVICE',
             '_xlfn.MAP(A1:A2,_xlfn.WEBSERVICE)': 'WEBSERVICE', '_xlfn.MAP(A1:A2,_xlfn._xleta.WEBSERVICE)': 'WEBSERVICE',
             '_xlfn.LET(_xlpm.x,1,_xlpm.WEBSERVICE("http://x.invalid/"))': 'WEBSERVICE',
             '_xlfn.WEBSERVICE\u00a0("http://x.invalid/")': 'WEBSERVICE', '_xlfn.webservice("x")': 'webservice',
@@ -54,7 +54,10 @@ class FunctionAllowlistTests(SimpleTestCase):
             with self.subTest(formula):
                 e = refused(self, with_formula(formula), 'fetch')
                 self.assertIn(name, str(e))
-                self.assertIn('Sheet Sheet cell B1', str(e))
+                self.assertIn("Sheet 'Sheet', cell B1", str(e))
+
+    def test_an_unclosed_bracket_is_refused(self):
+        refused(self, with_formula('[+_xlfn.WEBSERVICE("http://x.invalid/")'), 'layout')
 
     def test_never_wins_over_the_list(self):
         with mock.patch.object(ooxml, 'FUNCTIONS', ooxml.FUNCTIONS | {'WEBSERVICE', 'IMAGE'}):
@@ -101,7 +104,7 @@ class FunctionAllowlistTests(SimpleTestCase):
         out = files(clean)[S]
         self.assertNotIn(b'NumberToPounds', out)
         self.assertIn(b'<v>42</v>', out)
-        self.assertIn('Sheet Sheet cell B1 (NumberToPounds)', notes[0])
+        self.assertIn("Sheet 'Sheet', cell B1 (NumberToPounds)", notes[0])
         self.assertEqual(openpyxl.load_workbook(io.BytesIO(clean), data_only=True).active['B1'].value, 42)
 
     def test_a_shared_formula_taken_out_takes_the_cells_repeating_it(self):
