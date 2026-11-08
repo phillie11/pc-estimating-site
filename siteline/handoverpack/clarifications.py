@@ -10,7 +10,7 @@ in the pack, its export or an issued pack (HandoverPack.visible_clarifications).
 What is sent, and only this (data minimisation): the latest revision's trade lines (trade, the workbook's line
 ref, description, quantity, unit, whether priced, included, excluded, provisional or an own allowance, and the
 line's comment), the charge on provisional sums and own allowances only (no cost, margin, markup or supplier
-names), the excluded trades, the gaps Siteline found, the site rules, and the clarifications already in the pack
+names), the excluded trades, the gaps Siteline found (not the margin or markup ones), the site rules, and the clarifications already in the pack
 so they aren't repeated. Email addresses and phone numbers are taken out of all of it. Nothing from any other
 project or company.
 
@@ -26,6 +26,8 @@ MAX_DESC = 300
 MAX_RULES = 4000
 MAX_DRAFTS = 60
 MAX_TEXT = 2000
+# Gaps about margin and markup are commercial, not scope: they are never sent
+COMMERCIAL_GAPS = {'margin_below_target', 'no_target_margin', 'zero_markup'}
 
 EMAIL = re.compile(r'[\w.+-]+@[\w-]+(\.[\w-]+)+')
 PHONE = re.compile(r'(?<!\w)(?:\+44\s?|0)(?:\d[\s-]?){9,10}(?!\w)')
@@ -107,9 +109,10 @@ def build_input(pack):
         out.append(' | '.join([key, 'Preliminaries', '', scrub(ln['description'], MAX_DESC),
                                f'{ln["qty"] if ln["qty"] is not None else ""} {ln["unit"] or ""}'.strip(),
                                engine.CLASS_LABELS[ln['cls']], scrub(ln['basis'], 200)]))
-    if r['gaps']:
+    gaps = [g for g in r['gaps'] if g['code'] not in COMMERCIAL_GAPS]
+    if gaps:
         out.append('\nGaps Siteline found in the workbook:')
-        for g in r['gaps'][:80]:
+        for g in gaps[:80]:
             out.append(f'- {scrub(g["title"], 200)}: {scrub(g["detail"], 300)}')
     if pack.site_rules.strip():
         out.append('\nSite rules:\n' + scrub(pack.site_rules, MAX_RULES))
