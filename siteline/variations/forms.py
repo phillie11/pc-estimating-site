@@ -20,7 +20,7 @@ class VariationForm(RecordFormMixin, StyledModelForm):
 
     def __init__(self, *args, project=None, vocab=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['rfi'].queryset = RFI.objects.filter(project=project)
+        self.fields['rfi'].queryset = RFI.issued(RFI.objects.filter(project=project))
         self.fields['value'].widget.attrs.setdefault('inputmode', 'decimal')
         if vocab:
             words = vocab['time_extension'].capitalize()

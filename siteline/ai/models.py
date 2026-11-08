@@ -71,9 +71,10 @@ class AISettings(TenantModel):
         return '\n'.join(lines)
 
 
-CLARIFICATIONS, TENDER_BRIEF, QUOTE_MAPPING = 'clarifications', 'tender_brief', 'quote_mapping'
+CLARIFICATIONS, TENDER_BRIEF, QUOTE_MAPPING, RFI_DRAFTING = (
+    'clarifications', 'tender_brief', 'quote_mapping', 'rfi_drafting')
 FEATURE_CHOICES = [(CLARIFICATIONS, 'Handover pack clarifications'), (TENDER_BRIEF, 'Tender reader'),
-                   (QUOTE_MAPPING, 'Quote mapping')]
+                   (QUOTE_MAPPING, 'Quote mapping'), (RFI_DRAFTING, 'RFI drafting')]
 
 
 class Playbook(TenantModel):

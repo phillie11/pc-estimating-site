@@ -253,6 +253,10 @@ class RecordBase(TenantModel):
         default_manager_name = 'objects'
         unique_together = [('project', 'number')]
 
+    def takes_number(self):
+        """Whether this record takes its register number now. A subclass may wait (RFI drafts do)."""
+        return True
+
     # --- display --------------------------------------------------------------
     @property
     def reference(self):
@@ -321,12 +325,14 @@ class RecordBase(TenantModel):
         expected, before = self.version, (self.pk, self.number, self.ref)
         try:
             with transaction.atomic():
-                if adding:
-                    if actor is not None and not self.created_by_id:
-                        self.created_by = actor
-                    # A number set by hand is kept, and the sequence moves past it
-                    self.number = next_number(self, explicit=self.number or None)
-                if not self.ref:
+                if adding and actor is not None and not self.created_by_id:
+                    self.created_by = actor
+                if self.number is None or adding:
+                    if self.takes_number():
+                        # A number set by hand is kept, and the sequence moves past it. A record that waits
+                        # (an RFI drafted but not issued) takes its number on the first save that it may
+                        self.number = next_number(self, explicit=self.number or None)
+                if not self.ref and self.number is not None:
                     self.ref = rt.format_ref(self.number)
                 if actor is not None:
                     self.updated_by = actor
@@ -354,6 +360,8 @@ class RecordBase(TenantModel):
             if adding:
                 self.pk, self.number, self.ref = before
                 self._state.adding = True
+            else:
+                self.number, self.ref = before[1], before[2]
             raise
         after = self._audit_values()
         if saved is None:

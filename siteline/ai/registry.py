@@ -22,7 +22,7 @@ usage records and worker pick it up from the registry.
 """
 from dataclasses import dataclass
 
-from .models import CLARIFICATIONS, QUOTE_MAPPING, TENDER_BRIEF
+from .models import CLARIFICATIONS, QUOTE_MAPPING, RFI_DRAFTING, TENDER_BRIEF
 
 PLAYBOOK_MAX_CHARS = 8000
 PROFILE_MAX_CHARS = 1500
@@ -251,6 +251,62 @@ def _quote_schema():
     }
 
 
+RFI_RULES = """\
+Task: draft requests for information (RFIs) from our team to the client's design team, from the tender documents.
+For each RFI give doc (the document number shown as "Document N", or 0 if it rests on no single document) and
+page (the page in that PDF, counting the first page as 1, or 0 if unknown). subject is a short title, at most
+120 characters. question is what goes to the design team. why is for our own staff only: what the answer changes
+in the price or the programme. category and priority come from the lists given. Do not repeat a question listed
+under "RFIs already raised".
+"""
+
+RFI_PLAYBOOK = """\
+How we write RFIs
+
+- Ask only what changes the price or the programme: scope, quantities, who supplies what, specification, and
+  dates or sequences that change how we resource the job. Leave out anything a competent estimator settles by
+  standard practice, anything we have decided to own, typing errors, and questions already answered somewhere in
+  the documents.
+- One question per RFI. Write it as one person asking another, in two to four sentences in the first person
+  plural, ending in a question: say what we found, what we have assumed or priced meanwhile, then ask.
+- Name the drawing, schedule or clause inside the sentence where it reads naturally ("drawing A-201 shows...",
+  "clause 3.4 of the specification"). Where two documents disagree, name both and say which reading we have
+  taken for now.
+- Give the consequence where it helps the reader: a quantity, the number of rooms affected, a bill item.
+- No "Issue:" and "Request:" labels, no headings or bullet points inside the question, no "please confirm the
+  following", no opening with "Clarification required".
+- Group by discipline: architectural, structural, mechanical and electrical, contractual. Pick the closest
+  category.
+- Priority: high or urgent only where the answer is needed before pricing can finish or an order is placed.
+- Read every question back as the person receiving it. If it could be answered with a bare "noted", it is not a
+  question yet.
+- Leave out our internal names, internal decisions and anything else the client doesn't need to see.
+"""
+
+RFI_CATEGORIES = ['DESIGN', 'TECHNICAL', 'SPECIFICATION', 'DRAWING', 'COMMERCIAL', 'PROGRAMME', 'SITE',
+                  'HEALTH_SAFETY', 'OTHER']
+RFI_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT']
+
+
+def _rfi_schema():
+    item = {
+        'type': 'object',
+        'properties': {
+            'subject': {'type': 'string'},
+            'question': {'type': 'string'},
+            'why': {'type': 'string'},
+            'category': {'type': 'string', 'enum': RFI_CATEGORIES},
+            'priority': {'type': 'string', 'enum': RFI_PRIORITIES},
+            'doc': {'type': 'integer'},
+            'page': {'type': 'integer'},
+        },
+        'required': ['subject', 'question', 'why', 'category', 'priority', 'doc', 'page'],
+        'additionalProperties': False,
+    }
+    return {'type': 'object', 'properties': {'rfis': {'type': 'array', 'items': item}}, 'required': ['rfis'],
+            'additionalProperties': False}
+
+
 @dataclass(frozen=True)
 class AITask:
     key: str
@@ -284,6 +340,8 @@ TASKS = {t.key: t for t in (
            max_tokens=32000,
            playbook_help='How your company reads a subcontractor\'s quote into the levelling: rates or sums, '
                          'notes, tying to the total, exclusions.'),
+    AITask(RFI_DRAFTING, 'RFI drafting', RFI_DRAFTING, RFI_RULES, RFI_PLAYBOOK, _rfi_schema(), max_tokens=32000,
+           playbook_help='How your company writes RFIs to the design team: what is worth asking, and how to ask it.'),
 )}
 
 

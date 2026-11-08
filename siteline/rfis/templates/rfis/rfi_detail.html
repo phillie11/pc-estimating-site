@@ -1,5 +1,6 @@
 {% extends "project_base.html" %}{% load ui viewer_tags %}
 {% block project_actions %}{% if is_internal %}
+  {% if rfi.status == 'DRAFT' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="issue"><button class="btn primary">Issue</button></form>{% endif %}
   {% if rfi.status == 'RESPONDED' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="close"><button class="btn primary">Accept &amp; close</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn">Reopen</button></form>{% endif %}
   {% if rfi.status == 'CLOSED' or rfi.status == 'VOID' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn">Reopen</button></form>{% endif %}
   {% if rfi.status != 'CLOSED' and rfi.status != 'VOID' %}<a class="btn" href="{% url 'rfi_edit' org.slug project.pk rfi.pk %}">Edit</a>{% endif %}
@@ -34,6 +35,8 @@
     {% if is_internal and rfi.status == 'OPEN' %}<div class="card-foot"><form method="post" class="row">{% csrf_token %}<input type="hidden" name="action" value="reassign"><select name="ball_in_court_user" style="flex:1">{% for u in reassign_form.fields.ball_in_court_user.queryset %}<option value="{{ u.pk }}" {% if u.pk == rfi.ball_in_court_user_id %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select><button class="btn sm">Pass ball</button></form></div>{% endif %}
     </div>
     {% if variations %}<div class="card"><div class="card-head"><h3>Linked variations</h3></div><ul class="list">{% for v in variations %}<li><span class="ref">{{ v.reference }}</span><a class="grow" href="{{ v.get_absolute_url }}">{{ v.title }}</a>{% badge v.get_status_display v.status_tone %}</li>{% endfor %}</ul></div>{% endif %}
+    {% if is_internal and rfi.ai_drafted %}<div class="card"><div class="card-body"><p class="small" style="margin:0">{% if rfi.status == 'DRAFT' %}{% badge "AI draft" "warn" %} Drafted by AI from the bid's documents. Check it against {{ rfi.document_reference|default:"the documents" }}, edit it, then issue it. Nobody outside sees it until then.{% else %}Drafted by AI, checked and issued by your team.{% endif %}</p>{% if rfi.ai_basis %}<p class="small dim" style="margin:6px 0 0">Why it matters (staff only): {{ rfi.ai_basis }}</p>{% endif %}</div></div>{% endif %}
+    {% if is_internal and rfi.status == 'DRAFT' %}<form method="post" data-confirm="Void this draft?">{% csrf_token %}<input type="hidden" name="action" value="void"><button class="linkbtn small">Void this draft</button></form>{% endif %}
     {% if is_internal and rfi.status == 'OPEN' %}<form method="post" data-confirm="Void this RFI?">{% csrf_token %}<input type="hidden" name="action" value="void"><button class="linkbtn small">Void this RFI</button></form>{% endif %}
   </div>
 </div>

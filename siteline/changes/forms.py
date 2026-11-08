@@ -43,7 +43,7 @@ class ChangeEventForm(RecordFormMixin, StyledModelForm):
     def __init__(self, *args, project=None, contract=None, vocab=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['ball_in_court_user'].queryset = staff_users(project.organization)
-        self.fields['source_rfi'].queryset = RFI.objects.filter(project=project)
+        self.fields['source_rfi'].queryset = RFI.issued(RFI.objects.filter(project=project))
         self.fields['source_early_warning'].queryset = EarlyWarning.objects.filter(project=project)
         family = contract.family if contract else None
         drop = NEC_ONLY if family != 'NEC' else JCT_ONLY

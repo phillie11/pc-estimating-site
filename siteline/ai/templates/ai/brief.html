@@ -39,6 +39,17 @@
 {% else %}<p class="small" style="margin:0">There are no PDFs on this bid yet. <a href="{% url 'document_list' org.slug project.pk %}">Upload the tender documents to Documents</a> first.</p>{% endif %}
 {% else %}<p class="small" style="margin:0">{{ reason }}</p>{% endif %}
 </div></section>
+<section class="card" id="rfis" style="margin-top:14px" aria-labelledby="rfi-h"><div class="card-body"><h3 id="rfi-h" style="margin:0 0 6px">Draft RFIs to the design team with AI</h3>
+{% if rfi_run and rfi_run.is_open %}<p style="margin:0 0 8px">{% badge rfi_run.get_status_display "info" %} Drafting RFIs, started {{ rfi_run.created_at|date:"d/m/Y H:i" }}. Refresh this page in a minute or two.</p>
+{% elif rfi_run and rfi_run.message %}<p style="margin:0 0 8px">{% badge rfi_run.get_status_display rfi_run.tone %} {{ rfi_run.message }}</p>{% endif %}
+{% if ai_rfis %}<p class="small" style="margin:0 0 4px"><strong>Drafts to check and issue ({{ ai_rfis|length }}), internal until issued:</strong></p>
+<ul class="list">{% for r in ai_rfis %}<li><span class="ref">{{ r.reference }}</span><a class="grow" href="{% url 'rfi_detail' org.slug project.pk r.pk %}">{{ r.title }}</a><span class="small dim">{{ r.document_reference }}</span></li>{% endfor %}</ul>{% endif %}
+{% if usable and read_form %}<p class="small dim" style="margin:8px 0">Questions that change the price or the programme, one per RFI, each naming its drawing or clause. They arrive as internal drafts in the RFI register; nobody outside sees one until you issue it.</p>
+<form method="post" action="{% url 'ai_rfi_draft' org.slug project.pk %}">{% csrf_token %}{{ read_form.revisions }}
+<label class="small"><input type="checkbox" name="use_brief" value="1"{% if brief %} checked{% endif %}> Use this brief's risks and missing items as a steer</label>
+<div class="form-actions"><button class="btn">Draft RFIs</button></div></form>
+{% elif not usable %}<p class="small" style="margin:0">{{ reason }}</p>{% endif %}
+</div></section>
 <details class="card" style="margin-top:14px"><summary class="card-body">Add a line by hand</summary><div class="card-body">
 <form method="post">{% csrf_token %}<input type="hidden" name="action" value="add">{% with form=add %}{% include "partials/form_fields.html" %}{% endwith %}<div class="form-actions"><button class="btn primary">Add</button></div></form></div></details>
 {% endif %}

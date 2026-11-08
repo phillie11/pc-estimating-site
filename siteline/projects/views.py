@@ -92,7 +92,7 @@ def project_context(request, project, tab, **extra):
     task_qs = Task.objects.filter(project=project).exclude(status=Task.STATUS_DONE)
     issue_qs = Issue.objects.filter(project=project).exclude(status=Issue.STATUS_CLOSED)
     if not internal:
-        rfi_qs = rfi_qs.filter(visibility=RFI.VIS_SHARED)
+        rfi_qs = RFI.for_externals(rfi_qs)
         task_qs = task_qs.filter(assignee=request.user)
         issue_qs = issue_qs.filter(assignee=request.user, status=Issue.STATUS_OPEN)
     tabs.append(('programme', 'Programme', url('programme'), None))
@@ -297,7 +297,7 @@ def project_detail(request, org_slug, pk):
     internal = is_internal(request)
     rfis = RFI.objects.filter(project=project)
     if not internal:
-        rfis = rfis.filter(visibility=RFI.VIS_SHARED)
+        rfis = RFI.for_externals(rfis)
     vos = Variation.objects.filter(project=project)
     at_risk = vos.filter(proceed_at_risk=True).exclude(status__in=[Variation.STATUS_APPROVED,
                                                                    Variation.STATUS_WITHDRAWN])

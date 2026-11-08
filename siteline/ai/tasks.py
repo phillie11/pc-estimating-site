@@ -12,7 +12,7 @@ from django.utils import timezone
 
 import jobs
 
-from .models import AIRun, CLARIFICATIONS, QUOTE_MAPPING, TENDER_BRIEF
+from .models import AIRun, CLARIFICATIONS, QUOTE_MAPPING, RFI_DRAFTING, TENDER_BRIEF
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,17 @@ def run_job(payload):
             _, notes = briefs.read(project, run.requested_by, [int(i) for i in run.params.get('revisions', [])],
                                    run=run)
             message = ' '.join(['Bid brief drafted for you to check.', *notes])
+        elif run.feature == RFI_DRAFTING:
+            from . import access, rfis
+            if not access.can_edit_brief(project):
+                raise service.Unavailable(f'{project.name} is no longer an open bid, so no RFIs were drafted.')
+            if stand_in is None or not stand_in.membership.can_estimate:
+                raise service.Unavailable('You can no longer work on this bid, so no RFIs were drafted.')
+            saved, notes = rfis.draft(project, run.requested_by, [int(i) for i in run.params.get('revisions', [])],
+                                      use_brief=bool(run.params.get('use_brief')), run=run)
+            n = len(saved)
+            message = ' '.join([(f'{n} draft RFI{"s" if n != 1 else ""} added, internal, for you to check and issue.'
+                                 if n else 'The AI model found nothing new to ask.'), *notes])
         elif run.feature == QUOTE_MAPPING:
             from directory.models import Package
             from levelling import services as levelling

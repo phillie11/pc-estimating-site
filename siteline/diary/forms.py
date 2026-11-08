@@ -108,7 +108,7 @@ class InstructionForm(LineForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['rfi'].queryset = RFI.objects.filter(project=self.project)
+        self.fields['rfi'].queryset = RFI.issued(RFI.objects.filter(project=self.project))
         self.fields['rfi'].label_from_instance = lambda r: f'{r.reference} {r.title}'
         self.fields['change_event'].queryset = ChangeEvent.objects.filter(project=self.project)
         self.fields['change_event'].label_from_instance = lambda c: f'{c.reference} {c.title}'

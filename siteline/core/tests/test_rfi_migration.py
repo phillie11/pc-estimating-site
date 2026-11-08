@@ -10,7 +10,8 @@ from django.test import TransactionTestCase
 from tenancy.context import org_context
 
 BEFORE = [('rfis', '0002_alter_rfi_project'), ('core', '0001_records')]  # core stays; RFIs go back
-AFTER = [('rfis', '0005_remove_rfi_is_shared'), ('core', '0002_audit_actor_name_retention')]
+# 0006 only adds the AI-draft columns, which the live RFI model below writes
+AFTER = [('rfis', '0006_ai_drafted'), ('core', '0002_audit_actor_name_retention')]
 
 
 class MigrateMixin:
