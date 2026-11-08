@@ -212,7 +212,7 @@ class FormulaTests(SimpleTestCase):
     def test_cells(self):
         for formula in (b'_xlfn.WEBSERVICE("http://placeholder.invalid/")', b'_xlfn.IMAGE("http://x.invalid/a.png")',
                         b'RTD("placeholder.progid",,"x")', b'CALL("kernel32","x","J")', b'REGISTER("a","b")',
-                        b"cmd|'/c calc'!A0", b'HYPERLINK("file:///c:/x")', b'HYPERLINK(A1)',
+                        b"cmd|'/c calc'!A0", b'HYPERLINK("file:///c:/x")',
                         b'FILTERXML(_xlfn.WEBSERVICE("http://x.invalid"),"//a")'):
             with self.subTest(formula):
                 e = refused(self, edited(lambda f, x=formula: f.__setitem__(S, f[S].replace(b'<f>1+1</f>',
@@ -298,8 +298,8 @@ class TargetAndVerifyTests(SimpleTestCase):
         real = ooxml._clean
         calls = []
 
-        def fake(data, a, b):
-            out = real(data, a, b)
+        def fake(data, a, b, **kw):
+            out = real(data, a, b, **kw)
             calls.append(1)
             return out if len(calls) == 1 else (out[0], 0, 1, {})
         with mock.patch.object(ooxml, '_clean', side_effect=fake):
