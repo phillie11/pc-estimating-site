@@ -112,6 +112,8 @@ class QueryCountsDontGrowTests(TestCase):
             ('client', u('project_decisions', pk)),
             # Pricing workbook and handover pack on the job (handoverpack/), and the owner's settings page
             *self._pack_pages(built, job, u),
+            # AI drafting (ai/): the owner's settings, playbook and usage pages, and a bid's brief
+            *self._ai_pages(built, u),
             # Global search (help/search.py): common letters, so every source finds something
             ('owner', u('search') + '?q=an'), ('pm', u('search') + '?q=an'), ('sub', u('search') + '?q=an'),
             ('client', u('search') + '?q=an'),
@@ -129,6 +131,23 @@ class QueryCountsDontGrowTests(TestCase):
         return [('pm', u('hpack_workbook', job.pk)), ('pm', u('hpack_revision', job.pk, wb.pk)),
                 ('pm', u('hpack_pack', job.pk)), ('pm', u('hpack_items', job.pk)),
                 ('pm', u('hpack_clarifications', job.pk)), ('owner', u('hpack_settings'))]
+
+    def _ai_pages(self, built, u):
+        """A brief with a line per bid in the company (more in the big one), and usage by every member."""
+        from ai.models import AISettings, AIUsage, BidBrief, BriefItem
+        bid = built.bids[0]
+        with org_context(built.org):
+            AISettings.objects.get_or_create(organization=built.org, defaults={'enabled': True})
+            if not BidBrief.objects.filter(project=bid).exists():
+                brief = BidBrief.objects.create(project=bid, summary='Summary', ai_drafted=True)
+                for i, p in enumerate(built.bids):
+                    BriefItem.objects.create(brief=brief, section='risk', text=f'Risk {i}', severity='high',
+                                             ai_drafted=True)
+                for m in Membership.objects.filter(organization=built.org).select_related('user')[:len(built.live)]:
+                    AIUsage.objects.create(user=m.user, feature='clarifications', project=bid, model='claude-opus-5-5',
+                                           status=AIUsage.OK, cost_gbp='0.10')
+        return [('owner', u('ai_settings')), ('owner', u('ai_usage')), ('owner', u('ai_playbook', 'tender_brief')),
+                ('owner', u('ai_brief', bid.pk))]
 
     def _meeting(self, built, job):
         """The job's latest issued meeting (the one with the most brought forward)."""
