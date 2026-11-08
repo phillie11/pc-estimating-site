@@ -14,8 +14,9 @@ class UploadForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['file'].widget.attrs['accept'] = ('.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.'
-                                                      'spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12')
+        # No accept filter: iPhone Safari won't open the picker at all when the list names a type it doesn't know
+        # (the macro-enabled workbook type), and it greys out .xlsm with an .xlsx-only list. The reader refuses
+        # anything that isn't a workbook, with a message.
         style_widgets(self)
 
     def clean_file(self):
