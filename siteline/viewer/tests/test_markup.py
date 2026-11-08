@@ -6,6 +6,7 @@ page's layer list for each role, revision compare, tenancy and the CSP.
 import json
 import re
 
+from django.db import transaction
 from django.test import SimpleTestCase, TestCase
 
 from documents.tests.base import upload
@@ -236,6 +237,37 @@ class VisibilityTests(MarkupBase):
                     self.assertEqual(r['Content-Type'], 'application/json')
                     self.assertEqual(r.json()['shapes'], [CLOUD])
                     self.assertIn('no-store', r['Cache-Control'])
+
+    def test_a_layer_shared_by_someone_no_longer_staff_is_not_shown_as_staff_shared(self):
+        from tenancy.models import Membership
+        changes = [
+            ('became external', lambda: Membership.objects.filter(organization=self.org_a, user=self.admin)
+             .update(role=Membership.ROLE_EXTERNAL)),
+            ('membership suspended', lambda: Membership.objects.filter(organization=self.org_a, user=self.admin)
+             .update(is_active=False)),
+            ('left the company', lambda: Membership.objects.filter(organization=self.org_a, user=self.admin).delete()),
+            ('account closed', lambda: type(self.admin).objects.filter(pk=self.admin.pk).update(is_active=False)),
+        ]
+        for what, change in changes:
+            with self.subTest(what):
+                sid = transaction.savepoint()
+                change()
+                for user in (self.cli, self.con, self.sub1):
+                    self.login(user)
+                    self.assertNotIn(self.shared.pk, self.layer_ids(self.client.get(self.viewer())))
+                    self.assertEqual(self.client.get(self.data_url(self.shared)).status_code, 404)
+                    self.assertEqual(self.client.get(self.data_url(self.old)).status_code, 404)
+                self.login(self.staff)  # staff still see it, as shared with the site team
+                r = self.client.get(self.data_url(self.shared))
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(r.json()['share'], MarkupLayer.TEAM)
+                self.assertEqual(r.json()['share_label'], 'The site team')
+                transaction.savepoint_rollback(sid)
+        # Still staff: shared with everyone as before
+        self.login(self.cli)
+        self.assertEqual(self.client.get(self.data_url(self.shared)).status_code, 200)
+        self.login(self.staff)
+        self.assertEqual(self.client.get(self.data_url(self.shared)).json()['share'], MarkupLayer.EXTERNAL)
 
     def test_withdrawing_a_revision_hides_its_layers_from_externals(self):
         with org_context(self.org_a):

@@ -14,7 +14,7 @@ Pins are filtered by the record they point at, using the same rules as the snag 
 staff see every pin; an external sees pins for snags assigned to them and RFIs shared with
 collaborators. A pin on a document they can't see is never shown, even from the record page.
 """
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 
@@ -119,15 +119,41 @@ def visible_layers(request, project, doc, revisions=None):
       their own layers                      always (on revisions they may open)
       staff                                 also layers shared with the site team or wider, by anyone
       externals                             also staff layers shared with everyone the drawing is shared with
+
+    "Staff layer" is checked now, not when it was shared: the owner must still be an active staff member
+    of this company (an active account and an active owner, admin or staff membership). A layer shared
+    with everyone by someone who has since become external or left is shown to staff as shared with the
+    site team only, and to no external. Each layer carries owner_staff (bool) for effective_share().
     """
     revs = revisions if revisions is not None else viewable_revisions(request, project, doc)
-    qs = MarkupLayer.objects.filter(project=project, document=doc, revision__in=[r.pk for r in revs])
+    qs = MarkupLayer.objects.filter(project=project, document=doc, revision__in=[r.pk for r in revs]) \
+        .annotate(owner_staff=_owner_is_staff(project))
     mine = Q(owner=request.user)
     if is_internal(request):
         qs = qs.filter(mine | Q(share__in=(MarkupLayer.TEAM, MarkupLayer.EXTERNAL)))
     else:
-        qs = qs.filter(mine | Q(share=MarkupLayer.EXTERNAL))
+        qs = qs.filter(mine | Q(share=MarkupLayer.EXTERNAL, owner_staff=True))
     return qs.select_related('owner', 'revision')
+
+
+def _owner_is_staff(project):
+    from tenancy.models import Membership
+    return Exists(Membership.objects.filter(organization_id=project.organization_id, user=OuterRef('owner'),
+                                            role__in=Membership.INTERNAL_ROLES, is_active=True,
+                                            user__is_active=True))
+
+
+def effective_share(request, layer):
+    """
+    Who a layer is really shared with: a layer shared with everyone counts only as shared with the site team
+    once its owner is no longer staff (see visible_layers).
+    """
+    if layer.share != MarkupLayer.EXTERNAL:
+        return layer.share
+    staff = getattr(layer, 'owner_staff', None)
+    if staff is None:  # not loaded through visible_layers (a layer just saved: its owner is the person asking)
+        staff = layer.owner_id == request.user.pk and is_internal(request)
+    return MarkupLayer.EXTERNAL if staff else MarkupLayer.TEAM
 
 
 def can_mark_up(request, project, rev):
