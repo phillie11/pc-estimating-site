@@ -1,0 +1,17 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}AI drafting settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a></div><h1>AI drafting</h1><p class="dim" style="margin:4px 0 0">Drafts handover pack clarifications and reads tender documents into a bid brief. A person checks every draft before it is used.</p></div>
+<div class="actions"><a class="btn" href="{% url 'ai_usage' org.slug %}">This month's usage</a></div></div>
+{% if not server_ready %}<div class="card" style="max-width:760px"><div class="card-body"><p style="margin:0">{% badge "Not set up" "warn" %} AI drafting isn't set up on this Siteline server yet, so nothing can be drafted whatever is chosen below. Whoever runs your Siteline server needs to add the AI service key.</p></div></div>{% endif %}
+<div class="card" style="max-width:760px;margin-top:14px"><div class="card-body">
+<p class="small" style="margin:0 0 10px">Spent this month: <strong>£{{ spent|floatformat:2 }}</strong> of £{{ ai.monthly_cap|floatformat:2 }}.</p>
+<form method="post">{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="form-actions"><button class="btn primary">Save</button><a class="btn ghost" href="{% url 'org_settings' org.slug %}">Cancel</a></div></form>
+</div></div>
+<div class="card" style="max-width:760px;margin-top:14px"><div class="card-body"><h2 style="margin:0 0 4px">Playbooks</h2>
+<p class="small dim" style="margin:0 0 10px">How your company wants each draft written: your house method. Siteline's default is used until you write your own. A playbook guides the wording; it can't change what is sent or who sees it.</p>
+<div class="table-wrap"><table class="t"><thead><tr><th>Draft</th><th>Playbook</th><th></th></tr></thead><tbody>
+{% for p in playbooks %}<tr><td>{{ p.task.title }}<span class="sub">{{ p.task.playbook_help }}</span></td><td class="small">{% if p.own %}Your own (version {{ p.row.version }}, {{ p.row.created_at|date:"d/m/Y" }}{% if p.row.created_by %}, {{ p.row.created_by.full_name|default:p.row.created_by.email }}{% endif %}){% else %}Siteline's default{% endif %}</td><td><a class="btn" href="{{ p.url }}">Edit</a></td></tr>{% endfor %}
+</tbody></table></div></div></div>
+{% endblock %}

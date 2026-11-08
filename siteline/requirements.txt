@@ -17,6 +17,9 @@ reportlab==5.1.0
 openpyxl==3.1.5
 # openpyxl parses workbook XML with defusedxml when it is installed: no entities, no external DTDs (PSF)
 defusedxml==0.7.1
+# AI drafting (ai/): Anthropic's official SDK. Pinned to a release at least two weeks old when added; brings
+# httpx2, pydantic, anyio, jiter, docstring-parser, opentelemetry-api, sniffio and typing-extensions
+anthropic==2.3.0
 # MySQL on PythonAnywhere (left out of the Docker image)
 mysqlclient==2.2.6
 # AWS (ECS Fargate + RDS PostgreSQL): web server and PostgreSQL driver (DB_ENGINE=postgres)

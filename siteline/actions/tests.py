@@ -493,9 +493,9 @@ class StaffTabTests(Base):
     def test_bid_tabs_unchanged(self):
         self.login(self.a.est)
         r = self.client.get(self.url('project_detail', self.a, self.a.bid.pk))
-        # Pricing: the bid's pricing workbook and handover pack preview (handoverpack/), after the rest
+        # Pricing: the pricing workbook and handover pack preview (handoverpack/); Bid brief: the tender reader (ai/)
         self.assertEqual([t[0] for t in r.context['tab_row']],
-                         ['overview', 'tender', 'packages', 'documents', 'team', 'pricing'])
+                         ['overview', 'tender', 'packages', 'documents', 'team', 'pricing', 'brief'])
         self.assertEqual(r.context['tab_more'], [])
 
 

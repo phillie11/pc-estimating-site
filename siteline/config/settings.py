@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     'api',
     'reports',
     'handoverpack',
+    'ai',
 ]
 
 MIDDLEWARE = [
@@ -327,6 +328,29 @@ JOBS_KEEP_DAYS = int(env('JOBS_KEEP_DAYS', '30'))           # finished jobs and 
 JOBS_KEEP_FAILED_DAYS = int(env('JOBS_KEEP_FAILED_DAYS', '90'))  # dead jobs and failed emails
 JOBS_EMAIL_BODY_DAYS = int(env('JOBS_EMAIL_BODY_DAYS', '7'))  # sent emails' bodies (live invite links) are blanked
 
+# AI drafting (ai/). The API key is read from the ANTHROPIC_API_KEY environment variable by ai/service.py only:
+# it is deliberately not a setting here, so it never shows on a debug page or in a settings dump. Without it the
+# features say they aren't set up and nothing is sent. Each company switches AI on, and sets its budget, itself.
+AI_MODEL = env('AI_MODEL', 'claude-opus-5-5')
+AI_EFFORT = env('AI_EFFORT', 'medium')                     # low, medium, high, xhigh or max
+AI_GBP_PER_USD = env('AI_GBP_PER_USD', '0.79')               # pounds per US dollar, for costing usage (ai/rates.py)
+# AI_TIMEOUT_SECONDS limits each wait (to connect, or for the next part of a streamed answer), not the whole
+# call; the SDK retries a failed connection up to AI_MAX_RETRIES times. AI_DEADLINE_SECONDS limits the whole
+# streamed answer once it has started. A call that still overruns JOBS_LOCK_TIMEOUT is never paid for twice:
+# a run found already running when its job is picked up again is marked failed, not re-sent (ai/tasks.py).
+AI_TIMEOUT_SECONDS = int(env('AI_TIMEOUT_SECONDS', '240'))
+AI_MAX_RETRIES = int(env('AI_MAX_RETRIES', '2'))
+AI_DEADLINE_SECONDS = int(env('AI_DEADLINE_SECONDS', '600'))
+# Server-side refusal fallback (beta): a request the model's safety checks decline is re-run on Anthropic's
+# recommended fallback model instead of failing. Off by default: the declined attempt and the fallback are both
+# billed, so with it on every call holds budget for two attempts. AI_REFUSAL_FALLBACK=1 turns it on.
+AI_REFUSAL_FALLBACK = env_bool('AI_REFUSAL_FALLBACK', False)
+# Tender reader limits per run (ai/brief.py). The page limit is applied to a count that can't be understated:
+# Anthropic's token count of the documents (at 5,000 tokens a page), or, if that can't be had, the larger of the
+# pages found in the file and one page per 30 KB
+AI_TENDER_MAX_PAGES = int(env('AI_TENDER_MAX_PAGES', '100'))
+AI_TENDER_MAX_MB = int(env('AI_TENDER_MAX_MB', '24'))
+
 # Stripe
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', '')
 STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', '')
@@ -413,5 +437,7 @@ LOGGING = {
     'disable_existing_loggers': False,
     'handlers': {'console': {'class': 'logging.StreamHandler'}},
     'root': {'handlers': ['console'], 'level': env('LOG_LEVEL', 'INFO')},
-    'loggers': {'django.db.backends': {'level': 'WARNING'}, 'django.request': {'level': 'ERROR'}},
+    'loggers': {'django.db.backends': {'level': 'WARNING'}, 'django.request': {'level': 'ERROR'},
+                # The AI SDK and its HTTP library log request details at debug: never let them reach the logs
+                'anthropic': {'level': 'WARNING'}, 'httpx2': {'level': 'WARNING'}, 'httpx': {'level': 'WARNING'}},
 }

@@ -1,0 +1,17 @@
+{% extends "app.html" %}{% load ui %}
+{% block title %}AI usage{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="crumbs"><a href="{% url 'org_settings' org.slug %}">Settings</a> / <a href="{% url 'ai_settings' org.slug %}">AI drafting</a></div><h1>AI usage, {{ month|date:"F Y" }}</h1>
+<p class="dim" style="margin:4px 0 0">£{{ total|floatformat:2 }} spent{% if is_current %} of this month's £{{ ai.monthly_cap|floatformat:2 }}{% endif %}, {{ calls }} call{{ calls|pluralize }}. Costs are worked out from the AI service's prices in pounds, so your invoice may differ by a few pence.</p></div>
+<div class="actions"><a class="btn ghost" href="?month={{ prev }}">Previous month</a>{% if next %}<a class="btn ghost" href="?month={{ next }}">Next month</a>{% endif %}<a class="btn" href="?month={{ month_key }}&amp;export=csv">Export CSV</a></div></div>
+{% if not ai.enabled %}<p class="small">{% badge "Off" "muted" %} AI drafting is switched off for your company.</p>{% endif %}
+<div class="grid-2" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+<section class="card"><div class="card-body"><h2 style="margin:0 0 8px">By person</h2>{% if by_user %}<table class="t"><thead><tr><th>Who</th><th class="num">Calls</th><th class="num">£</th></tr></thead><tbody>
+{% for u in by_user %}<tr><td>{{ u.user__full_name|default:u.user__email|default:"(no longer here)" }}</td><td class="num">{{ u.calls }}</td><td class="num">{{ u.cost|floatformat:2 }}</td></tr>{% endfor %}</tbody></table>{% else %}<p class="small dim">Nothing this month.</p>{% endif %}</div></section>
+<section class="card"><div class="card-body"><h2 style="margin:0 0 8px">By feature</h2>{% if by_feature %}<table class="t"><thead><tr><th>Feature</th><th class="num">Calls</th><th class="num">£</th></tr></thead><tbody>
+{% for f in by_feature %}<tr><td>{{ f.label }}</td><td class="num">{{ f.calls }}</td><td class="num">{{ f.cost|floatformat:2 }}</td></tr>{% endfor %}</tbody></table>{% else %}<p class="small dim">Nothing this month.</p>{% endif %}</div></section>
+</div>
+<section class="card" style="margin-top:14px"><div class="card-body"><h2 style="margin:0 0 8px">Calls</h2>{% if recent %}<div class="table-wrap"><table class="t"><thead><tr><th>When</th><th>Who</th><th>Feature</th><th>Project</th><th>Status</th><th class="num">Tokens in / out</th><th class="num">£</th></tr></thead><tbody>
+{% for u in recent %}<tr><td class="small">{{ u.created_at|date:"d/m/Y H:i" }}</td><td class="small">{{ u.user.full_name|default:u.user.email|default:"" }}</td><td class="small">{{ u.get_feature_display }}<span class="sub">{{ u.note }}</span></td><td class="small">{{ u.project.name|default:"" }}</td><td>{{ u.get_status_display }}</td><td class="num small">{{ u.input_tokens }}{% if u.cache_read_tokens %} (+{{ u.cache_read_tokens }} cached){% endif %} / {{ u.output_tokens }}</td><td class="num">{{ u.cost_gbp|floatformat:2 }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<p class="small dim">No calls this month.</p>{% endif %}</div></section>
+{% endblock %}

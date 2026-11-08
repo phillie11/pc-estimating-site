@@ -144,6 +144,11 @@ class HandoverPack(TenantModel):
         return self.issued_workbook if self.is_issued and self.issued_workbook_id else self.workbook
 
     def visible_clarifications(self):
+        """What the pack, its export and an issued pack show: never an AI draft nobody has approved."""
+        return self.clarifications.filter(hidden=False, approved=True)
+
+    def all_clarifications(self):
+        """The Clarifications page: everything not removed, unapproved drafts included."""
         return self.clarifications.filter(hidden=False)
 
     def get_absolute_url(self):
@@ -155,7 +160,7 @@ class PackClarification(TenantModel):
     STATUS_CHOICES = [(OPEN, 'Open'), (AGREED, 'Agreed'), (CLOSED, 'Closed')]
     FROM_WORKBOOK, FROM_SITELINE, FROM_DRAFT = 'WORKBOOK', 'SITELINE', 'DRAFT'
     SOURCE_CHOICES = [(FROM_WORKBOOK, 'Workbook'), (FROM_SITELINE, 'Added in Siteline'),
-                      (FROM_DRAFT, 'Suggested draft')]
+                      (FROM_DRAFT, 'AI draft')]
 
     pack = models.ForeignKey(HandoverPack, on_delete=models.CASCADE, related_name='clarifications')
     ref = models.CharField(max_length=20, blank=True)
@@ -172,6 +177,14 @@ class PackClarification(TenantModel):
     # Removed here: a workbook row is hidden rather than deleted, so the next upload doesn't bring it back
     hidden = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
+    # An AI draft (source DRAFT) starts unapproved: it shows only on the Clarifications page, marked, until a
+    # person approves it, and never in the pack, its export or an issued pack. Every other row is approved.
+    approved = models.BooleanField(default=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='+')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    # The workbook lines an AI draft rests on ("Drylining row 14; Electrical row 22"), for the person checking it
+    basis = models.CharField('Based on', max_length=300, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta(TenantModel.Meta):
@@ -183,6 +196,10 @@ class PackClarification(TenantModel):
     @property
     def status_tone(self):
         return {self.OPEN: 'warn', self.AGREED: 'good', self.CLOSED: 'muted'}.get(self.status, 'muted')
+
+    @property
+    def is_ai_draft(self):
+        return self.source == self.FROM_DRAFT
 
 
 class OpenItem(TenantModel):
