@@ -158,13 +158,30 @@ class FormulaCostTests(SimpleTestCase):
     """N1: one linear pass per formula, every formula and defined name capped, the formula text in a part capped."""
 
     def test_adversarial_formulas_are_linear(self):
-        for text in ('a|' * 4000, '"' * 8191, "'" * 8191, '[' * 8000, 'SUM(' * 2000, 'A' * 8192, '""' * 4096,
-                     'x' + 'a' * 8000 + '(', '_xleta.' * 1000, 'A1' + ' ' * 8000 + '(', "[a'" * 2700,
-                     '_xlfn.' * 1300, '\u00a0' * 8000, 'A1+' * 2666):
-            t = time.monotonic()
-            ooxml.formula_problem(text[:8192])
-            with self.subTest(text[:12]):
-                self.assertLess(time.monotonic() - t, 0.05)
+        # Growth, not wall-clock time: four times the text must take well under the sixteen times a quadratic
+        # scan would. Best of three runs at each size, so a busy CI runner doesn't decide the result.
+        shapes = {
+            'a|': lambda n: 'a|' * (n // 2), 'quotes': lambda n: '"' * (n - 1), 'apostrophes': lambda n: "'" * (n - 1),
+            'brackets': lambda n: '[' * n, 'SUM(': lambda n: 'SUM(' * (n // 4), 'A': lambda n: 'A' * n,
+            'doubled quotes': lambda n: '""' * (n // 2), 'long name': lambda n: 'x' + 'a' * (n - 2) + '(',
+            '_xleta.': lambda n: '_xleta.' * (n // 7), 'spaces': lambda n: 'A1' + ' ' * (n - 3) + '(',
+            "[a'": lambda n: "[a'" * (n // 3), '_xlfn.': lambda n: '_xlfn.' * (n // 6),
+            'nbsp': lambda n: '\u00a0' * n, 'A1+': lambda n: 'A1+' * (n // 3),
+        }
+
+        def best(text):
+            times = []
+            for _ in range(3):
+                t = time.perf_counter()
+                ooxml.formula_problem(text)
+                times.append(time.perf_counter() - t)
+            return min(times)
+
+        for label, make in shapes.items():
+            small, large = best(make(2048)), best(make(8192))
+            with self.subTest(label):
+                self.assertLess(large, small * 8 + 0.002, f'{label}: {small:.4f}s at 2 KB, {large:.4f}s at 8 KB')
+                self.assertLess(large, 1.0)
 
     def test_long_defined_names_and_too_much_formula_text(self):
         long_name = edited(lambda f: f.__setitem__('xl/workbook.xml', f['xl/workbook.xml'].replace(
