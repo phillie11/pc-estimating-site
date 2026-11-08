@@ -655,7 +655,7 @@ class SeedDemoTests(TestCase):
         with org_context(org):
             leeds = Project.objects.get(name='Bar & kitchen fit-out, Call Lane')
             bar = CompletionSection.objects.get(project=leeds, name='Ground floor bar')
-            self.assertEqual(bar.defects_end, services.rules.defects_end(bar.pc_date, 12))  # the contract's default
+            self.assertEqual(bar.defects_end, services.rules.defects_end(bar.pc_date, 6))
             self.assertEqual(Issue.objects.filter(project=leeds, issue_type='DEFECT').count(), 3)
             self.assertTrue(OMSection.objects.filter(project__name='Office CAT A, Salford Quays').exists())
             comp = OMCompilation.objects.get(project=leeds)

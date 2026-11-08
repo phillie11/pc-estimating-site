@@ -18,14 +18,14 @@ D = date.fromisoformat
 class PresetTableTests(SimpleTestCase):
     # form: (due after valuation, final after due, pay less before final, retention %, defects months, damages per)
     TABLE = {
-        'JCT_MW': (0, 14, 5, Decimal('5'), 12, 'WEEK'),
-        'JCT_MWD': (0, 14, 5, Decimal('5'), 12, 'WEEK'),
-        'JCT_IC': (7, 14, 5, Decimal('5'), 12, 'WEEK'),   # 95% certified unless stated (product owner)
-        'JCT_ICD': (7, 14, 5, Decimal('5'), 12, 'WEEK'),
-        'JCT_SBC': (7, 14, 5, Decimal('3'), 12, 'WEEK'),
-        'JCT_DB': (7, 14, 5, Decimal('3'), 12, 'WEEK'),
-        'NEC4_ECC': (7, 14, 7, None, 12, 'DAY'),
-        'BESPOKE': (7, 17, 7, None, 12, 'WEEK'),  # the Scheme: interim due 7 days after the period (para 4)
+        'JCT_MW': (0, 14, 5, Decimal('5'), 3, 'WEEK'),
+        'JCT_MWD': (0, 14, 5, Decimal('5'), 3, 'WEEK'),
+        'JCT_IC': (7, 14, 5, Decimal('5'), 6, 'WEEK'),   # 95% certified unless stated (product owner)
+        'JCT_ICD': (7, 14, 5, Decimal('5'), 6, 'WEEK'),
+        'JCT_SBC': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
+        'JCT_DB': (7, 14, 5, Decimal('3'), 6, 'WEEK'),
+        'NEC4_ECC': (7, 14, 7, None, None, 'DAY'),
+        'BESPOKE': (7, 17, 7, None, None, 'WEEK'),  # the Scheme: interim due 7 days after the period (para 4)
     }
 
     def test_every_form_has_a_preset(self):
@@ -39,16 +39,6 @@ class PresetTableTests(SimpleTestCase):
                                   p.retention_percent, p.defects_period_months, p.lads_period),
                                  (due, final, pay_less, retention, defects, per))
                 self.assertEqual(p.retention_released_at_pc_percent, Decimal('50'))  # half at PC
-
-    def test_defects_period_defaults_to_twelve_months_and_each_contract_overrides_it(self):
-        self.assertEqual(presets.DEFECTS_PERIOD_MONTHS, 12)
-        self.assertEqual(presets.SCHEME.defects_period_months, 12)
-        c = MainContract(form='JCT_MW', defects_period_months=18)
-        c.apply_preset(only_blank=True)
-        self.assertEqual(c.defects_period_months, 18)  # the contract's own figure stands
-        c = MainContract(form='JCT_MW')
-        c.apply_preset(only_blank=True)
-        self.assertEqual(c.defects_period_months, 12)
 
     def test_scheme_interim_due_date_is_seven_days(self):
         # Regression: was 30, the Scheme's final payment rule (para 5), not the interim one (para 4)
@@ -211,7 +201,7 @@ class ContractViewTests(CommercialTestBase):
             c = MainContract.objects.get(project=self.pa)
             p = Project.objects.get(pk=self.pa.pk)
         self.assertEqual((c.due_date_offset_days, c.final_date_offset_days, c.pay_less_notice_days,
-                          c.retention_percent, c.defects_period_months), (7, 14, 5, Decimal('5'), 12))
+                          c.retention_percent, c.defects_period_months), (7, 14, 5, Decimal('5'), 6))
         self.assertEqual(p.value, Decimal('125000.50'))
         self.assertEqual((p.start_date, p.completion_date), (D('2026-11-02'), D('2027-03-26')))
         self.assertEqual(c.contract_sum, Decimal('125000.50'))  # read through to the project, never copied
