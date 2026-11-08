@@ -48,6 +48,11 @@ class RFI(RecordBase):
     cost_impact = models.CharField(max_length=8, choices=IMPACT_CHOICES, default='TBC')
     programme_impact_days = models.IntegerField('Programme impact (days)', null=True, blank=True)
 
+    # Drafted by AI from the bid's documents (ai/rfis.py): always a DRAFT, internal, until staff issue it.
+    # ai_basis is why the question matters to price or programme: for staff only, never shown to externals.
+    ai_drafted = models.BooleanField(default=False, editable=False)
+    ai_basis = models.TextField('Why it matters (AI draft, staff only)', blank=True, editable=False)
+
     class Meta(RecordBase.Meta):
         ordering = ['-number']
         verbose_name = 'RFI'

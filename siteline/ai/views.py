@@ -202,7 +202,15 @@ def brief_page(request, org_slug, pk):
         request, project, brief=brief, sections=sections, editable=editable, usable=usable, reason=reason,
         read_form=ReadForm(revisions=revisions) if revisions else None, form=form, add=add,
         run=AIRun.objects.filter(project=project, feature=TENDER_BRIEF).first(),
+        rfi_run=AIRun.objects.filter(project=project, feature='rfi_drafting').first(),
+        ai_rfis=_ai_rfis(project),
         max_pages=_settings().AI_TENDER_MAX_PAGES, max_mb=_settings().AI_TENDER_MAX_MB))
+
+
+def _ai_rfis(project):
+    """The AI-drafted RFIs on this bid still waiting to be issued (staff only: the brief page is)."""
+    from rfis.models import RFI
+    return list(RFI.objects.filter(project=project, ai_drafted=True, status=RFI.STATUS_DRAFT).order_by('number')[:100])
 
 
 def _settings():
@@ -244,6 +252,26 @@ def brief_read(request, org_slug, pk):
                      url=reverse('ai_brief', args=[org_slug, pk]), internal_only=True)
         messages.success(request, 'Reading the documents. The brief appears here in a few minutes.')
     return redirect('ai_brief', org_slug=org_slug, pk=pk)
+
+
+@require_POST
+def rfi_draft(request, org_slug, pk):
+    """Draft RFIs to the design team from the chosen documents: internal drafts, issued by staff (ai/rfis.py)."""
+    from .models import RFI_DRAFTING
+    project = access.brief_project(request, pk)
+    if not access.can_edit_brief(project):
+        raise Http404
+    back = reverse('ai_brief', args=[org_slug, pk]) + '#rfis'
+    form = ReadForm(request.POST, revisions=briefs.choices(project))
+    if not form.is_valid():
+        messages.error(request, 'Choose at least one document to draft RFIs from.')
+        return redirect(back)
+    params = {'revisions': form.cleaned_data['revisions'][:50], 'use_brief': request.POST.get('use_brief') == '1'}
+    if _start(request, project, RFI_DRAFTING, params):
+        log_activity(request, 'asked AI to draft RFIs', project.name, project=project, url=back, internal_only=True)
+        messages.success(request, 'Drafting RFIs. They appear below in a few minutes, as internal drafts for you to '
+                                  'check and issue.')
+    return redirect(back)
 
 
 def brief_item(request, org_slug, pk, item_id):

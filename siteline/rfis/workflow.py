@@ -7,6 +7,9 @@ core.workflow.apply_transition(rfi, name, user).
    └──────────────void─────► VOID
   RESPONDED / CLOSED / VOID ──reopen──► OPEN
 
+A DRAFT (AI-drafted RFIs start there, internal) is issued by staff, which makes it OPEN; until then
+no external sees it, whatever its visibility (views._visible).
+
 Responding is open to staff and to whoever has the ball in court; closing it with the
 response, closing, reopening and voiding are staff only. Responding passes the ball back to
 whoever raised the RFI, to accept and close or reopen (BALL_AFTER_RESPONSE below). Voiding a
@@ -47,6 +50,7 @@ def _clear_closed(rfi, user):
 
 
 TRANSITIONS = [
+    Transition('issue', source=(RFI.STATUS_DRAFT,), target=RFI.STATUS_OPEN, label='issue', allowed=record_staff),
     Transition('respond', source=(RFI.STATUS_OPEN,), target=RFI.STATUS_RESPONDED, label='respond to',
                allowed=record_staff_or_ball_in_court, sets_ball_in_court=BALL_AFTER_RESPONSE,
                on_apply=_record_response),

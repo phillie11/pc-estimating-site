@@ -297,7 +297,7 @@ def project_detail(request, org_slug, pk):
     internal = is_internal(request)
     rfis = RFI.objects.filter(project=project)
     if not internal:
-        rfis = rfis.filter(visibility=RFI.VIS_SHARED)
+        rfis = rfis.filter(visibility=RFI.VIS_SHARED).exclude(status=RFI.STATUS_DRAFT)
     vos = Variation.objects.filter(project=project)
     at_risk = vos.filter(proceed_at_risk=True).exclude(status__in=[Variation.STATUS_APPROVED,
                                                                    Variation.STATUS_WITHDRAWN])

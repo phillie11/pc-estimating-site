@@ -21,7 +21,8 @@ from .models import RFI
 def _visible(request, project):
     qs = RFI.objects.filter(project=project).select_related('ball_in_court_user', 'created_by')
     if not is_internal(request):
-        qs = qs.filter(visibility=RFI.VIS_SHARED)
+        # Shared, and never a draft: a draft (an AI draft, say) reaches nobody outside until staff issue it
+        qs = qs.filter(visibility=RFI.VIS_SHARED).exclude(status=RFI.STATUS_DRAFT)
     return qs
 
 
@@ -113,6 +114,14 @@ def rfi_detail(request, org_slug, pk, rfi_id):
                              internal_only=not rfi.is_shared)
                 notify_assignee(request, rfi.created_by, f'{rfi.reference} answered', project, rfi.get_absolute_url())
                 messages.success(request, 'Response recorded.')
+            elif action == 'issue' and internal:
+                apply_transition(rfi, 'issue', request.user)
+                log_activity(request, 'issued', f'{rfi.reference} {rfi.title}', project=project,
+                             url=rfi.get_absolute_url(), internal_only=not rfi.is_shared)
+                notify_assignee(request, rfi.ball_in_court_user, f'{rfi.reference}: {rfi.title}', project,
+                                rfi.get_absolute_url())
+                messages.success(request, f'{rfi.reference} issued.' + ('' if rfi.is_shared else
+                                 ' It is internal only: edit it to share it with the project collaborators.'))
             elif action in ('close', 'reopen', 'void') and internal:
                 apply_transition(rfi, action, request.user)
                 log_activity(request, {'close': 'closed', 'reopen': 'reopened', 'void': 'voided'}[action], rfi.reference,

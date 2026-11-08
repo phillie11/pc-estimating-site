@@ -15,6 +15,7 @@ def project_patterns(P):
         path(Q + 'start/', views_quotemap.quote_map_start, name='ai_quote_map_start'),
         path(B, views.brief_page, name='ai_brief'),
         path(B + 'read/', views.brief_read, name='ai_brief_read'),
+        path(B + 'rfis/', views.rfi_draft, name='ai_rfi_draft'),
         path(B + 'items/<int:item_id>/', views.brief_item, name='ai_brief_item'),
         path(B + 'items/<int:item_id>/accept/', views.brief_accept, name='ai_brief_accept'),
         path(P + 'handover-pack/clarifications/draft/', views.draft_clarifications, name='ai_draft_clarifications'),

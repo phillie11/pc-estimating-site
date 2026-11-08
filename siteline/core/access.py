@@ -94,7 +94,8 @@ def visible_index(request):
                 .values_list('project_id', 'role'):
             keys = [rt.key for rt in record_types() if rt.visible_to_role(role)]
             allowed |= Q(project_id=project_id, record_type__in=keys)
-        qs = qs.filter(allowed, visibility=VIS_SHARED)
+        # A draft RFI (an AI draft, say) reaches nobody outside until staff issue it, whatever its visibility
+        qs = qs.filter(allowed, visibility=VIS_SHARED).exclude(record_type='rfis.rfi', status='DRAFT')
     return qs
 
 

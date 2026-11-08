@@ -84,7 +84,7 @@ def rfis(request, q, limit):
     from rfis.models import RFI
     qs = RFI.objects.filter(project__in=_open_projects(request).values('pk'))
     if not is_internal(request):
-        qs = qs.filter(visibility=RFI.VIS_SHARED)
+        qs = qs.filter(visibility=RFI.VIS_SHARED).exclude(status=RFI.STATUS_DRAFT)  # drafts: staff until issued
     rows = qs.filter(Q(title__icontains=q) | Q(ref__iexact=q) | _ref_q(q)) \
         .select_related('project').order_by('-pk')[:limit]
     return [Hit(r.title, r.get_absolute_url(), r.reference, f'{r.project.name} · {r.get_status_display()}')
