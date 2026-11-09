@@ -108,11 +108,13 @@ class WorkerSendsEmailTests(OutboxTestCase):
         outbox.send_email({'id': email.pk})  # e.g. a worker died after sending, before marking the job done
         self.assertEqual(len(mail.outbox), 1)
 
-    def test_reply_to_is_kept(self):
-        notify.send('x@a.test', 'Hello', 'notification', {'title': 'Hello', 'link': 'x'}, org=self.org_a,
-                    reply_to='pm@a.test')
+    def test_no_reply_to_even_for_an_old_row_that_has_one(self):
+        notify.send('x@a.test', 'Hello', 'notification', {'title': 'Hello', 'link': 'x'}, org=self.org_a)
+        email = OutboxEmail.objects.get()
+        self.assertEqual(email.reply_to, [])
+        OutboxEmail.objects.filter(pk=email.pk).update(reply_to=['pm@a.test'])  # queued before the change
         burst()
-        self.assertEqual(mail.outbox[0].reply_to, ['pm@a.test'])
+        self.assertEqual(mail.outbox[0].reply_to, [])
 
     @override_settings(JOBS_RUN_INLINE=True)
     def test_inline_mode_sends_once_the_request_commits(self):

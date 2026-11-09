@@ -74,8 +74,9 @@ class Command(BaseCommand):
                     urgent, waiting, more = waiting_for(user, m, today, everything=weekly)
                     # The weekly summary goes whenever anything at all is waiting
                     urgent = urgent or (weekly and bool(waiting))
-                    ctx = {'waiting': waiting, 'more': more,
-                           'needs_me_link': notify.absolute(reverse('needs_me', args=[org.slug])),
+                    needs_me_link = notify.absolute(reverse('needs_me', args=[org.slug]))
+                    ctx = {'waiting': waiting, 'more': more, 'needs_me_link': needs_me_link,
+                           'link': needs_me_link,  # the top line of every notification email
                            'unsubscribe_link': notify.absolute(digest.unsubscribe_path(user)),
                            'weekly': weekly}
                     if m.is_internal:

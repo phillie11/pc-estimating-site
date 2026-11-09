@@ -72,7 +72,7 @@ def invite(request, project, subcontractor, trade, scope, quote_due):
         notify.send(email, title, 'tender_invite', {
             'inviter': request.user, 'project': project, 'package': pkg,
             'link': notify.absolute(reverse('accept_project_invite', args=[inv.token])),
-        }, org=request.org)
+        }, org=request.org, invitation=True)
     log_activity(request, f'invited {subcontractor.company_name} to price', str(trade or 'a package'), project=project)
     return pkg
 

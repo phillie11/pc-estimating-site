@@ -7,4 +7,5 @@ Accept the invitation:
 
 The link expires in 14 days.
 
+{% include "email/_invitation_footer.txt" %}
 — {{ PRODUCT_NAME }}

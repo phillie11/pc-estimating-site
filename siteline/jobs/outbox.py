@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 TASK = 'email.send'
 
 
-def queue_email(subject, body, to, org=None, reply_to=None, from_email=None):
+def queue_email(subject, body, to, org=None, from_email=None):
     """Store an email and send it (now with EMAIL_SYNC, else from the worker). Returns the OutboxEmail."""
     email = OutboxEmail.objects.create(
-        organization=org, to=list(to), reply_to=list(reply_to or []), subject=subject[:300], body=body,
+        organization=org, to=list(to), subject=subject[:300], body=body,
         from_email=from_email or settings.DEFAULT_FROM_EMAIL)
     if settings.EMAIL_SYNC:
         try:
@@ -58,7 +58,8 @@ def deliver(email):
     if email.status == OutboxEmail.SENT:
         return
     try:
-        msg = EmailMessage(email.subject, email.body, email.from_email, email.to, reply_to=email.reply_to or None)
+        # No reply_to, even for an old row that has one: replies to these emails are not read (tenancy/notify.py)
+        msg = EmailMessage(email.subject, email.body, email.from_email, email.to)
         msg.send()
     except ValueError as exc:  # includes BadHeaderError: retrying won't help
         OutboxEmail.objects.filter(pk=email.pk).update(status=OutboxEmail.FAILED, attempts=F('attempts') + 1,

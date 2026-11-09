@@ -620,8 +620,9 @@ class DigestTests(Base):
 
     def test_final_link_printed_once(self):
         body = self.run_digest()['client@alpha.test'].body
-        self.assertEqual(body.count('Everything waiting on you:'), 1)
-        self.assertEqual(body.count('https://portal.test' + self.url('needs_me', self.a)), 1)
+        link = 'https://portal.test' + self.url('needs_me', self.a)
+        self.assertEqual(body.count(link), 1)
+        self.assertEqual(body.splitlines()[1], link)  # under the "replies aren't read" line at the top
 
     def test_undated_or_distant_items_never_send_it_on_their_own(self):
         with org_context(self.a.org):

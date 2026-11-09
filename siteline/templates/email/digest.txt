@@ -18,8 +18,6 @@ Subcontractor insurance expiring within 14 days
 {% endfor %}{% endif %}{% if trial_days is not None %}
 Your free trial ends in {{ trial_days }} day{{ trial_days|pluralize }}. Choose a plan: {{ SITE_URL }}/{{ org.slug }}/billing/
 {% endif %}
-{% if waiting %}Everything waiting on you: {{ needs_me_link }}{% else %}{{ SITE_URL }}/{{ org.slug }}/{% endif %}
-
 — {{ PRODUCT_NAME }}
 
 You get this {% if weekly %}every Monday{% else %}on days when something is overdue or due soon{% endif %}. Change how often, or stop these emails (no login needed): {{ unsubscribe_link }}

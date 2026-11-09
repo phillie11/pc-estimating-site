@@ -13,4 +13,5 @@ and you submit your quote there too. Set up your free account to open it:
 
 The link expires in 21 days.
 
+{% include "email/_invitation_footer.txt" %}
 — {{ PRODUCT_NAME }}

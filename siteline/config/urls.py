@@ -1,5 +1,6 @@
 import os
 
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
@@ -41,7 +42,9 @@ urlpatterns = [
     path('account/confirm/', security.step_up, name='step_up'),
     path('password-reset/', auth_views.PasswordResetView.as_view(
         template_name='accounts/password_reset.html', email_template_name='email/password_reset.txt',
-        subject_template_name='email/password_reset_subject.txt'), name='password_reset'),
+        subject_template_name='email/password_reset_subject.txt',
+        # No Reply-To: replies aren't read, so the email points to support instead
+        extra_email_context={'SUPPORT_EMAIL': settings.SUPPORT_EMAIL}), name='password_reset'),
     path('password-reset/sent/', auth_views.PasswordResetDoneView.as_view(
         template_name='accounts/password_reset_done.html'), name='password_reset_done'),
     path('password-reset/<uidb64>/<token>/', auth_views.PasswordResetConfirmView.as_view(
