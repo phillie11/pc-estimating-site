@@ -742,7 +742,7 @@ def send_project_invite(request, inv):
     link = notify.absolute(reverse('accept_project_invite', args=[inv.token]))
     notify.send(inv.email, f'{request.user.full_name} invited you to {inv.project.name}', 'project_invite', {
         'inviter': request.user, 'project': inv.project, 'invite': inv, 'link': link,
-    }, org=request.org)
+    }, org=request.org, invitation=True)
     log_activity(request, f'invited {inv.get_role_display().lower()}', inv.email, project=inv.project)
 
 

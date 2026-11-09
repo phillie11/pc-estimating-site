@@ -197,7 +197,7 @@ def run_chase(project, package_ids, actor=None, today=None):
             notify.send(inv.email, title, 'tender_chase', {
                 'project': project, 'trades': trades, 'due': when, 'actor': actor,
                 'link': notify.absolute(reverse('accept_project_invite', args=[inv.token])),
-            }, org=project.organization)
+            }, org=project.organization, invitation=True)
             told += 1
     return told
 

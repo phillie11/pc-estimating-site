@@ -186,7 +186,7 @@ def team(request, org_slug):
             inv.save()
             notify.send(inv.email, f'{request.user.full_name} invited you to {org.name}', 'team_invite', {
                 'inviter': request.user, 'link': notify.absolute(reverse('accept_team_invite', args=[inv.token])),
-            }, org=org)
+            }, org=org, invitation=True)
             log_activity(request, 'invited', inv.email)
             messages.success(request, f'Invite sent to {inv.email}.')
             return redirect('team', org_slug=org.slug)

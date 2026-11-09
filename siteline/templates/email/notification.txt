@@ -7,6 +7,4 @@ From: {{ actor.full_name }}{% endif %}
 Open it in the {{ org.name }} portal:
 {{ link }}
 
-Please reply in the portal rather than to this email, so everything stays in one place.
-
 — {{ PRODUCT_NAME }}

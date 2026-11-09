@@ -249,6 +249,33 @@ After the move, and once prod has run on Postgres for a day:
 
 To check on it at any time: `python manage.py jobs_status` in a console, or **Jobs** and **Outbox emails** in the platform admin.
 
+## 7. Email (once)
+
+There is one sending setup for the whole product: Amazon SES in London (`eu-west-2`), over SMTP. Customer companies configure nothing. A company's emails go from your no-reply address with the company's name in front, e.g. `Example Fit-Out Ltd via Siteline <no-reply@yourdomain>`.
+
+Email is only a notification. All communication happens in the portal, so no email has a Reply-To and replies to the no-reply address aren't read. Every notification starts with *"Reply in Siteline, not to this email. Replies to this address aren't read."* and the link to the item. Invitation and password reset emails point anyone with a problem to `SUPPORT_EMAIL`.
+
+1. **SES console** (region *Europe (London) eu-west-2*) → **Identities** → **Create identity** → *Domain* → `yourdomain`. Add the DKIM records it shows at your domain host and wait for *Verified*.
+2. **Request production access** (Account dashboard) so SES sends to any address, not only verified ones.
+3. **SMTP settings** → **Create SMTP credentials**. This makes an IAM user and shows an SMTP username and password once. Save them in your password manager. They are not your AWS login.
+4. Make `support@yourdomain` a **real mailbox** that someone reads.
+5. **Files** tab → prod's `.env`, set:
+   ```
+   EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+   EMAIL_HOST=email-smtp.eu-west-2.amazonaws.com
+   EMAIL_PORT=587
+   EMAIL_USE_TLS=1
+   EMAIL_HOST_USER=THE-SES-SMTP-USERNAME
+   EMAIL_HOST_PASSWORD=THE-SES-SMTP-PASSWORD
+   DEFAULT_FROM_EMAIL=Siteline <no-reply@yourdomain>
+   SUPPORT_EMAIL=support@yourdomain
+   EMAIL_SYNC=0
+   ```
+   `EMAIL_SYNC=0` only once the always-on worker runs (part 6). Without it, keep `EMAIL_SYNC=1`. Use your `PRODUCT_NAME` in place of `Siteline` if you changed it.
+6. **Reload**, then send yourself a team invite and check it arrives, from `Your company via Siteline`, with no Reply-To.
+
+Staging keeps the console backend (part 3) and never sends email.
+
 ## Updating prod
 
 Same as staging, in prod's folder, after the release has been tried on staging:
