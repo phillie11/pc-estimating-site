@@ -48,7 +48,7 @@ class NoReplyEmailTests(Base):
         self.assertEqual(notify.sender_for(None), 'Siteline <no-reply@portal.test>')
 
     def test_hostile_company_name_cannot_inject_headers(self):
-        self.org_a.name = 'Evil "Co" <boss@evil.test>\r\nBcc: victim@evil.test\nReply-To: me@evil.test\\' + 'x' * 200
+        self.org_a.name = 'Evil "Co" <boss@evil.test>\r\nBcc: victim@evil.test\nReply-To: me@evil.test\\' + 'x' * 60  # over the 60-character cap, inside the 160-character column
         self.org_a.save()
         notify.alert([self.bob], 'Something', '/alpha/', org=self.org_a, actor=self.alice)
         m = self.only_email()
