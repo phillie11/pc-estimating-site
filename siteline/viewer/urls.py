@@ -19,6 +19,9 @@ def project_patterns(P):
         # Mark-up layers and revision compare
         path(D + '<int:doc_id>/rev/<int:rev_id>/markup/', views.markup_save, name='markup_save'),
         path(D + '<int:doc_id>/rev/<int:rev_id>/markup/add/', views.markup_add, name='markup_add'),
+        path(D + '<int:doc_id>/rev/<int:rev_id>/markup/export/', views.markup_export, name='markup_export'),
+        path(D + '<int:doc_id>/rev/<int:rev_id>/markup/export/file/', views.markup_export_file,
+             name='markup_export_file'),
         path(D + '<int:doc_id>/markups/<int:layer_id>/', views.markup_data, name='markup_data'),
         path(D + '<int:doc_id>/markups/<int:layer_id>/share/', views.markup_share, name='markup_share'),
         path(D + '<int:doc_id>/markups/<int:layer_id>/delete/', views.markup_delete, name='markup_delete'),

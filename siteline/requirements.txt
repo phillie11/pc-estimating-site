@@ -13,6 +13,9 @@ Pillow==13.0.0
 segno==1.6.6
 # PDF drawing register and transmittal issue sheets (ReportLab, BSD)
 reportlab==5.1.0
+# Reading the words in uploaded PDFs for search, and merging O&M manuals into one PDF (pure Python, BSD). 6.21.4 audited clean
+# with pip-audit; it is the only release pinned: do not bump without re-running the audit
+pypdf==6.21.4
 # Quote levelling: reading scope workbooks (.xlsx), read-only and data-only (MIT)
 openpyxl==3.1.5
 # openpyxl parses workbook XML with defusedxml when it is installed: no entities, no external DTDs (PSF)

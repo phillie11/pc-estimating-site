@@ -24,7 +24,7 @@ from tenancy import notify
 from tenancy.models import log_activity
 from tenancy.permissions import admin_required
 
-from . import access, goldenthread, rules, services
+from . import access, goldenthread, merge, rules, services
 from .forms import (CertificateForm, CompletionForm, DefectForm, OMDocumentForm, OMRequestForm, OMSectionForm,
                     PackForm, SectionAddForm, TemplateFormSet)
 from .models import (Certificate, CompletionSection, HandoverItem, HandoverPack, OMCompilation, OMDocument, OMSection,
@@ -283,6 +283,19 @@ def om(request, org_slug, pk):
             messages.success(request, f'O&M manual version {comp.number} is ready to download.'
                              if comp.status == OMCompilation.READY else
                              f'O&M manual version {comp.number} is being put together. We will tell you when it is ready.')
+        elif action == 'merge':
+            comp = get_object_or_404(OMCompilation.objects.filter(project=project, status=OMCompilation.READY),
+                                     pk=posted_id(request, 'compilation'))
+            try:
+                queued = merge.request_merge(comp, request.user)
+            except ValueError as e:
+                messages.error(request, str(e))
+            else:
+                if queued:
+                    log_activity(request, 'asked for the O&M manual as one PDF', f'version {comp.number}',
+                                 project=project, internal_only=True, url=reverse('closeout_om', args=[org_slug, pk]))
+                messages.success(request, f'Version {comp.number} is being put together as one PDF. '
+                                          'We will tell you when it is ready.')
         elif action in ('share', 'unshare'):
             comp = get_object_or_404(OMCompilation.objects.filter(project=project, status=OMCompilation.READY),
                                      pk=posted_id(request, 'compilation'))
@@ -389,17 +402,32 @@ def om_document(request, org_slug, pk, doc_id):
     return serve(request, doc.file, doc.original_name or None, project=project, label=f'O&M: {doc.title}')
 
 
-def om_download(request, org_slug, pk, comp_id):
-    project = get_project(request, pk)
+def _manual_for(request, project, comp_id):
+    """A ready manual this person may download: staff any, the client side only those shared with them."""
     who = access.role(request)
     qs = OMCompilation.objects.filter(project=project, status=OMCompilation.READY)
     if who == access.CLIENT:
         qs = qs.filter(shared_with_client=True)
     elif who != access.STAFF:
         raise PermissionDenied
-    comp = get_object_or_404(qs, pk=comp_id)
+    return get_object_or_404(qs, pk=comp_id)
+
+
+def om_download(request, org_slug, pk, comp_id):
+    project = get_project(request, pk)
+    comp = _manual_for(request, project, comp_id)
     return serve(request, comp.file, f'{project.reference}-OM-manual-v{comp.number}.zip', project=project,
                  label=f'O&M manual v{comp.number}')
+
+
+def om_download_pdf(request, org_slug, pk, comp_id):
+    """The same manual as one PDF, for the same people as the zip, once it has been made."""
+    project = get_project(request, pk)
+    comp = _manual_for(request, project, comp_id)
+    if comp.merged_status != OMCompilation.MERGE_READY:
+        raise Http404
+    return serve(request, comp.merged_file, f'{project.reference}-OM-manual-v{comp.number}.pdf', project=project,
+                 label=f'O&M manual v{comp.number} (one PDF)')
 
 
 @admin_required

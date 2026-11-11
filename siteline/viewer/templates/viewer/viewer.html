@@ -95,7 +95,9 @@
   </ul>
   <div class="card-body dv-export"><span class="small">Export this page with the mark-ups ticked above:</span>
     <button type="button" class="btn sm" data-act="png">{% icon 'download' %} Picture (PNG)</button>
-    <button type="button" class="btn sm" data-act="pdf">{% icon 'download' %} PDF</button></div>
+    <button type="button" class="btn sm" data-act="pdf">{% icon 'download' %} PDF</button>
+    <form method="post" class="inline" action="{% url 'markup_export' org.slug project.pk doc.pk rev.pk %}">{% csrf_token %}<button class="btn sm">{% icon 'download' %} Vector PDF of the whole drawing</button></form>
+    <span class="small dim">The vector PDF keeps the drawing sharp and draws every mark-up you can see on rev {{ rev.revision }} as lines and text. It is made in the background and you are told when it is ready.</span></div>
 </div>
 
 {% if can_draw %}<dialog class="dv-dialog" data-text-dialog aria-labelledby="dv-text-title">

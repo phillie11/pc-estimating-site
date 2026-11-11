@@ -16,16 +16,19 @@ Every uploaded PDF is treated as hostile:
 A scanned drawing has no text layer: it is marked "no text" and the document page says it can only
 be found by its number and title. There is no OCR.
 
-THE READER. Reading PDF text needs a PDF parser, and none is installed yet: pypdf was held back
-over security advisories (see the Release 3 wave 2 report). Until one is, EXTRACTOR is None,
-`available()` is False, nothing is queued at upload, and the document page says searching inside
-files isn't switched on. To switch it on, set EXTRACTOR to a function
+THE READER. pypdf (pinned in requirements.txt, audited with pip-audit) does the reading, in
+documents/pdftext.py, and EXTRACTOR is set to it when this module is imported, so the web process, the
+worker and management commands all have it. `available()` is False only if pypdf can't be imported,
+and then nothing is queued and the document page says searching inside files isn't available. A reader is
 
     extractor(fh, max_pages, deadline) -> (text, pages_read, truncated)
 
-that reads the open binary file `fh`, stops after `max_pages` pages or when `time.monotonic()`
-passes `deadline` (returning what it has, truncated=True), and raises ExtractionFailed for a file it
-can't read. Then run `manage.py index_document_text` once to read the PDFs already uploaded.
+that reads the open binary file `fh`, stops after `max_pages` pages or when `time.monotonic()` passes
+`deadline` (returning what it has, truncated=True), and raises ExtractionFailed for a file it can't
+read (encrypted, broken or not a PDF). It never lets another exception out; read() catches one anyway.
+pdftext.py also skips pages with a huge content stream, runs no JavaScript or actions, extracts no
+attachments and fetches nothing. After a new reader or a new release goes in, run
+`manage.py index_document_text` to read the PDFs already uploaded.
 """
 import logging
 import time
@@ -47,11 +50,14 @@ TIME_LIMIT_SECONDS = 60
 MIN_QUERY = 3          # searching inside files needs at least this many characters
 SCAN_WAIT_TRIES = 120  # as documents.file_facts: an hour or two for the virus check
 
-EXTRACTOR = None
-
 
 class ExtractionFailed(Exception):
     """The reader couldn't read this file (broken, encrypted, or not really a PDF)."""
+
+
+from . import pdftext  # noqa: E402 - needs ExtractionFailed above
+
+EXTRACTOR = pdftext.extract if pdftext.installed() else None
 
 
 def available():
@@ -193,7 +199,7 @@ def page_note(rev):
     by_name = 'Search still finds it by its number and title.'
     if row is None:
         if not available():
-            return f'Searching the words inside PDFs isn\'t switched on yet. {by_name}', 'muted'
+            return f'Searching the words inside PDFs isn\'t available at the moment. {by_name}', 'muted'
         return f'The words in rev {rev.revision} are still being read for search.', 'info'
     if row.status == RevisionText.DONE:
         extra = f' (the first {row.pages_read} pages)' if row.truncated and row.pages_read else (

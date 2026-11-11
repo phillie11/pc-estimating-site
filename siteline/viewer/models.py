@@ -12,9 +12,14 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
+from projects.models import _private_path
 from tenancy.models import TenantModel
 
 COORD_PLACES = Decimal('0.000001')
+
+
+def upload_markup_export(instance, filename):
+    return _private_path(instance, filename, 'markup-exports')
 
 
 class InvalidPin(ValueError):
@@ -141,3 +146,40 @@ class MarkupLayer(TenantModel):
     @property
     def share_tone(self):
         return self.SHARE_TONES.get(self.share, 'muted')
+
+
+class MarkupExport(TenantModel):
+    """
+    A vector PDF of one revision with mark-ups drawn on it as real shapes and text (viewer/export.py), made by
+    the `viewer.markup_export` job. It holds a copy of the shapes as they were when it was asked for, so what
+    the person was allowed to see then is all that is drawn, and it is only ever downloaded by the person who
+    asked, and only while they can still open that revision. One per person per revision: asking again
+    replaces the last one.
+    """
+    QUEUED, READY, FAILED = 'QUEUED', 'READY', 'FAILED'
+    STATUS_CHOICES = [(QUEUED, 'Being made'), (READY, 'Ready to download'), (FAILED, 'Could not be made')]
+
+    project = models.ForeignKey('projects.Project', on_delete=models.CASCADE, related_name='markup_exports')
+    document = models.ForeignKey('projects.Document', on_delete=models.CASCADE, related_name='markup_exports')
+    revision = models.ForeignKey('projects.DocumentRevision', on_delete=models.CASCADE, related_name='markup_exports')
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    layer_ids = models.JSONField(default=list, blank=True)
+    shapes = models.JSONField(default=list, blank=True, help_text='Checked by viewer.markup.clean_shapes.')
+    status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=QUEUED)
+    file = models.FileField(upload_to=upload_markup_export, blank=True)
+    size = models.PositiveBigIntegerField(default=0)
+    pages = models.PositiveIntegerField(default=0)
+    shapes_drawn = models.PositiveIntegerField(default=0)
+    error = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    ready_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [
+            models.UniqueConstraint(fields=['revision', 'requested_by'], name='viewer_export_one_per_person_per_rev'),
+            models.CheckConstraint(condition=Q(status__in=['QUEUED', 'READY', 'FAILED']), name='viewer_export_status'),
+        ]
+
+    def __str__(self):
+        return f'Mark-up export of {self.revision} for {self.requested_by}'
