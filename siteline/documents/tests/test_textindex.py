@@ -2,8 +2,8 @@
 Searching inside PDFs (documents/textindex.py): reading at upload (inline for small files, the
 job for big ones or while the virus check runs), the hostile-file gates, what the document page
 says, the register's search box, the global search for each role, the back-fill command, and
-tenancy. No PDF reader is installed yet, so the tests plug in a stand-in that reads WORDS(...)
-out of the file; the "not switched on" behaviour is tested with none.
+tenancy. These tests plug in a stand-in reader that reads WORDS(...) out of the file; the real
+reader (pypdf) is tested on real PDFs in test_pdftext.py. "Not available" is tested with no reader.
 """
 import io
 import re
@@ -52,9 +52,10 @@ class PureTests(SimpleTestCase):
         self.assertEqual(textindex.snippet(text, 'sprinkler'), '')
         self.assertEqual(textindex.snippet('fire', 'fire'), 'fire')
 
-    def test_off_without_a_reader(self):
-        self.assertIsNone(textindex.EXTRACTOR)
-        self.assertFalse(textindex.available())
+    def test_on_by_default_and_off_without_a_reader(self):
+        self.assertTrue(textindex.available())
+        with mock.patch.object(textindex, 'EXTRACTOR', None):
+            self.assertFalse(textindex.available())
 
 
 class TextBase(DocBase):
@@ -153,7 +154,7 @@ class UploadTests(TextBase):
                              ['First issue', 'Second issue with smoke detectors'])
 
 
-class NotSwitchedOnTests(TextBase):
+class NotAvailableTests(TextBase):
     READER = None
 
     def test_nothing_is_queued_and_the_page_says_so(self):
@@ -163,12 +164,12 @@ class NotSwitchedOnTests(TextBase):
             self.assertFalse(Job.objects.filter(name='documents.extract_text').exists())
         self.login(self.cli)
         self.assertContains(self.client.get(self.purl('document_detail', doc.pk)),
-                            'Searching the words inside PDFs isn&#x27;t switched on yet.')
+                            'Searching the words inside PDFs isn&#x27;t available at the moment.')
 
     def test_command_says_there_is_nothing_to_do(self):
         out = io.StringIO()
         call_command('index_document_text', stdout=out)
-        self.assertIn('not switched on', out.getvalue())
+        self.assertIn('not available', out.getvalue())
 
 
 class FindingTests(TextBase):

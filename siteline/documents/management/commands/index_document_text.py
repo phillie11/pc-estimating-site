@@ -1,6 +1,6 @@
 """
 Queue every PDF revision whose words haven't been read yet, so search can find documents by the
-words inside them (documents/textindex.py). Run it once after a PDF reader is switched on; new
+words inside them (documents/textindex.py). Run it after the PDF reader is first used or changed; new
 uploads are read as they arrive.
 
     python manage.py index_document_text            # every company
@@ -27,7 +27,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         if not textindex.available():
-            self.stdout.write('Searching inside PDFs is not switched on (no PDF reader is installed), so there is '
+            self.stdout.write('Searching inside PDFs is not available (pypdf is not installed), so there is '
                               'nothing to do. See documents/textindex.py.')
             return
         orgs = Organization.objects.order_by('pk')

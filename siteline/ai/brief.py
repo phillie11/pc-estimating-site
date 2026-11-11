@@ -13,8 +13,8 @@ read(), which:
     pages found in the file and one page per 30 KB. A page count read from the file alone can be understated
     (pages kept in compressed object streams), so it is never trusted on its own for the limit or the cost;
   - stops adding files once the run would pass AI_TENDER_MAX_PAGES pages' worth (5,000 tokens a page) or
-    AI_TENDER_MAX_MB, and says which were left out. Siteline has no PDF text reader switched on
-    (documents/textindex.py), so the PDFs go to the model as documents, which reads both the text and the page
+    AI_TENDER_MAX_MB, and says which were left out. The PDF text reader (documents/textindex.py) only
+    serves search, so the PDFs go to the model as documents, which reads both the text and the page
     images, and the budget is held for the counted tokens;
   - sends the PDFs with the project's name, and nothing else from Siteline;
   - checks the answer against the schema again, caps every length, and saves it as BriefItem rows, each naming
