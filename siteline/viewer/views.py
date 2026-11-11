@@ -6,6 +6,8 @@ through documents.access, so the viewer reaches nothing the person couldn't alre
 The PDF itself is sent by projects.files.serve(), with the same malware-scan gate and download
 log as the download button.
 """
+import re
+
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
@@ -30,7 +32,7 @@ from . import pins as pinlib
 from .access import (best_revision, can_mark_up, can_raise_snag, can_remove, can_view, effective_share,
                      get_doc_and_revision, is_pdf, share_choices, viewable_revisions, visible_issues, visible_layers, visible_pins,
                      visible_revision_ids, visible_rfis)
-from .models import InvalidPin, MarkupLayer, PinLocked
+from .models import InvalidPin, MarkupExport, MarkupLayer, PinLocked
 
 
 def _withdrawn_for_external(request, project, doc, rev):
@@ -392,3 +394,89 @@ def drawing_compare(request, org_slug, pk, doc_id):
     ctx.update(old=old, new=new, config=config, can_cloud=can_cloud,
                viewer_new=reverse('drawing_viewer', args=[org_slug, project.pk, doc.pk, new.pk]))
     return render(request, 'viewer/compare.html', docs_context(request, project, 'register', **ctx))
+
+
+# ---------------------------------------------------------------------------
+# Vector PDF export of the mark-ups (viewer/export.py, the viewer.markup_export job)
+# ---------------------------------------------------------------------------
+
+MAX_EXPORT_LAYERS = 20
+MAX_EXPORT_SHAPES = 10000
+
+
+def _exportable(request, project, doc_id, rev_id):
+    """The document and revision for an export: exactly the checks for viewing the drawing (drawing_pdf)."""
+    doc, rev = get_doc_and_revision(request, project, doc_id, rev_id)
+    refused = _withdrawn_for_external(request, project, doc, rev)
+    if refused is not None:
+        return doc, rev, refused
+    if not can_view(request, rev):
+        raise Http404
+    return doc, rev, None
+
+
+def _back_to_viewer(org_slug, project, doc, rev):
+    return redirect('drawing_viewer', org_slug=org_slug, pk=project.pk, doc_id=doc.pk, rev_id=rev.pk)
+
+
+@require_POST
+def markup_export(request, org_slug, pk, doc_id, rev_id):
+    """
+    Ask for a vector PDF of this revision with mark-ups on it. With no `layer` values, every mark-up on this
+    revision that this person may see; with some, exactly those (any they may not see is a 404).
+    """
+    import jobs
+    project = get_project(request, pk)
+    doc, rev, refused = _exportable(request, project, doc_id, rev_id)
+    if refused is not None:
+        return refused
+    layers = list(visible_layers(request, project, doc, viewable_revisions(request, project, doc)))
+    wanted = request.POST.getlist('layer')
+    if wanted:
+        if not all(w.isdigit() and w.isascii() for w in wanted):
+            raise Http404
+        by_id = {str(la.pk): la for la in layers}
+        if any(w not in by_id for w in set(wanted)):
+            raise Http404
+        chosen = [by_id[w] for w in dict.fromkeys(wanted)]
+    else:
+        chosen = [la for la in layers if la.revision_id == rev.pk]
+    shapes = [s for la in chosen for s in la.shapes]
+    if not shapes:
+        messages.error(request, 'There are no mark-ups to export on this revision yet.')
+        return _back_to_viewer(org_slug, project, doc, rev)
+    if len(chosen) > MAX_EXPORT_LAYERS or len(shapes) > MAX_EXPORT_SHAPES:
+        messages.error(request, 'There are too many mark-ups to export at once. Choose fewer layers.')
+        return _back_to_viewer(org_slug, project, doc, rev)
+    try:
+        with transaction.atomic():
+            for old in MarkupExport.objects.filter(revision=rev, requested_by=request.user):
+                if old.file:
+                    old.file.delete(save=False)
+                old.delete()
+            row = MarkupExport.objects.create(project=project, document=doc, revision=rev, requested_by=request.user,
+                                              layer_ids=[la.pk for la in chosen], shapes=shapes)
+            jobs.enqueue('viewer.markup_export', {'id': row.pk}, org=project.organization)
+    except IntegrityError:
+        messages.info(request, 'Your marked-up PDF is already being made.')
+        return _back_to_viewer(org_slug, project, doc, rev)
+    messages.success(request, 'Your marked-up PDF is being made. We will tell you when it is ready.')
+    return _back_to_viewer(org_slug, project, doc, rev)
+
+
+def markup_export_file(request, org_slug, pk, doc_id, rev_id):
+    """Download the marked-up PDF this person asked for: theirs only, and only while they may open the drawing."""
+    project = get_project(request, pk)
+    doc, rev, refused = _exportable(request, project, doc_id, rev_id)
+    if refused is not None:
+        return refused
+    row = get_object_or_404(MarkupExport.objects.filter(project=project, revision=rev, requested_by=request.user))
+    if row.status != MarkupExport.READY:
+        if row.status == MarkupExport.FAILED:
+            messages.error(request, row.error or 'The marked-up PDF could not be made.')
+        else:
+            messages.info(request, 'Your marked-up PDF is still being made. We will tell you when it is ready.')
+        return _back_to_viewer(org_slug, project, doc, rev)
+    name = re.sub(r'[^A-Za-z0-9._-]+', '-', f'{doc.reference or doc.title}-rev-{rev.revision}-markup')[:100]
+    return serve(request, row.file, f'{name}.pdf', project=project,
+                 label=f'{doc.reference or doc.title} rev {rev.revision} (marked-up PDF)')
