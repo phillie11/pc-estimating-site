@@ -6,8 +6,8 @@ What happens on the Close-out tab. Views call these.
   request_om            ask a section's subcontractor for its O&M information (a procurement
                         submittal of type O&M, so it works exactly as submittals do)
   compile_om            build the manual: a zip of every accepted O&M file, by section, with a
-                        contents PDF that lists each file and its SHA-256 (pypdf is not allowed
-                        yet, so the files are not merged into one PDF)
+                        contents PDF that lists each file and its SHA-256. The same manual can also
+                        be made as one merged PDF on request (closeout/merge.py)
   build_pack            freeze a golden thread handover pack: one item per file, then checksums
   issue_pack            share a ready pack with the client side
 
@@ -270,6 +270,7 @@ def compile_om(comp):
     comp.status, comp.size, comp.sha256 = OMCompilation.READY, size, h.hexdigest()
     comp.file_count = sum(len(x[3]) for x in index_sections)
     comp.left_out = [list(x) for x in left_out]
+    comp.manifest = [[n, title, [list(f) for f in listed]] for n, title, _lines, listed in index_sections]
     comp.ready_at = timezone.now()
     comp.save()
     if comp.created_by_id:

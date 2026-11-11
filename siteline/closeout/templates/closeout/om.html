@@ -27,9 +27,13 @@
 
 <div class="card"><div class="card-head"><h2>Put the manual together</h2>
   <form method="post">{% csrf_token %}<input type="hidden" name="action" value="compile"><button class="btn primary">Compile the manual now</button></form></div>
-<div class="card-body small dim"><p style="margin:0">One download (a zip file) with a folder per section and a contents PDF listing every file with its checksum. Files still being virus-checked are left out and listed.</p></div>
+<div class="card-body small dim"><p style="margin:0">One download (a zip file) with a folder per section and a contents PDF listing every file with its checksum. Files still being virus-checked are left out and listed. You can also get a manual as one PDF: a cover and contents page, then every PDF in order with bookmarks. Files that are not PDFs are listed as supplied separately, see the zip.</p></div>
 {% if compilations %}<div class="table-wrap"><table class="t"><thead><tr><th>Version</th><th>Made</th><th>Files</th><th>Status</th><th>Client</th></tr></thead><tbody>
-{% for c in compilations %}<tr><td>{% if c.status == 'READY' %}<a href="{% url 'closeout_om_download' org.slug project.pk c.pk %}">Version {{ c.number }}</a><span class="sub">{{ c.size|filesize }}</span>{% else %}Version {{ c.number }}{% endif %}</td>
+{% for c in compilations %}<tr><td>{% if c.status == 'READY' %}<a href="{% url 'closeout_om_download' org.slug project.pk c.pk %}">Version {{ c.number }}</a><span class="sub">{{ c.size|filesize }} zip</span>
+    {% if c.merged_status == 'READY' %}<a class="small" href="{% url 'closeout_om_download_pdf' org.slug project.pk c.pk %}">Download as one PDF</a><span class="sub">{{ c.merged_size|filesize }}, {{ c.merged_pages }} pages{% if c.merged_skipped %}, {{ c.merged_skipped|length }} not merged{% endif %}</span>
+    {% elif c.merged_status == 'QUEUED' %}<span class="small dim">One PDF is being put together</span>
+    {% elif c.can_merge %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="merge"><input type="hidden" name="compilation" value="{{ c.pk }}"><button class="btn sm">Download as one PDF<span class="sr-only"> (version {{ c.number }})</span></button></form>{% if c.merged_status == 'FAILED' %}<span class="sub overdue">{{ c.merged_error }}</span>{% endif %}{% endif %}
+  {% else %}Version {{ c.number }}{% endif %}</td>
   <td class="small">{{ c.created_at|date:"j M Y H:i" }}<span class="sub">{{ c.created_by.full_name }}</span></td>
   <td class="small">{{ c.file_count }}{% if c.left_out %}<span class="sub">{{ c.left_out|length }} left out</span>{% endif %}</td>
   <td>{% status_badge c %}</td>

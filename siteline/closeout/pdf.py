@@ -3,6 +3,7 @@ The O&M manual's contents PDF and the handover pack's manifest PDF (ReportLab, a
 Everything a person typed goes through documents.pdf.markup(), so it is printed, never obeyed.
 """
 import io
+import re
 
 from django.utils import timezone
 from reportlab.lib import colors
@@ -32,13 +33,13 @@ def _p(text, style):
     return Paragraph(markup(text), style)
 
 
-def _table(rows, widths, s, mono_cols=()):
+def _table(rows, widths, s, mono_cols=(), header=True):
     body = []
     for i, row in enumerate(rows):
         body.append([_p(c, s['Mono'] if (i and j in mono_cols) else s['Small']) for j, c in enumerate(row)])
-    t = Table(body, colWidths=widths, repeatRows=1, splitInRow=1)
-    t.setStyle(TableStyle([
-        ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 8), ('BACKGROUND', (0, 0), (-1, 0), HEAD),
+    t = Table(body, colWidths=widths, repeatRows=1 if header else 0, splitInRow=1)
+    t.setStyle(TableStyle(([('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 8), ('BACKGROUND', (0, 0), (-1, 0), HEAD)]
+                           if header else []) + [
         ('GRID', (0, 0), (-1, -1), 0.4, GRID), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
@@ -92,6 +93,53 @@ def om_index(project, org_name, number, sections, left_out):
     _doc(buf, f'O&M manual - {project.name}').build(
         story, onFirstPage=_footer(f'{org_name} · O&M manual v{number}'),
         onLaterPages=_footer(f'{org_name} · {project.name} · O&M manual v{number}'))
+    return buf.getvalue()
+
+
+def om_front_matter(project, org, number, entries, left_out):
+    """
+    The cover page and contents page(s) of the one-PDF manual.
+    entries: [(section number, section title, [(document title, kind, value)])] where kind is
+      'page'      value is the page number in the merged PDF where the document starts
+      'separate'  value is its path in the zip (not a PDF, so not merged)
+      'skipped'   value is the plain reason it could not be merged
+    left_out: [(section title, file title, reason)] the zip left out too (virus check, missing)
+    """
+    buf = io.BytesIO()
+    s = _styles()
+    accent = colors.HexColor(org.brand_colour if re.fullmatch(r'#[0-9A-Fa-f]{6}', org.brand_colour or '') else '#E8590C')
+    s.add(s['Normal'].clone('Company', fontSize=13, leading=16, textColor=accent, fontName='Helvetica-Bold'))
+    story = [Spacer(1, 40 * mm), _p(org.name, s['Company']), Spacer(1, 6 * mm),
+             _p('Operation and maintenance manual', s['Title']), Spacer(1, 4 * mm),
+             _p(project.name, s['Heading2']), _p(project.site_address, s['Normal']), Spacer(1, 8 * mm),
+             _table([['Project reference', project.reference], ['Version', str(number)],
+                     ['Date', f'{timezone.localdate():%d %B %Y}']], [45 * mm, W - 45 * mm], s, header=False),
+             PageBreak(), _p('Contents', s['Heading2'])]
+    for n, title, rows in entries:
+        story.append(_p(f'{n:02d} {title}', s['Heading2']))
+        if not rows:
+            story.append(_p('No files in this section.', s['Small']))
+            continue
+        body = []
+        for name, kind, value in rows:
+            where = {'page': f'Page {value}', 'separate': f'Supplied separately, see the zip ({value})',
+                     'skipped': f'Not included: {value}'}[kind]
+            body.append([name, where])
+        story.append(_table(body, [W - 85 * mm, 85 * mm], s, header=False))
+    if left_out:
+        story += [_p('Left out of the zip as well', s['Heading2']),
+                  _p('These files had not cleared the virus check, or could not be found, when the manual was compiled.',
+                     s['Normal']),
+                  _table([['Section', 'File', 'Why']] + [list(x) for x in left_out],
+                         [55 * mm, 70 * mm, W - 125 * mm], s)]
+
+    def cover(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(accent)
+        canvas.rect(0, A4[1] - 12 * mm, A4[0], 12 * mm, stroke=0, fill=1)
+        canvas.restoreState()
+    _doc(buf, f'O&M manual - {project.name}').build(
+        story, onFirstPage=cover, onLaterPages=_footer(f'{org.name} · {project.name} · O&M manual v{number}'))
     return buf.getvalue()
 
 

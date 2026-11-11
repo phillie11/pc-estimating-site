@@ -281,12 +281,33 @@ class OMCompilation(TenantModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
     ready_at = models.DateTimeField(null=True, blank=True)
+    manifest = models.JSONField(default=list, blank=True, help_text='[[section number, title, [[path in the zip, '
+                                'document title, size, sha256], ...]], ...] as compiled, so the one-PDF version '
+                                'holds exactly what the zip holds.')
+    # The same manual as one merged PDF (closeout/merge.py), made on request by the worker
+    MERGE_QUEUED, MERGE_READY, MERGE_FAILED = 'QUEUED', 'READY', 'FAILED'
+    merged_status = models.CharField(max_length=8, blank=True, choices=[
+        ('', 'Not made'), (MERGE_QUEUED, 'Being put together'), (MERGE_READY, 'Ready to download'),
+        (MERGE_FAILED, 'Could not be built')], default='')
+    merged_file = models.FileField(upload_to=upload_closeout, blank=True)
+    merged_size = models.PositiveBigIntegerField(default=0)
+    merged_pages = models.PositiveIntegerField(default=0)
+    merged_skipped = models.JSONField(default=list, blank=True,
+                                      help_text='[[section, file, why], ...] left out of the one-PDF version.')
+    merged_error = models.CharField(max_length=300, blank=True)
+    merged_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name='+')
+    merged_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TenantModel.Meta):
         ordering = ['-number']
 
     def __str__(self):
         return f'O&M manual, version {self.number}'
+
+    @property
+    def can_merge(self):
+        return self.status == self.READY and bool(self.manifest)
 
     @property
     def status_tone(self):

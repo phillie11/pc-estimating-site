@@ -24,6 +24,7 @@ def project_patterns(P):
         path(C + 'om/sections/<int:section_id>/upload/', views.om_upload, name='closeout_om_upload'),
         path(C + 'om/files/<int:doc_id>/', views.om_document, name='closeout_om_document'),
         path(C + 'om/manual/<int:comp_id>/', views.om_download, name='closeout_om_download'),
+        path(C + 'om/manual/<int:comp_id>/pdf/', views.om_download_pdf, name='closeout_om_download_pdf'),
         path(C + 'certificates/', views.certificates, name='closeout_certificates'),
         path(C + 'certificates/<int:cert_id>/', views.certificate_file, name='closeout_certificate_file'),
         path(C + 'handover/', views.packs, name='closeout_packs'),
