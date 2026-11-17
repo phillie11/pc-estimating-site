@@ -1004,3 +1004,93 @@ details.more-fields[open] > summary { margin-bottom: 10px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* ======================================================================================================
+   Drawing office. The product's own voice: survey-blue rules like a drawing sheet's, a ruled title block on
+   every job, expanded Archivo for titles and figures, and a programme strip on the dashboard. The customer's
+   accent colour stays for marks and the main action; nothing here depends on what colour they chose.
+   ====================================================================================================== */
+:root {
+  --blue: #23406B;
+  --blue-2: color-mix(in srgb, var(--blue) 45%, var(--paper));
+  --blue-tint: color-mix(in srgb, var(--blue) 7%, var(--paper));
+  --grid: color-mix(in srgb, var(--blue) 9%, transparent);
+}
+h1 { font-stretch: 125%; font-weight: 800; letter-spacing: -.025em; line-height: 1.08; font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2rem); }
+h2 { letter-spacing: -.012em; }
+.kpi .value { font-stretch: 125%; font-weight: 800; font-size: 1.85rem; letter-spacing: -.03em; line-height: 1.1; margin-top: 4px; }
+.kpi .label { font-size: 12.5px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+@media (max-width: 560px) { .kpi .value { font-size: 1.45rem; } .kpi .label { font-size: 12px; } }
+.kpi.hero { background: var(--blue); }
+a.kpi.hero:hover { background: color-mix(in srgb, var(--blue) 88%, #000); }
+.kpi.hero .label, .kpi.hero .note { color: color-mix(in srgb, #fff 70%, var(--blue)); }
+.kpis { border-color: var(--blue-2); background: var(--blue-2); }
+
+/* Tables read like a schedule on a drawing: a drawn rule under the heading, sentence-case column titles */
+.t th { text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--blue); border-bottom: 1.5px solid var(--blue); background: var(--blue-tint); }
+.card-head { border-bottom-color: color-mix(in srgb, var(--blue) 22%, var(--line)); }
+.card-head h2, .card-head h3 { font-size: 1rem; }
+
+/* ---------- Title block (project header) ---------- */
+.titleblock { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main cells" "main actions";
+  border: 1.5px solid var(--blue); background: #FDFCF9; margin-bottom: 1.25rem; position: relative;
+  box-shadow: inset 5px 0 0 var(--accent); animation: tb-plot .7s cubic-bezier(.2, .7, .2, 1) both; }
+.tb-main { grid-area: main; padding: 14px 20px 16px 24px; min-width: 0;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 22px 22px; background-position: -1px -1px; }
+.tb-main .crumbs { margin-bottom: 8px; color: var(--blue); }
+.tb-main .crumbs .mono { color: var(--ink-2); padding: 1px 6px; border: 1px solid var(--blue-2); background: #fff; margin-left: 2px; }
+.tb-main h1 { margin: 0; text-wrap: balance; }
+.tb-cells { grid-area: cells; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(120px, auto); margin: 0; border-left: 1.5px solid var(--blue); }
+.tb-cells > div { padding: 10px 16px 11px; min-width: 0; }
+.tb-cells > div + div { border-left: 1px solid var(--blue-2); }
+.tb-cells dt { font-size: 11.5px; color: var(--blue); font-weight: 600; margin-bottom: 3px; }
+.tb-cells dd { margin: 0; font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
+.tb-actions { grid-area: actions; border-left: 1.5px solid var(--blue); border-top: 1.5px solid var(--blue); padding: 8px 12px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; background: var(--blue-tint); }
+.tb-actions:not(:has(*)) { display: none; }
+.tb-actions form { margin: 0; }
+@keyframes tb-plot { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@media (max-width: 900px) {
+  .titleblock { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "cells" "actions"; }
+  .tb-cells { border-left: 0; border-top: 1.5px solid var(--blue); grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tb-cells > div:nth-child(odd) { border-left: 0; }
+  .tb-cells > div:nth-child(n+3) { border-top: 1px solid var(--blue-2); }
+  .tb-actions { border-left: 0; justify-content: flex-start; }
+}
+
+/* ---------- Programme strip (dashboard) ---------- */
+.strip { padding: 0 16px 8px; }
+.strip-axis, .strip-row { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); column-gap: 18px; align-items: center; }
+.strip-axis { padding-top: 10px; }
+.strip-axis .strip-plot { height: 42px; }
+.strip-month { position: absolute; top: 18px; padding-left: 5px; font-size: 11.5px; font-weight: 600; color: var(--blue); border-left: 1.5px solid var(--blue); height: 24px; line-height: 1.2; white-space: nowrap; overflow: hidden; }
+.strip-month i { font-style: normal; font-weight: 400; color: var(--ink-3); margin-left: 4px; }
+.strip-flag { position: absolute; top: 0; transform: translateX(-50%); font-size: 10.5px; font-weight: 700; padding: 1px 6px; background: var(--accent); color: var(--accent-ink); border-radius: 2px; z-index: 2; }
+.strip-row { min-height: 64px; border-top: 1px solid var(--line); }
+.strip-row .strip-plot { height: 64px; }
+.strip-plot { position: relative; min-width: 0; }
+.strip-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid color-mix(in srgb, var(--blue) 12%, transparent); }
+.strip-bar { position: absolute; top: 25px; height: 14px; border: 1.5px solid var(--ink); border-radius: 2px; transform-origin: left center;
+  background: linear-gradient(90deg, var(--ink) var(--done), color-mix(in srgb, var(--ink) 8%, #fff) var(--done));
+  animation: strip-grow .6s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--i) * 70ms + 250ms); }
+.strip-bar.ahead { border-style: dashed; border-color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, #fff); }
+.strip-bar.early { border-left-width: 0; clip-path: polygon(0 50%, 7px 0, 100% 0, 100% 100%, 7px 100%); }
+.strip-bar.late { border-right-width: 0; clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%); }
+.strip-bar.early.late { clip-path: polygon(0 50%, 7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%); }
+.strip-today { position: absolute; top: -1px; bottom: -1px; width: 0; border-left: 1.5px solid var(--accent); z-index: 1; }
+.strip-off { position: absolute; left: 8px; top: 21px; }
+.strip-name .sub { display: block; font-size: 12.5px; color: var(--ink-3); }
+.strip-name .sub.mono { font-size: 11.5px; }
+.strip-name .rowlink { text-decoration: none; font-weight: 700; letter-spacing: -.01em; }
+@keyframes strip-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (max-width: 760px) {
+  .strip-axis { grid-template-columns: minmax(0, 1fr); }
+  .strip-axis .strip-name { display: none; }
+  .strip-row { grid-template-columns: minmax(0, 1fr); row-gap: 0; padding-top: 8px; }
+  .strip-row .strip-plot { grid-column: 1 / -1; grid-row: 2; height: 40px; }
+  .strip-bar { top: 12px; }
+  .strip-off { top: 8px; }
+}
+
+.page-head .eyebrow { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--blue); font-weight: 500; }
+@media (max-width: 760px) { .strip-month i { display: none; } .strip-month { padding-left: 3px; } }
