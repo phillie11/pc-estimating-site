@@ -110,3 +110,17 @@ class EveryProviderForEveryDemoLoginTests(TestCase):
                 # Each kind's filter link works too: ?kind= reruns the providers through the page
                 for kind in {i.kind for i in r.context['items']}:
                     self.assertEqual(c.get(url, {'kind': kind}).status_code, 200, f'{email} ?kind={kind}')
+
+    def test_many_kinds_become_one_list_and_keep_the_chosen_project(self):
+        """With more than 8 kinds waiting the page offers a Type list, not a wall of buttons, and it keeps the project filter."""
+        url = reverse('needs_me', args=[DEMO_ORG])
+        c = Client()
+        c.force_login(User.objects.get(email='pm@demo.test'), backend='django.contrib.auth.backends.ModelBackend')
+        r = c.get(url)
+        kinds = r.context['kinds_here']
+        self.assertGreater(len(kinds), 8, 'the demo company no longer has more than 8 kinds waiting on the project manager')
+        self.assertContains(r, 'id="nm-kind"')
+        self.assertNotContains(r, 'class="chip on"')
+        project = next(iter(r.context['projects_here'])).pk
+        r = c.get(url, {'project': project})
+        self.assertContains(r, f'<input type="hidden" name="project" value="{project}">', html=True)

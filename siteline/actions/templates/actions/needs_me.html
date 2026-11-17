@@ -7,8 +7,14 @@
 </div>
 {% if total_count %}
 <div class="filters" aria-label="Show">
+  {% if kinds_here|length > 8 %}{# a company with many kinds of thing waiting gets one list, not a wall of buttons #}
+  <form method="get" class="search">{% if project_filter %}<input type="hidden" name="project" value="{{ project_filter }}">{% endif %}
+    <label class="sr-only" for="nm-kind">Type</label>
+    <select id="nm-kind" name="kind" data-autosubmit style="width:auto"><option value="">Everything</option>{% for code, label in kinds_here.items %}<option value="{{ code }}" {% if kind == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></form>
+  {% else %}
   <a class="chip {% if not kind %}on{% endif %}" href="{% qs kind='' page='' %}">Everything</a>
   {% for code, label in kinds_here.items %}<a class="chip {% if kind == code %}on{% endif %}" href="{% qs kind=code page='' %}">{{ label }}</a>{% endfor %}
+  {% endif %}
   {% if projects_here|length > 1 %}<span class="spacer"></span>
   <form method="get" class="search">{% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
     <label class="sr-only" for="nm-project">Project</label>
