@@ -46,6 +46,26 @@ def hold_rate_limit_clock(test):
     test.addCleanup(patcher.stop)
 
 
+def hold_today(test, day):
+    """
+    For a test whose expectations depend on the day of the month (valuation days, "valuation date within 7
+    days", a final date 21 days after last month's 25th): run it as if it were 9am on `day`. Everything reads
+    the time through django.utils.timezone, so dates on pages, Needs me and the rules all move together; the
+    clock still ticks from there. The same patch as e2e's travel_to, for a test that never needs to move on. Only
+    calls to timezone.now() move: a model field written `default=timezone.now` keeps the real clock, so use it only
+    for a test that sets the dates it compares explicitly (e2e's journey cannot: its sign-in log reads such a field).
+    """
+    from datetime import datetime, time
+    from unittest import mock
+    from django.utils import timezone
+    real_now = timezone.now
+    offset = timezone.make_aware(datetime.combine(day, time(9))) - real_now()
+    patcher = mock.patch('django.utils.timezone.now', side_effect=lambda: real_now() + offset)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    test.assertEqual(timezone.localdate(), day)
+
+
 class RemoteFailure(AssertionError):
     """A failed assertion in a worker process, carrying its formatted traceback (counts as a failure)."""
 
