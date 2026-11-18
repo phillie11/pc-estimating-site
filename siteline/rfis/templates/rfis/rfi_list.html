@@ -9,7 +9,7 @@
   <a class="chip {% if status == 'CLOSED' %}on{% endif %}" href="?status=CLOSED">Closed</a>
   <a class="chip {% if status == 'all' %}on{% endif %}" href="?status=all">All</a>
 </div>
-<div class="card">{% if rfis %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Subject</th><th>Ball in court</th><th>Required</th><th>Status</th><th class="num">Days</th></tr></thead><tbody>
+<div class="card">{% if rfis %}<div class="table-wrap"><table class="t"><thead><tr><th>Ref</th><th>Subject</th><th>Ball in court</th><th>Required</th><th>Status</th><th class="num">Days open</th></tr></thead><tbody>
 {% for r in rfis %}<tr><td class="ref">{{ r.reference }}</td>
   <td><a class="rowlink" href="{{ r.get_absolute_url }}">{{ r.title }}</a><span class="sub">{{ r.get_category_display }} · raised by {{ r.created_by|default:"—" }}{% if is_internal and not r.is_shared %} · internal{% endif %}</span></td>
   <td class="small">{{ r.ball_in_court_user|default:"—" }}</td>

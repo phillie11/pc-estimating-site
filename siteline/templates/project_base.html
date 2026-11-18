@@ -1,18 +1,18 @@
 {% extends "app.html" %}{% load ui %}
 {% block title %}{{ project.name }}{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
+<header class="titleblock">
+  <div class="tb-main">
     {% if is_internal %}<div class="crumbs"><a href="{% if project.section == 'estimating' %}{% url 'bid_list' org.slug %}{% else %}{% url 'project_list' org.slug %}{% endif %}">{% if project.section == 'estimating' %}Bids{% else %}Projects{% endif %}</a> / <span class="mono">{{ project.reference }}</span></div>{% endif %}
     <h1>{{ project.name }}</h1>
-    <div class="row small dim" style="margin-top:4px">
-      {% badge project.get_stage_display project.stage_tone %}{% if project.is_archived %} {% badge 'Archived' 'muted' %}{% endif %}
-      {% if project.client_name %}<span>{{ project.client_name }}</span>{% endif %}
-      {% if project.site_address %}<span>{{ project.site_address }}</span>{% endif %}
-    </div>
   </div>
-  <div class="row">{% block project_actions %}{% endblock %}</div>
-</div>
+  <dl class="tb-cells">
+    <div><dt>Stage</dt><dd>{% badge project.get_stage_display project.stage_tone %}{% if project.is_archived %} {% badge 'Archived' 'muted' %}{% endif %}</dd></div>
+    {% if project.client_name %}<div><dt>Client</dt><dd>{{ project.client_name }}</dd></div>{% endif %}
+    {% if project.site_address %}<div><dt>Site</dt><dd>{{ project.site_address }}</dd></div>{% endif %}
+  </dl>
+  <div class="tb-actions">{% block project_actions %}{% endblock %}</div>
+</header>
 {% if project.is_archived %}<div class="banner">Archived {{ project.archived_at|date:"j M Y" }}{% if project.archived_by %} by {{ project.archived_by.full_name }}{% endif %}. Hidden from lists, the pipeline and your plan's project count, and read only until restored; nothing was deleted.
   {% if is_org_admin %}<form method="post" action="{% url 'project_archive' org.slug project.pk %}" class="inline">{% csrf_token %}<input type="hidden" name="action" value="restore"><button class="btn sm">Restore</button></form>{% endif %}</div>{% endif %}
 <div class="tabbar" data-tabbar>

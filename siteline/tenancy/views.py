@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 from directory.models import Subcontractor
 from projects.access import is_internal, openable, portal_projects, visible_projects
 from projects.models import Issue, Project, ProjectMember, Task
+from projects.strip import strip as programme_strip
 from rfis.models import RFI
 from variations.models import Variation
 
@@ -133,6 +134,7 @@ def delivery_home(request, org_slug):
     rams = Rams.objects.filter(project__in=live, status=Rams.SUBMITTED).select_related('project', 'subcontractor')
     subvars = SubVariation.objects.filter(project__in=live, status=SubVariation.SUBMITTED).select_related('project', 'subcontractor')
     open_rfis = RFI.objects.filter(project__in=live, status=RFI.STATUS_OPEN)
+    my_jobs = list(live.filter(manager=request.user).order_by('completion_date'))
     client_vos = Variation.objects.filter(project__in=live, status=Variation.STATUS_SUBMITTED)
     ctx = {
         'section': 'delivery',
@@ -147,7 +149,8 @@ def delivery_home(request, org_slug):
             .values('project', 'trade').distinct().count(),
         },
         'unassigned': [p for p in live if p.needs_handover],
-        'my_jobs': live.filter(manager=request.user).order_by('completion_date'),
+        'my_jobs': my_jobs,
+        'programme': programme_strip(my_jobs, today),
         'rams': rams.order_by('submitted_at')[:8],
         'subvars': subvars.order_by('created_at')[:8],
         'insurance': [s for s in Subcontractor.objects.filter(packages__project__in=live, packages__status=Package.APPOINTED,

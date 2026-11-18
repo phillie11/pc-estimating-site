@@ -18,11 +18,20 @@
 </div>
 <div class="grid split">
   <div class="stack">
-    <div class="card"><div class="card-head"><h2>Your jobs</h2><a class="small" href="{{ jobs }}?view=live&amp;mine=1">All yours →</a></div>
-      {% if my_jobs %}<div class="table-wrap"><table class="t"><tbody>{% for p in my_jobs %}<tr>
-        <td><a class="rowlink" href="{{ p.get_absolute_url }}">{{ p.name }}</a><span class="sub">{{ p.client_name }}</span></td>
-        <td class="small nowrap">{% if p.start_date %}{{ p.start_date|date:"j M" }} – {{ p.completion_date|date:"j M y"|default:"?" }}{% else %}<span class="dim">No dates</span>{% endif %}</td>
-        <td>{% badge p.get_stage_display p.stage_tone %}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="card programme"><div class="card-head"><h2>Your jobs</h2><a class="small" href="{{ jobs }}?view=live&amp;mine=1">All yours →</a></div>
+      {% if my_jobs %}<div class="strip" role="group" aria-label="Your jobs on a timeline from {{ programme.from|date:'F Y' }}">
+        <div class="strip-axis" aria-hidden="true"><span class="strip-name"></span><div class="strip-plot">{% for m in programme.axis %}<span class="strip-month" style="left:{{ m.left }}%;width:{{ m.width }}%">{{ m.label }}{% if m.year %}<i>{{ m.year }}</i>{% endif %}</span>{% endfor %}<span class="strip-flag" style="left:{{ programme.today }}%">Today</span></div></div>
+        {% for r in programme.rows %}<div class="strip-row">
+          <div class="strip-name"><a class="rowlink" href="{{ r.project.get_absolute_url }}">{{ r.project.name }}</a><span class="sr-only"> ({{ r.project.get_stage_display }})</span><span class="sub">{{ r.project.client_name }}</span>{% if r.dated %}<span class="sub mono">{{ r.project.start_date|date:"j M" }} to {{ r.project.completion_date|date:"j M y" }}</span>{% endif %}</div>
+          <div class="strip-plot">
+            {% for m in programme.axis %}<i class="strip-tick" style="left:{{ m.left }}%"></i>{% endfor %}
+            {% if r.visible %}<span class="strip-bar {{ r.project.stage_tone }}{% if r.early %} early{% endif %}{% if r.late %} late{% endif %}{% if not r.started %} ahead{% endif %}" style="left:{{ r.left }}%;width:{{ r.width }}%;--done:{{ r.done }}%;--i:{{ forloop.counter0 }}" title="{{ r.project.get_stage_display }}"></span>
+            {% elif r.dated %}<span class="strip-off small dim">Outside this window</span>
+            {% else %}<span class="strip-off small dim">No dates set</span>{% endif %}
+            <span class="strip-today" style="left:{{ programme.today }}%" aria-hidden="true"></span>
+          </div>
+        </div>{% endfor %}
+      </div>
       {% else %}<div class="empty left">You aren't project manager on a live job.</div>{% endif %}</div>
     <div class="card"><div class="card-head"><h2>RAMS awaiting review</h2>{% if kpi.rams %}<a class="small" href="{{ jobs }}?view=live&amp;attention=rams">Jobs with RAMS waiting →</a>{% endif %}</div>
       {% if rams %}<ul class="list">{% for r in rams %}<li><span class="grow"><a href="{{ r.get_absolute_url }}">{{ r.title }}</a> <span class="dim small">· {{ r.subcontractor }} · {{ r.project.name }}</span></span><span class="small dim nowrap">{{ r.submitted_at|timesince }} ago</span></li>{% endfor %}</ul>
