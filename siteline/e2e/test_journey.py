@@ -297,6 +297,8 @@ class JourneyTest(TestCase):
         got = {i for i in items if i[0] not in ignore_kinds}
         # After the month end (phase 21), next month's applications wait too, if they fall due this week
         expected = set(expected) | getattr(self, 'month_end_needs', {}).get(who, set())
+        if who == 'sub':
+            expected |= self.sub_apply_due()
         self.assertEqual(got, expected, f'Needs me for {who}')
         return badge
 
@@ -332,6 +334,8 @@ class JourneyTest(TestCase):
         expected.update(self.EXPECTED_NEEDS.get(n, {}))
         if 5 <= n <= 9:  # from the contract's valuation day until AP-001 goes in
             expected['pm'] = expected.get('pm', set()) | {self.ap_due()}
+        if 'sub' in expected:
+            expected['sub'] = expected['sub'] | self.sub_apply_due()
         if n == 21:  # next month's applications, ours and the sub's, if their valuation dates are this week
             for who, due in self.month_end_needs.items():
                 expected[who] = expected.get(who, set()) | due
@@ -341,6 +345,17 @@ class JourneyTest(TestCase):
     # Everything else is cleared by the phase that raised it, and is asserted there when it was waiting.
     # The client doesn't acknowledge the drawing issue until they take the handover (phase 18).
     EXPECTED_NEEDS = {n: {'client': {('transmittal', 'TR-001')}} for n in range(8, 18)}
+
+    def sub_apply_due(self):
+        """
+        The sub's prompt for the subcontract's next valuation date, once it is a week away or less. The terms are
+        the company defaults (monthly, the 25th), so that is from the 18th to the 24th: SA-001 covers the valuation
+        date before it (phase 11), not the next one. The rest of the month there is nothing to apply for. Only
+        between phase 11 and the month end of phase 21, which works out its own.
+        """
+        if not getattr(self, 'sub_applied', False) or hasattr(self, 'next_month'):
+            return set()
+        return {('subpayment', 'Apply for payment: Joinery')} if 18 <= TODAY().day <= 24 else set()
 
     def ap_due(self):
         """The PM's prompt to submit this month's application: the valuation day is today's day of the month."""
@@ -900,6 +915,7 @@ class JourneyTest(TestCase):
         data.update({'gross_to_date': '20000.00', 'materials': '5000.00', 'notes': 'October valuation'})
         r = self.post('sub', apply_url, data)
         sa_url = r.url
+        self.sub_applied = True
         page = text(self.get('sub', sa_url))
         self.assertIn('SA-001', page)
         self.assertIn('£19,000.00', page)  # 20,000 less 5% retention
@@ -1545,6 +1561,7 @@ class JourneyTest(TestCase):
     def phase21_month_end_cvr_signed_off_and_cashflow(self):
         """The month ends: the CVR started in phase 11 is finished, signed off, and agrees with the cashflow."""
         from cvr.models import CVRPeriod
+        from subpayments.models import SubApplication
         month = TODAY().replace(day=1)
         self.next_month = (month + timedelta(days=32)).replace(day=1)
         # Before the month ends the CVR can't go for sign-off
@@ -1562,8 +1579,12 @@ class JourneyTest(TestCase):
         self.assertNeeds('owner', set())
         data = form_data(self.get('sub', self.pu('subpay_apply', self.pkg_oak.pk)), 'gross_to_date')
         sub_valuation = date.fromisoformat(data['valuation_date'])
-        expect_sub = {('subpayment', 'Apply for payment: Joinery')} if sub_valuation <= TODAY() + timedelta(days=7) \
-            else set()
+        # SA-001 was for the valuation date before the one phase 11 ran on; when that is this same date (phase 11
+        # ran from the 25th), there is nothing new to apply for: an application within 12 days of it counts
+        with org_context(self.org):
+            applied = SubApplication.objects.get(subcontract__package=self.pkg_oak).valuation_date
+        expect_sub = {('subpayment', 'Apply for payment: Joinery')} \
+            if sub_valuation <= TODAY() + timedelta(days=7) and applied < sub_valuation - timedelta(days=12) else set()
         self.assertNeeds('sub', expect_sub)
         self.month_end_needs = {'pm': expect_pm - {('cvr', 'CVR-001')}, 'sub': expect_sub}
         # The PM submits it: its figures are frozen as they stand at the month end
