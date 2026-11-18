@@ -5,7 +5,7 @@ performance, CSVs and empty states. Set-up is api/tests/base.py: a job with mone
 """
 import csv
 import io
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal as D
 
 from django.test import TestCase
@@ -26,6 +26,7 @@ from quality.models import Permit
 from reports import data
 from safety import rules as s_rules
 from safety.models import Incident
+from security.testing import hold_today
 from subpayments.models import SubApplication
 from tenancy.context import org_context
 
@@ -150,6 +151,10 @@ class CashTests(ApiTestBase):
 
 class OverdueTests(ApiTestBase):
     def setUp(self):
+        # The job's AP-002 is valued on the 25th of last month and falls due on the 15th or 16th of this one, so it
+        # joins the overdue report from then on. These tests count the sections that are late by design, so hold
+        # the date at the 10th, before it is due.
+        hold_today(self, date(2026, 3, 10))
         super().setUp()
         now = timezone.now()
         with org_context(self.org_a):
